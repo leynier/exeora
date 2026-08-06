@@ -34,7 +34,6 @@
     "EXEORA_BASE_URL": "https://exeora.dev"
   },
 
-
   // `wrangler dev` otherwise takes its origin from these routes and rewrites
   // every request URL to exeora.dev. The OAuth provider derives its metadata
   // `issuer` and the RFC 9207 `iss` from that URL, so a local login would hand

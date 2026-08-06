@@ -13,7 +13,14 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "typecheck": "tsc --build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev": "bun run --cwd apps/gateway dev",
+    "deploy": "bun run --cwd apps/gateway deploy",
+    "db:generate": "bun run --cwd apps/gateway db:generate",
+    "db:migrate:local": "bun run --cwd apps/gateway db:migrate:local",
+    "db:migrate": "bun run --cwd apps/gateway db:migrate",
+    "types": "bun run --cwd apps/gateway types",
+    "secret": "bun run --cwd apps/gateway secret"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
