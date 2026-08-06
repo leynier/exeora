@@ -147,6 +147,115 @@ describe("the ways around a first-word check", () => {
   });
 });
 
+describe("rules", () => {
+  it("takes one word as the program and any arguments, as it always has", () => {
+    // Load bearing for compatibility: every allow list written before rules
+    // could be longer than a word means this, and must keep meaning it.
+    const git = list(["git"]);
+    expect(commandAllowed(git, "git").allowed).toBe(true);
+    expect(commandAllowed(git, "git push origin main").allowed).toBe(true);
+  });
+
+  it("takes two or more words as that command and nothing else", () => {
+    const exact = list(["git push"]);
+    expect(commandAllowed(exact, "git push").allowed).toBe(true);
+    expect(commandAllowed(exact, "git push --force").allowed).toBe(false);
+    expect(commandAllowed(exact, "git status").allowed).toBe(false);
+  });
+
+  it("lets a trailing star stand for whatever follows", () => {
+    const build = list(["cargo build *"]);
+    expect(commandAllowed(build, "cargo build").allowed).toBe(true);
+    expect(commandAllowed(build, "cargo build --release").allowed).toBe(true);
+    expect(commandAllowed(build, "cargo test").allowed).toBe(false);
+  });
+
+  it("does not read a star anywhere but the end as a wildcard", () => {
+    // Not a glob, and saying so in a test: a syntax that looks like one without
+    // being one is misread rather than learned.
+    const odd = list(["git * push"]);
+    expect(commandAllowed(odd, "git anything push").allowed).toBe(false);
+  });
+
+  it("ignores an entry that is only whitespace", () => {
+    expect(commandAllowed(list(["", "   "]), "npm test").allowed).toBe(false);
+  });
+});
+
+describe("deny", () => {
+  it("refuses in allow_all, which is the only mode where it says anything new", () => {
+    const guarded = policy({ deny: ["sudo", "rm"] });
+
+    expect(commandAllowed(guarded, "npm test").allowed).toBe(true);
+    expect(commandAllowed(guarded, "sudo apt install").allowed).toBe(false);
+    expect(commandAllowed(guarded, "rm -rf node_modules").allowed).toBe(false);
+  });
+
+  it("wins over the allow list when both name the same command", () => {
+    const both = list(["git"], { deny: ["git push *"] });
+
+    expect(commandAllowed(both, "git status").allowed).toBe(true);
+    expect(commandAllowed(both, "git push origin main").allowed).toBe(false);
+  });
+
+  it("turns on the shell-syntax refusal, or it would mean nothing", () => {
+    // The whole trap: `npm test; sudo rm -rf /` is one command whose first word
+    // is `npm`. A deny list naming `sudo` that let this through would be worse
+    // than no deny list, because someone would believe in it.
+    const guarded = policy({ deny: ["sudo"] });
+
+    expect(commandAllowed(guarded, "npm test; sudo rm -rf /").allowed).toBe(false);
+    expect(commandAllowed(guarded, "npm test").allowed).toBe(true);
+  });
+
+  it("is a suggestion once the project asks for a shell, and nothing pretends otherwise", () => {
+    const guarded = policy({ deny: ["sudo"], shell: true });
+    expect(commandAllowed(guarded, "npm test; sudo rm -rf /").allowed).toBe(true);
+  });
+
+  it("leaves a project with no deny list exactly as permissive as before", () => {
+    expect(commandAllowed(DEFAULT_POLICY, "npm test; rm -rf ~").allowed).toBe(true);
+  });
+
+  it("names the program it refused", () => {
+    expect(commandAllowed(policy({ deny: ["sudo"] }), "sudo ls").reason).toContain("sudo");
+  });
+});
+
+describe("tools", () => {
+  const reading = policy({ tools: ["read_file", "grep"] });
+
+  it("offers only the tools it names", () => {
+    expect(policyAllows(reading, "read_file", { path: "a.ts" }).allowed).toBe(true);
+    expect(policyAllows(reading, "grep", { pattern: "x" }).allowed).toBe(true);
+    expect(policyAllows(reading, "list_files", {}).allowed).toBe(false);
+  });
+
+  it("is the granularity the modes cannot express", () => {
+    // Edit files, never run a command: no combination of the three modes says
+    // this, which is the reason the field exists.
+    const noCommands = policy({ tools: ["read_file", "edit_file", "write_file"] });
+
+    expect(policyAllows(noCommands, "edit_file", {}).allowed).toBe(true);
+    expect(policyAllows(noCommands, "run_command", { command: "ls" }).allowed).toBe(false);
+  });
+
+  it("means every tool when it is null, including one added later", () => {
+    expect(DEFAULT_POLICY.tools).toBeNull();
+    expect(policyAllows(DEFAULT_POLICY, "run_command", { command: "ls" }).allowed).toBe(true);
+  });
+
+  it("refuses everything when the list is empty, rather than reading it as no restriction", () => {
+    expect(policyAllows(policy({ tools: [] }), "read_file", { path: "a" }).allowed).toBe(false);
+  });
+
+  it("says what is permitted", () => {
+    const verdict = policyAllows(reading, "run_command", { command: "ls" });
+    expect(verdict.reason).toContain("run_command");
+    expect(verdict.reason).toContain("read_file, grep");
+  });
+});
+
 describe("narrowing with a local exeora.toml", () => {
   const remote = list(["npm", "git", "cargo"]);
 
@@ -213,5 +322,50 @@ describe("narrowing with a local exeora.toml", () => {
     expect(commandAllowed(effective, "npm test").allowed).toBe(true);
     // Permitted by the account, refused by the machine.
     expect(commandAllowed(effective, "git push").allowed).toBe(false);
+  });
+
+  it("unites the deny lists rather than intersecting them", () => {
+    // The opposite direction from `allow`, and the same rule seen from the
+    // other end: refusing is the strict direction, so either side may refuse.
+    const account = policy({ deny: ["sudo"] });
+    const effective = narrowPolicy(account, { deny: ["curl"] });
+
+    expect(effective.deny).toEqual(["sudo", "curl"]);
+    expect(commandAllowed(effective, "sudo ls").allowed).toBe(false);
+    expect(commandAllowed(effective, "curl example.com").allowed).toBe(false);
+  });
+
+  it("lets a machine deny something the account never mentioned", () => {
+    // The point of the file: whoever controls the machine may tie their own
+    // hands further, without the account having thought of it first.
+    expect(narrowPolicy(DEFAULT_POLICY, { deny: ["rm"] }).deny).toEqual(["rm"]);
+  });
+
+  it("keeps a deny list even once the mode stops using an allow list", () => {
+    expect(narrowPolicy(policy({ deny: ["sudo"] }), { mode: "read_only" }).deny).toEqual(["sudo"]);
+  });
+
+  it("intersects the tool lists", () => {
+    const account = policy({ tools: ["read_file", "grep", "run_command"] });
+
+    expect(narrowPolicy(account, { tools: ["read_file", "write_file"] }).tools).toEqual([
+      "read_file",
+    ]);
+  });
+
+  it("lets a machine name tools where the account named none", () => {
+    // Null on the account side is "every tool", which constrains nothing, so
+    // the file's list stands alone rather than intersecting with everything.
+    expect(narrowPolicy(DEFAULT_POLICY, { tools: ["read_file"] }).tools).toEqual(["read_file"]);
+  });
+
+  it("cannot add a tool the account left out", () => {
+    const account = policy({ tools: ["read_file"] });
+    expect(narrowPolicy(account, { tools: ["run_command"] }).tools).toEqual([]);
+  });
+
+  it("leaves the tool list alone when the file does not mention it", () => {
+    const account = policy({ tools: ["read_file"] });
+    expect(narrowPolicy(account, { mode: "read_only" }).tools).toEqual(["read_file"]);
   });
 });

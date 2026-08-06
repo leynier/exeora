@@ -1,0 +1,190 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="What a project allows"
+  description="Modes, command rules, tool lists, confirmation, and the exeora.toml a machine can add."
+  canonicalPath="/docs/policy/"
+>
+  <p>
+    A new project allows everything, which is what every project did before this setting existed.
+    Turning a policy on is always a decision someone made, never something that happened to a project
+    on its own.
+  </p>
+
+  <p>
+    The policy is set from the dashboard and applies from the next tool call. Nothing has to
+    reconnect.
+  </p>
+
+  <h2>Modes</h2>
+
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>allow_all</code></td>
+        <td>Every tool, and any command. The default.</td>
+      </tr>
+      <tr>
+        <td><code>read_only</code></td>
+        <td>Reading, listing and searching. No edits, no writes, and no commands at all.</td>
+      </tr>
+      <tr>
+        <td><code>allow_list</code></td>
+        <td>Reads and edits, and only the commands you name.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Command rules</h2>
+
+  <p>
+    Entries in the allow and deny lists are rules, matched against the words of the command:
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Rule</th><th>Matches</th><th>Does not match</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>npm</code></td>
+        <td><code>npm</code>, <code>npm test</code>, <code>npm run build -- --watch</code></td>
+        <td><code>npx test</code></td>
+      </tr>
+      <tr>
+        <td><code>git push</code></td>
+        <td><code>git push</code></td>
+        <td><code>git push --force</code>, <code>git status</code></td>
+      </tr>
+      <tr>
+        <td><code>git *</code></td>
+        <td><code>git</code>, <code>git push origin main</code></td>
+        <td><code>gitk</code></td>
+      </tr>
+      <tr>
+        <td><code>cargo build *</code></td>
+        <td><code>cargo build</code>, <code>cargo build --release</code></td>
+        <td><code>cargo test</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    <strong>A single word means the program and any arguments.</strong> Two or more words with no
+    star is the exact form, which is the only way to say "this and nothing else".
+  </p>
+
+  <p>
+    It is not a glob. <code>*</code> is honoured as the final word and nowhere else, because a syntax
+    that resembles a glob without being one gets misread rather than learned.
+  </p>
+
+  <h2>Refusing commands</h2>
+
+  <p>
+    A deny list is checked <strong>before</strong> the allow list and applies in every mode,
+    including <code>allow_all</code>. That is the only reason it is worth having: <code
+      >allow_list</code
+    > already refuses everything it does not name, so the sentence only <code>allow_all</code> can express
+    is "anything, except <code>sudo</code>".
+  </p>
+
+  <h3>Why shell syntax is refused</h3>
+
+  <p>
+    Commands run through a shell, so <code>npm test; sudo rm -rf /</code> is one command whose first
+    word is <code>npm</code>. A list compared against words and nothing else would let that straight
+    through while appearing not to.
+  </p>
+
+  <p>
+    So whenever a list is in force, which means <code>allow_list</code> or any project with a deny
+    list, a command carrying a shell metacharacter is refused outright. Turning{" "}
+    <code>shell</code> on opts out of that, which reduces both lists to suggestions, and the dashboard
+    says so.
+  </p>
+
+  <h2>Which tools exist</h2>
+
+  <p>
+    Naming tools is the granularity the modes cannot express. <code>read_only</code> is the only
+    per-tool statement a mode makes and it is all or nothing, so "edit files, never run a command" has
+    no other way to be said.
+  </p>
+
+  <p>
+    Left unset it means every tool, including any added later, so a project that never restricted its
+    tools does not silently refuse the next one to exist.
+  </p>
+
+  <h2 id="confirming">Confirming a change</h2>
+
+  <p>
+    <code>approve</code> asks a person before anything that edits, writes or runs, naming the file or
+    quoting the command. Reads are never interrupted: a prompt nobody can decline is one people learn
+    to click through.
+  </p>
+
+  <p>Who gets asked depends on the client:</p>
+
+  <ul>
+    <li>
+      A client speaking <strong>MCP 2026-07-28</strong> is asked in the conversation the call came
+      from, which is the best place for it.
+    </li>
+    <li>
+      <strong>Everyone else</strong>, which today includes Claude and ChatGPT, is asked out of band:
+      the terminal running <code>exeora connect</code>, if that machine has one, and the dashboard, at
+      the same time. The first answer wins.
+    </li>
+  </ul>
+
+  <p>
+    Nobody answering within ninety seconds refuses the call, because an unattended machine should
+    fail rather than hang.
+  </p>
+
+  <h2>exeora.toml</h2>
+
+  <p>
+    A project may carry one in its root. <strong
+      >It can only narrow what the account allows, never widen it</strong
+    >, so whoever controls a machine can restrict an agent further and cannot grant themselves
+    anything.
+  </p>
+
+  <pre>{`mode = "allow_list"      # allow_all | allow_list | read_only
+allow = ["npm", "git *"]
+deny = ["sudo", "rm *"]
+shell = false
+approve = true
+tools = ["read_file", "grep", "run_command"]`}</pre>
+
+  <p>Write one with:</p>
+
+  <pre>exeora init</pre>
+
+  <p>
+    Every key is optional, and leaving one out means the file has no opinion about it rather than
+    asking for the strictest value. A file that says only <code>mode</code> does not also switch the
+    shell off.
+  </p>
+
+  <p>
+    Narrowing runs per field, each in its own direction: the stricter mode wins, the allow and tool
+    lists intersect, the deny lists unite, and <code>shell</code> survives only if both sides permit
+    it. Deny uniting where allow intersects is the same rule seen from the other end, since refusing
+    is the strict direction.
+  </p>
+
+  <p>
+    A file that cannot be parsed is reported on the terminal and ignored. Refusing every call over a
+    typo would stop a project dead, and ignoring it silently would remove a restriction someone
+    believed they had.
+  </p>
+</Doc>

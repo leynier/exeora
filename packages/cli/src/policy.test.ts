@@ -54,7 +54,14 @@ describe("with a file", () => {
       remote({ mode: "allow_list", allow: ["npm", "git"] }),
     );
 
-    expect(policy).toEqual({ mode: "allow_list", allow: ["npm"], shell: false, approve: false });
+    expect(policy).toEqual({
+      mode: "allow_list",
+      allow: ["npm"],
+      deny: [],
+      shell: false,
+      approve: false,
+      tools: null,
+    });
   });
 
   it("cannot widen what the account allows", async () => {
@@ -81,7 +88,14 @@ describe("with a file", () => {
 
     const { policy } = await effectivePolicy(root, DEFAULT_POLICY);
 
-    expect(policy).toEqual({ mode: "allow_list", allow: ["npm"], shell: false, approve: false });
+    expect(policy).toEqual({
+      mode: "allow_list",
+      allow: ["npm"],
+      deny: [],
+      shell: false,
+      approve: false,
+      tools: null,
+    });
   });
 
   it("says nothing about a key it does not set", async () => {

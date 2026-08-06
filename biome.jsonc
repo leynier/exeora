@@ -6,7 +6,20 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/.astro", "!**/.wrangler", "!**/worker-configuration.d.ts"]
+    // `**/public` is static assets: fonts, brand marks, the built site. Nothing
+    // there is written by hand, and linting an .svg asset as though it were
+    // inline markup is wrong on its own terms: the client marks are painted
+    // through a CSS mask onto an aria-hidden span, so a screen reader never
+    // reaches the file's contents and a <title> inside it would be read by
+    // nobody.
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/public",
+      "!**/.astro",
+      "!**/.wrangler",
+      "!**/worker-configuration.d.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

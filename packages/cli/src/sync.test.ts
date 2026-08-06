@@ -1,3 +1,4 @@
+import { DEFAULT_POLICY } from "@exeora/protocol";
 import { describe, expect, it } from "vitest";
 import type { ProjectView } from "./api.js";
 import type { ProjectEntry } from "./config.js";
@@ -19,6 +20,7 @@ const remote = (over: Partial<ProjectView> = {}): ProjectView => ({
   deviceId: "dev_1",
   localPath: "/home/someone/work/api",
   mcpUrl: "https://exeora.dev/p/prj_1/mcp",
+  policy: DEFAULT_POLICY,
   createdAt: 0,
   ...over,
 });

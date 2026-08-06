@@ -1,6 +1,6 @@
-import { CommandPolicy } from "@exeora/protocol";
+import { CommandPolicy, HEARTBEAT_TIMEOUT_MS } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, inArray, lt, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, or, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { isMetadataDocumentClient, parsePolicy, stillAuthorized } from "../clients.js";
@@ -564,6 +564,100 @@ api.get("/api/tool-calls", async (c) => {
     cursor: last ? encodeCallsCursor(last.createdAt.getTime(), last.id) : null,
   });
 });
+
+/**
+ * Calls waiting on someone to confirm them, across every machine.
+ *
+ * A fan-out rather than a table, because a pending approval lives for ninety
+ * seconds inside the Durable Object that is already holding the caller's
+ * request. Writing it to D1 would mean a row whose whole purpose is to be
+ * deleted before anyone could page through it.
+ *
+ * The fan-out is bounded twice over: only machines that have been seen recently
+ * can be holding one, and a person has a handful of machines. A machine that
+ * has been asleep for a week is not asked.
+ */
+api.get("/api/approvals", async (c) => {
+  const userId = c.get("userId");
+
+  const seenSince = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
+
+  const devices = await db(c.env)
+    .select({ id: schema.devices.id, name: schema.devices.name })
+    .from(schema.devices)
+    .where(
+      and(
+        eq(schema.devices.userId, userId),
+        isNull(schema.devices.revokedAt),
+        gt(schema.devices.lastSeenAt, seenSince),
+      ),
+    )
+    .all();
+
+  const perDevice = await Promise.all(
+    devices.map(async (device) => {
+      try {
+        const approvals = await c.env.DEVICE_RELAY.getByName(
+          relayName(userId, device.id),
+        ).listApprovals();
+
+        return approvals.map((approval) => ({ ...approval, deviceName: device.name }));
+      } catch {
+        // One unreachable object must not empty the whole list: the other
+        // machines may well have a question waiting.
+        return [];
+      }
+    }),
+  );
+
+  // Oldest first, because the oldest is the one closest to expiring and so the
+  // one the person needs to answer next.
+  const items = perDevice.flat().sort((a, b) => a.requestedAt - b.requestedAt);
+
+  return c.json({ items });
+});
+
+/**
+ * Answers one, from the browser.
+ *
+ * The device is named by the caller rather than parsed out of the approval id.
+ * Both the id and the device come from the listing above, so nothing is being
+ * trusted that was not just handed out, and the id keeps no structure that a
+ * later change would have to preserve.
+ *
+ * A miss answers 409 rather than 404: the usual reason is that the terminal got
+ * there first, which is a race the person should see as one, not as a thing
+ * that was never there.
+ */
+api.post(
+  "/api/approvals/:id",
+  zValidator("json", z.object({ deviceId: z.string(), approved: z.boolean() })),
+  async (c) => {
+    const userId = c.get("userId");
+    const { deviceId, approved } = c.req.valid("json");
+
+    // The device has to be the caller's, or an approval id plus a guessed
+    // device id would reach into another account's relay.
+    const device = await db(c.env)
+      .select({ id: schema.devices.id })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.id, deviceId), eq(schema.devices.userId, userId)))
+      .get();
+
+    if (!device) return c.json({ error: "not_found" }, 404);
+
+    const answered = await c.env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).answerApproval(
+      c.req.param("id"),
+      approved,
+    );
+
+    if (!answered) {
+      return c.json({ error: "already_answered" }, 409);
+    }
+
+    return c.json({ ok: true });
+  },
+);
 
 /** How long an audit row is kept. */
 const CALLS_RETENTION_DAYS = 90;

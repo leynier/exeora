@@ -35,23 +35,44 @@ flowchart TD
 | `packages/design` | The design tokens, written down once. The landing and dashboard `@import` them into their Tailwind build; the gateway imports the same file as text and inlines it into the OAuth screens. |
 | `packages/cli` | The `exeora` binary: login, device and project registration, and the executor that runs tool calls. |
 | `apps/gateway` | The Worker: OAuth authorization server, MCP endpoint, relay, dashboard API, and the static site. |
-| `apps/web` | Sources for the Astro landing at `/` and the React dashboard at `/dashboard/`. Built here, served by the gateway. |
+| `apps/web` | Sources for the Astro landing at `/`, the docs at `/docs/`, and the React dashboard at `/dashboard/`. Built here, served by the gateway. |
+
+The documentation lives at `apps/web/landing/src/pages/docs/`, with its order and sidebar in `apps/web/landing/src/lib/docs.ts`. The tool reference is generated from `TOOL_DEFINITIONS` at build time through `toolFields()`, so adding a tool publishes its reference and none of it can go quietly out of date.
 
 One Worker owns the whole hostname. The site was briefly a Worker of its own, until it turned out neither half needs a server: Astro emits static HTML and the dashboard is a Vite bundle, so an `ASSETS` binding is enough.
 
 ## Tools
 
-`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `run_command`
+`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
 
 Every path is resolved and confined to the project root before anything touches the disk. See `packages/cli/src/paths.ts`, whose tests are its specification.
 
-A project can be set to confirm every change before it runs, but only clients speaking MCP 2026-07-28 can be asked; see below. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
+A project can be set to confirm every change before it runs, in the client, on the machine's terminal or in the dashboard depending on what the client can do; see below. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
 
 ## What a project allows
 
-A new project allows everything, which is what every project did before the setting existed. From the dashboard it can be set to `read_only`, which refuses every tool that changes anything, or to `allow_list`, which names the programs `run_command` may invoke.
+A new project allows everything, which is what every project did before the setting existed. From the dashboard it can be set to `read_only`, which refuses every tool that changes anything, or to `allow_list`, which names the commands `run_command` may invoke. Independently of the mode, `deny` names commands that are never run, and `tools` names which tools exist here at all.
 
-**The allow list refuses shell syntax by default, and that is the whole reason it is worth anything.** Commands run through a shell, so `npm test; rm -rf ~` is one command whose first word is `npm`: a list compared against the first word and nothing else would let it through. Under `allow_list` anything carrying a shell metacharacter is refused outright unless the project sets `shell = true`, which turns the list back into a suggestion and says so in the dashboard.
+**A list refuses shell syntax by default, and that is the whole reason it is worth anything.** Commands run through a shell, so `npm test; rm -rf ~` is one command whose first word is `npm`: a list compared against the first word and nothing else would let it through. Whenever a list is in force, which means `allow_list` or any project with a `deny` list, anything carrying a shell metacharacter is refused outright unless the project sets `shell = true`, which turns both lists back into suggestions and says so in the dashboard.
+
+### Rules
+
+Each entry in `allow` and `deny` is a rule, matched against the words of the command:
+
+| Rule | Permits | Does not permit |
+|---|---|---|
+| `npm` | `npm`, `npm test`, `npm run build -- --watch` | `npx test` |
+| `git push` | `git push` | `git push --force`, `git status` |
+| `git *` | `git`, `git push origin main` | `gitk` |
+| `cargo build *` | `cargo build`, `cargo build --release` | `cargo test` |
+
+**A single word still means the program and any arguments**, which is what a one-word entry meant before rules could be longer; changing that would have quietly tightened every list already written. It is not a glob: `*` is honoured as the final word and nowhere else, since a syntax that resembles a glob without being one gets misread rather than learned.
+
+`deny` is checked before `allow` and applies in every mode, which is the only reason it is worth having: `allow_list` already refuses everything it does not name, so the sentence only `allow_all` can express is "anything, except `sudo`".
+
+### Which tools exist
+
+`tools` is the granularity the modes cannot express. `read_only` is the only per-tool statement a mode makes, and it is all or nothing; naming tools is how a project says "edit files, never run a command". Unset means every tool, including any added later, so a project that never restricted its tools does not silently refuse the next one to exist.
 
 The policy is checked twice, on purpose. The gateway checks it because it is the only side holding the account's setting, and because an older CLI would ignore a field it does not know. The executor checks it because it is the authority on the machine, and the only side that can read a project's own file. Both run the same functions from `packages/protocol/src/policy.ts`, whose tests are its specification.
 
@@ -60,21 +81,29 @@ The policy is checked twice, on purpose. The gateway checks it because it is the
 A project may carry one in its root. It can only narrow what the account allows, never widen it, so whoever controls a machine can restrict an agent further and cannot grant themselves anything.
 
 ```toml
-mode = "allow_list"      # allow_all | allow_list | read_only
-allow = ["npm", "git"]
+mode = "allow_list"                  # allow_all | allow_list | read_only
+allow = ["npm", "git *"]
+deny = ["sudo", "rm *"]
 shell = false
 approve = true
+tools = ["read_file", "grep", "run_command"]
 ```
 
-Every key is optional, and leaving one out means the file has no opinion about it rather than asking for the strictest value. A file that cannot be parsed is reported on the terminal and ignored: refusing every call over a typo would stop a project dead, and ignoring it silently would remove a restriction someone believed they had.
+Every key is optional, and leaving one out means the file has no opinion about it rather than asking for the strictest value.
+
+Narrowing runs per field, each in its own direction: the stricter mode wins, `allow` and `tools` intersect, `deny` unites, and `shell` survives only if both sides permit it. `deny` uniting where `allow` intersects is the same rule seen from the other end, since refusing is the strict direction: a machine may refuse something the account never thought to mention, and may not un-refuse anything. A file that cannot be parsed is reported on the terminal and ignored: refusing every call over a typo would stop a project dead, and ignoring it silently would remove a restriction someone believed they had.
 
 ## Confirming a call before it runs
 
 `approve` asks the person before anything that edits, writes or runs, naming the file or quoting the command. Reads are never interrupted: a prompt nobody can decline is one people learn to click through.
 
-**It only reaches clients speaking MCP 2026-07-28**, which is what carries the mechanism. On the 2025 protocol, which claude.ai and ChatGPT still speak today, a call that would need confirming is refused rather than run unconfirmed, since the alternative makes the setting decorative for exactly the clients most people use.
+Who gets asked depends on the client:
 
-The endpoint is stateless, so the two halves of an approved call are joined by the `requestState` string MCP 2026-07-28 round-trips through the client. That string comes back as attacker-controlled input and the SDK verifies nothing by default, so it is HMAC signed with `REQUEST_STATE_SECRET` through the SDK's own `createRequestStateCodec`, bound to the calling client, and **carries a hash of the arguments**. Without that last part a client could have `ls` confirmed and retry with `rm -rf ~` under the same approval: the signature would verify and the tool would match. See `apps/gateway/src/approval.ts`.
+**A client speaking MCP 2026-07-28** is asked in the conversation the call came from, which is the best place for it. The endpoint is stateless, so the two halves of an approved call are joined by the `requestState` string that revision round-trips through the client. That string comes back as attacker-controlled input and the SDK verifies nothing by default, so it is HMAC signed with `REQUEST_STATE_SECRET` through the SDK's own `createRequestStateCodec`, bound to the calling client, and **carries a hash of the arguments**. Without that last part a client could have `ls` confirmed and retry with `rm -rf ~` under the same approval: the signature would verify and the tool would match. See `apps/gateway/src/approval.ts`.
+
+**Everyone else**, which today includes claude.ai and ChatGPT, is asked out of band: the terminal running `exeora connect`, if that machine has one, and the Exeora dashboard, at the same time. The first answer wins and the other side is told the question is over rather than left holding a prompt that no longer does anything. Nobody answering within ninety seconds refuses the call, since an unattended machine should fail rather than hang.
+
+That second path carries no signature and no hash of the arguments, and does not need either: the question never leaves the relay, which holds the arguments itself for the whole exchange. There is nothing in flight to forge. It is the structurally safer of the two, and it exists because the first one reaches almost nobody today.
 
 ## Install
 
@@ -217,7 +246,9 @@ No provenance attestation: npm only generates one when the source repository is 
 
 Releases are deliberately not tied to `main`: the gateway deploys on every push, the CLI ships when a tag says so.
 
-**Bumping `PROTOCOL_VERSION` breaks every installed CLI** until people upgrade, because the relay rejects a mismatch outright (`packages/protocol/src/messages.ts`, `apps/gateway/src/relay-do.ts`). Merge first so the gateway deploys, then tag, never the other way around.
+Set `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc` to the version being published. The gateway tells it to every executor in the `hello.ack`, and `connect` prints a line when a newer one exists. It is told rather than looked up so connecting never depends on the npm registry being reachable.
+
+**Adding to the protocol does not break installed CLIs.** The relay serves the range `MIN_SUPPORTED_PROTOCOL_VERSION` to `PROTOCOL_VERSION`, and anything a newer CLI gained is negotiated: the executor announces `capabilities` in its `hello`, and the gateway advertises only the tools it named. Raise `MIN_SUPPORTED_PROTOCOL_VERSION` only for a change an old CLI would get actively *wrong*, as opposed to one it would merely not have, and expect that to disconnect everyone below it. Merge first so the gateway deploys, then tag, never the other way around.
 
 The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown substitutes it into the bundle, and `packages/cli/src/version.ts` reports `0.0.0-dev` when the sources are run directly.
 
@@ -229,7 +260,7 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 **Nothing is queued.** With no executor connected, a call fails at once with `LOCAL_EXECUTOR_OFFLINE`, and every `tool.call` carries an absolute deadline the executor re-checks on arrival. A command landing hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept.
 
-**A call nobody is waiting for is stopped, not left running.** When the MCP client hangs up, the relay's own deadline expires, or the executor's socket drops, the CLI kills the command's whole process group. The alternative is a `run_command` that keeps working for its full five minutes with no one left to read the answer, which is the same hazard as a call that lands late, arriving from the other end.
+**A call nobody is waiting for is stopped, not left running.** When the MCP client hangs up, the relay's own deadline expires, or the executor's socket drops, the CLI kills the command's whole process group. The alternative is a `run_command` that keeps working for its full five minutes with no one left to read the answer, which is the same hazard as a call that lands late, arriving from the other end. `start_command` follows the same rule from further away: a process it started dies when the connection does, because a dev server nobody can reach, read or stop is not a feature.
 
 **Projects are isolated at the token.** `resourceMetadata.resource` is left unset so the OAuth provider serves RFC 9728 metadata per path: `/p/a/mcp` and `/p/b/mcp` are distinct resources, and a token minted for one is not accepted at the other. Ownership is checked against D1 as well, so there are two independent checks rather than one.
 
@@ -241,4 +272,4 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 ## Not in this release
 
-No billing or plans: nothing is metered and nothing is charged, and the rate limiting in `wrangler.jsonc` stops a caller hammering the gateway rather than enforcing a quota. Approval works, but only on clients speaking MCP 2026-07-28, which today is neither claude.ai nor ChatGPT. No long-running processes, since `run_command` is bounded and `start_command`/`get_command_output` need a different, asynchronous shape in the relay. Identity is GitHub only. Deploys go straight to production; there is no staging environment.
+No billing or plans: nothing is metered and nothing is charged, and the rate limiting in `wrangler.jsonc` stops a caller hammering the gateway rather than enforcing a quota. Long-running processes exist but die with the connection, so a dev server does not survive a dropped socket. Identity is GitHub only. Deploys go straight to production; there is no staging environment.

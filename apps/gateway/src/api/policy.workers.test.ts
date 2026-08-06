@@ -74,7 +74,14 @@ beforeEach(async () => {
 
 describe("setting a policy", () => {
   it("stores it and hands it back", async () => {
-    const policy = { mode: "allow_list", allow: ["npm", "git"], shell: false, approve: false };
+    const policy = {
+      mode: "allow_list",
+      allow: ["npm", "git"],
+      deny: [],
+      shell: false,
+      approve: false,
+      tools: null,
+    };
 
     const response = await call("/api/projects/prj_p/policy", { method: "PUT", body: policy });
 
@@ -115,8 +122,10 @@ describe("setting a policy", () => {
     expect(await response.json()).toEqual({
       mode: "allow_list",
       allow: [],
+      deny: [],
       shell: false,
       approve: false,
+      tools: null,
     });
   });
 });

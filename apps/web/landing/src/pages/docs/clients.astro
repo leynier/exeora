@@ -1,0 +1,78 @@
+---
+import Doc from "../../layouts/Doc.astro";
+
+/**
+ * How to point each client at a project.
+ *
+ * Kept concrete rather than "add the URL in your client's settings", because
+ * every one of these puts it somewhere different and the difference is the
+ * whole reason someone opens this page.
+ */
+---
+
+<Doc
+  title="Connecting a client"
+  description="Where to paste the MCP URL in Claude, ChatGPT, Cursor, VS Code and Claude Code."
+  canonicalPath="/docs/clients/"
+>
+  <p>
+    <code>exeora connect</code> prints a URL of the form{" "}
+    <code>https://exeora.dev/p/&lt;project&gt;/mcp</code>. Every client below takes that same URL and
+    signs in through your browser the first time it is used. Nothing else has to be configured on
+    either side.
+  </p>
+
+  <p>
+    Authorization is per project. Approving a client once lets it reach that project and no other,
+    and every application that has been let in is listed in the dashboard under Clients, where it can
+    be revoked one at a time.
+  </p>
+
+  <h2>Claude Code</h2>
+
+  <pre>claude mcp add --transport http exeora &lt;the URL&gt;</pre>
+
+  <h2>Claude</h2>
+
+  <p>
+    Settings → Connectors → Add custom connector, and paste the URL. Claude speaks the 2025 protocol
+    today, which matters only for confirmation prompts: see{" "}
+    <a href="/docs/policy/#confirming">confirming a change</a>.
+  </p>
+
+  <h2>ChatGPT</h2>
+
+  <p>
+    Settings → Connectors → Create, and paste the URL. Same note about the protocol revision as
+    Claude.
+  </p>
+
+  <h2>Cursor</h2>
+
+  <p>
+    Settings → MCP → Add new MCP server, choose the HTTP transport and paste the URL. Cursor stores
+    this in <code>~/.cursor/mcp.json</code>, which can also be edited directly.
+  </p>
+
+  <h2>VS Code</h2>
+
+  <p>
+    Run <strong>MCP: Add Server</strong> from the command palette, choose HTTP, and paste the URL.
+  </p>
+
+  <h2>Anything else</h2>
+
+  <p>
+    Any client that speaks MCP over Streamable HTTP with OAuth 2.1 will work; there is nothing
+    Exeora-specific to implement. To try one by hand:
+  </p>
+
+  <pre>bunx @modelcontextprotocol/inspector@2.1.0</pre>
+
+  <h2>If a call fails immediately</h2>
+
+  <p>
+    <code>LOCAL_EXECUTOR_OFFLINE</code> means no CLI is connected for that project's machine. Nothing
+    is queued, on purpose: see <a href="/docs/troubleshooting/">troubleshooting</a>.
+  </p>
+</Doc>

@@ -20,9 +20,38 @@ export interface Device {
 export interface CommandPolicy {
   mode: "allow_all" | "allow_list" | "read_only";
   allow: string[];
+  deny: string[];
   shell: boolean;
   approve: boolean;
+  /** Null is every tool, which is not the same as naming them all. */
+  tools: ToolName[] | null;
 }
+
+/**
+ * The tools, restated for the same reason `CommandPolicy` is.
+ *
+ * Ordered as the policy screen reads them: what only looks, then what changes
+ * something, which is the order someone deciding what to permit thinks in.
+ *
+ * **Adding a tool to `@exeora/protocol` means adding it here too.** A tool
+ * missing from this list is one the policy screen cannot offer, so a project
+ * restricting its tools would have no way to permit it. The failure is visible
+ * rather than dangerous, which is the only reason a second list is tolerable.
+ */
+export const TOOL_NAMES = [
+  "read_file",
+  "list_files",
+  "grep",
+  "edit_file",
+  "write_file",
+  "run_command",
+  "start_command",
+  "get_command_output",
+  "send_command_input",
+  "kill_command",
+] as const;
+
+export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface Project {
   id: string;
@@ -109,6 +138,29 @@ export interface ToolCallPage {
   cursor: string | null;
 }
 
+/**
+ * A call waiting on someone to confirm it.
+ *
+ * Lives for ninety seconds inside the relay rather than in a table: there is an
+ * AI client holding a request open at the other end of it, so it is either
+ * answered now or not at all.
+ */
+export interface Approval {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  projectId: string;
+  tool: string;
+  /** Already written for a person: "Run `npm test`?" */
+  prompt: string;
+  clientName?: string;
+  requestedAt: number;
+  expiresAt: number;
+}
+
+/** Thrown when the terminal answered first. Not an error worth a red banner. */
+export class AlreadyAnswered extends Error {}
+
 export const api = {
   me: () => request<User>("/api/me"),
   devices: () => request<Device[]>("/api/devices"),
@@ -142,6 +194,27 @@ export const api = {
 
   /** Irreversible, and takes every machine, project, client and audit row. */
   deleteAccount: () => request<{ ok: true }>("/api/me", { method: "DELETE" }),
+
+  approvals: () => request<{ items: Approval[] }>("/api/approvals"),
+
+  /**
+   * Answers one. Throws `AlreadyAnswered` when the terminal got there first,
+   * which is a race someone should see as one rather than as a failure.
+   */
+  answerApproval: async (id: string, deviceId: string, approved: boolean) => {
+    try {
+      return await request<{ ok: true }>(`/api/approvals/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, approved }),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("(409)")) {
+        throw new AlreadyAnswered("That was already answered somewhere else.");
+      }
+      throw error;
+    }
+  },
 
   clients: () => request<Client[]>("/api/clients"),
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),

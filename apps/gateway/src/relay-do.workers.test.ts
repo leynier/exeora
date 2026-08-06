@@ -1,7 +1,11 @@
 import { env } from "cloudflare:test";
 import {
+  type ApprovalRequestMessage,
+  BASELINE_CAPABILITIES,
   decodeRelayMessage,
+  type ExecutorCapabilities,
   encodeMessage,
+  MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
   type ToolResultMessage,
 } from "@exeora/protocol";
@@ -65,6 +69,10 @@ async function attachFakeExecutor(
       args: unknown;
     }) => ToolResultMessage["result"];
     silent?: boolean;
+    /** Omitted stands for a CLI built before capabilities existed. */
+    capabilities?: ExecutorCapabilities;
+    /** Omitted leaves an `approval.request` unanswered, like an empty chair. */
+    answerApproval?: boolean;
   } = {},
 ) {
   const socket = await dial();
@@ -72,9 +80,37 @@ async function attachFakeExecutor(
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
   /** Request ids the relay asked us to stop working on. */
   const cancelled: string[] = [];
+  /** Questions the relay put to this terminal. */
+  const asked: ApprovalRequestMessage[] = [];
+  /** Questions the relay said were over, answered elsewhere or expired. */
+  const resolved: string[] = [];
+  /** Resolves with the relay's answer to `hello`, for the tests that read it. */
+  let acknowledge: (ack: { latestCliVersion?: string | undefined }) => void;
+  const ack = new Promise<{ latestCliVersion?: string | undefined }>((resolve) => {
+    acknowledge = resolve;
+  });
 
   socket.addEventListener("message", (event: MessageEvent) => {
     const message = decodeRelayMessage(String(event.data));
+
+    if (message?.type === "hello.ack") {
+      acknowledge(message);
+      return;
+    }
+
+    if (message?.type === "approval.request") {
+      asked.push(message);
+      const answer = options.answerApproval;
+      if (answer !== undefined) {
+        socket.send(encodeMessage({ type: "approval.answer", id: message.id, approved: answer }));
+      }
+      return;
+    }
+
+    if (message?.type === "approval.resolved") {
+      resolved.push(message.id);
+      return;
+    }
 
     if (message?.type === "cancel") {
       cancelled.push(message.requestId);
@@ -105,11 +141,22 @@ async function attachFakeExecutor(
       cliVersion: "0.1.0",
       platform: "linux",
       projects: [{ id: "prj_test", slug: "test" }],
+      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     }),
   );
 
-  return { socket, seen, cancelled };
+  return { socket, seen, cancelled, asked, resolved, ack };
 }
+
+/** A machine with a terminal someone could be asked at. */
+const CAN_PROMPT: ExecutorCapabilities = { prompt: true, tools: [...BASELINE_CAPABILITIES.tools] };
+
+const question = {
+  id: "apr_1",
+  projectId: "prj_test",
+  tool: "run_command" as const,
+  prompt: "Run `npm test`?",
+};
 
 beforeEach(() => {
   relayName = `usr_test:dev_${crypto.randomUUID()}`;
@@ -282,7 +329,7 @@ describe("revocation", () => {
 });
 
 describe("protocol version", () => {
-  it("refuses a CLI speaking a different version instead of misreading its frames", async () => {
+  it("refuses a CLI speaking a version it cannot read, rather than misreading its frames", async () => {
     const socket = await dial();
 
     const closed = new Promise<number>((resolve) => {
@@ -301,5 +348,171 @@ describe("protocol version", () => {
     );
 
     expect(await closed).toBe(1008);
+  });
+
+  it("still serves the oldest version it claims to support", async () => {
+    // The point of the range: an old CLI is behind, not broken. When these two
+    // constants are equal this asserts the boundary is inclusive; when they
+    // diverge it becomes the test that the floor is real.
+    expect(MIN_SUPPORTED_PROTOCOL_VERSION).toBeLessThanOrEqual(PROTOCOL_VERSION);
+
+    const socket = await dial();
+    socket.send(
+      encodeMessage({
+        type: "hello",
+        protocolVersion: MIN_SUPPORTED_PROTOCOL_VERSION,
+        deviceId: "dev_test",
+        cliVersion: "0.1.0",
+        platform: "linux",
+        projects: [],
+      }),
+    );
+
+    await vi.waitFor(async () => expect(await relay().isOnline()).toBe(true));
+    socket.close(1000, "done");
+  });
+});
+
+describe("approval", () => {
+  it("asks the terminal and returns what it said", async () => {
+    const executor = await attachFakeExecutor({
+      capabilities: CAN_PROMPT,
+      answerApproval: true,
+    });
+
+    expect(await relay().requestApproval(question)).toBe("approved");
+    expect(executor.asked[0]?.prompt).toBe("Run `npm test`?");
+    executor.socket.close(1000, "done");
+  });
+
+  it("carries a no back as a decision, not as a failure", async () => {
+    const executor = await attachFakeExecutor({
+      capabilities: CAN_PROMPT,
+      answerApproval: false,
+    });
+
+    expect(await relay().requestApproval(question)).toBe("declined");
+    executor.socket.close(1000, "done");
+  });
+
+  it("does not ask a machine with nobody at it", async () => {
+    // No `capabilities.prompt`: under systemd, or in a detached pane. Sending
+    // the question anyway would spend the whole ninety seconds waiting on a
+    // terminal nobody is looking at, when the dashboard could answer at once.
+    const executor = await attachFakeExecutor({ answerApproval: true });
+
+    const pending = relay().requestApproval(question);
+    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
+
+    expect(executor.asked).toEqual([]);
+
+    // Still answerable, which is the point: this is the headless case.
+    expect(await relay().answerApproval(question.id, true)).toBe(true);
+    expect(await pending).toBe("approved");
+    executor.socket.close(1000, "done");
+  });
+
+  it("lets the dashboard answer, and tells the terminal the question is over", async () => {
+    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
+
+    const pending = relay().requestApproval(question);
+    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
+
+    await relay().answerApproval(question.id, true);
+
+    expect(await pending).toBe("approved");
+    // Without this the prompt would sit on the terminal, and typing into it
+    // would do nothing, which is worse than never having shown it.
+    await vi.waitFor(() => expect(executor.resolved).toEqual([question.id]));
+    executor.socket.close(1000, "done");
+  });
+
+  it("gives the first answer the decision and the second nothing", async () => {
+    const executor = await attachFakeExecutor({
+      capabilities: CAN_PROMPT,
+      answerApproval: true,
+    });
+
+    expect(await relay().requestApproval(question)).toBe("approved");
+    // The terminal already settled it. A dashboard click landing now finds
+    // nothing, which is what the 409 in the API is built on.
+    expect(await relay().answerApproval(question.id, false)).toBe(false);
+    executor.socket.close(1000, "done");
+  });
+
+  it("lists what is waiting, so the dashboard has something to show", async () => {
+    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
+
+    const pending = relay().requestApproval({ ...question, clientName: "ChatGPT" });
+    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
+
+    const [waiting] = await relay().listApprovals();
+    expect(waiting).toMatchObject({
+      id: question.id,
+      projectId: "prj_test",
+      tool: "run_command",
+      prompt: "Run `npm test`?",
+      clientName: "ChatGPT",
+    });
+
+    await relay().answerApproval(question.id, false);
+    expect(await pending).toBe("declined");
+    executor.socket.close(1000, "done");
+  });
+
+  it("refuses to ask when no machine is connected", async () => {
+    // Nothing to confirm: the call would fail either way, and the one thing
+    // this spends is a person's attention.
+    const error = await failureOf(() => relay().requestApproval(question));
+    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
+  });
+
+  it("ends a question when the machine goes away", async () => {
+    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
+
+    const pending = relay().requestApproval(question);
+    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
+
+    executor.socket.close(1000, "gone");
+
+    // Not left to time out: the call it guards cannot run now regardless, so
+    // waiting the full ninety seconds would only delay saying so.
+    expect(await pending).toBe("unanswered");
+    expect(await relay().listApprovals()).toEqual([]);
+  });
+});
+
+describe("capabilities", () => {
+  it("reports none at all when no executor is connected", async () => {
+    // Distinct from the baseline on purpose: an offline machine has nothing to
+    // report, which is a different answer from a machine reporting the six.
+    expect(await relay().capabilities()).toBeNull();
+  });
+
+  it("reads an executor that announced nothing as the six original tools", async () => {
+    const executor = await attachFakeExecutor();
+
+    await vi.waitFor(async () =>
+      expect(await relay().capabilities()).toEqual(BASELINE_CAPABILITIES),
+    );
+    executor.socket.close(1000, "done");
+  });
+
+  it("reports what a newer executor announced, tools it does not know included", async () => {
+    const announced: ExecutorCapabilities = {
+      prompt: true,
+      tools: ["read_file", "start_command", "a_tool_from_the_future"],
+    };
+    const executor = await attachFakeExecutor({ capabilities: announced });
+
+    await vi.waitFor(async () => expect(await relay().capabilities()).toEqual(announced));
+    executor.socket.close(1000, "done");
+  });
+
+  it("tells the executor which CLI version is current", async () => {
+    const executor = await attachFakeExecutor();
+
+    expect((await executor.ack).latestCliVersion).toBe(env.LATEST_CLI_VERSION);
+    executor.socket.close(1000, "done");
   });
 });

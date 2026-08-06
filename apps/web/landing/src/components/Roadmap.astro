@@ -12,12 +12,12 @@ const items = [
     body: "Identity already sits behind a provider interface, and the database column is plain text. Adding one is a file and two secrets, not a migration",
   },
   {
-    title: "Long-running processes",
-    body: "start_command and get_command_output, for a dev server or a watch task. It needs an asynchronous shape in the relay, which is why it is not simply a seventh tool",
+    title: "Processes that outlive the connection",
+    body: "start_command runs a dev server or a watch task today, but it dies when the CLI disconnects. Keeping one alive across a dropped socket means deciding what happens to output nobody read, which is a different question",
   },
   {
-    title: "Confirmation on the clients people use",
-    body: "Approving a call before it runs works today, but only on clients speaking MCP 2026-07-28. Claude and ChatGPT still speak the 2025 protocol, where a change is refused rather than run unconfirmed",
+    title: "Confirmation inside the client",
+    body: "Approving a change works on every client: in the conversation on MCP 2026-07-28, and otherwise on the machine's terminal or in the dashboard. Claude and ChatGPT still speak the 2025 protocol, so today they take the second path",
   },
   {
     title: "Billing and plans",

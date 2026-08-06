@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type CommandPolicy, type Project } from "../api.js";
+import { api, type CommandPolicy, type Project, TOOL_NAMES, type ToolName } from "../api.js";
 import { keys } from "../queries.js";
 import { useToast } from "./toast.js";
 import { Card } from "./ui.js";
@@ -43,9 +43,31 @@ export function CommandPolicyCard({ project }: { project: Project }) {
   const [draft, setDraft] = useState<CommandPolicy>(project.policy);
   const [saving, setSaving] = useState(false);
 
-  // Compared as JSON because the shape is three flat fields and this is the
-  // only place that needs to know whether anything moved.
+  // Compared as JSON because the shape is a handful of flat fields and this is
+  // the only place that needs to know whether anything moved.
   const changed = JSON.stringify(draft) !== JSON.stringify(project.policy);
+
+  /**
+   * Turning the tool list on writes every tool rather than none.
+   *
+   * An empty list means "no tools at all", which is a real thing to want and a
+   * terrible thing to arrive at by ticking a box. Starting from everything makes
+   * the next click a restriction, which is what the person came here to make.
+   */
+  const setToolsRestricted = (restricted: boolean) =>
+    setDraft({ ...draft, tools: restricted ? [...TOOL_NAMES] : null });
+
+  const toggleTool = (tool: ToolName, on: boolean) => {
+    const current = draft.tools ?? [...TOOL_NAMES];
+    setDraft({
+      ...draft,
+      // Filtered from TOOL_NAMES rather than pushed, so the stored order is the
+      // screen's order however the boxes were clicked.
+      tools: TOOL_NAMES.filter((name) =>
+        name === tool ? on : current.includes(name),
+      ) as ToolName[],
+    });
+  };
 
   async function save() {
     setSaving(true);
@@ -88,8 +110,9 @@ export function CommandPolicyCard({ project }: { project: Project }) {
           <div className="border-border space-y-4 border-t pt-4">
             <label className="block">
               <span className="text-body-md text-foreground-muted">
-                Commands, one per line. Only the program is matched, so arguments are up to the
-                agent.
+                Commands, one per line. A single word permits that program with any arguments;{" "}
+                <code className="font-mono">git push</code> permits exactly that and nothing more,
+                and a trailing <code className="font-mono">*</code> stands for whatever follows.
               </span>
               <textarea
                 rows={5}
@@ -97,11 +120,41 @@ export function CommandPolicyCard({ project }: { project: Project }) {
                 onChange={(event) =>
                   setDraft({ ...draft, allow: splitCommands(event.target.value) })
                 }
-                placeholder={"npm\ngit\ncargo"}
+                placeholder={"npm\ngit *\ncargo build *"}
                 className="border-border bg-bg text-foreground mt-2 w-full rounded-lg border px-3 py-2 font-mono"
               />
             </label>
+          </div>
+        )}
 
+        {/* Outside the mode block, because a deny list is the one rule that
+            applies in every mode, and the only thing "Anything" can still say. */}
+        {draft.mode !== "read_only" && (
+          <div className="border-border border-t pt-4">
+            <label className="block">
+              <span className="text-body-md text-foreground-muted">
+                Never run, one per line. Checked before the list above, in every mode. Same rules:{" "}
+                <code className="font-mono">sudo</code> refuses that program outright,{" "}
+                <code className="font-mono">git push *</code> refuses only those.
+              </span>
+              <textarea
+                rows={3}
+                value={draft.deny.join("\n")}
+                onChange={(event) =>
+                  setDraft({ ...draft, deny: splitCommands(event.target.value) })
+                }
+                placeholder={"sudo\nrm *\nshutdown"}
+                className="border-border bg-bg text-foreground mt-2 w-full rounded-lg border px-3 py-2 font-mono"
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Shown whenever a list is being compared against words, which is what
+            shell syntax defeats. That is `allow_list`, and now also any project
+            with a deny list. */}
+        {(draft.mode === "allow_list" || draft.deny.length > 0) && (
+          <div className="border-border space-y-4 border-t pt-4">
             <label className="flex gap-3">
               <input
                 type="checkbox"
@@ -114,20 +167,61 @@ export function CommandPolicyCard({ project }: { project: Project }) {
                 <p className="text-body-md text-foreground-muted mt-0.5">
                   Off by default, and worth leaving off. Commands run through a shell, so{" "}
                   <code className="font-mono">npm test; rm -rf ~</code> is one command whose first
-                  word is <code className="font-mono">npm</code>. With this on, the list above stops
-                  being a limit and becomes a suggestion.
+                  word is <code className="font-mono">npm</code>. With this on, the lists above stop
+                  being limits and become suggestions.
                 </p>
               </div>
             </label>
 
             {draft.shell && (
               <p className="text-body-md text-error">
-                With shell syntax allowed, anything on the list can reach anything else. Turn it on
-                only for a project you would have left on <em>Anything</em> regardless.
+                With shell syntax allowed, anything permitted can reach anything else, and nothing
+                denied is really denied. Turn it on only for a project you would have left on{" "}
+                <em>Anything</em> regardless.
               </p>
             )}
           </div>
         )}
+
+        <div className="border-border space-y-4 border-t pt-4">
+          <label className="flex gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={draft.tools !== null}
+              onChange={(event) => setToolsRestricted(event.target.checked)}
+            />
+            <div>
+              <p className="text-title-md">Choose which tools exist here</p>
+              <p className="text-body-md text-foreground-muted mt-0.5">
+                Off means every tool, including any added later. On names them one by one, which is
+                the only way to say something like "edit files, never run a command".
+              </p>
+            </div>
+          </label>
+
+          {draft.tools !== null && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {TOOL_NAMES.map((tool) => (
+                <label key={tool} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.tools?.includes(tool) ?? false}
+                    onChange={(event) => toggleTool(tool, event.target.checked)}
+                  />
+                  <code className="text-body-md font-mono">{tool}</code>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {draft.tools?.length === 0 && (
+            <p className="text-body-md text-error">
+              With no tool selected this project answers nothing at all. That is a real thing to
+              want, and rarely the thing someone meant.
+            </p>
+          )}
+        </div>
 
         <div className="border-border border-t pt-4">
           <label className="flex gap-3">
@@ -149,9 +243,10 @@ export function CommandPolicyCard({ project }: { project: Project }) {
 
           {draft.approve && (
             <p className="text-body-md text-foreground-faint mt-3">
-              Only clients speaking MCP 2026-07-28 can be asked. Claude and ChatGPT still speak the
-              2025 protocol today, so a change from one of them is refused rather than run
-              unconfirmed.
+              A client speaking MCP 2026-07-28 is asked in the conversation itself. Claude and
+              ChatGPT still speak the 2025 protocol today, so they are asked here and on the
+              machine's terminal instead, whichever answers first. Nobody answering within ninety
+              seconds refuses the call.
             </p>
           )}
         </div>

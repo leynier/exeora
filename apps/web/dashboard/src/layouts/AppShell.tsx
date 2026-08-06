@@ -1,7 +1,15 @@
 import { NavLink, Outlet } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
-import { useClients, useDevices, useMe, useProjects, useToolCalls } from "../queries.js";
+import { ApprovalBanner } from "../components/ApprovalBanner.js";
+import {
+  useApprovals,
+  useClients,
+  useDevices,
+  useMe,
+  useProjects,
+  useToolCalls,
+} from "../queries.js";
 
 /**
  * The frame every signed-in screen sits in: navigation, and the account.
@@ -12,7 +20,7 @@ import { useClients, useDevices, useMe, useProjects, useToolCalls } from "../que
  */
 export function AppShell() {
   const me = useMe();
-  const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls()];
+  const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
 
   if (queries.some((query) => query.error instanceof Unauthorized)) signOut();
 
@@ -84,6 +92,12 @@ export function AppShell() {
             ))}
           </ul>
         </nav>
+        {/* Inside the sticky header, so it stays on screen. A question that
+            scrolls away is one someone answers late, and late is the same as
+            never when there is a client holding a request open. It renders
+            nothing at all when there is nothing to answer, which is almost
+            always, so the header keeps its usual height. */}
+        <ApprovalBanner />
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-8">

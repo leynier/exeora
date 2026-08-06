@@ -80,7 +80,14 @@
   },
 
   "vars": {
-    "EXEORA_BASE_URL": "https://exeora.dev"
+    "EXEORA_BASE_URL": "https://exeora.dev",
+
+    // The newest published CLI, told to every executor in the `hello.ack` so
+    // `connect` can say a newer one exists. A var rather than a constant in the
+    // source, so releasing the CLI is one line here and not a code change; and
+    // told by us rather than looked up on npm, so connecting never depends on
+    // the registry being reachable.
+    "LATEST_CLI_VERSION": "0.2.1"
   },
 
   // One Worker owns the whole hostname now, so a single route replaces the

@@ -1,11 +1,13 @@
 import {
   decodeRelayMessage,
+  type ExecutorCapabilities,
   ExeoraError,
   encodeMessage,
   HEARTBEAT_INTERVAL_MS,
   isToolName,
   PROTOCOL_VERSION,
   policyAllows,
+  TOOL_NAMES,
   type ToolCallMessage,
   type WireError,
 } from "@exeora/protocol";
@@ -13,7 +15,8 @@ import { accessToken } from "./auth/tokens.js";
 import { config, findProject, gatewayUrl, projects } from "./config.js";
 import { effectivePolicy } from "./policy.js";
 import { executeTool } from "./tools/index.js";
-import { CLI_VERSION } from "./version.js";
+import { killAllProcesses } from "./tools/processes.js";
+import { CLI_VERSION, isOutdated } from "./version.js";
 
 /**
  * The executor's outbound connection to the relay.
@@ -32,6 +35,26 @@ export interface ConnectionEvents {
   onCall?: (tool: string, projectSlug: string, client?: string) => void;
   onResult?: (tool: string, ok: boolean, durationMs: number) => void;
   onError?: (message: string) => void;
+  /** Worth saying, but nothing is wrong: a newer CLI exists, for instance. */
+  onNotice?: (message: string) => void;
+  /**
+   * Asks the person at this terminal whether a call may run.
+   *
+   * Lives here as an event rather than as a prompt in this file because drawing
+   * on a terminal belongs to the command, not to the socket. `signal` aborts
+   * when the question is answered elsewhere or expires, so the prompt comes down
+   * instead of waiting for an answer that would be ignored.
+   *
+   * Only ever called when this CLI announced `prompt` at connect time, so an
+   * implementation may assume there is a terminal.
+   */
+  onApproval?: (ask: {
+    prompt: string;
+    tool: string;
+    projectSlug: string;
+    client?: string | undefined;
+    signal: AbortSignal;
+  }) => Promise<boolean>;
 }
 
 export interface Connection {
@@ -56,6 +79,14 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
    */
   const inFlight = new Map<string, AbortController>();
 
+  /**
+   * Questions currently on screen, so `approval.resolved` can take one down.
+   *
+   * Separate from `inFlight` because an approval is not a call: nothing is
+   * running yet, and the two are answered on different rounds.
+   */
+  const asking = new Map<string, AbortController>();
+
   const closed = new Promise<void>((resolve) => {
     resolveClosed = resolve;
   });
@@ -70,6 +101,16 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     // would be the "it landed anyway" hazard, one reconnect later.
     for (const controller of inFlight.values()) controller.abort();
     inFlight.clear();
+
+    // And nobody left to hear the answer to a question either. Leaving a prompt
+    // up would invite someone to approve a call that can no longer run.
+    for (const controller of asking.values()) controller.abort();
+    asking.clear();
+
+    // Long-running processes go too. This is the line that makes "they die with
+    // the connection" true: a dev server nobody can reach, read or stop is not
+    // a feature, and a laptop waking up with four of them is the hazard.
+    killAllProcesses();
   };
 
   const scheduleRetry = (reason: string) => {
@@ -120,6 +161,7 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
           cliVersion: CLI_VERSION,
           platform: process.platform,
           projects: projects().map((project) => ({ id: project.id, slug: project.slug })),
+          capabilities: capabilities(events),
         }),
       );
       heartbeat = setInterval(() => {
@@ -131,7 +173,7 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     });
 
     next.addEventListener("message", (event) => {
-      void handleMessage(next, String(event.data), events, inFlight);
+      void handleMessage(next, String(event.data), events, { inFlight, asking });
     });
 
     next.addEventListener("close", (event) => {
@@ -167,18 +209,37 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
   };
 }
 
+interface Live {
+  /** Tool calls running now, so `cancel` has something to act on. */
+  inFlight: Map<string, AbortController>;
+  /** Questions on screen, so `approval.resolved` can take one down. */
+  asking: Map<string, AbortController>;
+}
+
 async function handleMessage(
   socket: WebSocket,
   raw: string,
   events: ConnectionEvents,
-  inFlight: Map<string, AbortController>,
+  live: Live,
 ): Promise<void> {
   const message = decodeRelayMessage(raw);
   if (!message) return;
 
+  const { inFlight, asking } = live;
+
   switch (message.type) {
-    case "hello.ack":
+    case "hello.ack": {
+      // Said once per connection rather than once per reconnect storm would be
+      // better, but a reconnect only re-prints this when the gateway is up,
+      // which is exactly when it is worth reading.
+      if (message.latestCliVersion && isOutdated(CLI_VERSION, message.latestCliVersion)) {
+        events.onNotice?.(
+          `A newer Exeora CLI is available (${CLI_VERSION} → ${message.latestCliVersion}). ` +
+            "Update with `npm i -g @exeora/cli`.",
+        );
+      }
       return;
+    }
 
     case "shutdown":
       events.onError?.(message.reason);
@@ -188,6 +249,52 @@ async function handleMessage(
       // Unknown ids are normal rather than an error: the relay cancels on its
       // own deadline too, and by then the call has often already answered.
       inFlight.get(message.requestId)?.abort();
+      return;
+    }
+
+    case "approval.resolved": {
+      // Answered in the dashboard, or nobody answered in time. Either way the
+      // prompt here is now about a decision already made.
+      asking.get(message.id)?.abort();
+      asking.delete(message.id);
+      return;
+    }
+
+    case "approval.request": {
+      // The relay only sends these to a CLI that announced it can ask, so no
+      // handler is a bug rather than a configuration. Answering no is the safe
+      // reading of "there is nobody here".
+      if (!events.onApproval) {
+        socket.send(encodeMessage({ type: "approval.answer", id: message.id, approved: false }));
+        return;
+      }
+
+      const controller = new AbortController();
+      asking.set(message.id, controller);
+
+      try {
+        const approved = await events.onApproval({
+          prompt: message.prompt,
+          tool: message.tool,
+          projectSlug: findProject(message.projectId)?.slug ?? message.projectId,
+          client: describeClient(message.client),
+          signal: controller.signal,
+        });
+
+        // Aborted means the question was settled elsewhere. Sending an answer
+        // now would be a second one, which the relay drops, but sending it at
+        // all would suggest this terminal decided something it did not.
+        if (!controller.signal.aborted && socket.readyState === socket.OPEN) {
+          socket.send(encodeMessage({ type: "approval.answer", id: message.id, approved }));
+        }
+      } catch {
+        // A prompt that could not be shown is not a yes.
+        if (!controller.signal.aborted && socket.readyState === socket.OPEN) {
+          socket.send(encodeMessage({ type: "approval.answer", id: message.id, approved: false }));
+        }
+      } finally {
+        asking.delete(message.id);
+      }
       return;
     }
 
@@ -283,6 +390,29 @@ async function handleMessage(
 function describeClient(client: ToolCallMessage["client"]): string | undefined {
   if (!client?.name) return client?.version;
   return client.version ? `${client.name} ${client.version}` : client.name;
+}
+
+/**
+ * What this executor can do, announced once at `hello`.
+ *
+ * `prompt` needs both halves to be true, and claiming it wrongly is the
+ * expensive mistake: the gateway would send a question here and wait ninety
+ * seconds for an answer that was never going to come, when the dashboard could
+ * have handled it at once.
+ *
+ *  - A handler, because `exeora connect --json` deliberately has none: its
+ *    stdout is an event stream being read by a program, not a person.
+ *  - A terminal at both ends of the pipe, since the question is drawn on stdout
+ *    and the answer typed into stdin. Under systemd, in a detached tmux pane,
+ *    or with either stream redirected, there is nobody to ask.
+ */
+function capabilities(events: ConnectionEvents): ExecutorCapabilities {
+  const canAsk =
+    events.onApproval !== undefined &&
+    process.stdin.isTTY === true &&
+    process.stdout.isTTY === true;
+
+  return { prompt: canAsk, tools: [...TOOL_NAMES] };
 }
 
 function toWireError(error: unknown): WireError {
