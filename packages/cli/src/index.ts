@@ -136,7 +136,7 @@ project
 
       const url = new URL(`/p/${added.id}/mcp`, gatewayUrl()).toString();
       p.log.success(`Added ${added.name}.`);
-      p.note(url, "MCP URL — add this to Claude, ChatGPT or Cursor");
+      p.note(url, "MCP URL, add this to Claude, ChatGPT or Cursor");
       p.log.info("Then run `exeora connect` and leave it running.");
     }),
   );
@@ -190,7 +190,7 @@ program
         p.log.warn("No projects registered on this machine yet. Run `exeora project add .`");
       }
 
-      p.intro(`Exeora — ${config.get("deviceName") ?? deviceId}`);
+      p.intro(`Exeora: ${config.get("deviceName") ?? deviceId}`);
       p.log.info(`Gateway: ${gatewayUrl()}`);
       p.log.info("Press Ctrl+C to stop.\n");
 
@@ -228,7 +228,7 @@ program
         p.log.message(`Signed in ${user.email}`);
       } catch (error) {
         p.log.message(
-          `Signed in ${error instanceof NotSignedInError ? "no — run `exeora login`" : "unknown"}`,
+          `Signed in ${error instanceof NotSignedInError ? "not signed in, run `exeora login`" : "unknown"}`,
         );
         return;
       }

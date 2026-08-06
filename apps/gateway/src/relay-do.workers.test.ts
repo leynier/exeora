@@ -40,7 +40,7 @@ async function failureOf(call: () => Promise<unknown>): Promise<{ code?: string 
   throw new Error("expected the call to fail, but it resolved");
 }
 
-/** Opens the executor socket the way the Worker does — over fetch, not RPC. */
+/** Opens the executor socket the way the Worker does: over fetch, not RPC. */
 async function dial() {
   const response = await relay().fetch(
     new Request("https://relay/connect?deviceId=dev_test", {

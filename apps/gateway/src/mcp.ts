@@ -8,7 +8,7 @@ import "./env.js";
  *
  * The handler is stateless, so building one per request costs nothing and lets
  * `route` carry the project id. Isolating projects at the URL means an agent
- * connected to one project has no way to name another — the separation is
+ * connected to one project has no way to name another; the separation is
  * structural rather than something the model is asked to respect.
  *
  * `legacy: "stateless"` is the SDK default and is what makes today's clients

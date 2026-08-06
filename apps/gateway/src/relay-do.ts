@@ -149,7 +149,7 @@ export class DeviceRelay extends DurableObject<Env> {
    * Runs a tool on the device and waits for its answer.
    *
    * Throws `LOCAL_EXECUTOR_OFFLINE` immediately when nothing is connected. The
-   * alternative — parking the request until the machine returns — is how a
+   * alternative (parking the request until the machine returns) is how a
    * command ends up running hours after it was asked for.
    */
   async callTool(options: {
@@ -179,8 +179,8 @@ export class DeviceRelay extends DurableObject<Env> {
     });
 
     // Marks the promise as observed. Without this, a call that is abandoned by
-    // its caller — a disconnected MCP client, a request the runtime already
-    // tore down — rejects at the deadline with nobody listening and surfaces as
+    // its caller (a disconnected MCP client, a request the runtime already
+    // tore down) rejects at the deadline with nobody listening and surfaces as
     // an unhandled rejection inside the object.
     answer.catch(() => undefined);
 

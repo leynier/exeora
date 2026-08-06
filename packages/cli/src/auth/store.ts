@@ -9,7 +9,7 @@ import { Entry } from "@napi-rs/keyring";
  * The OS keychain first: this token can reconnect a machine that serves file
  * reads and shell commands, so it deserves better than a file. Linux servers
  * and CI containers often have no D-Bus secret service at all, so there is a
- * file fallback at mode 0600 — worse, but the alternative is being unusable
+ * file fallback at mode 0600. Worse, but the alternative is being unusable
  * on exactly the headless machines this product exists to reach.
  */
 

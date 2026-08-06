@@ -248,7 +248,7 @@ async function runCommandTool(
     cwd,
     // `detached` makes the shell a process-group leader so the whole tree can
     // be signalled at once. execa's own `timeout` only kills the shell, and an
-    // orphaned child keeps the inherited stdout pipe open — so `sleep 30` under
+    // orphaned child keeps the inherited stdout pipe open, so `sleep 30` under
     // a 1s timeout would still block for the full 30 seconds.
     detached: process.platform !== "win32",
     reject: false,

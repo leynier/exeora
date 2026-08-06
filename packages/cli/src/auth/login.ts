@@ -10,7 +10,7 @@ import { saveCredentials } from "./store.js";
  *
  * A loopback listener on an ephemeral port receives the redirect. The gateway
  * registers `http://127.0.0.1/callback` without a port precisely so any port
- * works — RFC 8252 §7.3 leaves the port free for exactly this reason.
+ * works: RFC 8252 §7.3 leaves the port free for exactly this reason.
  *
  * 127.0.0.1 rather than `localhost`: the name can resolve to ::1 or be
  * redirected by a hosts file, and the literal cannot.

@@ -88,7 +88,7 @@ describe("symlink escapes", () => {
 
   it("rejects creating a new file under a symlinked directory", () =>
     // The file does not exist, so only the nearest existing ancestor can be
-    // resolved — and that ancestor is the symlink pointing out.
+    // resolved, and that ancestor is the symlink pointing out.
     escapes("escape-dir/planted.txt"));
 });
 

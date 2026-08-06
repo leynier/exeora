@@ -1,6 +1,6 @@
 /**
  * `Env` itself is generated from wrangler.jsonc by `wrangler types` into
- * worker-configuration.d.ts — rerun it after changing any binding.
+ * worker-configuration.d.ts; rerun it after changing any binding.
  *
  * Secrets are not declared in wrangler.jsonc (that file is committed), so they
  * are merged into the generated interface here. Set them with

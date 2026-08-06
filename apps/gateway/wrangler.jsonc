@@ -37,7 +37,7 @@
   // `wrangler dev` otherwise takes its origin from these routes and rewrites
   // every request URL to exeora.dev. The OAuth provider derives its metadata
   // `issuer` and the RFC 9207 `iss` from that URL, so a local login would hand
-  // back iss=http://exeora.dev while the client was talking to localhost —
+  // back iss=http://exeora.dev while the client was talking to localhost,
   // which a client that validates the issuer correctly rejects. The `dev`
   // script passes --local-upstream to pin the origin back to localhost:8787.
   "routes": [

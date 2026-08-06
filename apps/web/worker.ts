@@ -7,7 +7,7 @@
  * The routing script exists because Static Assets has a single
  * `not_found_handling` setting for the whole deployment. In
  * `single-page-application` mode every unmatched path falls back to the root
- * `/index.html`, which here is the landing — so a deep link like
+ * `/index.html`, which here is the landing, so a deep link like
  * /dashboard/devices would render the marketing page instead of the app.
  */
 

@@ -87,7 +87,7 @@ export function consentPage(options: {
 
       <div class="warn">
         This grants ${name} the ability to read, edit and run commands in the project you connect
-        it to — on your own machine. Only approve applications you trust.
+        it to, on your own machine. Only approve applications you trust.
       </div>
 
       ${

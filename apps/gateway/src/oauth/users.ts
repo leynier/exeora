@@ -7,7 +7,7 @@ import type { ProviderId, UpstreamIdentity } from "./providers/index.js";
  * Maps an upstream login onto an Exeora user, creating one on first sign-in.
  *
  * Lookup is by `(provider, providerUserId)` and never by email, so a user
- * changing their address at the provider keeps the same account — and someone
+ * changing their address at the provider keeps the same account, and someone
  * who later acquires a recycled address does not inherit it.
  */
 export async function resolveUser(

@@ -70,7 +70,7 @@ export const projects = sqliteTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     /**
-     * Absolute path on the user's machine. Stored for display only — the
+     * Absolute path on the user's machine. Stored for display only; the
      * executor is the authority on where a project lives and confines every
      * path to it. The gateway never sends this value to a tool.
      */

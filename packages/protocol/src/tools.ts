@@ -18,7 +18,7 @@ import {
  *
  * Every `path` is interpreted relative to the project root and confined to it by
  * the executor. Absolute paths and anything escaping the root are rejected with
- * `PATH_ESCAPE` — see `paths.ts` in the CLI package.
+ * `PATH_ESCAPE`; see `paths.ts` in the CLI package.
  */
 
 const relativePath = z
@@ -117,7 +117,7 @@ export const EditFileInput = z.object({
     .string()
     .min(1)
     .describe(
-      "Exact text to replace. Must match the file byte for byte and must appear exactly once — include surrounding lines to make it unique.",
+      "Exact text to replace. Must match the file byte for byte and must appear exactly once, include surrounding lines to make it unique.",
     ),
   newString: z.string().describe("Replacement text."),
 });
@@ -215,7 +215,7 @@ export const TOOL_DEFINITIONS = {
   edit_file: {
     title: "Edit file",
     description:
-      "Edit a file by exact text replacement. oldString must match a unique region of the file — " +
+      "Edit a file by exact text replacement. oldString must match a unique region of the file, " +
       "if it appears more than once the edit is refused, so include surrounding lines to " +
       "disambiguate rather than retrying. Returns a unified diff of what changed.",
     inputSchema: EditFileInput,
@@ -257,8 +257,8 @@ export function isToolName(value: unknown): value is ToolName {
 /**
  * The schema a tool's arguments must satisfy.
  *
- * The gateway hands this straight to `registerTool({ inputSchema })` — MCP v2
- * accepts any Standard Schema object — and the executor runs the very same
+ * The gateway hands this straight to `registerTool({ inputSchema })`, MCP v2
+ * accepts any Standard Schema object, and the executor runs the very same
  * schema over the arguments that arrive off the wire. One definition, checked
  * on both sides of the relay.
  */

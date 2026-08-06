@@ -22,7 +22,7 @@ export async function setSession(c: Context<{ Bindings: Env }>, userId: string):
     // Derived from the configured base URL, not from c.req.url: wrangler dev
     // rewrites the request host to the configured route, so reading the
     // protocol off the request could mark the cookie Secure while the browser
-    // is on plain-http localhost — which silently drops it mid-login.
+    // is on plain-http localhost, which silently drops it mid-login.
     secure: new URL(c.env.EXEORA_BASE_URL).protocol === "https:",
     path: "/",
     maxAge: MAX_AGE_SECONDS,

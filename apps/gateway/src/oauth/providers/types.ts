@@ -2,7 +2,7 @@
  * The seam that keeps identity providers interchangeable.
  *
  * Only GitHub ships in this release. Adding Google means writing one more file
- * that implements this interface and adding it to the registry — the authorize
+ * that implements this interface and adding it to the registry; the authorize
  * routes, the user resolution and the database schema stay untouched.
  */
 

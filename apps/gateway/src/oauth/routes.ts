@@ -14,7 +14,7 @@ import { resolveUser } from "./users.js";
  *
  * The flow parks the authorization request in KV under an unguessable state,
  * bounces the user through the upstream provider, and only consumes that entry
- * when they approve — which also makes the state the CSRF token for the form.
+ * when they approve, which also makes the state the CSRF token for the form.
  */
 export const oauthRoutes = new Hono<{ Bindings: Env }>();
 
@@ -148,7 +148,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
     scope: pending.authRequest.scope,
     metadata: { approvedAt: Date.now() },
     // Everything a tool handler learns about the caller. Deliberately minimal:
-    // no upstream token, no email — just who they are, resolved again from D1
+    // no upstream token, no email: just who they are, resolved again from D1
     // on every call that needs more.
     props: { userId, clientId: pending.authRequest.clientId },
   });
@@ -167,7 +167,7 @@ oauthRoutes.get("/oauth/logout", (c) => {
  * Two reasons. The Host header is attacker-controlled, and a redirect_uri
  * derived from it is a redirect-injection surface. And it has to match the
  * callback registered in the GitHub OAuth app exactly, which is a fixed value
- * per environment — `wrangler dev` rewrites the request host to the configured
+ * per environment, and `wrangler dev` rewrites the request host to the configured
  * route, so deriving it from the request breaks local development outright.
  */
 function callbackUri(env: Env, providerId: string): string {

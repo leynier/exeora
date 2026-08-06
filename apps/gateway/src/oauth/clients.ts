@@ -1,8 +1,8 @@
 /**
  * Exeora's own OAuth clients: the CLI and the dashboard.
  *
- * Both are *public* clients — one ships to users' machines, the other runs in
- * a browser — so neither can hold a secret and both authenticate with PKCE
+ * Both are *public* clients: one ships to users' machines, the other runs
+ * in a browser, so neither can hold a secret and both authenticate with PKCE
  * alone.
  *
  * `createClient()` always mints its own random client id and ignores any id

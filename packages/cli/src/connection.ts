@@ -85,7 +85,7 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     // `headers` is a Node extension to the WHATWG WebSocket API (verified: the
     // Authorization header does reach the server). It matters because the
     // gateway authorises this upgrade with the same bearer token as every other
-    // API request — the alternative, smuggling the token through
+    // API request. The alternative, smuggling the token through
     // Sec-WebSocket-Protocol, would need a bespoke auth path on the server.
     const next = new WebSocket(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -117,7 +117,7 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     });
 
     next.addEventListener("close", (event) => {
-      // 1008 is the gateway refusing us — a revoked device or an unsupported
+      // 1008 is the gateway refusing us: a revoked device or an unsupported
       // protocol. Retrying would loop forever, so stop and say why.
       if (event.code === 1008) {
         stopped = true;

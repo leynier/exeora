@@ -22,7 +22,7 @@ export { DeviceRelay } from "./relay-do.js";
  * and dashboard API. The landing page and dashboard live in a separate Worker
  * (`apps/web`) so this one stays free of anything presentational.
  *
- * Routing is by path specificity on the same zone — see `routes` in
+ * Routing is by path specificity on the same zone; see `routes` in
  * wrangler.jsonc. Anything not claimed here falls through to `apps/web`.
  */
 
@@ -127,7 +127,7 @@ async function dispatchToDevice(
   }
 }
 
-/** Audit row. Records what ran and how it ended — never arguments or output. */
+/** Audit row. Records what ran and how it ended, never arguments or output. */
 async function record(
   env: Env,
   entry: {
@@ -173,7 +173,7 @@ const site = new Hono<{ Bindings: Env }>();
 site.route("/", oauthRoutes);
 
 /**
- * Tells `exeora login` which client id to use. Unauthenticated by design —
+ * Tells `exeora login` which client id to use. Unauthenticated by design;
  * it reveals nothing secret, and the CLI must call it before it holds any
  * token. Under /oauth/ rather than /api/ precisely because /api/ is an
  * `apiRoute`, where the provider demands a token before any handler runs.

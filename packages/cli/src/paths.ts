@@ -7,14 +7,14 @@ import { ExeoraError } from "@exeora/protocol";
  *
  * This is the only security control in this release: there is no command
  * allowlist and no approval prompt, so a tool call that escapes the project
- * root escapes into the user's whole machine. Treat this file accordingly —
+ * root escapes into the user's whole machine. Treat this file accordingly;
  * the tests in `paths.test.ts` are the specification.
  *
  * Two distinct escapes have to be stopped:
  *
- *   1. **Lexical** — `../../etc/passwd`, or an absolute path. Caught by
+ *   1. **Lexical**: `../../etc/passwd`, or an absolute path. Caught by
  *      resolving against the root and comparing prefixes.
- *   2. **Symbolic** — a symlink inside the project pointing outside it. A
+ *   2. **Symbolic**: a symlink inside the project pointing outside it. A
  *      lexical check passes those, so the real path is resolved too.
  *
  * A path that does not exist yet (`write_file` creating a new file) cannot be

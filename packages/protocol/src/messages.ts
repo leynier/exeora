@@ -79,7 +79,7 @@ export const ToolCallMessage = z.object({
   arguments: z.unknown(),
   issuedAt: z.number().int(),
   /**
-   * Absolute deadline. The executor must not start work after this instant —
+   * Absolute deadline. The executor must not start work after this instant;
    * a stale call arriving after a reconnect is exactly the "command runs hours
    * later" hazard we refuse to accept.
    */

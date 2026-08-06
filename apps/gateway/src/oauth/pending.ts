@@ -33,7 +33,7 @@ export async function peekAuthorization(
 }
 
 /**
- * Reads and deletes. Called once, when the user approves — which also makes
+ * Reads and deletes. Called once, when the user approves, which also makes
  * the unguessable state the CSRF token for the approval form.
  */
 export async function claimAuthorization(

@@ -4,7 +4,7 @@
  * The dashboard is a public client, exactly like the CLI: it runs in a browser
  * and cannot hold a secret, so it authenticates with PKCE. It needs a real
  * access token rather than riding the session cookie because /api/* is an
- * OAuth-protected resource — the same door every MCP client comes through.
+ * OAuth-protected resource: the same door every MCP client comes through.
  *
  * The token lives in `sessionStorage`, not `localStorage`: it is scoped to the
  * tab and gone when the tab closes, which bounds what a persistent XSS could

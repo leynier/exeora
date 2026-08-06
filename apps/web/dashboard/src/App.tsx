@@ -5,7 +5,7 @@ import { beginSignIn, completeSignIn, signOut, storedToken } from "./auth.js";
 
 /**
  * The dashboard: which machines are connected, which projects they serve, and
- * what agents have been doing. Deliberately small — the CLI is where projects
+ * what agents have been doing. Deliberately small: the CLI is where projects
  * are added, because only the machine knows its own paths.
  */
 export function App() {

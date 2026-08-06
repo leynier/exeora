@@ -49,9 +49,11 @@ describe("tools/list", () => {
 
   it("derives each JSON Schema from the shared zod definition", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
-    const tools = (body.result as {
-      tools: Array<{ name: string; inputSchema: { required?: string[] }; annotations?: unknown }>;
-    }).tools;
+    const tools = (
+      body.result as {
+        tools: Array<{ name: string; inputSchema: { required?: string[] }; annotations?: unknown }>;
+      }
+    ).tools;
 
     const read = tools.find((tool) => tool.name === "read_file");
     expect(read?.inputSchema.required).toEqual(["path"]);
@@ -83,9 +85,7 @@ describe("tools/call", () => {
     );
 
     await payload(response);
-    expect(seen).toEqual([
-      { projectId: PROJECT, tool: "grep", args: { pattern: "TODO" } },
-    ]);
+    expect(seen).toEqual([{ projectId: PROJECT, tool: "grep", args: { pattern: "TODO" } }]);
   });
 
   it("returns the executor's value as structured content", async () => {
@@ -97,7 +97,14 @@ describe("tools/call", () => {
           method: "tools/call",
           params: { name: "read_file", arguments: { path: "src/main.ts" } },
         },
-        { dispatch: async () => ({ path: "src/main.ts", content: "hi", truncated: false, totalLines: 1 }) },
+        {
+          dispatch: async () => ({
+            path: "src/main.ts",
+            content: "hi",
+            truncated: false,
+            totalLines: 1,
+          }),
+        },
       ),
     );
 
