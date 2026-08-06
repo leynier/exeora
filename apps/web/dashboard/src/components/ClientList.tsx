@@ -37,7 +37,7 @@ export function ClientList({
     toast(message);
     setPending(null);
     queryClient.invalidateQueries({ queryKey: keys.clients });
-    queryClient.invalidateQueries({ queryKey: keys.calls });
+    queryClient.invalidateQueries({ queryKey: keys.allCalls });
   };
 
   const fail = (error: unknown, fallback: string) => {

@@ -41,7 +41,7 @@ export function Machines() {
     toast(message);
     setPending(null);
     queryClient.invalidateQueries({ queryKey: keys.devices });
-    queryClient.invalidateQueries({ queryKey: keys.calls });
+    queryClient.invalidateQueries({ queryKey: keys.allCalls });
     if (invalidateProjects) queryClient.invalidateQueries({ queryKey: keys.projects });
   };
 

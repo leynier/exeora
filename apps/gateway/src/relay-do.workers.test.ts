@@ -70,9 +70,17 @@ async function attachFakeExecutor(
   const socket = await dial();
 
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
+  /** Request ids the relay asked us to stop working on. */
+  const cancelled: string[] = [];
 
   socket.addEventListener("message", (event: MessageEvent) => {
     const message = decodeRelayMessage(String(event.data));
+
+    if (message?.type === "cancel") {
+      cancelled.push(message.requestId);
+      return;
+    }
+
     if (message?.type !== "tool.call") return;
 
     const call = { requestId: message.requestId, tool: message.tool, args: message.arguments };
@@ -100,7 +108,7 @@ async function attachFakeExecutor(
     }),
   );
 
-  return { socket, seen };
+  return { socket, seen, cancelled };
 }
 
 beforeEach(() => {
@@ -206,6 +214,54 @@ describe("disconnection", () => {
 
     executor.socket.close(1000, "gone");
     expect((await pending).code).toBe("LOCAL_EXECUTOR_OFFLINE");
+  });
+});
+
+describe("cancellation", () => {
+  it("tells the executor to stop and fails the call with CANCELLED", async () => {
+    const executor = await attachFakeExecutor({ silent: true });
+
+    const pending = failureOf(() =>
+      relay().callTool({
+        requestId: "req_cancel",
+        projectId: "prj_test",
+        tool: "run_command",
+        args: { command: "sleep 300" },
+      }),
+    );
+    await vi.waitFor(() => expect(executor.seen).toHaveLength(1));
+
+    await relay().cancelTool("req_cancel");
+
+    expect((await pending).code).toBe("CANCELLED");
+    // The half that actually stops the work. Rejecting the caller alone would
+    // leave `sleep 300` running on the machine for its full timeout.
+    await vi.waitFor(() => expect(executor.cancelled).toEqual(["req_cancel"]));
+
+    executor.socket.close(1000, "done");
+  });
+
+  it("still tells the executor when the call is already gone from the map", async () => {
+    const executor = await attachFakeExecutor();
+
+    // Answered and settled, so there is no pending entry left to reject. The
+    // frame goes out anyway: the relay cannot know whether the executor also
+    // considers it finished.
+    await relay().callTool({
+      requestId: "req_done",
+      projectId: "prj_test",
+      tool: "read_file",
+      args: { path: "a.ts" },
+    });
+
+    await relay().cancelTool("req_done");
+
+    await vi.waitFor(() => expect(executor.cancelled).toEqual(["req_done"]));
+    executor.socket.close(1000, "done");
+  });
+
+  it("does not fail when nothing is connected", async () => {
+    await relay().cancelTool("req_nobody");
   });
 });
 

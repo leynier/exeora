@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router";
 import { isOnline, relativeTime } from "../api.js";
 import { ClientList } from "../components/ClientList.js";
+import { CommandPolicyCard } from "../components/CommandPolicyCard.js";
 import { CopyButton } from "../components/CopyButton.js";
 import {
   Badge,
@@ -24,7 +25,9 @@ export function ProjectDetail() {
   const projects = useProjects();
   const devices = useDevices();
   const clients = useClients();
-  const calls = useToolCalls();
+  // Narrowed by the server, so this is the project's most recent calls rather
+  // than whichever of them happen to fall inside the account's most recent.
+  const calls = useToolCalls(projectId ? { projectId } : {});
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
 
@@ -49,7 +52,7 @@ export function ProjectDetail() {
 
   const device = devices.data?.find((candidate) => candidate.id === project.deviceId);
   const authorized = (clients.data ?? []).filter((client) => client.projectId === project.id);
-  const history = (calls.data ?? []).filter((call) => call.projectId === project.id);
+  const history = calls.data ?? [];
 
   const claudeCode = `claude mcp add --transport http exeora ${project.mcpUrl}`;
 
@@ -88,11 +91,15 @@ export function ProjectDetail() {
       </Card>
 
       {/* Full width, and above the machine: reading down the page, the endpoint
-          is followed by who is allowed to call it. */}
+          is followed by who is allowed to call it, and then by what they may do. */}
       <div className="mt-6">
         <Card title="Clients with access">
           <ClientList clients={authorized} />
         </Card>
+      </div>
+
+      <div className="mt-6">
+        <CommandPolicyCard project={project} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[20rem_1fr]">

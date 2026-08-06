@@ -59,6 +59,7 @@ jobs:
             GITHUB_CLIENT_ID
             GITHUB_CLIENT_SECRET
             COOKIE_SECRET
+            REQUEST_STATE_SECRET
         env:
           # GitHub refuses repository secrets whose name starts with GITHUB_,
           # so they are stored under GH_OAUTH_* and renamed here to the names
@@ -66,4 +67,5 @@ jobs:
           GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
 

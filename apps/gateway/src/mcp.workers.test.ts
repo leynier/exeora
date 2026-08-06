@@ -1,10 +1,16 @@
 import { createExecutionContext } from "cloudflare:test";
 import { ExeoraError, TOOL_NAMES } from "@exeora/protocol";
-import { CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
+import {
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  PROTOCOL_VERSION_META_KEY,
+} from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
+import { hashArguments } from "./approval.js";
 import {
   createProjectMcpHandler,
   handshakeClientInfo,
+  isApproved,
   type McpToolContext,
   mcpRoute,
   type ToolDispatcher,
@@ -17,22 +23,49 @@ import {
 
 const PROJECT = "prj_abc";
 
+/**
+ * A dispatcher as these tests care about it: the value a tool answers with.
+ *
+ * The real one returns a discriminated result so it can also ask for approval,
+ * which none of these tests exercise; wrapping here keeps each of them about
+ * the value its tool produced.
+ */
+type ValueDispatcher = (context: McpToolContext, tool: string, args: unknown) => Promise<unknown>;
+
 function post(
   body: unknown,
-  options: { dispatch?: ToolDispatcher; project?: string; props?: Record<string, string> } = {},
+  options: {
+    dispatch?: ValueDispatcher;
+    /** For the approval flow, where the dispatcher's answer is not a value. */
+    rawDispatch?: ToolDispatcher;
+    project?: string;
+    props?: Record<string, string>;
+    /** The protocol revision the client claims. Defaults to the 2025 one. */
+    protocol?: string;
+    /** Extra headers, for the ones the 2026-07-28 wire requires. */
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const project = options.project ?? PROJECT;
-  const dispatch: ToolDispatcher =
+  const answer: ValueDispatcher =
     options.dispatch ?? (async (_context, tool, args) => ({ tool, args }));
+
+  const dispatch: ToolDispatcher =
+    options.rawDispatch ??
+    (async (context, tool, args) => ({
+      kind: "value",
+      value: await answer(context, tool, args),
+    }));
 
   const request = new Request(`https://exeora.dev${mcpRoute(project)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
-      // The version claude.ai and ChatGPT still speak, so this also proves
-      // the legacy compatibility path is live.
-      "MCP-Protocol-Version": "2025-06-18",
+      // The version claude.ai and ChatGPT still speak, so the default here also
+      // proves the legacy compatibility path is live.
+      "MCP-Protocol-Version": options.protocol ?? "2025-06-18",
+      ...options.headers,
     },
     body: JSON.stringify(body),
   });
@@ -42,7 +75,44 @@ function post(
   const ctx = createExecutionContext();
   (ctx as { props?: Record<string, string> }).props = options.props ?? { userId: "usr_test" };
 
-  return createProjectMcpHandler(project, dispatch)(request, {}, ctx);
+  // Any value will do, as long as it clears the codec's 32-byte minimum: the
+  // approval tests below assert that a state was minted, never what it says.
+  const env = { REQUEST_STATE_SECRET: "test-secret-that-is-at-least-32-bytes-long" };
+
+  return createProjectMcpHandler(project, dispatch, env)(request, {}, ctx);
+}
+
+/**
+ * The same, as a 2026-07-28 client sends it.
+ *
+ * That revision is strict about the shape, and all of it is required: the two
+ * `Mcp-*` headers must agree with the body, and the per-request envelope must
+ * carry the protocol version, the client's identity and its capabilities. A
+ * request missing any of them is rejected before a server is ever built, which
+ * is why this is a builder rather than a header swapped in the one above.
+ */
+function postModern(
+  body: { params: { name: string; arguments?: unknown } } & Record<string, unknown>,
+  options: { rawDispatch?: ToolDispatcher; project?: string } = {},
+) {
+  return post(
+    {
+      ...body,
+      params: {
+        ...body.params,
+        _meta: {
+          [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
+          [CLIENT_INFO_META_KEY]: { name: "inspector", version: "2.1.0" },
+          [CLIENT_CAPABILITIES_META_KEY]: { elicitation: {} },
+        },
+      },
+    },
+    {
+      ...options,
+      protocol: "2026-07-28",
+      headers: { "Mcp-Method": "tools/call", "Mcp-Name": body.params.name },
+    },
+  );
 }
 
 /** Responses may arrive as SSE, so the JSON-RPC payload is dug out either way. */
@@ -214,6 +284,9 @@ describe("caller identity", () => {
           // No envelope on a 2025-era request: this is the normal case today.
           mcp: undefined,
         },
+        // A 2025-era request carries no elicitation answer, so nothing here has
+        // been confirmed. Whether that matters is the project's policy to say.
+        approved: false,
       },
     ]);
   });
@@ -337,5 +410,161 @@ describe("per-project routing", () => {
     );
 
     expect(seen).toEqual(["prj_other"]);
+  });
+});
+
+/**
+ * Asking before a tool runs.
+ *
+ * The mechanism arrived with MCP 2026-07-28, so the two eras get different
+ * answers and both have to be right: a modern client is asked, and a 2025-era
+ * one is refused rather than quietly run unconfirmed, which would make the
+ * setting decorative for exactly the clients most people use today.
+ */
+describe("approval", () => {
+  const needsApproval: ToolDispatcher = async () => ({ kind: "needs-approval" });
+
+  const writeCall = {
+    jsonrpc: "2.0",
+    id: 20,
+    method: "tools/call",
+    params: { name: "write_file", arguments: { path: "src/main.ts", content: "hi" } },
+  };
+
+  it("asks a client that can be asked", async () => {
+    const body = await payload(await postModern(writeCall, { rawDispatch: needsApproval }));
+
+    const result = body.result as {
+      resultType?: string;
+      inputRequests?: Record<string, { params?: { message?: string } }>;
+      requestState?: string;
+    };
+
+    expect(result.resultType).toBe("input_required");
+    // Named, not just "approve this write": a prompt with nothing in it is one
+    // people learn to click through.
+    expect(result.inputRequests?.approve?.params?.message).toContain("src/main.ts");
+    // The half that joins the two rounds, and the half a client cannot forge.
+    expect(typeof result.requestState).toBe("string");
+  });
+
+  it("refuses a client that cannot be asked, rather than running it", async () => {
+    const body = await payload(await post(writeCall, { rawDispatch: needsApproval }));
+
+    // A 2025-era client, which is claude.ai and ChatGPT today.
+    expect(JSON.stringify(body)).toContain("cannot be asked");
+    expect(JSON.stringify(body)).not.toContain("input_required");
+  });
+
+  it("tells the dispatcher nothing was confirmed when no answer came back", async () => {
+    const seen: boolean[] = [];
+
+    await payload(
+      await postModern(writeCall, {
+        rawDispatch: async (context) => {
+          seen.push(context.approved);
+          return { kind: "value", value: { ok: true } };
+        },
+      }),
+    );
+
+    expect(seen).toEqual([false]);
+  });
+});
+
+/**
+ * The gate that decides whether a confirmation still applies to this call.
+ *
+ * Exercised directly rather than over the wire, because the wire only reaches
+ * it one way and every condition here has to be wrong in the safe direction.
+ * The signature is checked before this runs, by the seam; what is left is
+ * whether the approval is for the call in hand.
+ */
+describe("whether a round counts as approved", () => {
+  const TOOL = "run_command" as const;
+  const ARGS = { command: "ls" };
+
+  /** A round carrying whatever a test wants to put in it. */
+  const round = (state: unknown, answer: unknown) =>
+    ({
+      mcpReq: {
+        requestState: () => state,
+        inputResponses: answer === undefined ? undefined : { approve: answer },
+      },
+    }) as never;
+
+  const accepted = (content: unknown) => ({ action: "accept", content });
+
+  it("accepts a signed state that matches the call and a yes", async () => {
+    const state = { projectId: PROJECT, tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    expect(await isApproved(round(state, accepted({ approve: true })), PROJECT, TOOL, ARGS)).toBe(
+      true,
+    );
+  });
+
+  /**
+   * The one that matters most. Without comparing the arguments, a client could
+   * have `ls` confirmed and retry with `rm -rf ~` carrying the same state: the
+   * signature would verify and the tool would match.
+   */
+  it("refuses a retry that swapped the arguments after approval", async () => {
+    const state = { projectId: PROJECT, tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    expect(
+      await isApproved(round(state, accepted({ approve: true })), PROJECT, TOOL, {
+        command: "rm -rf ~",
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses a state minted for another tool", async () => {
+    const state = { projectId: PROJECT, tool: "write_file", argsHash: await hashArguments(ARGS) };
+
+    expect(await isApproved(round(state, accepted({ approve: true })), PROJECT, TOOL, ARGS)).toBe(
+      false,
+    );
+  });
+
+  it("refuses a state minted for another project", async () => {
+    const state = { projectId: "prj_elsewhere", tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    expect(await isApproved(round(state, accepted({ approve: true })), PROJECT, TOOL, ARGS)).toBe(
+      false,
+    );
+  });
+
+  it("refuses a no, a decline and a cancel alike", async () => {
+    const state = { projectId: PROJECT, tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    expect(await isApproved(round(state, accepted({ approve: false })), PROJECT, TOOL, ARGS)).toBe(
+      false,
+    );
+    expect(await isApproved(round(state, { action: "decline" }), PROJECT, TOOL, ARGS)).toBe(false);
+    expect(await isApproved(round(state, { action: "cancel" }), PROJECT, TOOL, ARGS)).toBe(false);
+  });
+
+  it("refuses anything but a boolean true", async () => {
+    const state = { projectId: PROJECT, tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    // A client answering with a truthy string is not a client that asked a
+    // person, and must not be read as one.
+    for (const answer of ["true", 1, {}, null]) {
+      expect(
+        await isApproved(round(state, accepted({ approve: answer })), PROJECT, TOOL, ARGS),
+      ).toBe(false);
+    }
+  });
+
+  it("refuses a round carrying no state at all", async () => {
+    expect(
+      await isApproved(round(undefined, accepted({ approve: true })), PROJECT, TOOL, ARGS),
+    ).toBe(false);
+  });
+
+  it("refuses a round carrying state but no answer", async () => {
+    const state = { projectId: PROJECT, tool: TOOL, argsHash: await hashArguments(ARGS) };
+
+    expect(await isApproved(round(state, undefined), PROJECT, TOOL, ARGS)).toBe(false);
   });
 });

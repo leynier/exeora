@@ -1,0 +1,113 @@
+---
+import Legal from "../layouts/Legal.astro";
+
+/**
+ * The terms.
+ *
+ * Written to say what this service actually does rather than to be long: it
+ * runs commands on machines other people control, on behalf of software they
+ * point at it, and the sentences that matter are the ones about who is
+ * responsible for that.
+ */
+---
+
+<Legal
+  title="Terms of service"
+  description="The terms under which Exeora is provided."
+  canonicalPath="/terms/"
+  updated="6 August 2026"
+>
+  <p>
+    Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico. Using the
+    service, the CLI or this site means accepting these terms. Questions about them go to <a
+      href="mailto:hello@exeora.dev">hello@exeora.dev</a
+    >.
+  </p>
+
+  <h2>What the service does</h2>
+  <p>
+    Exeora connects an MCP client to a directory on a machine you control. The Exeora CLI, which you
+    install and run yourself, opens an outbound connection to the gateway and executes the tool calls
+    that arrive on it inside the project directory you registered.
+  </p>
+  <p>
+    <strong>A new project allows everything.</strong> Until you set a policy on it, any AI client you
+    authorize against that project can run anything inside its directory, on that machine, as the
+    user account running the CLI. The dashboard can restrict a project to reading only, or to a named
+    list of commands, and can ask you to confirm every change before it runs.
+  </p>
+  <p>
+    Confirmation reaches only clients that speak MCP 2026-07-28. On a client speaking the 2025
+    protocol, a call that would need confirming is refused rather than run unconfirmed. Register only
+    directories you are willing to let an agent change, and revoke a machine from the dashboard the
+    moment you want it to stop.
+  </p>
+
+  <h2>Your account and your machines</h2>
+  <ul>
+    <li>
+      You are responsible for what runs on your machines through Exeora, including anything an AI
+      client you authorized causes to run.
+    </li>
+    <li>
+      You are responsible for keeping your sign-in secure, and for the machines and directories you
+      choose to register.
+    </li>
+    <li>
+      You may only register machines and directories you are entitled to give access to. If a machine
+      belongs to an employer or a client, that is their decision to make, not yours alone.
+    </li>
+    <li>
+      You may delete your account at any time from the dashboard. It takes every machine, project,
+      authorization and activity record with it, and cannot be undone.
+    </li>
+  </ul>
+
+  <h2>What you may not do</h2>
+  <ul>
+    <li>Use the service to reach a machine or a directory you are not authorized to reach.</li>
+    <li>
+      Attempt to use one account to reach another's projects, machines, tokens or activity records.
+    </li>
+    <li>Use the service to break the law where you are, or where the machine is.</li>
+    <li>
+      Deliberately overload the gateway, or work around the rate limits it applies.
+    </li>
+  </ul>
+  <p>
+    An account doing any of these may be suspended without notice. Where the problem is a mistake
+    rather than intent, expect to be told about it first.
+  </p>
+
+  <h2>Availability</h2>
+  <p>
+    The service is provided as it is, with no uptime commitment. It may change, be interrupted, or be
+    withdrawn. Nothing here is offered as a guarantee that a tool call will succeed, that a machine
+    will be reachable, or that a command will finish.
+  </p>
+  <p>
+    The CLI is published as <a href="https://www.npmjs.com/package/@exeora/cli">@exeora/cli</a> under
+    the MIT licence, and its own licence text governs it. These terms cover the hosted service.
+  </p>
+
+  <h2>Liability</h2>
+  <p>
+    To the extent the law allows, Exeora is not liable for loss or damage arising from use of the
+    service, including data loss, changes made to a repository by an AI client, commands run on a
+    machine, or time spent undoing either. The service executes what it is asked to execute; deciding
+    what to ask for is yours.
+  </p>
+  <p>Nothing here limits liability that cannot be limited by law.</p>
+
+  <h2>Changes</h2>
+  <p>
+    These terms may change. The date above says when they last did. A change that materially reduces
+    what you can expect will be announced in the dashboard before it takes effect.
+  </p>
+
+  <h2>Governing law</h2>
+  <p>
+    These terms are governed by the laws of the United Mexican States, and any dispute arising from
+    them falls to the competent courts of Mexico.
+  </p>
+</Legal>

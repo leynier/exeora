@@ -15,6 +15,13 @@
       "when": 1786031804939,
       "tag": "0001_premium_cerise",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786039273276,
+      "tag": "0002_greedy_venus",
+      "breakpoints": true
     }
   ]
 }

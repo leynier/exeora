@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  type CommandPolicy,
   decodeExecutorMessage,
   ExeoraError,
   encodeMessage,
@@ -158,6 +159,8 @@ export class DeviceRelay extends DurableObject<Env> {
     tool: ToolName;
     args: unknown;
     client?: { name?: string; version?: string } | undefined;
+    /** What the account allows here. The executor narrows it, never widens it. */
+    policy?: CommandPolicy | undefined;
   }): Promise<unknown> {
     const socket = this.ctx.getWebSockets()[0];
     if (!socket) {
@@ -173,6 +176,10 @@ export class DeviceRelay extends DurableObject<Env> {
     const answer = new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(options.requestId);
+        // Tell the executor too. Without this the relay stops waiting while the
+        // command keeps running on someone's machine, which is the same "it
+        // landed anyway" hazard the deadline exists to prevent.
+        this.sendCancel(options.requestId);
         reject(new ExeoraError("TOOL_TIMEOUT", "The device did not answer before the deadline."));
       }, RELAY_TIMEOUT_MS);
 
@@ -193,12 +200,35 @@ export class DeviceRelay extends DurableObject<Env> {
         tool: options.tool,
         arguments: options.args,
         client: options.client,
+        policy: options.policy,
         issuedAt,
         expiresAt,
       }),
     );
 
     return answer;
+  }
+
+  /**
+   * Abandons a call in flight, because the caller went away.
+   *
+   * Both halves matter. Rejecting the pending entry frees whoever is still
+   * awaiting it; sending `cancel` is what actually stops the work, since a
+   * `run_command` the MCP client no longer wants would otherwise keep running
+   * on the machine for its full timeout with nobody left to read the answer.
+   *
+   * Safe to call for a request that already finished: the map lookup misses and
+   * an executor that does not recognise the id ignores the frame.
+   */
+  async cancelTool(requestId: string): Promise<void> {
+    const pending = this.pending.get(requestId);
+    if (pending) {
+      this.pending.delete(requestId);
+      clearTimeout(pending.timer);
+      pending.reject(new ExeoraError("CANCELLED", "The call was cancelled before it finished."));
+    }
+
+    this.sendCancel(requestId);
   }
 
   /** Closes the socket when the device is revoked from the dashboard. */
@@ -215,6 +245,24 @@ export class DeviceRelay extends DurableObject<Env> {
   }
 
   // ---------------------------------------------------------------------
+
+  /**
+   * Asks the executor to stop working on one request.
+   *
+   * Best effort by design: a device that disconnected between the call and the
+   * cancellation has already lost the work, so a failure here is not worth
+   * surfacing to a caller who is no longer listening either.
+   */
+  private sendCancel(requestId: string): void {
+    const socket = this.ctx.getWebSockets()[0];
+    if (!socket) return;
+
+    try {
+      socket.send(encodeMessage({ type: "cancel", requestId }));
+    } catch {
+      // The socket went away; the call is lost regardless.
+    }
+  }
 
   private failPending(reason: string): void {
     for (const [requestId, pending] of this.pending) {

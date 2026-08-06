@@ -10,6 +10,20 @@ export interface Device {
   createdAt: number;
 }
 
+/**
+ * What an agent may do in a project.
+ *
+ * Mirrors `CommandPolicy` from `@exeora/protocol`. Restated here rather than
+ * imported because the dashboard is a browser bundle and that package pulls in
+ * zod, which is 40 kB it would carry for one type.
+ */
+export interface CommandPolicy {
+  mode: "allow_all" | "allow_list" | "read_only";
+  allow: string[];
+  shell: boolean;
+  approve: boolean;
+}
+
 export interface Project {
   id: string;
   slug: string;
@@ -17,6 +31,7 @@ export interface Project {
   deviceId: string;
   localPath: string;
   mcpUrl: string;
+  policy: CommandPolicy;
   createdAt: number;
 }
 
@@ -78,20 +93,55 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** The server caps this; asking for more just gets the cap. */
-export const MAX_TOOL_CALLS = 200;
+/**
+ * How the activity log is narrowed. Every field is optional and applied by the
+ * server, so a filter searches the whole log rather than the page in hand.
+ */
+export interface ToolCallFilters {
+  projectId?: string;
+  status?: "ok" | "error";
+  clientId?: string;
+}
+
+/** One page of the audit log. `cursor` is null on the last one. */
+export interface ToolCallPage {
+  items: ToolCall[];
+  cursor: string | null;
+}
 
 export const api = {
   me: () => request<User>("/api/me"),
   devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
-  toolCalls: (limit = MAX_TOOL_CALLS) => request<ToolCall[]>(`/api/tool-calls?limit=${limit}`),
+
+  toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
+    const query = new URLSearchParams();
+    if (filters.projectId) query.set("projectId", filters.projectId);
+    if (filters.status) query.set("status", filters.status);
+    if (filters.clientId) query.set("clientId", filters.clientId);
+    if (cursor) query.set("cursor", cursor);
+
+    const suffix = query.size > 0 ? `?${query}` : "";
+    return request<ToolCallPage>(`/api/tool-calls${suffix}`);
+  },
+
   revokeDevice: (id: string) => request<{ ok: true }>(`/api/devices/${id}`, { method: "DELETE" }),
 
   /** Only accepted once the machine is revoked; the server returns 409 if not. */
   deleteDevice: (id: string) =>
     request<{ ok: true }>(`/api/devices/${id}/permanently`, { method: "DELETE" }),
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  /** Takes effect on the very next tool call; nothing has to reconnect. */
+  setProjectPolicy: (id: string, policy: CommandPolicy) =>
+    request<CommandPolicy>(`/api/projects/${id}/policy`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(policy),
+    }),
+
+  /** Irreversible, and takes every machine, project, client and audit row. */
+  deleteAccount: () => request<{ ok: true }>("/api/me", { method: "DELETE" }),
 
   clients: () => request<Client[]>("/api/clients"),
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),

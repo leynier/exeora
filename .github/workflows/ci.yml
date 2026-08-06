@@ -42,6 +42,7 @@ jobs:
           GITHUB_CLIENT_ID=ci-placeholder
           GITHUB_CLIENT_SECRET=ci-placeholder
           COOKIE_SECRET=ci-placeholder-cookie-secret
+          REQUEST_STATE_SECRET=ci-placeholder-request-state-secret-32-bytes
           EOF
 
       # Before the tests, not after: the gateway serves the built site through

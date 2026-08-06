@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   isMetadataDocumentClient,
+  parsePolicy,
   rememberAuthorization,
   rememberMcpClient,
   resolveTarget,
@@ -74,7 +75,7 @@ describe("resolving where a call goes", () => {
       clientId: CLIENT,
     });
 
-    expect(target).toEqual({ deviceId: "dev_u", clientRevokedAt: null });
+    expect(target).toMatchObject({ deviceId: "dev_u", clientRevokedAt: null });
   });
 
   it("finds nothing for another account's project", async () => {
@@ -126,7 +127,7 @@ describe("resolving where a call goes", () => {
       clientId: "client_chatgpt",
     });
 
-    expect(target).toEqual({ deviceId: "dev_u", clientRevokedAt: null });
+    expect(target).toMatchObject({ deviceId: "dev_u", clientRevokedAt: null });
   });
 
   /**
@@ -154,7 +155,7 @@ describe("resolving where a call goes", () => {
       clientId: undefined,
     });
 
-    expect(target).toEqual({ deviceId: "dev_u", clientRevokedAt: null });
+    expect(target).toMatchObject({ deviceId: "dev_u", clientRevokedAt: null });
   });
 });
 
@@ -244,6 +245,41 @@ describe("remembering a client", () => {
     const after = await row();
     expect(after).toMatchObject({ mcpName: "claude-code", mcpVersion: "2.1.0" });
     expect(after?.lastUsedAt).not.toBeNull();
+  });
+});
+
+describe("reading a stored policy", () => {
+  it("treats an empty column as no restriction", () => {
+    // Every project that predates the setting. Nobody restricted these, so
+    // reading them as restricted would break them all at once.
+    expect(parsePolicy(null).mode).toBe("allow_all");
+    expect(parsePolicy("").mode).toBe("allow_all");
+  });
+
+  it("returns what was stored", () => {
+    const stored = JSON.stringify({
+      mode: "allow_list",
+      allow: ["npm"],
+      shell: false,
+      approve: false,
+    });
+    expect(parsePolicy(stored)).toEqual({
+      mode: "allow_list",
+      allow: ["npm"],
+      shell: false,
+      approve: false,
+    });
+  });
+
+  /**
+   * The direction this has to fail in. A column holding something illegible is
+   * evidence that someone set a policy, so opening the project up is the one
+   * answer that can be wrong in a way that matters.
+   */
+  it("allows nothing when a policy was set but cannot be read", () => {
+    expect(parsePolicy("not json at all").mode).toBe("read_only");
+    expect(parsePolicy('{"mode":"whatever"}').mode).toBe("read_only");
+    expect(parsePolicy("[]").mode).toBe("read_only");
   });
 });
 

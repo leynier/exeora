@@ -14,6 +14,17 @@ declare global {
     GITHUB_CLIENT_SECRET: string;
     /** Signing key for the session cookie. */
     COOKIE_SECRET: string;
+    /**
+     * HMAC key for the `requestState` that carries an approval between the two
+     * halves of a tool call.
+     *
+     * Separate from COOKIE_SECRET because they protect different things for
+     * different audiences: one authenticates a browser session, the other
+     * authenticates a decision that travelled through an AI client and came
+     * back. Sharing a key would mean a leak in either scope reaches both. At
+     * least 32 bytes, or the codec refuses to start.
+     */
+    REQUEST_STATE_SECRET: string;
 
     /**
      * Injected into `env` by OAuthProvider before it calls either handler.

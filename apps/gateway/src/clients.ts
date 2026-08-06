@@ -1,3 +1,4 @@
+import { CLOSED_POLICY, CommandPolicy, DEFAULT_POLICY } from "@exeora/protocol";
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import "./env.js";
@@ -14,7 +15,9 @@ import { newId } from "./ids.js";
  * side falls back from one to the other.
  *
  * Every function here is scoped by `userId` and none of them throws: the caller
- * is always in the middle of something that matters more than this record.
+ * is always in the middle of something that matters more than this record. The
+ * one exception is `stillAuthorized`, and the reason it has to be is written
+ * above it.
  */
 
 /** Who made a call, as far as the gateway can tell. */
@@ -131,10 +134,15 @@ export async function touchClient(
 export async function resolveTarget(
   env: Pick<Env, "DB">,
   entry: { userId: string; projectId: string; clientId: string | undefined },
-): Promise<{ deviceId: string; clientRevokedAt: Date | null } | null> {
+): Promise<{
+  deviceId: string;
+  clientRevokedAt: Date | null;
+  policy: CommandPolicy;
+} | null> {
   const row = await db(env)
     .select({
       deviceId: schema.projects.deviceId,
+      commandPolicy: schema.projects.commandPolicy,
       clientRevokedAt: schema.projectClients.revokedAt,
     })
     .from(schema.projects)
@@ -149,7 +157,35 @@ export async function resolveTarget(
     .get();
 
   if (!row) return null;
-  return { deviceId: row.deviceId, clientRevokedAt: entry.clientId ? row.clientRevokedAt : null };
+  return {
+    deviceId: row.deviceId,
+    clientRevokedAt: entry.clientId ? row.clientRevokedAt : null,
+    policy: parsePolicy(row.commandPolicy),
+  };
+}
+
+/**
+ * The stored policy.
+ *
+ * Two failures that look alike and must not behave alike. An empty column means
+ * the project predates the setting and nobody has ever restricted it, so
+ * `allow_all` is the truth. A column holding something this cannot read means a
+ * policy was set and is now illegible, and the one answer that cannot be wrong
+ * in a dangerous direction is to allow nothing until someone sets it again.
+ *
+ * Falling back to `allow_all` in both cases would mean a corrupt row quietly
+ * lifts every restriction on a project, which is the failure a policy exists to
+ * prevent.
+ */
+export function parsePolicy(stored: string | null): CommandPolicy {
+  if (!stored) return DEFAULT_POLICY;
+
+  try {
+    const parsed = CommandPolicy.safeParse(JSON.parse(stored));
+    return parsed.success ? parsed.data : CLOSED_POLICY;
+  } catch {
+    return CLOSED_POLICY;
+  }
 }
 
 /**
@@ -168,20 +204,24 @@ export function isMetadataDocumentClient(clientId: string): boolean {
   }
 }
 
-/** Whether the user still has this client authorized somewhere else. */
-export async function usedElsewhere(
-  env: Pick<Env, "DB">,
-  entry: { userId: string; clientId: string },
-): Promise<boolean> {
+/**
+ * Whether anyone still has this client authorized against any project.
+ *
+ * Deliberately not scoped to one user. An OAuth client is a global object, and
+ * a registration made through DCR can end up shared between accounts: two
+ * people running the same application both authorize the same client id. If one
+ * of them finishes with it, unregistering it would break the other, silently
+ * and from the outside.
+ *
+ * The provider cannot answer this, since it offers no way to ask who holds a
+ * grant for a client. This table can, because every authorization writes a row
+ * here, which is what makes the cross-account case detectable at all.
+ */
+export async function stillAuthorized(env: Pick<Env, "DB">, clientId: string): Promise<boolean> {
   const row = await db(env)
     .select({ count: sql<number>`count(*)` })
     .from(schema.projectClients)
-    .where(
-      and(
-        eq(schema.projectClients.userId, entry.userId),
-        eq(schema.projectClients.clientId, entry.clientId),
-      ),
-    )
+    .where(eq(schema.projectClients.clientId, clientId))
     .get();
 
   return (row?.count ?? 0) > 0;

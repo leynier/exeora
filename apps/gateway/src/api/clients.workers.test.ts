@@ -339,6 +339,46 @@ describe("deleting permanently", () => {
       expect((await surviving()).clients).toEqual(["pcl_two"]);
     });
 
+    it("keeps the application registered while another account still uses it", async () => {
+      // The same registration, authorized by someone else against their own
+      // project. One person finishing with an application must not unregister
+      // it out from under everyone else running the same software.
+      await db(env)
+        .insert(schema.devices)
+        .values({ id: "dev_theirs", userId: OTHER, name: "laptop", platform: "linux" })
+        .run();
+
+      await db(env)
+        .insert(schema.projects)
+        .values({
+          id: "prj_theirs",
+          userId: OTHER,
+          deviceId: "dev_theirs",
+          name: "theirs",
+          slug: "theirs-c",
+          localPath: "/work/theirs",
+        })
+        .run();
+
+      await db(env)
+        .insert(schema.projectClients)
+        .values({
+          id: "pcl_elsewhere",
+          userId: OTHER,
+          projectId: "prj_theirs",
+          clientId: "client_claude",
+          clientName: "Claude",
+          authorizedAt: new Date(),
+        })
+        .run();
+
+      const { recorded, bindings } = provider([]);
+
+      await call("/api/clients/pcl_one/permanently", { method: "DELETE", bindings });
+
+      expect(recorded.deleted).toEqual([]);
+    });
+
     it("does not let one account delete another's client", async () => {
       const { bindings } = provider([]);
 

@@ -1,14 +1,20 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
-import { ExeoraError, isToolName, type ToolName } from "@exeora/protocol";
+import {
+  ExeoraError,
+  isToolName,
+  needsApproval,
+  policyAllows,
+  type ToolName,
+} from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { api, relayName } from "./api/index.js";
+import { api, pruneToolCalls, relayName } from "./api/index.js";
 import { serveAssets } from "./assets.js";
 import { type CallerIdentity, rememberMcpClient, resolveTarget, touchClient } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
-import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
+import { createProjectMcpHandler, type DispatchResult, handshakeClientInfo } from "./mcp.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -16,6 +22,13 @@ import {
   getDashboardClientId,
 } from "./oauth/clients.js";
 import { oauthRoutes } from "./oauth/routes.js";
+import {
+  callerAddress,
+  isRateLimitedAuthPath,
+  limiterFor,
+  tooManyRequests,
+  withinLimit,
+} from "./rate-limit.js";
 
 export { DeviceRelay } from "./relay-do.js";
 
@@ -33,6 +46,22 @@ type Props = { userId: string; clientId?: string; clientName?: string };
 
 /** Requests carrying a valid access token. */
 const authenticated = new Hono<{ Bindings: Env }>();
+
+/**
+ * Per-user limits, applied here rather than in the outer wrapper because this
+ * is the first point where the token has been checked and there is a user id
+ * to key on. Keying these by address instead would punish an office behind one
+ * NAT and let anyone with a second address around it.
+ */
+authenticated.use("*", async (c, next) => {
+  const { userId } = propsOf(c.executionCtx);
+  if (!userId) return next();
+
+  const limiter = limiterFor(c.env, c.req.method, c.req.path);
+  if (limiter && !(await withinLimit(limiter, userId))) return tooManyRequests();
+
+  return next();
+});
 
 authenticated.route("/", api);
 
@@ -69,8 +98,23 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
 authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
 
-  const handler = createProjectMcpHandler(projectId, async (context, tool, args) =>
-    dispatchToDevice(c.env, context.userId, projectId, tool, args, context.caller),
+  // The request's signal, so a client that hangs up stops the work rather than
+  // leaving a command running on someone's machine for its full timeout.
+  const { signal } = c.req.raw;
+
+  const handler = createProjectMcpHandler(
+    projectId,
+    async (context, tool, args) =>
+      dispatchToDevice(c.env, {
+        userId: context.userId,
+        projectId,
+        tool,
+        args,
+        caller: context.caller,
+        approved: context.approved,
+        signal,
+      }),
+    c.env,
   );
 
   // Cloned, not consumed: the handler needs the body intact. The clone is read
@@ -112,12 +156,19 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
  */
 async function dispatchToDevice(
   env: Env,
-  userId: string,
-  projectId: string,
-  tool: ToolName,
-  args: unknown,
-  caller: CallerIdentity,
-): Promise<unknown> {
+  call: {
+    userId: string;
+    projectId: string;
+    tool: ToolName;
+    args: unknown;
+    caller: CallerIdentity;
+    /** Whether the user has confirmed this exact call, on a previous round. */
+    approved: boolean;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<DispatchResult> {
+  const { userId, projectId, tool, args, caller, signal } = call;
+
   const project = await resolveTarget(env, { userId, projectId, clientId: caller.clientId });
 
   // Same answer whether the project does not exist or belongs to someone else:
@@ -133,17 +184,59 @@ async function dispatchToDevice(
     );
   }
 
+  // Checked here as well as on the machine, and both are necessary. This is
+  // the only side that holds the account's policy, and an older CLI would
+  // ignore a field it does not know and run the command regardless; the
+  // executor's own check is what covers a local `exeora.toml` and what still
+  // stands if this one is wrong.
+  const verdict = policyAllows(project.policy, tool, args);
+  if (!verdict.allowed) {
+    const error = new ExeoraError(
+      "FORBIDDEN",
+      verdict.reason ?? "This project does not allow that.",
+    );
+    await record(env, {
+      userId,
+      projectId,
+      tool,
+      caller,
+      startedAt: Date.now(),
+      status: "error",
+      errorCode: error.code,
+    });
+    throw error;
+  }
+
+  // Asked before anything is dispatched, and asked here rather than in the MCP
+  // layer because this is where the project's policy is known. The answer comes
+  // back on a second round carrying a signed state bound to these arguments.
+  if (needsApproval(project.policy, tool) && !call.approved) {
+    return { kind: "needs-approval" };
+  }
+
   const startedAt = Date.now();
+  const requestId = newId("req");
+  const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
+
+  // Registered before the call rather than after it: awaiting `callTool` first
+  // would leave the window where the client hangs up unwatched, which is
+  // precisely the window a long `run_command` spends.
+  const cancel = () => void relay.cancelTool(requestId).catch(() => undefined);
+  signal?.addEventListener("abort", cancel, { once: true });
+
   try {
-    const value = await env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).callTool({
-      requestId: newId("req"),
+    const value = await relay.callTool({
+      requestId,
       projectId,
       tool,
       args,
       client: callerLabel(caller),
+      // Sent even though it was just enforced, because the executor narrows it
+      // with the project's own `exeora.toml` before running anything.
+      policy: project.policy,
     });
     await record(env, { userId, projectId, tool, caller, startedAt, status: "ok" });
-    return value;
+    return { kind: "value", value };
   } catch (error) {
     await record(env, {
       userId,
@@ -155,6 +248,8 @@ async function dispatchToDevice(
       errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
     });
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -259,7 +354,7 @@ site.all("*", (c) => serveAssets(c.req.raw, c.env));
 
 export { isToolName };
 
-export default new OAuthProvider({
+const provider = new OAuthProvider({
   apiRoute: ["/p/", "/api/"],
   apiHandler: authenticated,
   defaultHandler: site,
@@ -284,3 +379,34 @@ export default new OAuthProvider({
     scopes_supported: ["tools:read", "tools:execute"],
   },
 });
+
+/**
+ * The provider wrapped rather than exported directly.
+ *
+ * `/oauth/token` and `/oauth/register` are answered by the provider itself,
+ * before either `apiHandler` or `defaultHandler` runs, so a Hono middleware
+ * never sees them and this is the only layer that can turn an unauthenticated
+ * caller away. Everything else the provider does is untouched: this hands the
+ * request straight on.
+ */
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (isRateLimitedAuthPath(new URL(request.url).pathname)) {
+      if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) return tooManyRequests();
+    }
+
+    return provider.fetch(request, env, ctx);
+  },
+
+  /**
+   * Nightly housekeeping. Neither half belongs to a request: the audit log is
+   * written by tool calls that have long since answered, and expired grants are
+   * only noticed by whoever tries to use one.
+   *
+   * The two are independent, so a failure in one must not skip the other.
+   */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(pruneToolCalls(env));
+    ctx.waitUntil(provider.purgeExpiredData(env).then(() => undefined));
+  },
+} satisfies ExportedHandler<Env>;

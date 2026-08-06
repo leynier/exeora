@@ -75,6 +75,17 @@ export const projects = sqliteTable(
      * path to it. The gateway never sends this value to a tool.
      */
     localPath: text("local_path").notNull(),
+    /**
+     * What an agent is allowed to do here, as `CommandPolicy` JSON from
+     * `@exeora/protocol`. Null means the project predates the setting, which
+     * reads as `allow_all`: turning a policy on is always a decision someone
+     * made, never something that happened to a project on its own.
+     *
+     * JSON in one column rather than three, because it is read and written
+     * whole, never queried by its parts, and the shape is versioned by the
+     * schema in the shared package rather than by a migration.
+     */
+    commandPolicy: text("command_policy"),
     createdAt: createdAt(),
   },
   (table) => [

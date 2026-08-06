@@ -321,6 +321,31 @@ describe("run_command", () => {
   });
 });
 
+describe("cancellation", () => {
+  it("kills a running command instead of letting it finish unobserved", async () => {
+    const controller = new AbortController();
+    const startedAt = Date.now();
+
+    const pending = executeTool({ root, signal: controller.signal }, "run_command", {
+      command: "sleep 30",
+      timeoutMs: 30_000,
+    });
+
+    setTimeout(() => controller.abort(), 200);
+
+    await expect(pending).rejects.toMatchObject({ code: "CANCELLED" });
+    // The point of the test: the shell and its children are gone now, not in
+    // thirty seconds. Generous enough not to be flaky on a loaded machine.
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  });
+
+  it("refuses to start a call that was already cancelled", async () => {
+    await expect(
+      executeTool({ root, signal: AbortSignal.abort() }, "run_command", { command: "echo hi" }),
+    ).rejects.toMatchObject({ code: "CANCELLED" });
+  });
+});
+
 describe("argument validation", () => {
   it("rejects arguments that do not match the shared schema", async () => {
     await expect(run("read_file", {})).rejects.toMatchObject({ code: "INVALID_ARGUMENTS" });

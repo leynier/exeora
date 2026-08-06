@@ -1,6 +1,20 @@
-import { TOOL_DEFINITIONS, type ToolName } from "@exeora/protocol";
-import { CLIENT_INFO_META_KEY, McpServer, type ServerContext } from "@modelcontextprotocol/server";
+import { ExeoraError, TOOL_DEFINITIONS, type ToolName } from "@exeora/protocol";
+import {
+  acceptedContent,
+  CLIENT_INFO_META_KEY,
+  inputRequired,
+  McpServer,
+  type ServerContext,
+} from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
+import {
+  APPROVAL_KEY,
+  APPROVAL_SCHEMA,
+  type ApprovalState,
+  approvalCodec,
+  describeCall,
+  hashArguments,
+} from "./approval.js";
 import type { CallerIdentity, McpClientInfo } from "./clients.js";
 import "./env.js";
 
@@ -24,25 +38,55 @@ export interface McpToolContext {
   userId: string;
   projectId: string;
   caller: CallerIdentity;
+  /** True once the user has confirmed this exact call. */
+  approved: boolean;
 }
 
-/** Runs a tool on the user's machine. Wired to the relay in M5. */
+/**
+ * What a dispatch came back with.
+ *
+ * `needs-approval` rather than an exception because it is not a failure: the
+ * project asked for the call to be confirmed, and the answer to that is a
+ * question, not an error. Keeping it a return value also keeps this file free
+ * of any knowledge of where policies are stored.
+ */
+export type DispatchResult = { kind: "value"; value: unknown } | { kind: "needs-approval" };
+
+/** Runs a tool on the user's machine, through the relay. */
 export type ToolDispatcher = (
   context: McpToolContext,
   tool: ToolName,
   args: unknown,
-) => Promise<unknown>;
+) => Promise<DispatchResult>;
 
-export function createProjectMcpHandler(projectId: string, dispatch: ToolDispatcher) {
+/**
+ * `env` is threaded in rather than reached for. The handler factory runs inside
+ * the SDK, and `getMcpAuthContext()` carries only the grant's props, so this is
+ * the sole route by which a binding reaches a tool.
+ */
+export function createProjectMcpHandler(
+  projectId: string,
+  dispatch: ToolDispatcher,
+  env: Pick<Env, "REQUEST_STATE_SECRET">,
+) {
   return createMcpHandler(
-    () => {
-      const server = new McpServer({ name: "exeora", version: "0.1.0" });
+    (request) => {
+      const codec = approvalCodec(env);
+
+      const server = new McpServer(
+        { name: "exeora", version: "0.2.0" },
+        // Without this hook the SDK hands the handler whatever string the
+        // client echoed, unverified, which for state that decides whether a
+        // command runs is the whole vulnerability.
+        { requestState: { verify: codec.verify } },
+      );
 
       // Every tool is forwarded verbatim to the executor, which validates the
       // arguments again against the same schema before touching the disk.
       const run = async (tool: ToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
-        const value = await dispatch(
+
+        const result = await dispatch(
           {
             userId: String(props.userId ?? ""),
             projectId,
@@ -51,10 +95,40 @@ export function createProjectMcpHandler(projectId: string, dispatch: ToolDispatc
               clientName: props.clientName,
               mcp: mcpClientInfo(ctx),
             },
+            approved: await isApproved(ctx, projectId, tool, args),
           },
           tool,
           args,
         );
+
+        if (result.kind === "needs-approval") {
+          // A 2025-era client cannot be asked: the mechanism arrived with
+          // 2026-07-28. Refusing is the only honest answer, since running it
+          // anyway would make the setting decorative for exactly the clients
+          // most people use today.
+          if (request.era !== "modern") {
+            throw new ExeoraError(
+              "FORBIDDEN",
+              "This project asks for every change to be confirmed, and this client cannot be asked. " +
+                "Use a client that speaks MCP 2026-07-28, or turn confirmation off for the project.",
+            );
+          }
+
+          return inputRequired({
+            inputRequests: {
+              [APPROVAL_KEY]: inputRequired.elicit({
+                message: describeCall(tool, args),
+                requestedSchema: APPROVAL_SCHEMA,
+              }),
+            },
+            requestState: await codec.mint(
+              { projectId, tool, argsHash: await hashArguments(args) },
+              ctx,
+            ),
+          });
+        }
+
+        const { value } = result;
         return {
           content: [{ type: "text" as const, text: JSON.stringify(value) }],
           structuredContent: value as Record<string, unknown>,
@@ -105,6 +179,38 @@ export function createProjectMcpHandler(projectId: string, dispatch: ToolDispatc
     },
     { route: mcpRoute(projectId) },
   );
+}
+
+/**
+ * Whether this round carries a confirmation for this exact call.
+ *
+ * All four conditions have to hold, and the last is the one that matters most.
+ * Without comparing the arguments, a client could have `ls` approved and retry
+ * with `rm -rf ~` carrying the same state: the signature would verify, the tool
+ * would match, and the approval would be for a call nobody ever saw.
+ *
+ * The state itself has already been verified by the seam, since the server is
+ * built with `requestState.verify`; a forged or expired one never reaches here.
+ */
+export async function isApproved(
+  ctx: Pick<ServerContext, "mcpReq">,
+  projectId: string,
+  tool: ToolName,
+  args: unknown,
+): Promise<boolean> {
+  const state = ctx.mcpReq.requestState<ApprovalState>();
+  if (!state || typeof state !== "object") return false;
+  if (state.projectId !== projectId || state.tool !== tool) return false;
+
+  const answer = acceptedContent<{ [APPROVAL_KEY]?: unknown }>(
+    ctx.mcpReq.inputResponses,
+    APPROVAL_KEY,
+  );
+  // `undefined` covers a declined or cancelled elicitation as well as a missing
+  // one, which is right: none of them is a yes.
+  if (answer?.[APPROVAL_KEY] !== true) return false;
+
+  return state.argsHash === (await hashArguments(args));
 }
 
 /**

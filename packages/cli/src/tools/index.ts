@@ -42,6 +42,12 @@ import { walk } from "./walk.js";
 export interface ToolContext {
   /** Absolute path of the project root. */
   root: string;
+  /**
+   * Aborts when the relay says the caller stopped waiting. Only `run_command`
+   * can act on it in a way anyone notices; the file tools check it before
+   * touching the disk and are otherwise short enough not to bother.
+   */
+  signal?: AbortSignal;
 }
 
 export async function executeTool(
@@ -54,6 +60,11 @@ export async function executeTool(
     throw new ExeoraError("INVALID_ARGUMENTS", parsed.error.issues[0]?.message ?? "Invalid input.");
   }
   const args = parsed.data;
+
+  // A call cancelled while it queued behind another one should not start.
+  if (context.signal?.aborted) {
+    throw new ExeoraError("CANCELLED", "The call was cancelled before it started.");
+  }
 
   switch (tool) {
     case "read_file":
@@ -285,7 +296,7 @@ async function writeFileTool(
 }
 
 async function runCommandTool(
-  { root }: ToolContext,
+  { root, signal }: ToolContext,
   args: { command: string; cwd?: string; timeoutMs?: number },
 ): Promise<ToolOutput<"run_command">> {
   const cwd = await resolveInProject({ root, relativePath: args.cwd ?? "." });
@@ -313,11 +324,30 @@ async function runCommandTool(
     killTree(subprocess.pid);
   }, timeoutMs);
 
+  // Cancellation kills the tree exactly the way the timeout does. The only
+  // difference is what happens after: a timeout still reports what the command
+  // managed to print, while a cancelled call has nobody left to report to.
+  let cancelled = false;
+  const onCancel = () => {
+    cancelled = true;
+    killTree(subprocess.pid);
+  };
+
+  // `addEventListener` never fires for a signal that aborted already, and the
+  // await resolving `cwd` above is long enough for that to happen.
+  if (signal?.aborted) onCancel();
+  else signal?.addEventListener("abort", onCancel, { once: true });
+
   let result: Awaited<typeof subprocess>;
   try {
     result = await subprocess;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onCancel);
+  }
+
+  if (cancelled) {
+    throw new ExeoraError("CANCELLED", "The call was cancelled while the command was running.");
   }
 
   const stdout = capture(result.stdout);
