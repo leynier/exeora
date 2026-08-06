@@ -21,14 +21,14 @@ export function SignIn() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2">
           <svg
-            viewBox="0 0 62 42"
-            className="text-brand h-[15px] w-auto"
+            viewBox="0 0 64 44"
+            className="text-foreground h-[16px] w-auto"
             fill="currentColor"
             aria-hidden="true"
           >
-            <rect x="20" y="0" width="22" height="22" rx="2" />
-            <rect x="0" y="20" width="22" height="22" rx="2" />
-            <rect x="40" y="20" width="22" height="22" rx="2" />
+            <rect x="20" y="0" width="24" height="24" rx="4" />
+            <rect x="0" y="20" width="24" height="24" rx="4" />
+            <rect x="40" y="20" width="24" height="24" rx="4" />
           </svg>
           <span className="text-title-lg tracking-tight">Exeora</span>
         </div>

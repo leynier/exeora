@@ -6,13 +6,13 @@
     machine that does the work, meeting at the corners rather than merging.
 
     Geometry lives in one place, apps/web/landing/src/components/Wordmark.astro,
-    and is repeated here because a favicon cannot import anything: three 22x22
-    tiles with a radius of 2, on a pitch of 20 so they overlap by exactly the
+    and is repeated here because a favicon cannot import anything: three 24x24
+    tiles with a radius of 4, on a pitch of 20 so they overlap by exactly the
     radius and the silhouette closes. Scaled to sit inside the rounded square.
   -->
-  <g fill="#4fd1c5" transform="translate(7.5 15.4) scale(0.79)">
-    <rect x="20" y="0" width="22" height="22" rx="2" />
-    <rect x="0" y="20" width="22" height="22" rx="2" />
-    <rect x="40" y="20" width="22" height="22" rx="2" />
+  <g fill="#f4f5f6" transform="translate(7 14.5) scale(0.78)">
+    <rect x="20" y="0" width="24" height="24" rx="4" />
+    <rect x="0" y="20" width="24" height="24" rx="4" />
+    <rect x="40" y="20" width="24" height="24" rx="4" />
   </g>
 </svg>

@@ -62,3 +62,26 @@ jobs:
       - name: Publish
         run: npm publish
         working-directory: packages/cli
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Publishing to npm only needed to read the repo; creating a release
+      # writes to it.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#cli-v}"
+          args=(--generate-notes --title "CLI $version")
+          # A semver prerelease (0.3.0-beta.1) carries a hyphen; mark it so
+          # it does not show up as "latest" over the stable release.
+          if [[ "$version" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${args[@]}"

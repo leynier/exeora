@@ -91,7 +91,6 @@ const styles = `
     font-size: 1rem;
     letter-spacing: -.02em;
   }
-  .brand svg { color: var(--color-brand); }
 
   .card {
     border: 1px solid var(--color-border);
@@ -218,20 +217,20 @@ const styles = `
 /**
  * The wordmark, matching the landing's: three tiles, one above and two below.
  *
- * Same three numbers everywhere it is drawn: 22 wide on a pitch of 20, radius
- * 2, so the overlap equals the radius and the silhouette closes.
+ * Same three numbers everywhere it is drawn: 24 wide on a pitch of 20, radius
+ * 4, so the overlap equals the radius and the silhouette closes.
  */
 const mark = html`<svg
-  viewBox="0 0 62 42"
-  width="21"
-  height="14"
+  viewBox="0 0 64 44"
+  width="22"
+  height="15"
   fill="currentColor"
   aria-hidden="true"
   xmlns="http://www.w3.org/2000/svg"
 >
-  <rect x="20" y="0" width="22" height="22" rx="2" />
-  <rect x="0" y="20" width="22" height="22" rx="2" />
-  <rect x="40" y="20" width="22" height="22" rx="2" />
+  <rect x="20" y="0" width="24" height="24" rx="4" />
+  <rect x="0" y="20" width="24" height="24" rx="4" />
+  <rect x="40" y="20" width="24" height="24" rx="4" />
 </svg>`;
 
 /**
