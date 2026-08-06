@@ -1,15 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
   # Called by the deploy workflow, so nothing reaches production without
   # passing the same checks first.
   workflow_call:
 
+# Deliberately not `on: push` for main. Deploy already calls this workflow, and
+# running both put two jobs in the same concurrency group, where one cancelled
+# the other and reported it as a cancelled run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
