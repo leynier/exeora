@@ -1,6 +1,11 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
+import { ExeoraError, isToolName, type ToolName } from "@exeora/protocol";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { api, relayName } from "./api/index.js";
+import { db, schema } from "./db/client.js";
 import "./env.js";
+import { newId } from "./ids.js";
 import { createProjectMcpHandler } from "./mcp.js";
 import { CLI_SCOPES, getCliClientId } from "./oauth/cli-client.js";
 import { oauthRoutes } from "./oauth/routes.js";
@@ -16,24 +21,147 @@ export { DeviceRelay } from "./relay-do.js";
  * wrangler.jsonc. Anything not claimed here falls through to `apps/web`.
  */
 
-/** Requests carrying a valid access token. `ctx.props` holds the grant's props. */
-const api = new Hono<{ Bindings: Env }>();
+type Props = { userId: string; clientId?: string };
 
-api.get("/api/health", (c) => c.json({ ok: true, service: "exeora-gateway" }));
+/** Requests carrying a valid access token. */
+const authenticated = new Hono<{ Bindings: Env }>();
 
-api.all("/p/:projectId/mcp", async (c) => {
+authenticated.route("/", api);
+
+/**
+ * The CLI's outbound WebSocket. The device dials us; we never dial the device,
+ * which is what removes any need for open ports, tunnels or a VPN.
+ */
+authenticated.get("/api/relay/:deviceId", async (c) => {
+  if (c.req.header("Upgrade") !== "websocket") {
+    return c.text("Expected a WebSocket upgrade.", 426);
+  }
+
+  const { userId } = propsOf(c.executionCtx);
+  const deviceId = c.req.param("deviceId");
+
+  const device = await db(c.env)
+    .select({ revokedAt: schema.devices.revokedAt })
+    .from(schema.devices)
+    .where(and(eq(schema.devices.id, deviceId), eq(schema.devices.userId, userId)))
+    .get();
+
+  if (!device) return c.text("Unknown device.", 404);
+  if (device.revokedAt) return c.text("This device has been revoked.", 403);
+
+  // fetch(), not an RPC method: a Response carrying a WebSocket cannot be
+  // serialised across the RPC boundary.
+  const upgrade = new Request(`https://relay/connect?deviceId=${deviceId}`, {
+    headers: { Upgrade: "websocket" },
+  });
+  return c.env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).fetch(upgrade);
+});
+
+/** One MCP endpoint per project. */
+authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
 
-  // TODO(M5): verify the token's user owns this project, then dispatch to the
-  // device relay instead of erroring.
-  const handler = createProjectMcpHandler(projectId, async () => {
-    throw new Error("LOCAL_EXECUTOR_OFFLINE");
-  });
+  const handler = createProjectMcpHandler(projectId, async (context, tool, args) =>
+    dispatchToDevice(c.env, context.userId, projectId, tool, args, context.clientId),
+  );
 
   // `.fetch()` rather than the (request, env, ctx) form: bindings reach the
   // tools through the dispatcher closure, so the handler needs no ExecutionContext.
   return handler.fetch(c.req.raw);
 });
+
+/**
+ * Resolves the project, checks it belongs to the caller, and forwards the call
+ * to that project's device.
+ *
+ * The token is already bound to this project's resource identifier by the
+ * OAuth layer, so this is the second of two independent checks rather than the
+ * only one.
+ */
+async function dispatchToDevice(
+  env: Env,
+  userId: string,
+  projectId: string,
+  tool: ToolName,
+  args: unknown,
+  clientId: string | undefined,
+): Promise<unknown> {
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+
+  // Same answer whether the project does not exist or belongs to someone else:
+  // distinguishing them would make project ids enumerable.
+  if (!project) {
+    throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available.");
+  }
+
+  const startedAt = Date.now();
+  try {
+    const value = await env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).callTool({
+      requestId: newId("req"),
+      projectId,
+      tool,
+      args,
+    });
+    await record(env, { userId, projectId, tool, clientId, startedAt, status: "ok" });
+    return value;
+  } catch (error) {
+    await record(env, {
+      userId,
+      projectId,
+      tool,
+      clientId,
+      startedAt,
+      status: "error",
+      errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
+    });
+    throw error;
+  }
+}
+
+/** Audit row. Records what ran and how it ended — never arguments or output. */
+async function record(
+  env: Env,
+  entry: {
+    userId: string;
+    projectId: string;
+    tool: string;
+    clientId: string | undefined;
+    startedAt: number;
+    status: "ok" | "error";
+    errorCode?: string;
+  },
+): Promise<void> {
+  try {
+    await db(env)
+      .insert(schema.toolCalls)
+      .values({
+        id: newId("call"),
+        userId: entry.userId,
+        projectId: entry.projectId,
+        tool: entry.tool,
+        status: entry.status,
+        durationMs: Date.now() - entry.startedAt,
+        errorCode: entry.errorCode ?? null,
+        clientId: entry.clientId ?? null,
+      })
+      .run();
+  } catch {
+    // Auditing must never be the reason a tool call fails.
+  }
+}
+
+/**
+ * OAuthProvider attaches the grant's props to the ExecutionContext before
+ * invoking the API handler. Typed as unknown because Hono's ExecutionContext
+ * and the runtime's are structurally different.
+ */
+function propsOf(ctx: unknown): Props {
+  return ((ctx as { props?: Props }).props ?? { userId: "" }) as Props;
+}
 
 /** Everything else: the OAuth screens, plus unauthenticated fall-through. */
 const site = new Hono<{ Bindings: Env }>();
@@ -54,9 +182,11 @@ site.get("/oauth/cli-client", async (c) =>
   }),
 );
 
+export { isToolName };
+
 export default new OAuthProvider({
   apiRoute: ["/p/", "/api/"],
-  apiHandler: api,
+  apiHandler: authenticated,
   defaultHandler: site,
 
   authorizeEndpoint: "/oauth/authorize",

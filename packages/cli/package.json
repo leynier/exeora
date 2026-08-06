@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "exeora": "./src/index.ts"
+    "exeora": "./bin/index.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -22,6 +22,14 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/node": "latest"
+    "@types/node": "latest",
+    "tsdown": "0.22.14"
+  },
+  "files": [
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch"
   }
 }

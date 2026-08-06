@@ -12,3 +12,4 @@ dist/
 !.dev.vars.example
 
 .DS_Store
+packages/cli/bin/
