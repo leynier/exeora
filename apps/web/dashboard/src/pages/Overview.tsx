@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { isOnline, relativeTime } from "../api.js";
+import { DangerZone } from "../components/DangerZone.js";
 import { Onboarding } from "../components/Onboarding.js";
 import {
   Badge,
@@ -160,6 +161,8 @@ export function Overview() {
           )}
         </Card>
       </div>
+
+      <DangerZone />
     </>
   );
 }

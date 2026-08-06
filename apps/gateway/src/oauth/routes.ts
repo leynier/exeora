@@ -1,12 +1,13 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { rememberAuthorization } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { isDashboardClient } from "./clients.js";
 import { consentPage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
-import { resolveAuthTarget } from "./target.js";
+import { projectIdFromResource, resolveAuthTarget } from "./target.js";
 import { resolveUser } from "./users.js";
 
 /**
@@ -176,18 +177,66 @@ oauthRoutes.get("/oauth/logout", (c) => {
  * Reached from three directions: an explicit approval, a first-party client
  * with a session, and a first-party client that has just signed in. Splitting
  * the props across those would be how one of them quietly ends up different.
+ *
+ * It is also where a client becomes visible to the user, because this is the
+ * only moment the gateway holds both the project the token is for and the
+ * client's registered name at once.
  */
-function complete(env: Env, authRequest: AuthRequest, userId: string) {
+async function complete(env: Env, authRequest: AuthRequest, userId: string) {
+  const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(() => null);
+  const projectId = await ownedProjectId(env, authRequest.resource, userId);
+
+  if (projectId) {
+    await rememberAuthorization(env, {
+      userId,
+      projectId,
+      clientId: authRequest.clientId,
+      clientName: client?.clientName,
+      clientUri: client?.clientUri,
+    });
+  }
+
   return env.OAUTH_PROVIDER.completeAuthorization({
     request: authRequest,
     userId,
     scope: authRequest.scope,
-    metadata: { approvedAt: Date.now() },
+    // `projectId` is here because a grant summary does not carry the resource
+    // it was issued for, and revoking one client's access to one project means
+    // finding exactly the grants that named it.
+    metadata: { approvedAt: Date.now(), projectId, clientName: client?.clientName ?? null },
     // Everything a tool handler learns about the caller. Deliberately minimal:
     // no upstream token, no email: just who they are, resolved again from D1
-    // on every call that needs more.
-    props: { userId, clientId: authRequest.clientId },
+    // on every call that needs more. The name rides along only so the audit
+    // log stays readable without a KV read per tool call.
+    props: {
+      userId,
+      clientId: authRequest.clientId,
+      clientName: client?.clientName,
+    },
   });
+}
+
+/**
+ * The project this authorization is for, if it is one of the user's own.
+ *
+ * The CLI and the dashboard ask for no resource at all and fall out here, which
+ * is why neither of them ever shows up as a client of a project.
+ */
+async function ownedProjectId(
+  env: Pick<Env, "DB">,
+  resource: string | string[] | undefined,
+  userId: string,
+): Promise<string | null> {
+  const projectId = projectIdFromResource(resource);
+  if (!projectId) return null;
+
+  const project = await db(env)
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+
+  return project?.id ?? null;
 }
 
 /**

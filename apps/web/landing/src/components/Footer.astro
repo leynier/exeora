@@ -11,6 +11,10 @@ const links = [
   { href: NPM_URL, label: "CLI", external: true },
   { href: "/#security", label: "Security" },
   { href: "/#faq", label: "FAQ" },
+  // Trailing slashes, like /dashboard/ above: Astro emits these as directories
+  // and the assets binding answers the bare path with a redirect.
+  { href: "/privacy/", label: "Privacy" },
+  { href: "/terms/", label: "Terms" },
 ];
 ---
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { relativeTime } from "../api.js";
+import { relativeTime, type ToolCallFilters } from "../api.js";
+import { Select } from "../components/Select.js";
 import {
   Badge,
   Card,
@@ -10,7 +11,14 @@ import {
   SkeletonRows,
 } from "../components/ui.js";
 import { formatDuration } from "../format.js";
-import { useProjects, useToolCalls } from "../queries.js";
+import { useClients, useProjects, useToolCallPages } from "../queries.js";
+
+/** The only filter whose choices are known ahead of the data. */
+const statusOptions = [
+  { value: "all", label: "Any outcome" },
+  { value: "ok", label: "Succeeded" },
+  { value: "error", label: "Failed" },
+];
 
 /**
  * The audit log.
@@ -19,37 +27,72 @@ import { useProjects, useToolCalls } from "../queries.js";
  * never records the arguments or the output, so this page can be shown to
  * someone without leaking the contents of a repository.
  *
- * Filtering happens in the browser: the API returns the most recent two
- * hundred rows in one request, which is both less work than paginating and
- * instant to narrow.
+ * Filtering is the server's job. Narrowing the page in hand was cheaper, but it
+ * quietly meant "the most recent fifty": a filter that found nothing looked the
+ * same whether there were no matches or whether every match was just off the
+ * end of what had been fetched.
  */
 export function Activity() {
-  const calls = useToolCalls();
   const projects = useProjects();
+  const clients = useClients();
 
   const [project, setProject] = useState("all");
   const [status, setStatus] = useState("all");
   const [client, setClient] = useState("all");
 
-  const rows = useMemo(() => calls.data ?? [], [calls.data]);
-
-  const clients = useMemo(
-    () => [...new Set(rows.map((call) => call.clientId).filter((id) => id !== null))],
-    [rows],
+  const filters = useMemo<ToolCallFilters>(
+    () => ({
+      ...(project === "all" ? {} : { projectId: project }),
+      ...(status === "ok" || status === "error" ? { status } : {}),
+      ...(client === "all" ? {} : { clientId: client }),
+    }),
+    [project, status, client],
   );
 
-  const filtered = rows.filter(
-    (call) =>
-      (project === "all" || call.projectId === project) &&
-      (status === "all" || call.status === status) &&
-      (client === "all" || call.clientId === client),
+  const calls = useToolCallPages(filters);
+  const rows = useMemo(() => (calls.data?.pages ?? []).flatMap((page) => page.items), [calls.data]);
+
+  const projectOptions = useMemo(
+    () => [
+      { value: "all", label: "All projects" },
+      ...(projects.data ?? []).map((candidate) => ({
+        value: candidate.id,
+        label: candidate.name,
+      })),
+    ],
+    [projects.data],
   );
+
+  /**
+   * Built from the authorized clients rather than from the rows on screen.
+   *
+   * Deriving it from the rows made sense when they were the whole log; with
+   * pages it would offer only the clients that happen to appear in the ones
+   * already loaded, so filtering to a quiet client would be impossible exactly
+   * when it is most useful.
+   *
+   * Labelled by name but filtered by id, because two clients can register the
+   * same name and picking one of them should not quietly select both.
+   */
+  const clientOptions = useMemo(() => {
+    const named = new Map<string, string>();
+    for (const authorized of clients.data ?? []) {
+      named.set(
+        authorized.clientId,
+        authorized.clientName ?? authorized.mcpName ?? "Unnamed client",
+      );
+    }
+
+    return [
+      { value: "all", label: "Any client" },
+      ...[...named].map(([value, label]) => ({ value, label })),
+    ];
+  }, [clients.data]);
 
   const nameFor = (projectId: string) =>
     projects.data?.find((candidate) => candidate.id === projectId)?.name ?? "removed project";
 
-  const select =
-    "border-border bg-surface text-body-md text-foreground-muted rounded-lg border px-2.5 py-1.5";
+  const filtering = project !== "all" || status !== "all" || client !== "all";
 
   return (
     <>
@@ -59,69 +102,48 @@ export function Activity() {
       />
 
       <Card
-        title={`${filtered.length} of ${rows.length} calls`}
+        // Counts what has been loaded, not what exists: the server never sends
+        // a total, and inventing one from the pages in hand would be a number
+        // that changes as you scroll.
+        title={calls.hasNextPage ? `${rows.length} calls so far` : `${rows.length} calls`}
         action={
           <div className="flex flex-wrap gap-2">
-            <label>
-              <span className="sr-only">Filter by project</span>
-              <select
-                className={select}
-                value={project}
-                onChange={(event) => setProject(event.target.value)}
-              >
-                <option value="all">All projects</option>
-                {projects.data?.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label="Filter by project"
+              value={project}
+              options={projectOptions}
+              onChange={setProject}
+            />
 
-            <label>
-              <span className="sr-only">Filter by outcome</span>
-              <select
-                className={select}
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="all">Any outcome</option>
-                <option value="ok">Succeeded</option>
-                <option value="error">Failed</option>
-              </select>
-            </label>
+            <Select
+              label="Filter by outcome"
+              value={status}
+              options={statusOptions}
+              onChange={setStatus}
+            />
 
-            {clients.length > 1 && (
-              <label>
-                <span className="sr-only">Filter by client</span>
-                <select
-                  className={select}
-                  value={client}
-                  onChange={(event) => setClient(event.target.value)}
-                >
-                  <option value="all">Any client</option>
-                  {clients.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {clientOptions.length > 2 && (
+              <Select
+                label="Filter by client"
+                value={client}
+                options={clientOptions}
+                onChange={setClient}
+              />
             )}
           </div>
         }
       >
         {calls.isLoading ? (
           <SkeletonRows count={5} />
-        ) : filtered.length === 0 ? (
-          <EmptyState title={rows.length === 0 ? "Nothing yet" : "Nothing matches those filters"}>
-            {rows.length === 0
-              ? "Tool calls appear here as soon as an agent makes one."
-              : "Widen them to see more."}
+        ) : rows.length === 0 ? (
+          <EmptyState title={filtering ? "Nothing matches those filters" : "Nothing yet"}>
+            {filtering
+              ? "Widen them to see more. This searched the whole log, not just the page on screen."
+              : "Tool calls appear here as soon as an agent makes one."}
           </EmptyState>
         ) : (
           <Divided>
-            {filtered.map((call) => (
+            {rows.map((call) => (
               <Row key={call.id}>
                 <div className="flex min-w-0 items-center gap-3">
                   <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
@@ -134,7 +156,7 @@ export function Activity() {
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
                       {nameFor(call.projectId)}
-                      {call.clientId ? ` · ${call.clientId}` : ""}
+                      {call.clientName ? ` · ${call.clientName}` : ""}
                     </p>
                   </div>
                 </div>
@@ -145,6 +167,19 @@ export function Activity() {
               </Row>
             ))}
           </Divided>
+        )}
+
+        {calls.hasNextPage && (
+          <div className="flex justify-center pt-4">
+            <button
+              type="button"
+              className="btn"
+              disabled={calls.isFetchingNextPage}
+              onClick={() => calls.fetchNextPage()}
+            >
+              {calls.isFetchingNextPage ? "Loading" : "Load more"}
+            </button>
+          </div>
         )}
       </Card>
     </>

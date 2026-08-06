@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `command_policy` text;

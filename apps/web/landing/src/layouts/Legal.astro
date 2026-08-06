@@ -1,0 +1,41 @@
+---
+import Footer from "../components/Footer.astro";
+import Navbar from "../components/Navbar.astro";
+import Layout from "./Layout.astro";
+
+/**
+ * The frame the two legal pages share.
+ *
+ * They are the only long-form prose on the site, so the typography lives here
+ * rather than being repeated: headings, paragraphs and lists are styled once by
+ * element, which also means the pages themselves stay readable as text.
+ */
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath: string;
+  updated: string;
+}
+
+const { title, description, canonicalPath, updated } = Astro.props;
+---
+
+<Layout title={`${title} · Exeora`} description={description} canonicalPath={canonicalPath}>
+  <Navbar />
+
+  <main class="mx-auto max-w-3xl px-6 pt-24 pb-20">
+    <h1 class="text-headline-lg">{title}</h1>
+    <p class="text-label-md text-foreground-faint mt-3 font-mono uppercase">
+      Last updated {updated}
+    </p>
+
+    <div
+      class="text-body-lg text-foreground-muted mt-10 space-y-5 [&_a]:underline [&_h2]:text-title-lg [&_h2]:text-foreground [&_h2]:mt-12 [&_h2]:mb-3 [&_li]:ml-5 [&_li]:list-disc [&_strong]:text-foreground"
+    >
+      <slot />
+    </div>
+  </main>
+
+  <Footer />
+</Layout>

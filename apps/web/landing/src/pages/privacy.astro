@@ -1,0 +1,131 @@
+---
+import Legal from "../layouts/Legal.astro";
+
+/**
+ * The privacy notice.
+ *
+ * The interesting half is what is deliberately not collected, so that is stated
+ * as plainly as what is: no source code, no tool arguments, no tool output. A
+ * notice that only lists what is kept would be true and useless here.
+ */
+---
+
+<Legal
+  title="Privacy"
+  description="What Exeora stores, what it deliberately does not, and how to have it removed."
+  canonicalPath="/privacy/"
+  updated="6 August 2026"
+>
+  <p>
+    Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico, who is the data
+    controller for the personal data described here. For anything in this notice, write to <a
+      href="mailto:hello@exeora.dev">hello@exeora.dev</a
+    >.
+  </p>
+
+  <h2>What is never collected</h2>
+  <p>
+    This is the part that matters most, so it comes first. Your code never leaves the machine it is
+    on. The gateway relays a tool call to your machine and relays the answer back to the AI client
+    that asked; nothing in between is stored.
+  </p>
+  <ul>
+    <li><strong>No source code.</strong> Nothing read, written or searched is kept.</li>
+    <li>
+      <strong>No tool arguments.</strong> Not the file paths asked for, not the patterns searched
+      for, not the commands run.
+    </li>
+    <li><strong>No tool output.</strong> Not what a command printed, not what a file contained.</li>
+  </ul>
+
+  <h2>What is stored</h2>
+  <ul>
+    <li>
+      <strong>Your identity.</strong> When you sign in with GitHub: an account identifier, your email
+      address, your display name and your avatar URL. The identifier is what your account is keyed
+      on, so changing your email at GitHub keeps the same Exeora account.
+    </li>
+    <li>
+      <strong>Your machines.</strong> The name you gave each one, its platform, the CLI version it
+      reported, and when it was last seen. The last-seen time is what draws the online badge.
+    </li>
+    <li>
+      <strong>Your projects.</strong> The name and slug you chose, and the absolute path of the
+      directory on your machine. The path is stored so the dashboard can show you which directory a
+      project is, and is never sent to a tool: the CLI on your machine is the authority on where a
+      project lives.
+    </li>
+    <li>
+      <strong>Authorized clients.</strong> Which AI clients you approved against which project, what
+      each called itself, when it was authorized and when it was last used.
+    </li>
+    <li>
+      <strong>The activity log.</strong> One record per tool call: which tool, whether it succeeded,
+      how long it took, an error code when it failed, and which client asked. Never the arguments,
+      never the output. These records are deleted after 90 days.
+    </li>
+  </ul>
+
+  <h2>Why</h2>
+  <p>
+    All of it exists to provide the service and to let you see and control it: to know which machine
+    serves a project, to show you what an agent has been doing, and to let you cut off a machine or
+    an application when you want to. There is no advertising, no profiling and no analytics on the
+    dashboard.
+  </p>
+
+  <h2>Who else sees it</h2>
+  <p>
+    Exeora runs on Cloudflare, which processes and stores this data on its infrastructure on our
+    behalf. Signing in goes through GitHub, which tells us the identity fields listed above. The CLI
+    is distributed through npm. Nothing is sold, and nothing is shared with anyone else except where
+    the law requires it.
+  </p>
+
+  <h2>Where</h2>
+  <p>
+    The service runs on Cloudflare's global network, so data is processed in whichever region serves
+    your requests, which may be outside Mexico.
+  </p>
+
+  <h2>Your rights</h2>
+  <p>
+    You may ask for access to your personal data, and for it to be corrected, deleted or its
+    processing objected to, which are the ARCO rights under Mexico's federal data protection law for
+    data held by private parties. Two of them need no request at all:
+  </p>
+  <ul>
+    <li>
+      <strong>Access.</strong> Everything stored about you is shown in the dashboard, on the
+      machines, projects, clients and activity screens.
+    </li>
+    <li>
+      <strong>Deletion.</strong> Deleting your account from the dashboard removes all of it: your
+      identity, machines, projects, authorizations and activity records. It is immediate and cannot
+      be undone.
+    </li>
+  </ul>
+  <p>
+    For anything else, or if you would rather not use the dashboard, write to <a
+      href="mailto:hello@exeora.dev">hello@exeora.dev</a
+    >.
+  </p>
+
+  <h2>How long it is kept</h2>
+  <p>
+    Activity records are deleted after 90 days. Everything else is kept while your account exists and
+    is removed when you delete it.
+  </p>
+
+  <h2>Cookies</h2>
+  <p>
+    One signed cookie, set during sign-in, so the authorization screens know who you are while you
+    approve an application. There are no analytics or advertising cookies anywhere on this site.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    This notice may change. The date above says when it last did, and a change to what is collected
+    will be announced in the dashboard before it takes effect.
+  </p>
+</Legal>

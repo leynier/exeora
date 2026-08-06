@@ -1,13 +1,20 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
-import { ExeoraError, isToolName, type ToolName } from "@exeora/protocol";
+import {
+  ExeoraError,
+  isToolName,
+  needsApproval,
+  policyAllows,
+  type ToolName,
+} from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { api, relayName } from "./api/index.js";
+import { api, pruneToolCalls, relayName } from "./api/index.js";
 import { serveAssets } from "./assets.js";
+import { type CallerIdentity, rememberMcpClient, resolveTarget, touchClient } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
-import { createProjectMcpHandler } from "./mcp.js";
+import { createProjectMcpHandler, type DispatchResult, handshakeClientInfo } from "./mcp.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -15,6 +22,13 @@ import {
   getDashboardClientId,
 } from "./oauth/clients.js";
 import { oauthRoutes } from "./oauth/routes.js";
+import {
+  callerAddress,
+  isRateLimitedAuthPath,
+  limiterFor,
+  tooManyRequests,
+  withinLimit,
+} from "./rate-limit.js";
 
 export { DeviceRelay } from "./relay-do.js";
 
@@ -28,10 +42,26 @@ export { DeviceRelay } from "./relay-do.js";
  * removes a domain split across two Workers by path.
  */
 
-type Props = { userId: string; clientId?: string };
+type Props = { userId: string; clientId?: string; clientName?: string };
 
 /** Requests carrying a valid access token. */
 const authenticated = new Hono<{ Bindings: Env }>();
+
+/**
+ * Per-user limits, applied here rather than in the outer wrapper because this
+ * is the first point where the token has been checked and there is a user id
+ * to key on. Keying these by address instead would punish an office behind one
+ * NAT and let anyone with a second address around it.
+ */
+authenticated.use("*", async (c, next) => {
+  const { userId } = propsOf(c.executionCtx);
+  if (!userId) return next();
+
+  const limiter = limiterFor(c.env, c.req.method, c.req.path);
+  if (limiter && !(await withinLimit(limiter, userId))) return tooManyRequests();
+
+  return next();
+});
 
 authenticated.route("/", api);
 
@@ -68,9 +98,29 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
 authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
 
-  const handler = createProjectMcpHandler(projectId, async (context, tool, args) =>
-    dispatchToDevice(c.env, context.userId, projectId, tool, args, context.clientId),
+  // The request's signal, so a client that hangs up stops the work rather than
+  // leaving a command running on someone's machine for its full timeout.
+  const { signal } = c.req.raw;
+
+  const handler = createProjectMcpHandler(
+    projectId,
+    async (context, tool, args) =>
+      dispatchToDevice(c.env, {
+        userId: context.userId,
+        projectId,
+        tool,
+        args,
+        caller: context.caller,
+        approved: context.approved,
+        signal,
+      }),
+    c.env,
   );
+
+  // Cloned, not consumed: the handler needs the body intact. The clone is read
+  // only after the response is settled, so buffering the handshake never sits
+  // in front of a tool call.
+  const peek = c.req.raw.clone();
 
   // The (request, env, ctx) form, not `.fetch(request)`: the grant's props ride
   // on the ExecutionContext, and that is the only place the SDK looks for them.
@@ -78,30 +128,48 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   // project would ever resolve.
   // Cast for the same reason as propsOf: Hono's ExecutionContext type and the
   // runtime's have drifted apart, though the object is the runtime's own.
-  return handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
+  const response = await handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
+
+  const { userId, clientId } = propsOf(c.executionCtx);
+  if (userId && clientId) {
+    c.executionCtx.waitUntil(
+      handshakeClientInfo(peek)
+        .then((info) =>
+          info ? rememberMcpClient(c.env, { userId, projectId, clientId }, info) : undefined,
+        )
+        .catch(() => undefined),
+    );
+  }
+
+  return response;
 });
 
 /**
- * Resolves the project, checks it belongs to the caller, and forwards the call
- * to that project's device.
+ * Resolves the project, checks it belongs to the caller and that the caller's
+ * client has not been revoked, and forwards the call to that project's device.
  *
  * The token is already bound to this project's resource identifier by the
  * OAuth layer, so this is the second of two independent checks rather than the
- * only one.
+ * only one. The client check is a third: revoking deletes the OAuth grant, but
+ * reading `revokedAt` in the same statement that resolves the project costs
+ * nothing and closes the gap without depending on that having succeeded.
  */
 async function dispatchToDevice(
   env: Env,
-  userId: string,
-  projectId: string,
-  tool: ToolName,
-  args: unknown,
-  clientId: string | undefined,
-): Promise<unknown> {
-  const project = await db(env)
-    .select({ deviceId: schema.projects.deviceId })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
-    .get();
+  call: {
+    userId: string;
+    projectId: string;
+    tool: ToolName;
+    args: unknown;
+    caller: CallerIdentity;
+    /** Whether the user has confirmed this exact call, on a previous round. */
+    approved: boolean;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<DispatchResult> {
+  const { userId, projectId, tool, args, caller, signal } = call;
+
+  const project = await resolveTarget(env, { userId, projectId, clientId: caller.clientId });
 
   // Same answer whether the project does not exist or belongs to someone else:
   // distinguishing them would make project ids enumerable.
@@ -109,28 +177,94 @@ async function dispatchToDevice(
     throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available.");
   }
 
+  if (project.clientRevokedAt) {
+    throw new ExeoraError(
+      "FORBIDDEN",
+      "This application's access to the project was revoked. Authorize it again to restore it.",
+    );
+  }
+
+  // Checked here as well as on the machine, and both are necessary. This is
+  // the only side that holds the account's policy, and an older CLI would
+  // ignore a field it does not know and run the command regardless; the
+  // executor's own check is what covers a local `exeora.toml` and what still
+  // stands if this one is wrong.
+  const verdict = policyAllows(project.policy, tool, args);
+  if (!verdict.allowed) {
+    const error = new ExeoraError(
+      "FORBIDDEN",
+      verdict.reason ?? "This project does not allow that.",
+    );
+    await record(env, {
+      userId,
+      projectId,
+      tool,
+      caller,
+      startedAt: Date.now(),
+      status: "error",
+      errorCode: error.code,
+    });
+    throw error;
+  }
+
+  // Asked before anything is dispatched, and asked here rather than in the MCP
+  // layer because this is where the project's policy is known. The answer comes
+  // back on a second round carrying a signed state bound to these arguments.
+  if (needsApproval(project.policy, tool) && !call.approved) {
+    return { kind: "needs-approval" };
+  }
+
   const startedAt = Date.now();
+  const requestId = newId("req");
+  const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
+
+  // Registered before the call rather than after it: awaiting `callTool` first
+  // would leave the window where the client hangs up unwatched, which is
+  // precisely the window a long `run_command` spends.
+  const cancel = () => void relay.cancelTool(requestId).catch(() => undefined);
+  signal?.addEventListener("abort", cancel, { once: true });
+
   try {
-    const value = await env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).callTool({
-      requestId: newId("req"),
+    const value = await relay.callTool({
+      requestId,
       projectId,
       tool,
       args,
+      client: callerLabel(caller),
+      // Sent even though it was just enforced, because the executor narrows it
+      // with the project's own `exeora.toml` before running anything.
+      policy: project.policy,
     });
-    await record(env, { userId, projectId, tool, clientId, startedAt, status: "ok" });
-    return value;
+    await record(env, { userId, projectId, tool, caller, startedAt, status: "ok" });
+    return { kind: "value", value };
   } catch (error) {
     await record(env, {
       userId,
       projectId,
       tool,
-      clientId,
+      caller,
       startedAt,
       status: "error",
       errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
     });
     throw error;
+  } finally {
+    signal?.removeEventListener("abort", cancel);
   }
+}
+
+/**
+ * What the executor is told about the caller, so `exeora connect` can name it.
+ *
+ * Only the two display fields, never the client id: the machine's terminal is
+ * a different audience from the dashboard, and an opaque identifier there is
+ * noise rather than information.
+ */
+function callerLabel(caller: CallerIdentity): { name?: string; version?: string } | undefined {
+  const name = caller.clientName ?? caller.mcp?.name;
+  const version = caller.mcp?.version;
+  if (!name && !version) return undefined;
+  return { ...(name ? { name } : {}), ...(version ? { version } : {}) };
 }
 
 /** Audit row. Records what ran and how it ended, never arguments or output. */
@@ -140,12 +274,14 @@ async function record(
     userId: string;
     projectId: string;
     tool: string;
-    clientId: string | undefined;
+    caller: CallerIdentity;
     startedAt: number;
     status: "ok" | "error";
     errorCode?: string;
   },
 ): Promise<void> {
+  const { caller } = entry;
+
   try {
     await db(env)
       .insert(schema.toolCalls)
@@ -157,9 +293,18 @@ async function record(
         status: entry.status,
         durationMs: Date.now() - entry.startedAt,
         errorCode: entry.errorCode ?? null,
-        clientId: entry.clientId ?? null,
+        clientId: caller.clientId ?? null,
+        clientName: caller.clientName ?? caller.mcp?.name ?? null,
       })
       .run();
+
+    if (caller.clientId) {
+      await touchClient(
+        env,
+        { userId: entry.userId, projectId: entry.projectId, clientId: caller.clientId },
+        caller.mcp,
+      );
+    }
   } catch {
     // Auditing must never be the reason a tool call fails.
   }
@@ -209,7 +354,7 @@ site.all("*", (c) => serveAssets(c.req.raw, c.env));
 
 export { isToolName };
 
-export default new OAuthProvider({
+const provider = new OAuthProvider({
   apiRoute: ["/p/", "/api/"],
   apiHandler: authenticated,
   defaultHandler: site,
@@ -234,3 +379,34 @@ export default new OAuthProvider({
     scopes_supported: ["tools:read", "tools:execute"],
   },
 });
+
+/**
+ * The provider wrapped rather than exported directly.
+ *
+ * `/oauth/token` and `/oauth/register` are answered by the provider itself,
+ * before either `apiHandler` or `defaultHandler` runs, so a Hono middleware
+ * never sees them and this is the only layer that can turn an unauthenticated
+ * caller away. Everything else the provider does is untouched: this hands the
+ * request straight on.
+ */
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (isRateLimitedAuthPath(new URL(request.url).pathname)) {
+      if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) return tooManyRequests();
+    }
+
+    return provider.fetch(request, env, ctx);
+  },
+
+  /**
+   * Nightly housekeeping. Neither half belongs to a request: the audit log is
+   * written by tool calls that have long since answered, and expired grants are
+   * only noticed by whoever tries to use one.
+   *
+   * The two are independent, so a failure in one must not skip the other.
+   */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(pruneToolCalls(env));
+    ctx.waitUntil(provider.purgeExpiredData(env).then(() => undefined));
+  },
+} satisfies ExportedHandler<Env>;

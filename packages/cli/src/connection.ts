@@ -5,10 +5,13 @@ import {
   HEARTBEAT_INTERVAL_MS,
   isToolName,
   PROTOCOL_VERSION,
+  policyAllows,
+  type ToolCallMessage,
   type WireError,
 } from "@exeora/protocol";
 import { accessToken } from "./auth/tokens.js";
 import { config, findProject, gatewayUrl, projects } from "./config.js";
+import { effectivePolicy } from "./policy.js";
 import { executeTool } from "./tools/index.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -25,7 +28,8 @@ import { CLI_VERSION } from "./version.js";
 export interface ConnectionEvents {
   onOpen?: () => void;
   onClose?: (reason: string) => void;
-  onCall?: (tool: string, projectSlug: string) => void;
+  /** `client` is the AI client that asked, when the gateway could name one. */
+  onCall?: (tool: string, projectSlug: string, client?: string) => void;
   onResult?: (tool: string, ok: boolean, durationMs: number) => void;
   onError?: (message: string) => void;
 }
@@ -43,6 +47,15 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
   let stopped = false;
   let resolveClosed: () => void;
 
+  /**
+   * Calls currently running, so `cancel` has something to act on.
+   *
+   * Keyed by request id and cleared as each call answers. It lives out here
+   * rather than inside `handleMessage` because the cancellation arrives as a
+   * separate frame, in a separate invocation, from the call it refers to.
+   */
+  const inFlight = new Map<string, AbortController>();
+
   const closed = new Promise<void>((resolve) => {
     resolveClosed = resolve;
   });
@@ -51,6 +64,12 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = null;
     socket = null;
+
+    // The relay already failed every pending call the moment the socket closed,
+    // so there is nobody left to hand a result to. Letting the commands run on
+    // would be the "it landed anyway" hazard, one reconnect later.
+    for (const controller of inFlight.values()) controller.abort();
+    inFlight.clear();
   };
 
   const scheduleRetry = (reason: string) => {
@@ -112,7 +131,7 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
     });
 
     next.addEventListener("message", (event) => {
-      void handleMessage(next, String(event.data), events);
+      void handleMessage(next, String(event.data), events, inFlight);
     });
 
     next.addEventListener("close", (event) => {
@@ -152,6 +171,7 @@ async function handleMessage(
   socket: WebSocket,
   raw: string,
   events: ConnectionEvents,
+  inFlight: Map<string, AbortController>,
 ): Promise<void> {
   const message = decodeRelayMessage(raw);
   if (!message) return;
@@ -164,14 +184,17 @@ async function handleMessage(
       events.onError?.(message.reason);
       return;
 
-    case "cancel":
-      // Cancellation is not implemented yet; the call will finish and its
-      // result be discarded by the relay.
+    case "cancel": {
+      // Unknown ids are normal rather than an error: the relay cancels on its
+      // own deadline too, and by then the call has often already answered.
+      inFlight.get(message.requestId)?.abort();
       return;
+    }
 
     case "tool.call": {
       const startedAt = Date.now();
       const send = (result: { ok: true; value: unknown } | { ok: false; error: WireError }) => {
+        inFlight.delete(message.requestId);
         if (socket.readyState !== socket.OPEN) return;
         socket.send(
           encodeMessage({
@@ -212,10 +235,35 @@ async function handleMessage(
         return;
       }
 
-      events.onCall?.(message.tool, project.slug);
+      events.onCall?.(message.tool, project.slug, describeClient(message.client));
+
+      // The account's policy, narrowed by the project's own exeora.toml. The
+      // gateway has already applied its half; this is the half that knows about
+      // the file, and the one that still stands if the gateway is wrong.
+      const { policy, problem } = await effectivePolicy(project.root, message.policy);
+      if (problem) events.onError?.(problem);
+
+      const verdict = policyAllows(policy, message.tool, message.arguments);
+      if (!verdict.allowed) {
+        send({
+          ok: false,
+          error: {
+            code: "FORBIDDEN",
+            message: verdict.reason ?? "This project does not allow that.",
+          },
+        });
+        return;
+      }
+
+      const controller = new AbortController();
+      inFlight.set(message.requestId, controller);
 
       try {
-        const value = await executeTool({ root: project.root }, message.tool, message.arguments);
+        const value = await executeTool(
+          { root: project.root, signal: controller.signal },
+          message.tool,
+          message.arguments,
+        );
         send({ ok: true, value });
       } catch (error) {
         send({ ok: false, error: toWireError(error) });
@@ -223,6 +271,18 @@ async function handleMessage(
       return;
     }
   }
+}
+
+/**
+ * The AI client as one readable string, or nothing.
+ *
+ * A gateway that predates this field, or a client that registered no name and
+ * announces nothing over MCP, both land on undefined; the line is printed
+ * without it rather than with a placeholder.
+ */
+function describeClient(client: ToolCallMessage["client"]): string | undefined {
+  if (!client?.name) return client?.version;
+  return client.version ? `${client.name} ${client.version}` : client.name;
 }
 
 function toWireError(error: unknown): WireError {

@@ -3,14 +3,13 @@ import { hostname } from "node:os";
 import { basename, resolve } from "node:path";
 import * as p from "@clack/prompts";
 import { Command } from "commander";
-import { gateway } from "./api.js";
+import { gateway, type ToolCallView } from "./api.js";
 import { login } from "./auth/login.js";
 import { clearCredentials, usingFileFallback } from "./auth/store.js";
 import { cacheAccessToken, forgetAccessToken, NotSignedInError } from "./auth/tokens.js";
 import {
   config,
   configPath,
-  findProject,
   gatewayUrl,
   projects,
   removeProject,
@@ -220,7 +219,8 @@ program
           onOpen: () => p.log.success("Connected. Waiting for tool calls."),
           onClose: (reason) => p.log.warn(reason),
           onError: (message) => p.log.error(message),
-          onCall: (tool, slug) => p.log.message(`→ ${tool} (${slug})`),
+          onCall: (tool, slug, client) =>
+            p.log.message(`→ ${tool} (${slug})${client ? ` · ${client}` : ""}`),
           onResult: (tool, ok, ms) => p.log.message(`${ok ? "✓" : "✗"} ${tool} ${ms}ms`),
         });
 
@@ -256,13 +256,69 @@ program
         return;
       }
 
+      const remote = new Set((await gateway.listProjects()).map((project) => project.id));
+
       const local = projects();
       p.log.message(`Projects  ${local.length === 0 ? "none" : ""}`);
       for (const entry of local) {
-        const known = findProject(entry.id) ? "" : " (unknown to the gateway)";
+        const known = remote.has(entry.id) ? "" : " (unknown to the gateway)";
         p.log.message(`  ${pad(entry.slug, 18)} ${entry.root}${known}`);
       }
     }),
+  );
+
+program
+  .command("logs")
+  .description("Show recent tool calls: what ran, who asked and how it ended")
+  .option("-n, --limit <count>", "How many calls to show", "30")
+  .option("-p, --project <slug>", "Only calls against this project")
+  .option("-c, --client <name>", "Only calls from clients whose name contains this")
+  .option("--failed", "Only calls that ended in an error")
+  .action(
+    guard(
+      async (options: { limit: string; project?: string; client?: string; failed?: boolean }) => {
+        const limit = Number.parseInt(options.limit, 10);
+        if (!Number.isInteger(limit) || limit < 1) {
+          throw new Error("--limit takes a positive whole number.");
+        }
+
+        // Filtering happens here rather than on the server, which returns the
+        // newest rows for the whole account: a narrow filter over a wide window
+        // is the useful direction, and it is one request either way.
+        const [calls, remote] = await Promise.all([
+          gateway.listToolCalls(limit),
+          gateway.listProjects(),
+        ]);
+
+        const byId = new Map(remote.map((project) => [project.id, project]));
+        const wanted = options.project?.toLowerCase();
+        const client = options.client?.toLowerCase();
+
+        const rows = calls.filter((call) => {
+          if (options.failed && call.status !== "error") return false;
+          if (wanted && byId.get(call.projectId)?.slug.toLowerCase() !== wanted) return false;
+          if (client && !nameOf(call).toLowerCase().includes(client)) return false;
+          return true;
+        });
+
+        if (rows.length === 0) {
+          p.log.info(
+            calls.length === 0
+              ? "No tool calls yet. They appear here as soon as an agent makes one."
+              : "Nothing matches those filters.",
+          );
+          return;
+        }
+
+        for (const call of rows.reverse()) {
+          const slug = byId.get(call.projectId)?.slug ?? "removed";
+          const failure = call.errorCode ? ` ${call.errorCode}` : "";
+          p.log.message(
+            `${call.status === "ok" ? "✓" : "✗"} ${pad(call.tool, 12)} ${pad(slug, 16)} ${pad(nameOf(call), 20)} ${pad(`${call.durationMs}ms`, 8)} ${ago(call.createdAt)}${failure}`,
+          );
+        }
+      },
+    ),
   );
 
 program
@@ -337,6 +393,25 @@ function online(lastSeenAt: number | null): boolean {
 
 function pad(value: string, width: number): string {
   return value.length >= width ? value : value + " ".repeat(width - value.length);
+}
+
+/**
+ * The AI client behind a call.
+ *
+ * The registered name is preferred over the raw client id, which is opaque and
+ * says nothing to a reader. Calls recorded before a client was ever nameable
+ * fall through to "unknown" rather than showing that id.
+ */
+function nameOf(call: ToolCallView): string {
+  return call.clientName ?? (call.clientId ? "unknown" : "—");
+}
+
+function ago(at: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86_400)}d ago`;
 }
 
 program.parseAsync(process.argv);

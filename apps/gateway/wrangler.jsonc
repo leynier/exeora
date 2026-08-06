@@ -9,6 +9,11 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
 
+  // Nightly housekeeping: prunes the audit log past its retention window and
+  // lets the OAuth provider drop grants and tokens that have expired. Neither
+  // has anything to do with a request, and both grow without bound otherwise.
+  "triggers": { "crons": ["17 4 * * *"] },
+
   "durable_objects": {
     "bindings": [{ "name": "DEVICE_RELAY", "class_name": "DeviceRelay" }]
   },
@@ -29,6 +34,29 @@
   ],
 
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "9eaeb4270e5d4ef996018912075d97bc" }],
+
+  // Rate limiting. Three namespaces because the three surfaces have nothing in
+  // common: signing in is rare, registering a machine is rarer, and an agent
+  // working through a repository makes hundreds of tool calls a minute.
+  //
+  // This is a blunt instrument on purpose, and worth being clear about what it
+  // is not. The counters are per data centre rather than global, and `period`
+  // accepts only 10 or 60 seconds. It stops someone hammering an endpoint; it
+  // is not a quota, and nothing here is billing.
+  //
+  // The namespace ids are arbitrary and only have to stay distinct from each
+  // other. They are not secrets and not resources to create anywhere.
+  "ratelimits": [
+    // Unauthenticated, so keyed by IP: token exchange and dynamic client
+    // registration, which is the pair anyone can reach without a token.
+    { "name": "RL_AUTH", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+    // Keyed by user: registering machines and projects. A person does this a
+    // handful of times ever, so anything near this ceiling is a loop.
+    { "name": "RL_WRITE", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
+    // Keyed by user: tool calls. Deliberately generous, because a coding agent
+    // reading its way through a repository is meant to be fast.
+    { "name": "RL_MCP", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }
+  ],
 
   // The OAuth screens are the one place this Worker renders HTML, and they
   // inline their CSS: a sign-in page cannot afford a blocking stylesheet

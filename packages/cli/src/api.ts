@@ -28,6 +28,19 @@ export interface UserView {
   name: string | null;
 }
 
+/** One row of the audit log. Never carries a tool's arguments or its output. */
+export interface ToolCallView {
+  id: string;
+  projectId: string;
+  tool: string;
+  status: "ok" | "error";
+  durationMs: number;
+  errorCode: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  createdAt: number;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   const response = await fetch(new URL(path, gatewayUrl()), {
@@ -70,4 +83,7 @@ export const gateway = {
     }),
 
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  /** Newest first. The gateway caps the limit at 200 whatever is asked for. */
+  listToolCalls: (limit: number) => request<ToolCallView[]>(`/api/tool-calls?limit=${limit}`),
 };

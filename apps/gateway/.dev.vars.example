@@ -8,6 +8,12 @@ GITHUB_CLIENT_SECRET=
 # Any long random string: openssl rand -hex 32
 COOKIE_SECRET=
 
+# Signs the approval that travels through an AI client and comes back, so a
+# client cannot mint its own. Separate from COOKIE_SECRET on purpose: they
+# protect different things for different audiences. At least 32 bytes.
+# openssl rand -hex 32
+REQUEST_STATE_SECRET=
+
 # Overrides the wrangler.jsonc var during local development, so the GitHub
 # callback points at localhost instead of the production route.
 EXEORA_BASE_URL=http://localhost:8787

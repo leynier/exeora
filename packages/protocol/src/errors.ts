@@ -10,6 +10,12 @@ export const ERROR_CODES = [
   "LOCAL_EXECUTOR_OFFLINE",
   /** The executor did not answer within the relay deadline. */
   "TOOL_TIMEOUT",
+  /**
+   * The call was cancelled before it finished: the caller went away, or the
+   * relay gave up waiting. The executor kills the process tree and answers with
+   * this rather than letting the work run on unobserved.
+   */
+  "CANCELLED",
   /** The resolved path escaped the project root. */
   "PATH_ESCAPE",
   /** The path exists but is not the expected kind (file vs directory). */

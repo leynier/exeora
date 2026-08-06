@@ -45,7 +45,36 @@ One Worker owns the whole hostname. The site was briefly a Worker of its own, un
 
 Every path is resolved and confined to the project root before anything touches the disk. See `packages/cli/src/paths.ts`, whose tests are its specification.
 
-**Commands are not filtered in this release, and there is no approval step.** An agent connected to a project can run anything inside that directory on whichever machine is serving it. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
+A project can be set to confirm every change before it runs, but only clients speaking MCP 2026-07-28 can be asked; see below. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
+
+## What a project allows
+
+A new project allows everything, which is what every project did before the setting existed. From the dashboard it can be set to `read_only`, which refuses every tool that changes anything, or to `allow_list`, which names the programs `run_command` may invoke.
+
+**The allow list refuses shell syntax by default, and that is the whole reason it is worth anything.** Commands run through a shell, so `npm test; rm -rf ~` is one command whose first word is `npm`: a list compared against the first word and nothing else would let it through. Under `allow_list` anything carrying a shell metacharacter is refused outright unless the project sets `shell = true`, which turns the list back into a suggestion and says so in the dashboard.
+
+The policy is checked twice, on purpose. The gateway checks it because it is the only side holding the account's setting, and because an older CLI would ignore a field it does not know. The executor checks it because it is the authority on the machine, and the only side that can read a project's own file. Both run the same functions from `packages/protocol/src/policy.ts`, whose tests are its specification.
+
+### `exeora.toml`
+
+A project may carry one in its root. It can only narrow what the account allows, never widen it, so whoever controls a machine can restrict an agent further and cannot grant themselves anything.
+
+```toml
+mode = "allow_list"      # allow_all | allow_list | read_only
+allow = ["npm", "git"]
+shell = false
+approve = true
+```
+
+Every key is optional, and leaving one out means the file has no opinion about it rather than asking for the strictest value. A file that cannot be parsed is reported on the terminal and ignored: refusing every call over a typo would stop a project dead, and ignoring it silently would remove a restriction someone believed they had.
+
+## Confirming a call before it runs
+
+`approve` asks the person before anything that edits, writes or runs, naming the file or quoting the command. Reads are never interrupted: a prompt nobody can decline is one people learn to click through.
+
+**It only reaches clients speaking MCP 2026-07-28**, which is what carries the mechanism. On the 2025 protocol, which claude.ai and ChatGPT still speak today, a call that would need confirming is refused rather than run unconfirmed, since the alternative makes the setting decorative for exactly the clients most people use.
+
+The endpoint is stateless, so the two halves of an approved call are joined by the `requestState` string MCP 2026-07-28 round-trips through the client. That string comes back as attacker-controlled input and the SDK verifies nothing by default, so it is HMAC signed with `REQUEST_STATE_SECRET` through the SDK's own `createRequestStateCodec`, bound to the calling client, and **carries a hash of the arguments**. Without that last part a client could have `ls` confirmed and retry with `rm -rf ~` under the same approval: the signature would verify and the tool would match. See `apps/gateway/src/approval.ts`.
 
 ## Install
 
@@ -80,7 +109,7 @@ An OAuth App admits a single callback URL, so development and production need se
 
 1. Go to <https://github.com/settings/developers> and choose **New OAuth App**.
 2. Set the homepage to `http://localhost:8787` and the callback to `http://localhost:8787/oauth/callback/github`.
-3. Copy `apps/gateway/.dev.vars.example` to `.dev.vars` and fill in the client id and secret, plus `COOKIE_SECRET` (`openssl rand -hex 32`).
+3. Copy `apps/gateway/.dev.vars.example` to `.dev.vars` and fill in the client id and secret, plus `COOKIE_SECRET` and `REQUEST_STATE_SECRET` (`openssl rand -hex 32` each).
 
 Adding Google later is one new file implementing `UpstreamProvider`, one entry in `apps/gateway/src/oauth/providers/index.ts`, and two secrets. No migration is needed: the `provider` column is plain TEXT and the Drizzle enum is a compile-time constraint only.
 
@@ -158,6 +187,7 @@ The hostname also needs a proxied DNS record, or Cloudflare never routes it to t
 | `GH_OAUTH_CLIENT_ID` | client id from step 2 |
 | `GH_OAUTH_CLIENT_SECRET` | client secret from step 2 |
 | `COOKIE_SECRET` | `openssl rand -hex 32`, different from development |
+| `REQUEST_STATE_SECRET` | `openssl rand -hex 32`, different again: it signs the approvals that travel through an AI client |
 
 The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` the Worker actually reads.
 
@@ -167,6 +197,7 @@ The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets
 bun run secret GITHUB_CLIENT_ID
 bun run secret GITHUB_CLIENT_SECRET
 bun run secret COOKIE_SECRET
+bun run secret REQUEST_STATE_SECRET
 
 bun run db:migrate
 bun run deploy      # builds the site, then deploys the Worker
@@ -198,14 +229,16 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 **Nothing is queued.** With no executor connected, a call fails at once with `LOCAL_EXECUTOR_OFFLINE`, and every `tool.call` carries an absolute deadline the executor re-checks on arrival. A command landing hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept.
 
+**A call nobody is waiting for is stopped, not left running.** When the MCP client hangs up, the relay's own deadline expires, or the executor's socket drops, the CLI kills the command's whole process group. The alternative is a `run_command` that keeps working for its full five minutes with no one left to read the answer, which is the same hazard as a call that lands late, arriving from the other end.
+
 **Projects are isolated at the token.** `resourceMetadata.resource` is left unset so the OAuth provider serves RFC 9728 metadata per path: `/p/a/mcp` and `/p/b/mcp` are distinct resources, and a token minted for one is not accepted at the other. Ownership is checked against D1 as well, so there are two independent checks rather than one.
 
 **Hibernation, not `accept()`.** The relay accepts the CLI's socket through the WebSocket Hibernation API. `accept()` bills duration for the whole time a connection is open, which for a machine connected all day is the whole day.
 
-**The audit log records what ran and how it ended, never arguments or output.**
+**The audit log records what ran and how it ended, never arguments or output.** It is kept for 90 days and pruned by a nightly cron, which also lets the OAuth provider drop expired grants. Nothing else bounds that table: one row per tool call, and an agent reading its way through a repository writes hundreds a minute.
 
 **`packages/cli/src/tools/vendor/` is copied, not imported.** The edit matching and the truncation come from pi-coding-agent, which is MIT and better at both than a first attempt would be. Depending on it cost 172 MB of the 189 MB an install weighed, because its published tools are built for a terminal and pulled in a syntax highlighter, a wasm image resizer and an agent runtime to render output Exeora throws away. Taking the two pure modules brought the install to 18 MB. The origin and its license are recorded in `packages/cli/LICENSE`.
 
 ## Not in this release
 
-No billing or plans. No command allowlist and no approval prompts: MCP 2026-07-28's `inputRequired` is the standard mechanism for remote approvals and is already available in the SDK, so that is the natural next step. No long-running processes, since `run_command` is bounded and `start_command`/`get_command_output` need a different, asynchronous shape in the relay. Identity is GitHub only.
+No billing or plans: nothing is metered and nothing is charged, and the rate limiting in `wrangler.jsonc` stops a caller hammering the gateway rather than enforcing a quota. Approval works, but only on clients speaking MCP 2026-07-28, which today is neither claude.ai nor ChatGPT. No long-running processes, since `run_command` is bounded and `start_command`/`get_command_output` need a different, asynchronous shape in the relay. Identity is GitHub only. Deploys go straight to production; there is no staging environment.

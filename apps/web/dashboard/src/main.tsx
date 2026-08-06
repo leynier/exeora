@@ -7,6 +7,7 @@ import { ToastProvider } from "./components/toast.js";
 import { AppShell } from "./layouts/AppShell.js";
 import { Activity } from "./pages/Activity.js";
 import { Callback } from "./pages/Callback.js";
+import { Clients } from "./pages/Clients.js";
 import { Machines } from "./pages/Machines.js";
 import { Overview } from "./pages/Overview.js";
 import { ProjectDetail } from "./pages/ProjectDetail.js";
@@ -75,6 +76,7 @@ createRoot(root).render(
               <Route path="machines" element={<Machines />} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:projectId" element={<ProjectDetail />} />
+              <Route path="clients" element={<Clients />} />
               <Route path="activity" element={<Activity />} />
             </Route>
 

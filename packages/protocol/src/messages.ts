@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ERROR_CODES } from "./errors.js";
+import { CommandPolicy } from "./policy.js";
 import { TOOL_NAMES } from "./tools.js";
 
 /**
@@ -77,6 +78,32 @@ export const ToolCallMessage = z.object({
   projectId: z.string(),
   tool: z.enum(TOOL_NAMES),
   arguments: z.unknown(),
+  /**
+   * Which AI client asked, for the line `exeora connect` prints. Optional in
+   * both directions on purpose, so it needed no version bump: an older CLI
+   * strips the key it does not know, and a newer one tolerates a gateway that
+   * does not send it. It is also genuinely absent sometimes, because not every
+   * client registers a name or announces itself over MCP.
+   */
+  client: z
+    .object({
+      name: z.string().optional(),
+      version: z.string().optional(),
+    })
+    .optional(),
+  /**
+   * What this project allows, as the account holds it.
+   *
+   * Sent per call rather than once at `hello`, so changing a project's policy
+   * in the dashboard takes effect on the next call instead of on the next
+   * reconnect. Optional for the same reason `client` is: an older CLI drops the
+   * key, and the gateway has already applied the policy itself before sending,
+   * which is why an older CLI is not a hole.
+   *
+   * The executor narrows this with the project's own `exeora.toml`, if it has
+   * one, and never widens it.
+   */
+  policy: CommandPolicy.optional(),
   issuedAt: z.number().int(),
   /**
    * Absolute deadline. The executor must not start work after this instant;
