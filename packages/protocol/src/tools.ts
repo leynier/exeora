@@ -28,7 +28,7 @@ const relativePath = z
 // read_file
 // ---------------------------------------------------------------------------
 
-export const readFileInput = {
+export const ReadFileInput = z.object({
   path: relativePath,
   offset: z
     .number()
@@ -42,7 +42,7 @@ export const readFileInput = {
     .min(1)
     .optional()
     .describe("Maximum number of lines to return. Omit to read to the end."),
-} as const;
+});
 
 export const ReadFileOutput = z.object({
   path: z.string(),
@@ -56,11 +56,11 @@ export const ReadFileOutput = z.object({
 // list_files
 // ---------------------------------------------------------------------------
 
-export const listFilesInput = {
+export const ListFilesInput = z.object({
   path: relativePath.optional().describe("Directory to list. Defaults to the project root."),
   recursive: z.boolean().optional().describe("Walk subdirectories. Defaults to false."),
   glob: z.string().optional().describe("Only return entries matching this glob, e.g. '**/*.ts'."),
-} as const;
+});
 
 export const ListFilesOutput = z.object({
   path: z.string(),
@@ -79,7 +79,7 @@ export const ListFilesOutput = z.object({
 // grep
 // ---------------------------------------------------------------------------
 
-export const grepInput = {
+export const GrepInput = z.object({
   pattern: z.string().min(1).describe("Regular expression to search for."),
   path: relativePath.optional().describe("Directory to search. Defaults to the project root."),
   glob: z.string().optional().describe("Restrict the search to files matching this glob."),
@@ -91,7 +91,7 @@ export const grepInput = {
     .max(MAX_GREP_MATCHES)
     .optional()
     .describe(`Maximum matches to return (max ${MAX_GREP_MATCHES}).`),
-} as const;
+});
 
 export const GrepOutput = z.object({
   matches: z.array(
@@ -109,7 +109,7 @@ export const GrepOutput = z.object({
 // edit_file
 // ---------------------------------------------------------------------------
 
-export const editFileInput = {
+export const EditFileInput = z.object({
   path: relativePath,
   oldString: z
     .string()
@@ -122,7 +122,7 @@ export const editFileInput = {
     .describe(
       "Replace every occurrence. When false (the default) the edit fails if oldString is ambiguous.",
     ),
-} as const;
+});
 
 export const EditFileOutput = z.object({
   path: z.string(),
@@ -135,10 +135,10 @@ export const EditFileOutput = z.object({
 // write_file
 // ---------------------------------------------------------------------------
 
-export const writeFileInput = {
+export const WriteFileInput = z.object({
   path: relativePath,
   content: z.string().describe("Full contents to write. Overwrites any existing file."),
-} as const;
+});
 
 export const WriteFileOutput = z.object({
   path: z.string(),
@@ -151,7 +151,7 @@ export const WriteFileOutput = z.object({
 // run_command
 // ---------------------------------------------------------------------------
 
-export const runCommandInput = {
+export const RunCommandInput = z.object({
   command: z.string().min(1).describe("Shell command to run inside the project."),
   cwd: relativePath
     .optional()
@@ -165,7 +165,7 @@ export const runCommandInput = {
     .describe(
       `Wall-clock budget in milliseconds (default ${DEFAULT_COMMAND_TIMEOUT_MS}, max ${MAX_COMMAND_TIMEOUT_MS}).`,
     ),
-} as const;
+});
 
 export const RunCommandOutput = z.object({
   command: z.string(),
@@ -187,21 +187,21 @@ export const TOOL_DEFINITIONS = {
     title: "Read file",
     description:
       "Read a text file from the project. Returns the whole file unless offset/limit are given.",
-    inputShape: readFileInput,
+    inputSchema: ReadFileInput,
     outputSchema: ReadFileOutput,
     readOnly: true,
   },
   list_files: {
     title: "List files",
     description: `List directory entries in the project, honouring .gitignore. Returns at most ${MAX_LIST_ENTRIES} entries.`,
-    inputShape: listFilesInput,
+    inputSchema: ListFilesInput,
     outputSchema: ListFilesOutput,
     readOnly: true,
   },
   grep: {
     title: "Search file contents",
     description: `Search file contents with a regular expression, honouring .gitignore. Returns at most ${MAX_GREP_MATCHES} matches.`,
-    inputShape: grepInput,
+    inputSchema: GrepInput,
     outputSchema: GrepOutput,
     readOnly: true,
   },
@@ -209,7 +209,7 @@ export const TOOL_DEFINITIONS = {
     title: "Edit file",
     description:
       "Replace an exact string in a file. Fails if the string is missing or ambiguous unless replaceAll is set.",
-    inputShape: editFileInput,
+    inputSchema: EditFileInput,
     outputSchema: EditFileOutput,
     readOnly: false,
   },
@@ -217,7 +217,7 @@ export const TOOL_DEFINITIONS = {
     title: "Write file",
     description:
       "Write a file, creating it or overwriting it entirely. Prefer edit_file for changes to existing files.",
-    inputShape: writeFileInput,
+    inputSchema: WriteFileInput,
     outputSchema: WriteFileOutput,
     readOnly: false,
   },
@@ -225,7 +225,7 @@ export const TOOL_DEFINITIONS = {
     title: "Run command",
     description:
       "Run a shell command inside the project and return its output. Runs on the user's machine.",
-    inputShape: runCommandInput,
+    inputSchema: RunCommandInput,
     outputSchema: RunCommandOutput,
     readOnly: false,
   },
@@ -239,10 +239,17 @@ export function isToolName(value: unknown): value is ToolName {
   return typeof value === "string" && value in TOOL_DEFINITIONS;
 }
 
-/** Zod object built from a tool's input shape, for validating on the executor. */
+/**
+ * The schema a tool's arguments must satisfy.
+ *
+ * The gateway hands this straight to `registerTool({ inputSchema })` — MCP v2
+ * accepts any Standard Schema object — and the executor runs the very same
+ * schema over the arguments that arrive off the wire. One definition, checked
+ * on both sides of the relay.
+ */
 export function toolInputSchema<N extends ToolName>(name: N) {
-  return z.object(TOOL_DEFINITIONS[name].inputShape);
+  return TOOL_DEFINITIONS[name].inputSchema;
 }
 
-export type ToolInput<N extends ToolName> = z.infer<ReturnType<typeof toolInputSchema<N>>>;
+export type ToolInput<N extends ToolName> = z.infer<(typeof TOOL_DEFINITIONS)[N]["inputSchema"]>;
 export type ToolOutput<N extends ToolName> = z.infer<(typeof TOOL_DEFINITIONS)[N]["outputSchema"]>;
