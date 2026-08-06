@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { relativeTime } from "../api.js";
+import { Select } from "../components/Select.js";
 import {
   Badge,
   Card,
@@ -11,6 +12,13 @@ import {
 } from "../components/ui.js";
 import { formatDuration } from "../format.js";
 import { useProjects, useToolCalls } from "../queries.js";
+
+/** The only filter whose choices are known ahead of the data. */
+const statusOptions = [
+  { value: "all", label: "Any outcome" },
+  { value: "ok", label: "Succeeded" },
+  { value: "error", label: "Failed" },
+];
 
 /**
  * The audit log.
@@ -33,10 +41,21 @@ export function Activity() {
 
   const rows = useMemo(() => calls.data ?? [], [calls.data]);
 
-  const clients = useMemo(
-    () => [...new Set(rows.map((call) => call.clientId).filter((id) => id !== null))],
-    [rows],
+  const projectOptions = useMemo(
+    () => [
+      { value: "all", label: "All projects" },
+      ...(projects.data ?? []).map((candidate) => ({
+        value: candidate.id,
+        label: candidate.name,
+      })),
+    ],
+    [projects.data],
   );
+
+  const clientOptions = useMemo(() => {
+    const ids = [...new Set(rows.map((call) => call.clientId).filter((id) => id !== null))];
+    return [{ value: "all", label: "Any client" }, ...ids.map((id) => ({ value: id, label: id }))];
+  }, [rows]);
 
   const filtered = rows.filter(
     (call) =>
@@ -47,9 +66,6 @@ export function Activity() {
 
   const nameFor = (projectId: string) =>
     projects.data?.find((candidate) => candidate.id === projectId)?.name ?? "removed project";
-
-  const select =
-    "border-border bg-surface text-body-md text-foreground-muted rounded-lg border px-2.5 py-1.5";
 
   return (
     <>
@@ -62,51 +78,27 @@ export function Activity() {
         title={`${filtered.length} of ${rows.length} calls`}
         action={
           <div className="flex flex-wrap gap-2">
-            <label>
-              <span className="sr-only">Filter by project</span>
-              <select
-                className={select}
-                value={project}
-                onChange={(event) => setProject(event.target.value)}
-              >
-                <option value="all">All projects</option>
-                {projects.data?.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {candidate.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Select
+              label="Filter by project"
+              value={project}
+              options={projectOptions}
+              onChange={setProject}
+            />
 
-            <label>
-              <span className="sr-only">Filter by outcome</span>
-              <select
-                className={select}
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                <option value="all">Any outcome</option>
-                <option value="ok">Succeeded</option>
-                <option value="error">Failed</option>
-              </select>
-            </label>
+            <Select
+              label="Filter by outcome"
+              value={status}
+              options={statusOptions}
+              onChange={setStatus}
+            />
 
-            {clients.length > 1 && (
-              <label>
-                <span className="sr-only">Filter by client</span>
-                <select
-                  className={select}
-                  value={client}
-                  onChange={(event) => setClient(event.target.value)}
-                >
-                  <option value="all">Any client</option>
-                  {clients.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {clientOptions.length > 2 && (
+              <Select
+                label="Filter by client"
+                value={client}
+                options={clientOptions}
+                onChange={setClient}
+              />
             )}
           </div>
         }

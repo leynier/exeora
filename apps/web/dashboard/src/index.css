@@ -56,6 +56,32 @@
   .btn-danger {
     @apply border-error/40 text-error hover:bg-error/10 hover:text-error;
   }
+
+  /* A menu in the top layer appears and disappears with `display`, which is
+     not an animatable property. `allow-discrete` lets it hold the old value
+     until the transition ends, and `@starting-style` supplies the frame the
+     element never has otherwise: the one from before it existed. */
+  .popover-panel {
+    opacity: 0;
+    transform: translateY(-4px);
+    transition:
+      opacity var(--transition-duration-fast) ease,
+      transform var(--transition-duration-fast) ease,
+      overlay var(--transition-duration-fast) allow-discrete,
+      display var(--transition-duration-fast) allow-discrete;
+  }
+
+  .popover-panel:popover-open {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @starting-style {
+    .popover-panel:popover-open {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
 }
 
 @utility skeleton {
