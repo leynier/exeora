@@ -1,9 +1,11 @@
 import { z } from "zod";
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
+  MAX_COMMAND_OUTPUT_BYTES,
   MAX_COMMAND_TIMEOUT_MS,
   MAX_GREP_MATCHES,
   MAX_LIST_ENTRIES,
+  MAX_READ_BYTES,
 } from "./limits.js";
 
 /**
@@ -114,14 +116,10 @@ export const EditFileInput = z.object({
   oldString: z
     .string()
     .min(1)
-    .describe("Exact text to replace. Must match the file byte for byte."),
-  newString: z.string().describe("Replacement text."),
-  replaceAll: z
-    .boolean()
-    .optional()
     .describe(
-      "Replace every occurrence. When false (the default) the edit fails if oldString is ambiguous.",
+      "Exact text to replace. Must match the file byte for byte and must appear exactly once — include surrounding lines to make it unique.",
     ),
+  newString: z.string().describe("Replacement text."),
 });
 
 export const EditFileOutput = z.object({
@@ -186,21 +184,30 @@ export const TOOL_DEFINITIONS = {
   read_file: {
     title: "Read file",
     description:
-      "Read a text file from the project. Returns the whole file unless offset/limit are given.",
+      "Read the contents of a text file in the project. Output is truncated at " +
+      `${Math.round(MAX_READ_BYTES / 1000)}KB. Use offset/limit for large files; when you need the whole ` +
+      "file, continue with offset until complete.",
     inputSchema: ReadFileInput,
     outputSchema: ReadFileOutput,
     readOnly: true,
   },
   list_files: {
     title: "List files",
-    description: `List directory entries in the project, honouring .gitignore. Returns at most ${MAX_LIST_ENTRIES} entries.`,
+    description:
+      "List directory contents in the project. Lists one level by default; set recursive to walk " +
+      "subdirectories, and glob to filter (for example '**/*.ts'). Includes dotfiles. Recursive " +
+      "listings respect .gitignore and always skip .git and node_modules. Output is truncated to " +
+      `${MAX_LIST_ENTRIES} entries.`,
     inputSchema: ListFilesInput,
     outputSchema: ListFilesOutput,
     readOnly: true,
   },
   grep: {
     title: "Search file contents",
-    description: `Search file contents with a regular expression, honouring .gitignore. Returns at most ${MAX_GREP_MATCHES} matches.`,
+    description:
+      "Search file contents for a regular expression. Returns matching lines with file paths and " +
+      "1-based line numbers. Respects .gitignore and always skips .git and node_modules. Output is " +
+      `truncated to ${MAX_GREP_MATCHES} matches, and long lines to 500 characters.`,
     inputSchema: GrepInput,
     outputSchema: GrepOutput,
     readOnly: true,
@@ -208,7 +215,9 @@ export const TOOL_DEFINITIONS = {
   edit_file: {
     title: "Edit file",
     description:
-      "Replace an exact string in a file. Fails if the string is missing or ambiguous unless replaceAll is set.",
+      "Edit a file by exact text replacement. oldString must match a unique region of the file — " +
+      "if it appears more than once the edit is refused, so include surrounding lines to " +
+      "disambiguate rather than retrying. Returns a unified diff of what changed.",
     inputSchema: EditFileInput,
     outputSchema: EditFileOutput,
     readOnly: false,
@@ -216,7 +225,9 @@ export const TOOL_DEFINITIONS = {
   write_file: {
     title: "Write file",
     description:
-      "Write a file, creating it or overwriting it entirely. Prefer edit_file for changes to existing files.",
+      "Write content to a file, creating it if it does not exist and overwriting it entirely if it " +
+      "does. Parent directories are created automatically. Prefer edit_file for changes to an " +
+      "existing file, so the rest of it is not at risk.",
     inputSchema: WriteFileInput,
     outputSchema: WriteFileOutput,
     readOnly: false,
@@ -224,7 +235,11 @@ export const TOOL_DEFINITIONS = {
   run_command: {
     title: "Run command",
     description:
-      "Run a shell command inside the project and return its output. Runs on the user's machine.",
+      "Run a shell command on the user's machine, in the project directory. Returns stdout, stderr " +
+      `and the exit code. Output is truncated to the last ${Math.round(MAX_COMMAND_OUTPUT_BYTES / 1000)}KB. ` +
+      `The command is killed, with everything it started, after ${DEFAULT_COMMAND_TIMEOUT_MS / 1000}s ` +
+      `by default and at most ${MAX_COMMAND_TIMEOUT_MS / 1000}s. Stdin is closed, so a command that ` +
+      "waits for input exits rather than hanging.",
     inputSchema: RunCommandInput,
     outputSchema: RunCommandOutput,
     readOnly: false,

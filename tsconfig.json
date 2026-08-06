@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/protocol" }, { "path": "./apps/gateway" }]
+  "references": [
+    { "path": "./packages/protocol" },
+    { "path": "./packages/cli" },
+    { "path": "./apps/gateway" }
+  ]
 }
