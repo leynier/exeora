@@ -28,14 +28,17 @@ export function AppShell() {
       <header className="border-border-subtle bg-bg/80 sticky top-0 z-40 border-b backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-5">
           <a href="/" className="flex items-center gap-2" aria-label="Exeora, home">
+            {/* Three tiles, 22 wide on a pitch of 20 with a radius of 2, the
+                same numbers the landing and the OAuth screens draw. */}
             <svg
-              viewBox="0 0 64 64"
-              className="text-brand size-5 shrink-0"
-              fill="none"
+              viewBox="0 0 62 42"
+              className="text-brand h-[13px] w-auto shrink-0"
+              fill="currentColor"
               aria-hidden="true"
             >
-              <circle cx="32" cy="32" r="17" stroke="currentColor" strokeWidth="5" />
-              <path d="M32 15a17 17 0 0 0 0 34z" fill="currentColor" />
+              <rect x="20" y="0" width="22" height="22" rx="2" />
+              <rect x="0" y="20" width="22" height="22" rx="2" />
+              <rect x="40" y="20" width="22" height="22" rx="2" />
             </svg>
             <span className="text-title-md tracking-tight">Exeora</span>
           </a>

@@ -215,17 +215,23 @@ const styles = `
   }
 `;
 
-/** The wordmark, matching the landing's: a half-lit circle. */
+/**
+ * The wordmark, matching the landing's: three tiles, one above and two below.
+ *
+ * Same three numbers everywhere it is drawn: 22 wide on a pitch of 20, radius
+ * 2, so the overlap equals the radius and the silhouette closes.
+ */
 const mark = html`<svg
-  viewBox="0 0 64 64"
-  width="18"
-  height="18"
-  fill="none"
+  viewBox="0 0 62 42"
+  width="21"
+  height="14"
+  fill="currentColor"
   aria-hidden="true"
   xmlns="http://www.w3.org/2000/svg"
 >
-  <circle cx="32" cy="32" r="17" stroke="currentColor" stroke-width="5" />
-  <path d="M32 15a17 17 0 0 0 0 34z" fill="currentColor" />
+  <rect x="20" y="0" width="22" height="22" rx="2" />
+  <rect x="0" y="20" width="22" height="22" rx="2" />
+  <rect x="40" y="20" width="22" height="22" rx="2" />
 </svg>`;
 
 /**

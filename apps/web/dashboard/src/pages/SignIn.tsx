@@ -20,9 +20,15 @@ export function SignIn() {
     <div className="grid min-h-screen place-items-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-center gap-2">
-          <svg viewBox="0 0 64 64" className="text-brand size-5" fill="none" aria-hidden="true">
-            <circle cx="32" cy="32" r="17" stroke="currentColor" strokeWidth="5" />
-            <path d="M32 15a17 17 0 0 0 0 34z" fill="currentColor" />
+          <svg
+            viewBox="0 0 62 42"
+            className="text-brand h-[15px] w-auto"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <rect x="20" y="0" width="22" height="22" rx="2" />
+            <rect x="0" y="20" width="22" height="22" rx="2" />
+            <rect x="40" y="20" width="22" height="22" rx="2" />
           </svg>
           <span className="text-title-lg tracking-tight">Exeora</span>
         </div>

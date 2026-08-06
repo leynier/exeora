@@ -1,7 +1,14 @@
 ---
 /**
- * The mark plus the name. A half-lit circle: the far side is the gateway, the
- * lit side is the machine that is actually yours.
+ * The mark plus the name.
+ *
+ * Three tiles: one above, two below and apart. A client, the gateway, and the
+ * machine that does the work, meeting at the corners rather than merging.
+ *
+ * The tiles are 22 wide on a pitch of 20, so they overlap by exactly the corner
+ * radius and the silhouette closes at the two junctions instead of pinching to
+ * a point. Anything that redraws this mark (the favicon, the OAuth screens, the
+ * dashboard) uses the same three numbers.
  */
 
 interface Props {
@@ -12,16 +19,17 @@ interface Props {
 const { href = "/", class: className = "" } = Astro.props;
 ---
 
-<a href={href} class:list={["group flex items-center gap-2", className]} aria-label="Exeora, home">
+<a href={href} class:list={["group flex items-center gap-2.5", className]} aria-label="Exeora, home">
   <svg
-    viewBox="0 0 64 64"
-    class="text-brand size-6 shrink-0"
+    viewBox="0 0 62 42"
+    class="text-brand h-[15px] w-auto shrink-0"
     aria-hidden="true"
-    fill="none"
+    fill="currentColor"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <circle cx="32" cy="32" r="17" stroke="currentColor" stroke-width="4"></circle>
-    <path d="M32 15a17 17 0 0 0 0 34z" fill="currentColor"></path>
+    <rect x="20" y="0" width="22" height="22" rx="2"></rect>
+    <rect x="0" y="20" width="22" height="22" rx="2"></rect>
+    <rect x="40" y="20" width="22" height="22" rx="2"></rect>
   </svg>
   <span class="text-title-lg tracking-tight">Exeora</span>
 </a>
