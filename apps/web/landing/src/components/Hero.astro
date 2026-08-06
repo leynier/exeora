@@ -54,29 +54,35 @@ import { QUICKSTART } from "../lib/site.js";
       </a>
     </div>
 
-    <!-- The four commands that take someone from nothing to a connected
-         project. Copying the block is the fastest path, so the button takes
-         all four rather than one line at a time. -->
+    <!-- One command. It signs in, registers the machine and registers the
+         directory only when those are missing, so there is nothing to run
+         before it and nothing to read first. -->
     <div
-      class="animate-fade-in-up opacity-0-initial border-border bg-surface mx-auto mt-12 max-w-2xl overflow-hidden rounded-xl border text-left"
+      class="animate-fade-in-up opacity-0-initial border-border bg-surface mx-auto mt-12 flex max-w-xl items-center gap-3 rounded-xl border py-3 pr-3 pl-4 text-left"
       style="animation-delay: 400ms"
     >
-      <div class="border-border-subtle flex items-center justify-between border-b px-4 py-2.5">
-        <span class="text-label-md text-foreground-faint font-mono uppercase">Quickstart</span>
-        <button
-          type="button"
-          data-copy-target="hero-quickstart"
-          class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 rounded-md border px-2 py-1 font-mono transition-colors duration-fast"
-        >
-          <span data-copy-label>Copy</span>
-        </button>
-      </div>
       <!-- The `$` prompt is drawn with ::before so it stays out of
-           textContent, and copying the block yields runnable commands. -->
-      <pre
-        class="text-body-md text-foreground-muted overflow-x-auto p-4"><code id="hero-quickstart" class="font-mono">{QUICKSTART.map((line) => (
-        <span class="block before:text-foreground-faint before:content-['$_'] before:select-none">{line}</span>
-      ))}</code></pre>
+           textContent, and copying yields a runnable command. -->
+      <code
+        id="hero-quickstart"
+        class="text-foreground before:text-foreground-faint min-w-0 flex-1 truncate font-mono text-[13px] before:content-['$_'] before:select-none sm:text-[15px]"
+        >{QUICKSTART}</code
+      >
+      <button
+        type="button"
+        data-copy-target="hero-quickstart"
+        class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+      >
+        <span data-copy-label>Copy</span>
+      </button>
     </div>
+
+    <p
+      class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-4"
+      style="animation-delay: 460ms"
+    >
+      Run it in the directory you want to serve. It signs you in and registers the machine on the
+      way.
+    </p>
   </div>
 </section>

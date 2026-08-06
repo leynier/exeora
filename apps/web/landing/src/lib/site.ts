@@ -7,14 +7,13 @@
 export const NPM_URL = "https://www.npmjs.com/package/@exeora/cli";
 
 /**
- * What a first-time visitor pastes into a terminal, in order.
+ * The one command a first-time visitor runs.
  *
- * The package is scoped because npm would not give up the bare name; the
- * binary it installs is still `exeora`.
+ * `connect` signs in, registers the machine and registers the directory when
+ * any of those is missing, so there is nothing to run before it. The package
+ * is scoped because npm would not give up the bare name.
  */
-export const QUICKSTART = [
-  "npm install -g @exeora/cli",
-  "exeora login",
-  "exeora project add .",
-  "exeora connect",
-] as const;
+export const QUICKSTART = "npx @exeora/cli connect";
+
+/** For anyone who would rather have the binary on their PATH. */
+export const GLOBAL_INSTALL = "npm install -g @exeora/cli";

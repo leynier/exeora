@@ -17,6 +17,7 @@ import {
   upsertProject,
 } from "./config.js";
 import { connect } from "./connection.js";
+import { prepare, slugify } from "./onboard.js";
 import { CLI_VERSION } from "./version.js";
 
 const program = new Command()
@@ -47,7 +48,7 @@ program
           `No system keychain available, so the session is stored in a 0600 file under ${configPath().replace(/config\.json$/, "")}.`,
         );
       }
-      p.outro("Next: `exeora device register`");
+      p.outro("Run `exeora connect` in a project directory.");
     }),
   );
 
@@ -87,7 +88,6 @@ device
       config.set("deviceId", registered.id);
       config.set("deviceName", registered.name);
       p.log.success(`Registered ${registered.name} (${registered.id}).`);
-      p.log.info("Next: `exeora project add .`");
     }),
   );
 
@@ -138,7 +138,7 @@ project
       const url = new URL(`/p/${added.id}/mcp`, gatewayUrl()).toString();
       p.log.success(`Added ${added.name}.`);
       p.note(url, "MCP URL, add this to Claude, ChatGPT or Cursor");
-      p.log.info("Then run `exeora connect` and leave it running.");
+      p.log.info("Run `exeora connect` here and leave it running.");
     }),
   );
 
@@ -148,7 +148,7 @@ project
   .action(
     guard(async () => {
       const local = projects();
-      if (local.length === 0) return p.log.info("No projects yet. Run `exeora project add .`");
+      if (local.length === 0) return p.log.info("No projects yet. Run `exeora connect` in one.");
 
       for (const entry of local) {
         p.log.message(`${pad(entry.slug, 20)} ${entry.root}`);
@@ -177,39 +177,60 @@ project
 // ---------------------------------------------------------------------------
 
 program
-  .command("connect")
-  .description("Serve tool calls for this machine's projects (keep running)")
+  .command("connect [path]")
+  .description("Serve a directory to your AI clients (signs in and registers as needed)")
+  .option("-s, --slug <slug>", "Short name used in the MCP URL")
+  .option("-n, --name <name>", "Display name for this machine, when registering it")
+  .option("--no-add", "Serve the projects already registered, without adding this directory")
+  .option("--reset", "Forget the stored machine and register a fresh one")
   .action(
-    guard(async () => {
-      const deviceId = config.get("deviceId");
-      if (!deviceId) {
-        p.log.error("This machine is not registered. Run `exeora device register` first.");
-        process.exitCode = 1;
-        return;
-      }
-      if (projects().length === 0) {
-        p.log.warn("No projects registered on this machine yet. Run `exeora project add .`");
-      }
+    guard(
+      async (
+        path: string | undefined,
+        options: { add: boolean; reset: boolean; slug?: string; name?: string },
+      ) => {
+        p.intro("Exeora");
 
-      p.intro(`Exeora: ${config.get("deviceName") ?? deviceId}`);
-      p.log.info(`Gateway: ${gatewayUrl()}`);
-      p.log.info("Press Ctrl+C to stop.\n");
+        // Sign in, register the machine and register the directory, skipping
+        // whichever of those is already done. This is the whole reason the
+        // other commands are optional.
+        const ready = await prepare({
+          path,
+          add: options.add,
+          reset: options.reset,
+          slug: options.slug,
+          name: options.name,
+        });
 
-      const connection = connect(deviceId, {
-        onOpen: () => p.log.success("Connected. Waiting for tool calls."),
-        onClose: (reason) => p.log.warn(reason),
-        onError: (message) => p.log.error(message),
-        onCall: (tool, slug) => p.log.message(`→ ${tool} (${slug})`),
-        onResult: (tool, ok, ms) => p.log.message(`${ok ? "✓" : "✗"} ${tool} ${ms}ms`),
-      });
+        if (ready.project) {
+          p.note(
+            new URL(`/p/${ready.project.id}/mcp`, gatewayUrl()).toString(),
+            "MCP URL, add this to Claude, ChatGPT or Cursor",
+          );
+        } else if (projects().length === 0) {
+          p.log.warn("No projects registered on this machine yet.");
+        }
 
-      const stop = () => connection.stop();
-      process.once("SIGINT", stop);
-      process.once("SIGTERM", stop);
+        p.log.info(`Machine: ${ready.deviceName}`);
+        p.log.info(`Gateway: ${gatewayUrl()}`);
+        p.log.info("Press Ctrl+C to stop.\n");
 
-      await connection.closed;
-      p.outro("Disconnected.");
-    }),
+        const connection = connect(ready.deviceId, {
+          onOpen: () => p.log.success("Connected. Waiting for tool calls."),
+          onClose: (reason) => p.log.warn(reason),
+          onError: (message) => p.log.error(message),
+          onCall: (tool, slug) => p.log.message(`→ ${tool} (${slug})`),
+          onResult: (tool, ok, ms) => p.log.message(`${ok ? "✓" : "✗"} ${tool} ${ms}ms`),
+        });
+
+        const stop = () => connection.stop();
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+
+        await connection.closed;
+        p.outro("Disconnected.");
+      },
+    ),
   );
 
 program
@@ -229,7 +250,7 @@ program
         p.log.message(`Signed in ${user.email}`);
       } catch (error) {
         p.log.message(
-          `Signed in ${error instanceof NotSignedInError ? "not signed in, run `exeora login`" : "unknown"}`,
+          `Signed in ${error instanceof NotSignedInError ? "not signed in, run `exeora connect`" : "unknown"}`,
         );
         return;
       }
@@ -263,14 +284,6 @@ function online(lastSeenAt: number | null): boolean {
 
 function pad(value: string, width: number): string {
   return value.length >= width ? value : value + " ".repeat(width - value.length);
-}
-
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "project";
 }
 
 program.parseAsync(process.argv);

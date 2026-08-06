@@ -50,11 +50,11 @@ Every path is resolved and confined to the project root before anything touches 
 ## Install
 
 ```bash
-npm install -g @exeora/cli
-exeora login
-exeora project add .
-exeora connect
+cd the-project-you-want-to-serve
+npx @exeora/cli connect
 ```
+
+`connect` signs in, registers the machine and registers the directory, skipping whichever of those is already done, then serves until you stop it.
 
 Published from `packages/cli` as [`@exeora/cli`](https://www.npmjs.com/package/@exeora/cli), which is why that directory has a readme and a license of its own. Node 22+.
 
@@ -108,10 +108,9 @@ With the gateway running:
 bun run --cwd packages/cli build
 export EXEORA_GATEWAY_URL=http://localhost:8787
 
-node packages/cli/bin/index.mjs login          # opens the browser
-node packages/cli/bin/index.mjs device register
-node packages/cli/bin/index.mjs project add .  # prints the MCP URL
-node packages/cli/bin/index.mjs connect        # leave this running
+# connect signs in, registers the machine and registers the directory,
+# skipping whichever of those is already done.
+node packages/cli/bin/index.mjs connect
 ```
 
 Then point a client at the printed URL:

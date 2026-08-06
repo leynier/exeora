@@ -39,7 +39,7 @@
         "@tanstack/react-query": "5.101.4",
         "react": "19.2.8",
         "react-dom": "19.2.8",
-        "react-router": "^8.3.0",
+        "react-router": "8.3.0",
       },
       "devDependencies": {
         "@astrojs/sitemap": "3.7.3",
@@ -54,7 +54,7 @@
     },
     "packages/cli": {
       "name": "@exeora/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "exeora": "./bin/index.mjs",
       },
