@@ -1,4 +1,4 @@
-# exeora
+# @exeora/cli
 
 Secure execution for AI agents, on any machine.
 
@@ -9,10 +9,10 @@ The CLI dials **out** to the gateway and holds the connection open. Nothing ever
 ## Install
 
 ```bash
-npm install -g exeora
+npm install -g @exeora/cli
 ```
 
-Requires Node 22 or newer. `npx exeora` works too, though `connect` is meant to be left running, so a global install is usually what you want.
+Requires Node 22 or newer. `npx @exeora/cli` works too, though `connect` is meant to be left running, so a global install is usually what you want.
 
 ## Use
 

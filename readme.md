@@ -49,13 +49,15 @@ Every path is resolved and confined to the project root before anything touches 
 ## Install
 
 ```bash
-npm install -g exeora
+npm install -g @exeora/cli
 exeora login
 exeora project add .
 exeora connect
 ```
 
-Published from `packages/cli` as [`exeora`](https://www.npmjs.com/package/exeora), which is why that directory has a readme and a license of its own. Node 22+.
+Published from `packages/cli` as [`@exeora/cli`](https://www.npmjs.com/package/@exeora/cli), which is why that directory has a readme and a license of its own. Node 22+.
+
+Scoped because npm refuses the bare name: its spam filter rejects `exeora` as too close to `execa`, which happens to be one of this CLI's own dependencies. Every name of that shape is blocked the same way, `exeora-cli` included, since `execa-cli` exists too. Scoped names skip the check. The command is still `exeora`, since that comes from `bin` rather than from the package name.
 
 ## Development
 

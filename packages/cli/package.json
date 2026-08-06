@@ -1,5 +1,5 @@
 {
-  "name": "exeora",
+  "name": "@exeora/cli",
   "version": "0.1.0",
   "description": "Connect any MCP client to the development environment on any machine (even your own), without opening a port or uploading your source code.",
   "keywords": [
