@@ -10,6 +10,7 @@ import {
 import { accessToken } from "./auth/tokens.js";
 import { config, findProject, gatewayUrl, projects } from "./config.js";
 import { executeTool } from "./tools/index.js";
+import { CLI_VERSION } from "./version.js";
 
 /**
  * The executor's outbound connection to the relay.
@@ -20,8 +21,6 @@ import { executeTool } from "./tools/index.js";
  * Reconnects with exponential backoff, because a laptop lid closing is normal
  * and should not need a human to type `exeora connect` again.
  */
-
-const CLI_VERSION = "0.1.0";
 
 export interface ConnectionEvents {
   onOpen?: () => void;

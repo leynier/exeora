@@ -9,10 +9,10 @@ const tools = ["read_file", "list_files", "grep", "edit_file", "write_file", "ru
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Exeora: Secure local execution for AI agents</title>
+    <title>Exeora: Secure execution for AI agents on any machine</title>
     <meta
       name="description"
-      content="Connect any AI agent to your local development environment without exposing ports, uploading your source code, or managing tunnels."
+      content="Connect any AI agent to the development environment on any machine (even your own) without exposing ports, uploading your source code, or managing tunnels."
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◐</text></svg>" />
   </head>
@@ -32,11 +32,12 @@ const tools = ["read_file", "list_files", "grep", "edit_file", "write_file", "ru
     <main class="mx-auto max-w-3xl px-6 pb-24">
       <section class="pt-12 pb-16">
         <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Secure local execution for AI agents.
+          Secure execution for AI agents, on any machine.
         </h1>
         <p class="mt-5 max-w-xl text-lg text-neutral-600 dark:text-neutral-400">
-          Connect any AI agent to the development environment on your own machine, without
-          opening a port, uploading your source code, or wiring up a tunnel.
+          Connect any AI agent to the development environment on any machine you can run a
+          command on (a server, a VM, a build box, even your own laptop), without opening a
+          port, uploading your source code, or wiring up a tunnel.
         </p>
 
         <div class="mt-8 rounded-xl border border-neutral-200 dark:border-neutral-800">
@@ -55,9 +56,9 @@ exeora connect</code></pre>
           <li>
             <p class="font-medium">The CLI dials out. Nothing dials in.</p>
             <p class="mt-1 text-neutral-600 dark:text-neutral-400">
-              Your machine opens an outbound connection to Exeora. There is no inbound port, no
-              tunnel to configure and no VPN, which is the same reason this works behind NAT and
-              corporate firewalls.
+              The machine opens an outbound connection to Exeora. There is no inbound port, no
+              tunnel to configure and no VPN, which is the same reason this reaches a laptop
+              behind NAT and a box behind a corporate firewall alike.
             </p>
           </li>
           <li>
@@ -99,9 +100,9 @@ exeora connect</code></pre>
         </h2>
         <p class="mt-6 text-neutral-600 dark:text-neutral-400">
           An agent connected to a project can read, edit and run commands inside that project's
-          directory on your machine. Paths are confined to the project root, but commands are not
-          filtered. Connect projects you are comfortable letting an agent change, and revoke a
-          machine from the dashboard the moment you want it to stop.
+          directory on whichever machine is serving it. Paths are confined to the project root,
+          but commands are not filtered. Connect projects you are comfortable letting an agent
+          change, and revoke a machine from the dashboard the moment you want it to stop.
         </p>
       </section>
     </main>

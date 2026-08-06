@@ -1,0 +1,64 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+# Independent of deploy.yml on purpose: the gateway ships on every push to
+# main, the CLI ships when a tag says so. Tagging after the merge has deployed
+# is what keeps a protocol bump from reaching users before the gateway has it.
+concurrency:
+  group: release-cli
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm trusted publishing. Without it there is no OIDC token
+      # to exchange and npm falls back to asking for credentials nobody set.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      # Both runtimes: bun installs and builds as everywhere else in this repo,
+      # npm publishes. Trusted publishing needs npm 11.5.1+, which is newer
+      # than what ships with Node 22, hence the explicit upgrade. OIDC works
+      # from a private repository; provenance does not, so it stays off.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Use an npm that can publish with OIDC
+        run: npm install -g npm@latest
+
+      # npm refuses to reuse a version, so a tag that disagrees with
+      # package.json is a mistake that cannot be corrected by retagging.
+      - name: Check the tag matches the package version
+        run: |
+          tagged="${GITHUB_REF_NAME#cli-v}"
+          declared="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$tagged" != "$declared" ]; then
+            echo "Tag $GITHUB_REF_NAME says $tagged, packages/cli/package.json says $declared." >&2
+            exit 1
+          fi
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run --cwd packages/cli build
+
+      - name: Publish
+        run: npm publish
+        working-directory: packages/cli

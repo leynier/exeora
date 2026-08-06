@@ -17,13 +17,14 @@ import {
   upsertProject,
 } from "./config.js";
 import { connect } from "./connection.js";
-
-const VERSION = "0.1.0";
+import { CLI_VERSION } from "./version.js";
 
 const program = new Command()
   .name("exeora")
-  .description("Connect AI agents to the development environment on this machine.")
-  .version(VERSION);
+  .description(
+    "Connect AI agents to the development environment on this machine, wherever it runs.",
+  )
+  .version(CLI_VERSION);
 
 // ---------------------------------------------------------------------------
 
@@ -80,7 +81,7 @@ device
       const registered = await gateway.registerDevice({
         name: options.name,
         platform: process.platform,
-        cliVersion: VERSION,
+        cliVersion: CLI_VERSION,
       });
 
       config.set("deviceId", registered.id);

@@ -27,7 +27,7 @@ describe("static files", () => {
   it("serves the landing at the root", async () => {
     const response = await get("/");
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Secure local execution");
+    expect(await response.text()).toContain("Secure execution for AI agents");
   });
 
   it("serves the dashboard shell", async () => {

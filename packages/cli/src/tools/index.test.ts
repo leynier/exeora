@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolOutput } from "@exeora/protocol";
+import { MAX_READ_BYTES, type ToolOutput } from "@exeora/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeTool, type ToolContext } from "./index.js";
 
@@ -45,6 +45,51 @@ describe("read_file", () => {
       code: "PATH_ESCAPE",
     });
   });
+
+  it("counts the whole file even when a range was asked for", async () => {
+    await writeFile(join(root, "src", "long.ts"), "a\nb\nc\nd\ne\n");
+    const result = await run<ToolOutput<"read_file">>("read_file", {
+      path: "src/long.ts",
+      offset: 2,
+      limit: 2,
+    });
+    expect(result.content).toBe("b\nc");
+    // The range stopped early, so the agent is told there is more.
+    expect(result.truncated).toBe(true);
+    expect(result.totalLines).toBe(5);
+  });
+
+  it("truncates on a line boundary rather than mid-line", async () => {
+    const line = `${"x".repeat(999)}\n`;
+    const lines = Math.ceil(MAX_READ_BYTES / line.length) + 10;
+    await writeFile(join(root, "big.txt"), line.repeat(lines));
+
+    const result = await run<ToolOutput<"read_file">>("read_file", { path: "big.txt" });
+    expect(result.truncated).toBe(true);
+    expect(result.totalLines).toBe(lines);
+    expect(Buffer.byteLength(result.content, "utf8")).toBeLessThanOrEqual(MAX_READ_BYTES);
+    // Every returned line survived whole.
+    expect(result.content.split("\n").every((each) => each.length === 999)).toBe(true);
+  });
+
+  it("refuses a binary file instead of returning mojibake", async () => {
+    await writeFile(join(root, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x1a]));
+    await expect(run("read_file", { path: "logo.png" })).rejects.toMatchObject({
+      code: "TOOL_FAILED",
+    });
+  });
+
+  it("reports an offset past the end rather than returning nothing", async () => {
+    await expect(run("read_file", { path: "README.md", offset: 99 })).rejects.toMatchObject({
+      code: "TOOL_FAILED",
+    });
+  });
+
+  it("keeps host paths out of the error an agent sees", async () => {
+    await expect(run("read_file", { path: "src/missing.ts" })).rejects.toMatchObject({
+      message: expect.not.stringContaining(root),
+    });
+  });
 });
 
 describe("list_files", () => {
@@ -76,7 +121,7 @@ describe("list_files", () => {
 });
 
 describe("grep", () => {
-  it("skips node_modules and gitignored files, which pi's own grep does not", async () => {
+  it("skips node_modules and gitignored files, as its description promises", async () => {
     const result = await run<ToolOutput<"grep">>("grep", { pattern: "NEEDLE" });
     const paths = result.matches.map((match) => match.path).sort();
     expect(paths).toEqual(["src/main.ts", "src/util.ts"]);
@@ -124,6 +169,70 @@ describe("edit_file", () => {
     await expect(
       run("edit_file", { path: "src/dup.ts", oldString: "let x = 1;", newString: "let y = 1;" }),
     ).rejects.toThrow(/unique|occurrence/i);
+  });
+
+  it("returns a unified patch, not a rendered one", async () => {
+    const result = await run<ToolOutput<"edit_file">>("edit_file", {
+      path: "src/main.ts",
+      oldString: "const other = 2;",
+      newString: "const other = 3;",
+    });
+    expect(result.diff).toContain("@@");
+    expect(result.diff).toContain("-const other = 2;");
+    expect(result.diff).toContain("+const other = 3;");
+    // The header names the project-relative path, never the host's.
+    expect(result.diff).toContain("src/main.ts");
+    expect(result.diff).not.toContain(root);
+  });
+
+  it("leaves CRLF files with CRLF endings", async () => {
+    await writeFile(join(root, "src", "crlf.ts"), "const a = 1;\r\nconst b = 2;\r\n");
+    await run("edit_file", {
+      path: "src/crlf.ts",
+      oldString: "const b = 2;",
+      newString: "const b = 3;",
+    });
+    const after = await readFile(join(root, "src", "crlf.ts"), "utf8");
+    expect(after).toBe("const a = 1;\r\nconst b = 3;\r\n");
+  });
+
+  it("keeps a BOM the caller never had to mention", async () => {
+    await writeFile(join(root, "src", "bom.ts"), "﻿const a = 1;\n");
+    await run("edit_file", {
+      path: "src/bom.ts",
+      oldString: "const a = 1;",
+      newString: "const a = 2;",
+    });
+    expect(await readFile(join(root, "src", "bom.ts"), "utf8")).toBe("﻿const a = 2;\n");
+  });
+
+  it("matches through smart quotes without rewriting the untouched lines", async () => {
+    await writeFile(join(root, "src", "smart.ts"), "const a = “hello”;\nconst b = — 2;\n");
+    await run("edit_file", {
+      path: "src/smart.ts",
+      oldString: 'const a = "hello";',
+      newString: 'const a = "goodbye";',
+    });
+    const after = await readFile(join(root, "src", "smart.ts"), "utf8");
+    expect(after).toContain('const a = "goodbye";');
+    // The line nobody edited keeps its em dash rather than an ASCII hyphen.
+    expect(after).toContain("const b = — 2;");
+  });
+
+  it("refuses an edit that would change nothing", async () => {
+    await expect(
+      run("edit_file", {
+        path: "src/main.ts",
+        oldString: "const other = 2;",
+        newString: "const other = 2;",
+      }),
+    ).rejects.toThrow(/no changes/i);
+  });
+
+  it("reports text it cannot find without leaking the host path", async () => {
+    await expect(
+      run("edit_file", { path: "src/main.ts", oldString: "nope", newString: "x" }),
+    ).rejects.toMatchObject({ message: expect.not.stringContaining(root) });
   });
 });
 

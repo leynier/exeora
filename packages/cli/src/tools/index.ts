@@ -1,6 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createEditTool, createReadTool } from "@earendil-works/pi-coding-agent";
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   ExeoraError,
@@ -14,6 +13,15 @@ import {
 } from "@exeora/protocol";
 import { execa } from "execa";
 import { relativeToRoot, resolveInProject } from "../paths.js";
+import {
+  applyEditsToNormalizedContent,
+  detectLineEnding,
+  generateUnifiedPatch,
+  normalizeToLF,
+  restoreLineEndings,
+  stripBom,
+} from "./vendor/edit-diff.js";
+import { truncateHead } from "./vendor/truncate.js";
 import { walk } from "./walk.js";
 
 /**
@@ -23,12 +31,12 @@ import { walk } from "./walk.js";
  * zod schemas the gateway advertises, then every path is resolved and confined
  * to the project root before anything touches the disk.
  *
- * pi-coding-agent is an implementation detail behind this boundary, used where
- * it is genuinely better than writing it again: `edit_file` for its matching,
- * ambiguity handling and unified diff, and `read_file` for its truncation and
- * binary detection. The rest is implemented directly, because pi's tools
- * return prose ("Successfully wrote 20 bytes to src/new.ts") and recovering
- * structured fields from that would mean parsing English.
+ * The matching and truncation logic in `vendor/` comes from pi-coding-agent,
+ * taken rather than depended on: its published tools are built for a terminal,
+ * so importing them dragged a syntax highlighter and a wasm image resizer into
+ * an install that renders nothing. They also answer in prose ("Successfully
+ * wrote 20 bytes to src/new.ts"), and every field this contract promises would
+ * have had to be recovered by parsing English.
  */
 
 export interface ToolContext {
@@ -74,22 +82,50 @@ async function readFileTool(
   args: { path: string; offset?: number; limit?: number },
 ): Promise<ToolOutput<"read_file">> {
   const absolutePath = await resolveInProject({ root, relativePath: args.path });
+  const relativePath = relativeToRoot(root, absolutePath);
 
-  const result = await createReadTool(root).execute("exeora", {
-    path: absolutePath,
-    ...(args.offset === undefined ? {} : { offset: args.offset }),
-    ...(args.limit === undefined ? {} : { limit: args.limit }),
+  const buffer = await readFile(absolutePath).catch((error: NodeJS.ErrnoException) => {
+    throw new ExeoraError("TOOL_FAILED", `Could not read ${relativePath}: ${error.code}.`);
   });
 
-  const content = textOf(result);
-  const capped = content.length > MAX_READ_BYTES;
+  // A NUL byte in the first block is the cheap, reliable binary tell. Decoding
+  // a PNG as UTF-8 and handing the agent the mojibake is worse than refusing.
+  if (buffer.subarray(0, 8192).includes(0)) {
+    throw new ExeoraError(
+      "TOOL_FAILED",
+      `${relativePath} is a binary file (${buffer.byteLength} bytes). read_file only returns text.`,
+    );
+  }
+
+  const text = buffer.toString("utf8");
+  const lines = text.split("\n");
+  // A trailing newline ends the last line rather than starting an empty one.
+  const totalLines = text.length === 0 ? 0 : lines.at(-1) === "" ? lines.length - 1 : lines.length;
+
+  const start = args.offset === undefined ? 0 : args.offset - 1;
+  if (start > 0 && start >= totalLines) {
+    throw new ExeoraError(
+      "TOOL_FAILED",
+      `Offset ${args.offset} is past the end of ${relativePath}, which has ${totalLines} lines.`,
+    );
+  }
+
+  const end = args.limit === undefined ? totalLines : Math.min(start + args.limit, totalLines);
+  const selected = lines.slice(start, end).join("\n");
+
+  // Only the byte limit the protocol advertises. There is no line limit: the
+  // caller asks for a range when it wants one, and `truncated` says when the
+  // executor cut the answer short on its own.
+  const truncation = truncateHead(selected, {
+    maxLines: Number.POSITIVE_INFINITY,
+    maxBytes: MAX_READ_BYTES,
+  });
 
   return {
-    path: relativeToRoot(root, absolutePath),
-    content: capped ? content.slice(0, MAX_READ_BYTES) : content,
-    truncated:
-      capped || Boolean((result.details as { truncation?: unknown } | undefined)?.truncation),
-    totalLines: content.length === 0 ? 0 : content.split("\n").length,
+    path: relativePath,
+    content: truncation.content,
+    truncated: truncation.truncated || end < totalLines,
+    totalLines,
   };
 }
 
@@ -198,19 +234,31 @@ async function editFileTool(
   args: { path: string; oldString: string; newString: string },
 ): Promise<ToolOutput<"edit_file">> {
   const absolutePath = await resolveInProject({ root, relativePath: args.path });
+  const relativePath = relativeToRoot(root, absolutePath);
 
-  // pi refuses an ambiguous match and says so in terms the agent can act on.
-  const result = await createEditTool(root).execute("exeora", {
-    path: absolutePath,
-    edits: [{ oldText: args.oldString, newText: args.newString }],
+  const raw = await readFile(absolutePath, "utf8").catch((error: NodeJS.ErrnoException) => {
+    throw new ExeoraError("TOOL_FAILED", `Could not edit ${relativePath}: ${error.code}.`);
   });
 
-  const details = result.details as { patch?: string; diff?: string } | undefined;
+  // The BOM comes off before matching, since no caller puts an invisible
+  // character in oldString, and goes back on before writing. Same for CRLF:
+  // matching happens in LF space, the file keeps the endings it had.
+  const { bom, text: content } = stripBom(raw);
+  const ending = detectLineEnding(content);
+
+  // Throws rather than guessing when the text appears more than once.
+  const { baseContent, newContent } = applyEditsToNormalizedContent(
+    normalizeToLF(content),
+    [{ oldText: args.oldString, newText: args.newString }],
+    relativePath,
+  );
+
+  await writeFile(absolutePath, bom + restoreLineEndings(newContent, ending), "utf8");
 
   return {
-    path: relativeToRoot(root, absolutePath),
+    path: relativePath,
     replacements: 1,
-    diff: details?.patch ?? details?.diff ?? "",
+    diff: generateUnifiedPatch(relativePath, baseContent, newContent),
   };
 }
 
@@ -309,17 +357,6 @@ function killTree(pid: number | undefined): void {
 }
 
 // ---------------------------------------------------------------------------
-
-/** pi results can carry image parts; only the text ones are meaningful here. */
-function textOf(result: { content?: ReadonlyArray<unknown> }): string {
-  return (result.content ?? [])
-    .map((part) =>
-      typeof part === "object" && part !== null && "text" in part
-        ? String((part as { text: unknown }).text ?? "")
-        : "",
-    )
-    .join("");
-}
 
 /** Keeps the tail: the end of a failing build is what explains the failure. */
 function capture(raw: unknown): { text: string; truncated: boolean } {

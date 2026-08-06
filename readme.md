@@ -1,10 +1,10 @@
 # Exeora
 
-Secure local execution for AI agents.
+Secure execution for AI agents, on any machine.
 
-Connect any MCP client (Claude, ChatGPT, Cursor, VS Code, Claude Code) to the development environment on your own machine, without opening a port, uploading your source code, or wiring up a tunnel.
+Connect any MCP client (Claude, ChatGPT, Cursor, VS Code, Claude Code) to the development environment on any machine you can run a command on: a server, a VM, a build box, a Raspberry Pi, or your own laptop. No port to open, no source code to upload, no tunnel to wire up.
 
-The CLI dials **out** to the gateway and holds the connection open. Nothing ever dials in, which is why this works behind NAT and corporate firewalls with no configuration.
+The CLI dials **out** to the gateway and holds the connection open. Nothing ever dials in, which is why the same command works on a laptop behind NAT and on a box behind a corporate firewall, with no configuration on either.
 
 ```mermaid
 flowchart TD
@@ -15,7 +15,7 @@ flowchart TD
         relay["DeviceRelay<br/>Durable Object"]
     end
 
-    subgraph machine["your machine"]
+    subgraph machine["any machine<br/><small>a server, a VM, even your laptop</small>"]
         cli["Exeora CLI"]
         repo[("your repository")]
     end
@@ -44,7 +44,18 @@ One Worker owns the whole hostname. The site was briefly a Worker of its own, un
 
 Every path is resolved and confined to the project root before anything touches the disk. See `packages/cli/src/paths.ts`, whose tests are its specification.
 
-**Commands are not filtered in this release, and there is no approval step.** An agent connected to a project can run anything inside that directory on your machine. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
+**Commands are not filtered in this release, and there is no approval step.** An agent connected to a project can run anything inside that directory on whichever machine is serving it. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard the moment you want it to stop.
+
+## Install
+
+```bash
+npm install -g exeora
+exeora login
+exeora project add .
+exeora connect
+```
+
+Published from `packages/cli` as [`exeora`](https://www.npmjs.com/package/exeora), which is why that directory has a readme and a license of its own. Node 22+.
 
 ## Development
 
@@ -159,6 +170,28 @@ bun run db:migrate
 bun run deploy      # builds the site, then deploys the Worker
 ```
 
+## Releasing the CLI
+
+```bash
+cd packages/cli && npm version patch --workspaces=false
+git commit -am "release: cli v0.1.1" && git tag cli-v0.1.1
+git push && git push --tags
+```
+
+The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, checks that the tag agrees with `package.json`, builds, and publishes to npm. Authentication is npm trusted publishing over OIDC, so there is no token in the repository secrets; the trusted publisher is configured on the package's page on npmjs.com and points at this workflow.
+
+No provenance attestation: npm only generates one when the source repository is public, and this one is not. The published manifest carries no `repository` field for the same reason, since a link nobody can open is worse than no link. Everything points at `https://exeora.dev` instead.
+
+Releases are deliberately not tied to `main`: the gateway deploys on every push, the CLI ships when a tag says so.
+
+**Bumping `PROTOCOL_VERSION` breaks every installed CLI** until people upgrade, because the relay rejects a mismatch outright (`packages/protocol/src/messages.ts`, `apps/gateway/src/relay-do.ts`). Merge first so the gateway deploys, then tag, never the other way around.
+
+The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown substitutes it into the bundle, and `packages/cli/src/version.ts` reports `0.0.0-dev` when the sources are run directly.
+
+## License
+
+`packages/cli` is MIT, since it is the part that gets installed on other people's machines. The rest of this repository is not licensed for reuse.
+
 ## Design notes
 
 **Nothing is queued.** With no executor connected, a call fails at once with `LOCAL_EXECUTOR_OFFLINE`, and every `tool.call` carries an absolute deadline the executor re-checks on arrival. A command landing hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept.
@@ -168,6 +201,8 @@ bun run deploy      # builds the site, then deploys the Worker
 **Hibernation, not `accept()`.** The relay accepts the CLI's socket through the WebSocket Hibernation API. `accept()` bills duration for the whole time a connection is open, which for a machine connected all day is the whole day.
 
 **The audit log records what ran and how it ended, never arguments or output.**
+
+**`packages/cli/src/tools/vendor/` is copied, not imported.** The edit matching and the truncation come from pi-coding-agent, which is MIT and better at both than a first attempt would be. Depending on it cost 172 MB of the 189 MB an install weighed, because its published tools are built for a terminal and pulled in a syntax highlighter, a wasm image resizer and an agent runtime to render output Exeora throws away. Taking the two pure modules brought the install to 18 MB. The origin and its license are recorded in `packages/cli/LICENSE`.
 
 ## Not in this release
 

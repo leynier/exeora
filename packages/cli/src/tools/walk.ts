@@ -6,9 +6,9 @@ import ignore, { type Ignore } from "ignore";
 /**
  * Directory traversal that honours .gitignore.
  *
- * pi's `find` respects .gitignore but its `grep` does not, it will happily
- * walk into node_modules. Since both tools advertise that they skip ignored
- * files, the filter is applied here rather than trusted to the library.
+ * `list_files` and `grep` both advertise that they skip ignored files, so the
+ * filter lives here, in the one traversal they share, rather than in each tool
+ * where one of them would eventually forget and walk into node_modules.
  */
 
 /** Skipped regardless of .gitignore: no repository wants these searched. */

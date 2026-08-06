@@ -1,7 +1,8 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { Entry } from "@napi-rs/keyring";
+import type { Entry } from "@napi-rs/keyring";
 
 /**
  * Where the refresh token lives.
@@ -22,9 +23,34 @@ function fallbackPath(): string {
   return join(base, "exeora", "credentials.json");
 }
 
+type EntryConstructor = new (service: string, account: string) => Entry;
+
+/**
+ * Resolved on first use rather than imported, and cached either way.
+ *
+ * @napi-rs/keyring ships its native binding as a per-platform optional
+ * dependency. On a platform it has no prebuild for, that dependency is simply
+ * absent and a top-level import would throw while the module loads, killing
+ * the CLI before the file fallback below ever gets a chance. `undefined` means
+ * not yet attempted, `null` means attempted and unavailable.
+ */
+let EntryClass: EntryConstructor | null | undefined;
+
 function keyring(): Entry | null {
+  if (EntryClass === undefined) {
+    try {
+      const required = createRequire(import.meta.url)("@napi-rs/keyring") as {
+        Entry: EntryConstructor;
+      };
+      EntryClass = required.Entry;
+    } catch {
+      EntryClass = null;
+    }
+  }
+  if (!EntryClass) return null;
+
   try {
-    return new Entry(SERVICE, ACCOUNT);
+    return new EntryClass(SERVICE, ACCOUNT);
   } catch {
     return null;
   }

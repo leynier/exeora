@@ -13,8 +13,9 @@ import {
  *
  * The gateway feeds `inputShape` straight into `server.registerTool()`, and the
  * executor validates incoming arguments against the same shape before doing any
- * work. pi-coding-agent describes its own tools with TypeBox; we deliberately
- * ignore those schemas so this contract exists exactly once.
+ * work. The executor borrows some of its file handling from other projects,
+ * which describe their tools with schemas of their own; those are deliberately
+ * ignored so this contract exists exactly once.
  *
  * Every `path` is interpreted relative to the project root and confined to it by
  * the executor. Absolute paths and anything escaping the root are rejected with

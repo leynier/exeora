@@ -1,5 +1,5 @@
 {
-  "name": "exeora",
+  "name": "exeora-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [
