@@ -12,6 +12,7 @@ import { Machines } from "./pages/Machines.js";
 import { Overview } from "./pages/Overview.js";
 import { ProjectDetail } from "./pages/ProjectDetail.js";
 import { Projects } from "./pages/Projects.js";
+import { Settings } from "./pages/Settings.js";
 import { SignIn } from "./pages/SignIn.js";
 import "./index.css";
 
@@ -78,6 +79,7 @@ createRoot(root).render(
               <Route path="projects/:projectId" element={<ProjectDetail />} />
               <Route path="clients" element={<Clients />} />
               <Route path="activity" element={<Activity />} />
+              <Route path="settings" element={<Settings />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

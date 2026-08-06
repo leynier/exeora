@@ -30,6 +30,7 @@ export function AppShell() {
     { to: "/projects", label: "Projects" },
     { to: "/clients", label: "Clients" },
     { to: "/activity", label: "Activity" },
+    { to: "/settings", label: "Settings" },
   ];
 
   return (

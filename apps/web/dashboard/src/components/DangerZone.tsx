@@ -6,16 +6,19 @@ import { ConfirmDialog } from "./ConfirmDialog.js";
 import { useToast } from "./toast.js";
 
 /**
- * Deleting the account.
+ * Irreversible account actions.
  *
- * Kept at the bottom of the overview and nowhere else, because it is the one
- * action here that cannot be undone by signing in again: it takes the machines,
- * the projects, every client's authorization and the whole audit trail, and
- * unregisters the applications that were only ever used from this account.
+ * Kept on Settings and nowhere else: the one action here that cannot be undone
+ * by signing in again takes the machines, the projects, every client's
+ * authorization and the whole audit trail, and unregisters the applications
+ * that were only ever used from this account.
  *
  * There is no soft delete behind it. An account someone asked to have removed
  * is not a record worth keeping, which is also what makes the typed
  * confirmation worth the friction.
+ *
+ * Other destructive account-level actions belong in this same section as they
+ * appear, so the red border is a reliable signal rather than a one-off style.
  */
 export function DangerZone() {
   const me = useMe();
@@ -42,21 +45,28 @@ export function DangerZone() {
 
   return (
     <>
-      <section className="border-error/30 bg-surface mt-8 rounded-xl border p-5">
-        <h2 className="text-title-lg">Delete this account</h2>
+      <section className="border-error/30 bg-surface rounded-xl border p-5">
+        <h2 className="text-title-lg text-error">Danger</h2>
         <p className="text-body-md text-foreground-muted mt-1.5">
-          Removes every machine, project and authorization, along with the whole activity log. Any
-          CLI still running loses its connection at once. This cannot be undone.
+          These actions are permanent. There is no undo, and no recovery path after they finish.
         </p>
 
-        <button
-          type="button"
-          className="btn btn-danger mt-4"
-          disabled={!email}
-          onClick={() => setAsking(true)}
-        >
-          Delete account
-        </button>
+        <div className="border-error/20 mt-5 border-t pt-5">
+          <h3 className="text-title-md">Delete this account</h3>
+          <p className="text-body-md text-foreground-muted mt-1.5">
+            Removes every machine, project and authorization, along with the whole activity log. Any
+            CLI still running loses its connection at once. This cannot be undone.
+          </p>
+
+          <button
+            type="button"
+            className="btn btn-danger mt-4"
+            disabled={!email}
+            onClick={() => setAsking(true)}
+          >
+            Delete account
+          </button>
+        </div>
       </section>
 
       <ConfirmDialog
