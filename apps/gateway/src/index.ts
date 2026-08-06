@@ -3,6 +3,7 @@ import { ExeoraError, isToolName, type ToolName } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { api, relayName } from "./api/index.js";
+import { serveAssets } from "./assets.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
@@ -18,12 +19,13 @@ import { oauthRoutes } from "./oauth/routes.js";
 export { DeviceRelay } from "./relay-do.js";
 
 /**
- * Gateway Worker: OAuth authorization server, MCP endpoint, relay entry point
- * and dashboard API. The landing page and dashboard live in a separate Worker
- * (`apps/web`) so this one stays free of anything presentational.
+ * The whole of Exeora in one Worker: OAuth authorization server, MCP endpoint,
+ * relay entry point, dashboard API, and the static site.
  *
- * Routing is by path specificity on the same zone; see `routes` in
- * wrangler.jsonc. Anything not claimed here falls through to `apps/web`.
+ * The site was briefly a Worker of its own, on the assumption it would need a
+ * framework runtime. It does not: Astro emits static HTML and the dashboard is
+ * a Vite bundle. Serving both from here needs only an ASSETS binding, and it
+ * removes a domain split across two Workers by path.
  */
 
 type Props = { userId: string; clientId?: string };
@@ -168,7 +170,7 @@ function propsOf(ctx: unknown): Props {
   return ((ctx as { props?: Props }).props ?? { userId: "" }) as Props;
 }
 
-/** Everything else: the OAuth screens, plus unauthenticated fall-through. */
+/** Everything else: the OAuth screens, then the static site. */
 const site = new Hono<{ Bindings: Env }>();
 site.route("/", oauthRoutes);
 
@@ -197,6 +199,9 @@ site.get("/oauth/dashboard-client", async (c) =>
     scopes: DASHBOARD_SCOPES,
   }),
 );
+
+// Registered last, so it only sees paths no OAuth route claimed.
+site.all("*", (c) => serveAssets(c.req.raw, c.env));
 
 export { isToolName };
 

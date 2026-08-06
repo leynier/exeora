@@ -30,20 +30,30 @@
 
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "9eaeb4270e5d4ef996018912075d97bc" }],
 
+  // The landing and dashboard, built by apps/web. `run_worker_first` because
+  // the OAuth provider has to see every request: it owns /oauth/token and the
+  // metadata documents, and only what it does not claim reaches the assets.
+  // `not_found_handling: none` because the Worker decides the fallback itself,
+  // sending /dashboard/* to the SPA shell and everything else to a real 404.
+  "assets": {
+    "directory": "../web/public",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+
   "vars": {
     "EXEORA_BASE_URL": "https://exeora.dev"
   },
 
-  // `wrangler dev` otherwise takes its origin from these routes and rewrites
-  // every request URL to exeora.dev. The OAuth provider derives its metadata
-  // `issuer` and the RFC 9207 `iss` from that URL, so a local login would hand
-  // back iss=http://exeora.dev while the client was talking to localhost,
-  // which a client that validates the issuer correctly rejects. The `dev`
-  // script passes --local-upstream to pin the origin back to localhost:8787.
-  "routes": [
-    { "pattern": "exeora.dev/oauth/*", "zone_name": "exeora.dev" },
-    { "pattern": "exeora.dev/.well-known/*", "zone_name": "exeora.dev" },
-    { "pattern": "exeora.dev/p/*", "zone_name": "exeora.dev" },
-    { "pattern": "exeora.dev/api/*", "zone_name": "exeora.dev" }
-  ]
+  // One Worker owns the whole hostname now, so a single route replaces the
+  // four path patterns this used to need.
+  //
+  // `wrangler dev` takes its origin from this route and rewrites every request
+  // URL to exeora.dev. The OAuth provider derives its metadata `issuer` and the
+  // RFC 9207 `iss` from that URL, so a local login would hand back
+  // iss=http://exeora.dev while the client was talking to localhost, which a
+  // client that validates the issuer correctly rejects. The `dev` script passes
+  // --local-upstream to pin the origin back to localhost:8787.
+  "routes": [{ "pattern": "exeora.dev/*", "zone_name": "exeora.dev" }]
 }

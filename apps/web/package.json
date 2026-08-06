@@ -7,9 +7,7 @@
     "build": "bun run build:landing && bun run build:dashboard",
     "build:landing": "astro build --root landing --outDir ../public",
     "build:dashboard": "vite build --config dashboard/vite.config.ts",
-    "dev:dashboard": "vite --config dashboard/vite.config.ts",
-    "deploy": "bun run build && wrangler deploy",
-    "preview": "bun run build && wrangler dev"
+    "dev:dashboard": "vite --config dashboard/vite.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.101.4",
@@ -23,7 +21,7 @@
     "astro": "7.1.6",
     "tailwindcss": "4.3.3",
     "@tailwindcss/vite": "4.3.3",
-    "vite": "8.2.0",
-    "wrangler": "4.119.0"
-  }
+    "vite": "8.2.0"
+  },
+  "description": "Static sources for the Exeora site. Built here, served by the gateway Worker."
 }

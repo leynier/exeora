@@ -41,7 +41,13 @@ jobs:
           packageManager: bun
           command: d1 migrations apply exeora --remote
 
-      - name: Deploy gateway
+      # public/ is generated and git-ignored, and the Worker serves it through
+      # its ASSETS binding, so deploying without building first would ship an
+      # empty site.
+      - name: Build the landing and dashboard
+        run: bun run --cwd apps/web build
+
+      - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -61,15 +67,3 @@ jobs:
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
 
-      # public/ is generated and git-ignored, so the web Worker has nothing to
-      # serve unless both static builds run here.
-      - name: Build the landing and dashboard
-        run: bun run --cwd apps/web build
-
-      - name: Deploy web
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/web
-          packageManager: bun
