@@ -10,32 +10,32 @@ const tools = [
   {
     name: "read_file",
     readOnly: true,
-    body: "Read a text file whole, or a range of lines. Output is capped, and the reply says when it was cut so the agent knows to ask for the rest.",
+    body: "Read a text file whole, or a range of lines. Output is capped, and the reply says when it was cut so the agent knows to ask for the rest",
   },
   {
     name: "list_files",
     readOnly: true,
-    body: "List a directory, one level or recursive, optionally filtered by a glob. Recursive walks respect .gitignore and always skip .git and node_modules.",
+    body: "List a directory, one level or recursive, optionally filtered by a glob. Recursive walks respect .gitignore and always skip .git and node_modules",
   },
   {
     name: "grep",
     readOnly: true,
-    body: "Search file contents with a regular expression. Returns paths with 1-based line numbers, under the same .gitignore rules.",
+    body: "Search file contents with a regular expression. Returns paths with 1-based line numbers, under the same .gitignore rules",
   },
   {
     name: "edit_file",
     readOnly: false,
-    body: "Replace an exact region of a file. If the text appears more than once the edit is refused rather than guessed, and the reply is a unified diff.",
+    body: "Replace an exact region of a file. If the text appears more than once the edit is refused rather than guessed, and the reply is a unified diff",
   },
   {
     name: "write_file",
     readOnly: false,
-    body: "Write a file in full, creating parent directories. Overwrites entirely, which is why edit_file is the better tool for an existing file.",
+    body: "Write a file in full, creating parent directories. Overwrites entirely, which is why edit_file is the better tool for an existing file",
   },
   {
     name: "run_command",
     readOnly: false,
-    body: "Run a shell command in the project directory. Bounded by a wall-clock budget, killed along with everything it started, and stdin is closed so nothing hangs waiting for input.",
+    body: "Run a shell command in the project directory. Bounded by a wall-clock budget, killed along with everything it started, and stdin is closed so nothing hangs waiting for input",
   },
 ];
 ---
