@@ -1,6 +1,12 @@
+import { createExecutionContext } from "cloudflare:test";
 import { ExeoraError, TOOL_NAMES } from "@exeora/protocol";
 import { describe, expect, it } from "vitest";
-import { createProjectMcpHandler, mcpRoute, type ToolDispatcher } from "./mcp.js";
+import {
+  createProjectMcpHandler,
+  type McpToolContext,
+  mcpRoute,
+  type ToolDispatcher,
+} from "./mcp.js";
 
 /**
  * The MCP surface: what an agent actually sees, and what happens to its call
@@ -9,24 +15,32 @@ import { createProjectMcpHandler, mcpRoute, type ToolDispatcher } from "./mcp.js
 
 const PROJECT = "prj_abc";
 
-function post(body: unknown, options: { dispatch?: ToolDispatcher; project?: string } = {}) {
+function post(
+  body: unknown,
+  options: { dispatch?: ToolDispatcher; project?: string; props?: Record<string, string> } = {},
+) {
   const project = options.project ?? PROJECT;
   const dispatch: ToolDispatcher =
     options.dispatch ?? (async (_context, tool, args) => ({ tool, args }));
 
-  return createProjectMcpHandler(project, dispatch).fetch(
-    new Request(`https://exeora.dev${mcpRoute(project)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
-        // The version claude.ai and ChatGPT still speak, so this also proves
-        // the legacy compatibility path is live.
-        "MCP-Protocol-Version": "2025-06-18",
-      },
-      body: JSON.stringify(body),
-    }),
-  );
+  const request = new Request(`https://exeora.dev${mcpRoute(project)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      // The version claude.ai and ChatGPT still speak, so this also proves
+      // the legacy compatibility path is live.
+      "MCP-Protocol-Version": "2025-06-18",
+    },
+    body: JSON.stringify(body),
+  });
+
+  // The (request, env, ctx) form the Worker uses, with the props the OAuth
+  // provider attaches to the ExecutionContext after validating the token.
+  const ctx = createExecutionContext();
+  (ctx as { props?: Record<string, string> }).props = options.props ?? { userId: "usr_test" };
+
+  return createProjectMcpHandler(project, dispatch)(request, {}, ctx);
 }
 
 /** Responses may arrive as SSE, so the JSON-RPC payload is dug out either way. */
@@ -156,6 +170,39 @@ describe("tools/call", () => {
 
     expect(dispatched).toBe(false);
     expect(JSON.stringify(body).toLowerCase()).toMatch(/invalid|required|schema/);
+  });
+});
+
+describe("caller identity", () => {
+  /**
+   * The props live on the ExecutionContext, so a handler invoked as
+   * `.fetch(request)` receives no user at all. That looks healthy from the
+   * outside: the CLI connects, the dashboard lists the project, tools/list
+   * answers, and only tools/call fails, with the project lookup finding
+   * nothing for the empty user id.
+   */
+  it("carries the grant's user and client through to the dispatcher", async () => {
+    const seen: McpToolContext[] = [];
+
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 7,
+          method: "tools/call",
+          params: { name: "list_files", arguments: {} },
+        },
+        {
+          props: { userId: "usr_owner", clientId: "cli_chatgpt" },
+          dispatch: async (context) => {
+            seen.push(context);
+            return { path: ".", entries: [], truncated: false };
+          },
+        },
+      ),
+    );
+
+    expect(seen).toEqual([{ userId: "usr_owner", projectId: PROJECT, clientId: "cli_chatgpt" }]);
   });
 });
 

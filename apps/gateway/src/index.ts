@@ -72,9 +72,13 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
     dispatchToDevice(c.env, context.userId, projectId, tool, args, context.clientId),
   );
 
-  // `.fetch()` rather than the (request, env, ctx) form: bindings reach the
-  // tools through the dispatcher closure, so the handler needs no ExecutionContext.
-  return handler.fetch(c.req.raw);
+  // The (request, env, ctx) form, not `.fetch(request)`: the grant's props ride
+  // on the ExecutionContext, and that is the only place the SDK looks for them.
+  // Called without it, every tool would run with an empty user id and no
+  // project would ever resolve.
+  // Cast for the same reason as propsOf: Hono's ExecutionContext type and the
+  // runtime's have drifted apart, though the object is the runtime's own.
+  return handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
 });
 
 /**
