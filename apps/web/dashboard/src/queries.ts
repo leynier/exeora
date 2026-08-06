@@ -13,6 +13,7 @@ export const keys = {
   me: ["me"] as const,
   devices: ["devices"] as const,
   projects: ["projects"] as const,
+  clients: ["clients"] as const,
   calls: ["calls"] as const,
 };
 
@@ -25,6 +26,10 @@ export const useDevices = () =>
   useQuery({ queryKey: keys.devices, queryFn: api.devices, refetchInterval: LIVE });
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.projects });
+
+/** Polled too: "last used" is the only sign a client is still talking to us. */
+export const useClients = () =>
+  useQuery({ queryKey: keys.clients, queryFn: api.clients, refetchInterval: LIVE });
 
 export const useToolCalls = () =>
   useQuery({ queryKey: keys.calls, queryFn: () => api.toolCalls(), refetchInterval: LIVE });

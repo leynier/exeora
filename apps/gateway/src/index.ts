@@ -4,10 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { api, relayName } from "./api/index.js";
 import { serveAssets } from "./assets.js";
+import { type CallerIdentity, rememberMcpClient, resolveTarget, touchClient } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
-import { createProjectMcpHandler } from "./mcp.js";
+import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -28,7 +29,7 @@ export { DeviceRelay } from "./relay-do.js";
  * removes a domain split across two Workers by path.
  */
 
-type Props = { userId: string; clientId?: string };
+type Props = { userId: string; clientId?: string; clientName?: string };
 
 /** Requests carrying a valid access token. */
 const authenticated = new Hono<{ Bindings: Env }>();
@@ -69,8 +70,13 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
 
   const handler = createProjectMcpHandler(projectId, async (context, tool, args) =>
-    dispatchToDevice(c.env, context.userId, projectId, tool, args, context.clientId),
+    dispatchToDevice(c.env, context.userId, projectId, tool, args, context.caller),
   );
+
+  // Cloned, not consumed: the handler needs the body intact. The clone is read
+  // only after the response is settled, so buffering the handshake never sits
+  // in front of a tool call.
+  const peek = c.req.raw.clone();
 
   // The (request, env, ctx) form, not `.fetch(request)`: the grant's props ride
   // on the ExecutionContext, and that is the only place the SDK looks for them.
@@ -78,16 +84,31 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   // project would ever resolve.
   // Cast for the same reason as propsOf: Hono's ExecutionContext type and the
   // runtime's have drifted apart, though the object is the runtime's own.
-  return handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
+  const response = await handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
+
+  const { userId, clientId } = propsOf(c.executionCtx);
+  if (userId && clientId) {
+    c.executionCtx.waitUntil(
+      handshakeClientInfo(peek)
+        .then((info) =>
+          info ? rememberMcpClient(c.env, { userId, projectId, clientId }, info) : undefined,
+        )
+        .catch(() => undefined),
+    );
+  }
+
+  return response;
 });
 
 /**
- * Resolves the project, checks it belongs to the caller, and forwards the call
- * to that project's device.
+ * Resolves the project, checks it belongs to the caller and that the caller's
+ * client has not been revoked, and forwards the call to that project's device.
  *
  * The token is already bound to this project's resource identifier by the
  * OAuth layer, so this is the second of two independent checks rather than the
- * only one.
+ * only one. The client check is a third: revoking deletes the OAuth grant, but
+ * reading `revokedAt` in the same statement that resolves the project costs
+ * nothing and closes the gap without depending on that having succeeded.
  */
 async function dispatchToDevice(
   env: Env,
@@ -95,18 +116,21 @@ async function dispatchToDevice(
   projectId: string,
   tool: ToolName,
   args: unknown,
-  clientId: string | undefined,
+  caller: CallerIdentity,
 ): Promise<unknown> {
-  const project = await db(env)
-    .select({ deviceId: schema.projects.deviceId })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
-    .get();
+  const project = await resolveTarget(env, { userId, projectId, clientId: caller.clientId });
 
   // Same answer whether the project does not exist or belongs to someone else:
   // distinguishing them would make project ids enumerable.
   if (!project) {
     throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available.");
+  }
+
+  if (project.clientRevokedAt) {
+    throw new ExeoraError(
+      "FORBIDDEN",
+      "This application's access to the project was revoked. Authorize it again to restore it.",
+    );
   }
 
   const startedAt = Date.now();
@@ -116,21 +140,36 @@ async function dispatchToDevice(
       projectId,
       tool,
       args,
+      client: callerLabel(caller),
     });
-    await record(env, { userId, projectId, tool, clientId, startedAt, status: "ok" });
+    await record(env, { userId, projectId, tool, caller, startedAt, status: "ok" });
     return value;
   } catch (error) {
     await record(env, {
       userId,
       projectId,
       tool,
-      clientId,
+      caller,
       startedAt,
       status: "error",
       errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
     });
     throw error;
   }
+}
+
+/**
+ * What the executor is told about the caller, so `exeora connect` can name it.
+ *
+ * Only the two display fields, never the client id: the machine's terminal is
+ * a different audience from the dashboard, and an opaque identifier there is
+ * noise rather than information.
+ */
+function callerLabel(caller: CallerIdentity): { name?: string; version?: string } | undefined {
+  const name = caller.clientName ?? caller.mcp?.name;
+  const version = caller.mcp?.version;
+  if (!name && !version) return undefined;
+  return { ...(name ? { name } : {}), ...(version ? { version } : {}) };
 }
 
 /** Audit row. Records what ran and how it ended, never arguments or output. */
@@ -140,12 +179,14 @@ async function record(
     userId: string;
     projectId: string;
     tool: string;
-    clientId: string | undefined;
+    caller: CallerIdentity;
     startedAt: number;
     status: "ok" | "error";
     errorCode?: string;
   },
 ): Promise<void> {
+  const { caller } = entry;
+
   try {
     await db(env)
       .insert(schema.toolCalls)
@@ -157,9 +198,18 @@ async function record(
         status: entry.status,
         durationMs: Date.now() - entry.startedAt,
         errorCode: entry.errorCode ?? null,
-        clientId: entry.clientId ?? null,
+        clientId: caller.clientId ?? null,
+        clientName: caller.clientName ?? caller.mcp?.name ?? null,
       })
       .run();
+
+    if (caller.clientId) {
+      await touchClient(
+        env,
+        { userId: entry.userId, projectId: entry.projectId, clientId: caller.clientId },
+        caller.mcp,
+      );
+    }
   } catch {
     // Auditing must never be the reason a tool call fails.
   }

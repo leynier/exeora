@@ -77,6 +77,19 @@ export const ToolCallMessage = z.object({
   projectId: z.string(),
   tool: z.enum(TOOL_NAMES),
   arguments: z.unknown(),
+  /**
+   * Which AI client asked, for the line `exeora connect` prints. Optional in
+   * both directions on purpose, so it needed no version bump: an older CLI
+   * strips the key it does not know, and a newer one tolerates a gateway that
+   * does not send it. It is also genuinely absent sometimes, because not every
+   * client registers a name or announces itself over MCP.
+   */
+  client: z
+    .object({
+      name: z.string().optional(),
+      version: z.string().optional(),
+    })
+    .optional(),
   issuedAt: z.number().int(),
   /**
    * Absolute deadline. The executor must not start work after this instant;

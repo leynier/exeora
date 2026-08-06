@@ -157,6 +157,7 @@ export class DeviceRelay extends DurableObject<Env> {
     projectId: string;
     tool: ToolName;
     args: unknown;
+    client?: { name?: string; version?: string } | undefined;
   }): Promise<unknown> {
     const socket = this.ctx.getWebSockets()[0];
     if (!socket) {
@@ -191,6 +192,7 @@ export class DeviceRelay extends DurableObject<Env> {
         projectId: options.projectId,
         tool: options.tool,
         arguments: options.args,
+        client: options.client,
         issuedAt,
         expiresAt,
       }),

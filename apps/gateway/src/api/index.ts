@@ -2,9 +2,11 @@ import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { isMetadataDocumentClient, usedElsewhere } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
+import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
 
 /**
  * The dashboard and CLI API. Everything here runs behind `apiRoute`, so the
@@ -219,6 +221,178 @@ api.delete("/api/projects/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+/**
+ * Every AI client authorized against one of the user's projects.
+ *
+ * Returned flat, with the project id on each row, because both consumers want
+ * it differently: the Clients tab groups by project and the project page filters
+ * to one. That is the same shape, and the same reasoning, as the audit log.
+ */
+api.get("/api/clients", async (c) => {
+  const rows = await db(c.env)
+    .select()
+    .from(schema.projectClients)
+    .where(eq(schema.projectClients.userId, c.get("userId")))
+    .orderBy(desc(schema.projectClients.authorizedAt))
+    .all();
+
+  return c.json(rows.map(toClientView));
+});
+
+/**
+ * Revocation is a soft delete, as it is for machines: the row stays so the
+ * dashboard can offer the second step, and the tool endpoint refuses a call
+ * whose client has `revokedAt` set.
+ *
+ * The grants are what actually carry access, so they go too. A client may hold
+ * several for the same project, one per time it was authorized, and every one
+ * of them has to be found by the project id we recorded in its metadata.
+ */
+api.delete("/api/clients/:id", async (c) => {
+  const userId = c.get("userId");
+
+  const client = await db(c.env)
+    .select()
+    .from(schema.projectClients)
+    .where(
+      and(
+        eq(schema.projectClients.id, c.req.param("id")),
+        eq(schema.projectClients.userId, userId),
+      ),
+    )
+    .get();
+
+  if (!client) return c.json({ error: "not_found" }, 404);
+
+  await db(c.env)
+    .update(schema.projectClients)
+    .set({ revokedAt: new Date() })
+    .where(eq(schema.projectClients.id, client.id))
+    .run();
+
+  await revokeGrantsFor(c.env, userId, client.projectId, client.clientId);
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Permanent deletion, allowed only once a client is revoked.
+ *
+ * Takes this project's audit history for that client with it, which is why it
+ * is the second of two steps rather than the only one, exactly as for machines.
+ */
+api.delete("/api/clients/:id/permanently", async (c) => {
+  const userId = c.get("userId");
+
+  const client = await db(c.env)
+    .select()
+    .from(schema.projectClients)
+    .where(
+      and(
+        eq(schema.projectClients.id, c.req.param("id")),
+        eq(schema.projectClients.userId, userId),
+      ),
+    )
+    .get();
+
+  if (!client) return c.json({ error: "not_found" }, 404);
+  if (client.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
+
+  await db(c.env)
+    .delete(schema.toolCalls)
+    .where(
+      and(
+        eq(schema.toolCalls.userId, userId),
+        eq(schema.toolCalls.projectId, client.projectId),
+        eq(schema.toolCalls.clientId, client.clientId),
+      ),
+    )
+    .run();
+
+  await db(c.env)
+    .delete(schema.projectClients)
+    .where(eq(schema.projectClients.id, client.id))
+    .run();
+
+  await forgetOAuthClient(c.env, userId, client.clientId);
+
+  return c.json({ ok: true });
+});
+
+/** Drops every grant this user holds for one client on one project. */
+async function revokeGrantsFor(
+  env: Env,
+  userId: string,
+  projectId: string,
+  clientId: string,
+): Promise<void> {
+  try {
+    let cursor: string | undefined;
+
+    do {
+      const page = await env.OAUTH_PROVIDER.listUserGrants(userId, {
+        ...(cursor ? { cursor } : {}),
+      });
+
+      for (const grant of page.items) {
+        if (grant.clientId !== clientId) continue;
+        if ((grant.metadata as { projectId?: string } | null)?.projectId !== projectId) continue;
+        await env.OAUTH_PROVIDER.revokeGrant(grant.id, userId);
+      }
+
+      cursor = page.cursor;
+    } while (cursor);
+  } catch {
+    // The row is already marked revoked and the MCP endpoint reads that on
+    // every call, so access is closed either way. Failing the request here
+    // would only make the user think it was not.
+  }
+}
+
+/**
+ * Unregisters the OAuth client itself, once nothing of the user's points at it.
+ *
+ * Clients are global objects: one registration can be shared by several
+ * accounts, and there is no way to ask the provider who else holds a grant for
+ * one. So this refuses the two cases that are knowably shared — a metadata
+ * document, whose id is a URL published by the client's author, and Exeora's
+ * own CLI and dashboard — and accepts that a DCR registration shared between
+ * accounts is not detectable from here.
+ */
+async function forgetOAuthClient(env: Env, userId: string, clientId: string): Promise<void> {
+  try {
+    if (isMetadataDocumentClient(clientId)) return;
+    if (await usedElsewhere(env, { userId, clientId })) return;
+
+    const [cli, dashboard] = await Promise.all([getCliClientId(env), getDashboardClientId(env)]);
+    if (clientId === cli || clientId === dashboard) return;
+
+    await env.OAUTH_PROVIDER.deleteClient(clientId);
+  } catch {
+    // The client is already gone from the user's account; a stale registration
+    // in KV is not worth failing the deletion they asked for.
+  }
+}
+
+function toClientView(client: typeof schema.projectClients.$inferSelect) {
+  return {
+    id: client.id,
+    projectId: client.projectId,
+    clientId: client.clientId,
+    clientName: client.clientName,
+    clientUri: client.clientUri,
+    mcpName: client.mcpName,
+    mcpVersion: client.mcpVersion,
+    authorizedAt: client.authorizedAt.getTime(),
+    lastUsedAt: client.lastUsedAt?.getTime() ?? null,
+    revokedAt: client.revokedAt?.getTime() ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
 
@@ -242,6 +416,7 @@ api.get("/api/tool-calls", async (c) => {
       durationMs: call.durationMs,
       errorCode: call.errorCode,
       clientId: call.clientId,
+      clientName: call.clientName,
       createdAt: call.createdAt.getTime(),
     })),
   );

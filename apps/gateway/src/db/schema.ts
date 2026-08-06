@@ -83,6 +83,53 @@ export const projects = sqliteTable(
   ],
 );
 
+/**
+ * An MCP client that has been authorized against one project's endpoint.
+ *
+ * A row is written when the user approves a consent screen naming that project,
+ * which is the only moment we learn the client's registered name. It is
+ * deliberately per project rather than per account: a token here is bound to
+ * one endpoint, so "Claude may read this repository" has to be answerable one
+ * repository at a time.
+ *
+ * The authoritative record of access is the OAuth grant in KV; this table is
+ * what makes it nameable, listable and revocable from the dashboard.
+ */
+export const projectClients = sqliteTable(
+  "project_clients",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** Opaque when the client registered through DCR; a metadata URL under CIMD. */
+    clientId: text("client_id").notNull(),
+    /** RFC 7591 `client_name`, copied here so no tool call has to read KV. */
+    clientName: text("client_name"),
+    clientUri: text("client_uri"),
+    /**
+     * MCP's own `clientInfo`. Learned from the per-request envelope on
+     * 2026-07-28 clients and from the `initialize` handshake on 2025-era ones,
+     * so it stays null until a client actually connects.
+     */
+    mcpName: text("mcp_name"),
+    mcpVersion: text("mcp_version"),
+    /** Refreshed every time consent is granted again, which also clears `revokedAt`. */
+    authorizedAt: integer("authorized_at", { mode: "timestamp_ms" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+    /** Set when revoked from the dashboard; the MCP endpoint refuses the call after. */
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("project_clients_project_client").on(table.projectId, table.clientId),
+    index("project_clients_user").on(table.userId),
+  ],
+);
+
 /** Audit trail shown in the dashboard. Never stores tool arguments or output. */
 export const toolCalls = sqliteTable(
   "tool_calls",
@@ -100,6 +147,12 @@ export const toolCalls = sqliteTable(
     errorCode: text("error_code"),
     /** OAuth client that made the call, so a user can tell Claude from ChatGPT. */
     clientId: text("client_id"),
+    /**
+     * That client's name at the time of the call, denormalised on purpose: the
+     * activity log spans every project, and this keeps it readable with one
+     * query and no join, even after the client has been removed.
+     */
+    clientName: text("client_name"),
     createdAt: createdAt(),
   },
   (table) => [
@@ -111,4 +164,5 @@ export const toolCalls = sqliteTable(
 export type User = typeof users.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
+export type ProjectClient = typeof projectClients.$inferSelect;
 export type ToolCall = typeof toolCalls.$inferSelect;

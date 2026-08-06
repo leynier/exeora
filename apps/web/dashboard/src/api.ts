@@ -28,7 +28,28 @@ export interface ToolCall {
   durationMs: number;
   errorCode: string | null;
   clientId: string | null;
+  clientName: string | null;
   createdAt: number;
+}
+
+/**
+ * An AI client authorized against one project.
+ *
+ * Two names, because neither is always there. `clientName` is what the
+ * application registered with the authorization server; `mcpName` is what the
+ * software calls itself over MCP, and only that one carries a version.
+ */
+export interface Client {
+  id: string;
+  projectId: string;
+  clientId: string;
+  clientName: string | null;
+  clientUri: string | null;
+  mcpName: string | null;
+  mcpVersion: string | null;
+  authorizedAt: number;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
 }
 
 export interface User {
@@ -71,6 +92,13 @@ export const api = {
   deleteDevice: (id: string) =>
     request<{ ok: true }>(`/api/devices/${id}/permanently`, { method: "DELETE" }),
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  clients: () => request<Client[]>("/api/clients"),
+  revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),
+
+  /** Only accepted once the client is revoked; the server returns 409 if not. */
+  deleteClient: (id: string) =>
+    request<{ ok: true }>(`/api/clients/${id}/permanently`, { method: "DELETE" }),
 };
 
 /** A device is online if it checked in within the heartbeat timeout. */

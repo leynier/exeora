@@ -1,8 +1,10 @@
 import { createExecutionContext } from "cloudflare:test";
 import { ExeoraError, TOOL_NAMES } from "@exeora/protocol";
+import { CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
 import {
   createProjectMcpHandler,
+  handshakeClientInfo,
   type McpToolContext,
   mcpRoute,
   type ToolDispatcher,
@@ -193,7 +195,7 @@ describe("caller identity", () => {
           params: { name: "list_files", arguments: {} },
         },
         {
-          props: { userId: "usr_owner", clientId: "cli_chatgpt" },
+          props: { userId: "usr_owner", clientId: "cli_chatgpt", clientName: "ChatGPT" },
           dispatch: async (context) => {
             seen.push(context);
             return { path: ".", entries: [], truncated: false };
@@ -202,9 +204,111 @@ describe("caller identity", () => {
       ),
     );
 
-    expect(seen).toEqual([{ userId: "usr_owner", projectId: PROJECT, clientId: "cli_chatgpt" }]);
+    expect(seen).toEqual([
+      {
+        userId: "usr_owner",
+        projectId: PROJECT,
+        caller: {
+          clientId: "cli_chatgpt",
+          clientName: "ChatGPT",
+          // No envelope on a 2025-era request: this is the normal case today.
+          mcp: undefined,
+        },
+      },
+    ]);
+  });
+
+  /**
+   * The 2026-07-28 revision moved client identity into a per-request `_meta`
+   * envelope, which is the only way a stateless endpoint can learn it without
+   * having seen the handshake.
+   */
+  it("reads clientInfo from the per-request envelope when a client sends one", async () => {
+    const seen: McpToolContext[] = [];
+
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 8,
+          method: "tools/call",
+          params: {
+            name: "list_files",
+            arguments: {},
+            _meta: { [CLIENT_INFO_META_KEY]: { name: "claude-code", version: "2.1.0" } },
+          },
+        },
+        {
+          props: { userId: "usr_owner", clientId: "cli_claude" },
+          dispatch: async (context) => {
+            seen.push(context);
+            return { path: ".", entries: [], truncated: false };
+          },
+        },
+      ),
+    );
+
+    expect(seen[0]?.caller.mcp).toEqual({ name: "claude-code", version: "2.1.0" });
+  });
+
+  /**
+   * The era every client speaks today. `initialize` is the only message that
+   * carries `clientInfo` there, and it arrives on its own request, so the name
+   * has to be read off the wire or lost.
+   */
+  it("reads clientInfo out of a 2025-era handshake body", async () => {
+    const info = await handshakeClientInfo(
+      initialize({
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "chatgpt", version: "1.2025.7" },
+      }),
+    );
+
+    expect(info).toEqual({ name: "chatgpt", version: "1.2025.7" });
+  });
+
+  it("ignores anything that is not a handshake", async () => {
+    const request = new Request("https://exeora.dev/p/prj_abc/mcp", {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "read_file", arguments: { path: "a.ts" } },
+      }),
+    });
+
+    expect(await handshakeClientInfo(request)).toBeUndefined();
+  });
+
+  it("skips a body too large to be a handshake, rather than buffering it", async () => {
+    const request = initialize({
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "chatgpt", version: "1.2025.7" },
+    });
+    request.headers.set("Content-Length", String(1024 * 1024));
+
+    expect(await handshakeClientInfo(request)).toBeUndefined();
+  });
+
+  it("tolerates a handshake that announces no client at all", async () => {
+    const info = await handshakeClientInfo(
+      initialize({ protocolVersion: "2025-06-18", capabilities: {} }),
+    );
+
+    expect(info).toBeUndefined();
   });
 });
+
+function initialize(params: unknown): Request {
+  return new Request("https://exeora.dev/p/prj_abc/mcp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params }),
+  });
+}
 
 describe("per-project routing", () => {
   it("builds a distinct route for each project", () => {

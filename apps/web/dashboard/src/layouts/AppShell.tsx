@@ -1,18 +1,18 @@
 import { NavLink, Outlet } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
-import { useDevices, useMe, useProjects, useToolCalls } from "../queries.js";
+import { useClients, useDevices, useMe, useProjects, useToolCalls } from "../queries.js";
 
 /**
  * The frame every signed-in screen sits in: navigation, and the account.
  *
- * It subscribes to all four queries so a token that expired while the tab was
- * open signs out from anywhere, not only from whichever page happened to be
+ * It subscribes to every query so a token that expired while the tab was open
+ * signs out from anywhere, not only from whichever page happened to be
  * fetching.
  */
 export function AppShell() {
   const me = useMe();
-  const queries = [me, useDevices(), useProjects(), useToolCalls()];
+  const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls()];
 
   if (queries.some((query) => query.error instanceof Unauthorized)) signOut();
 
@@ -20,6 +20,7 @@ export function AppShell() {
     { to: "/", label: "Overview", end: true },
     { to: "/machines", label: "Machines" },
     { to: "/projects", label: "Projects" },
+    { to: "/clients", label: "Clients" },
     { to: "/activity", label: "Activity" },
   ];
 

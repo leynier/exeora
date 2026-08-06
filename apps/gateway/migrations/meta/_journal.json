@@ -8,6 +8,13 @@
       "when": 1785981012390,
       "tag": "0000_equal_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786031804939,
+      "tag": "0001_premium_cerise",
+      "breakpoints": true
     }
   ]
 }

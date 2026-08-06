@@ -5,6 +5,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   isToolName,
   PROTOCOL_VERSION,
+  type ToolCallMessage,
   type WireError,
 } from "@exeora/protocol";
 import { accessToken } from "./auth/tokens.js";
@@ -25,7 +26,8 @@ import { CLI_VERSION } from "./version.js";
 export interface ConnectionEvents {
   onOpen?: () => void;
   onClose?: (reason: string) => void;
-  onCall?: (tool: string, projectSlug: string) => void;
+  /** `client` is the AI client that asked, when the gateway could name one. */
+  onCall?: (tool: string, projectSlug: string, client?: string) => void;
   onResult?: (tool: string, ok: boolean, durationMs: number) => void;
   onError?: (message: string) => void;
 }
@@ -212,7 +214,7 @@ async function handleMessage(
         return;
       }
 
-      events.onCall?.(message.tool, project.slug);
+      events.onCall?.(message.tool, project.slug, describeClient(message.client));
 
       try {
         const value = await executeTool({ root: project.root }, message.tool, message.arguments);
@@ -223,6 +225,18 @@ async function handleMessage(
       return;
     }
   }
+}
+
+/**
+ * The AI client as one readable string, or nothing.
+ *
+ * A gateway that predates this field, or a client that registered no name and
+ * announces nothing over MCP, both land on undefined; the line is printed
+ * without it rather than with a placeholder.
+ */
+function describeClient(client: ToolCallMessage["client"]): string | undefined {
+  if (!client?.name) return client?.version;
+  return client.version ? `${client.name} ${client.version}` : client.name;
 }
 
 function toWireError(error: unknown): WireError {

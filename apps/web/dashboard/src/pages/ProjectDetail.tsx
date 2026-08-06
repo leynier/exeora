@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router";
 import { isOnline, relativeTime } from "../api.js";
+import { ClientList } from "../components/ClientList.js";
 import { CopyButton } from "../components/CopyButton.js";
 import {
   Badge,
@@ -12,7 +13,7 @@ import {
   StatusDot,
 } from "../components/ui.js";
 import { formatDate, formatDuration } from "../format.js";
-import { useDevices, useProjects, useToolCalls } from "../queries.js";
+import { useClients, useDevices, useProjects, useToolCalls } from "../queries.js";
 
 /**
  * One project: where to point a client, which machine serves it, and what has
@@ -22,6 +23,7 @@ export function ProjectDetail() {
   const { projectId } = useParams();
   const projects = useProjects();
   const devices = useDevices();
+  const clients = useClients();
   const calls = useToolCalls();
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
@@ -46,6 +48,7 @@ export function ProjectDetail() {
   }
 
   const device = devices.data?.find((candidate) => candidate.id === project.deviceId);
+  const authorized = (clients.data ?? []).filter((client) => client.projectId === project.id);
   const history = (calls.data ?? []).filter((call) => call.projectId === project.id);
 
   const claudeCode = `claude mcp add --transport http exeora ${project.mcpUrl}`;
@@ -83,6 +86,14 @@ export function ProjectDetail() {
           </div>
         </div>
       </Card>
+
+      {/* Full width, and above the machine: reading down the page, the endpoint
+          is followed by who is allowed to call it. */}
+      <div className="mt-6">
+        <Card title="Clients with access">
+          <ClientList clients={authorized} />
+        </Card>
+      </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[20rem_1fr]">
         {/* `self-start` so it keeps its own height instead of stretching to

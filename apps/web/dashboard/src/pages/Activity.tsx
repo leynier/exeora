@@ -52,9 +52,20 @@ export function Activity() {
     [projects.data],
   );
 
+  /**
+   * Labelled by name but filtered by id, because two clients can register the
+   * same name and picking one of them should not quietly select both.
+   */
   const clientOptions = useMemo(() => {
-    const ids = [...new Set(rows.map((call) => call.clientId).filter((id) => id !== null))];
-    return [{ value: "all", label: "Any client" }, ...ids.map((id) => ({ value: id, label: id }))];
+    const named = new Map<string, string>();
+    for (const call of rows) {
+      if (call.clientId) named.set(call.clientId, call.clientName ?? "Unnamed client");
+    }
+
+    return [
+      { value: "all", label: "Any client" },
+      ...[...named].map(([value, label]) => ({ value, label })),
+    ];
   }, [rows]);
 
   const filtered = rows.filter(
@@ -126,7 +137,7 @@ export function Activity() {
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
                       {nameFor(call.projectId)}
-                      {call.clientId ? ` · ${call.clientId}` : ""}
+                      {call.clientName ? ` · ${call.clientName}` : ""}
                     </p>
                   </div>
                 </div>
