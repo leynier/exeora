@@ -2,6 +2,7 @@ import type { ClientInfo } from "@cloudflare/workers-oauth-provider";
 import tokens from "@exeora/design/tokens.css";
 import { html, raw } from "hono/html";
 import type { UpstreamProvider } from "./providers/index.js";
+import type { AuthTarget } from "./target.js";
 
 /**
  * The only HTML the gateway serves. The landing page and dashboard live in
@@ -182,6 +183,36 @@ const styles = `
     color: var(--color-foreground-faint);
     font-size: .75rem;
   }
+
+  /* What the token is for, named rather than left to the reader to infer. */
+  .target {
+    margin: 0 0 1.25rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .target div {
+    display: flex;
+    gap: .75rem;
+    justify-content: space-between;
+    padding: .55rem .8rem;
+    font-size: .8125rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .target div:last-child { border-bottom: 0; }
+  .target dt { color: var(--color-foreground-faint); }
+  .target dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+
+  /* A path is long enough that sharing a line with its label breaks it mid
+     word, so it gets the full width underneath instead. */
+  .target div.stack { flex-direction: column; gap: .15rem; }
+  .target div.stack dd { text-align: left; font-size: .95em; }
+
+  .reassure {
+    margin: 0;
+    color: var(--color-foreground-faint);
+    font-size: .8125rem;
+  }
 `;
 
 /** The wordmark, matching the landing's: a half-lit circle. */
@@ -249,6 +280,11 @@ export function signInPage(providers: UpstreamProvider[], state: string) {
               ${PROVIDER_MARKS[provider.id] ?? ""} Continue with ${provider.label}
             </a>`,
         )}
+
+        <p class="reassure" style="margin-top:1.25rem">
+          Sign-in only proves who you are. Exeora reads your name, username and email address, and
+          nothing else. It cannot see your repositories or your code.
+        </p>
       </div>
 
       <p class="foot">You will be asked to approve the application on the next screen.</p>
@@ -261,8 +297,11 @@ export function consentPage(options: {
   userEmail: string;
   state: string;
   scopes: string[];
+  /** The project this token will be bound to, when the request named one. */
+  target?: AuthTarget | null;
 }) {
   const name = options.client?.clientName ?? options.client?.clientId ?? "An application";
+  const { target } = options;
 
   return layout(
     "Authorize",
@@ -270,15 +309,30 @@ export function consentPage(options: {
       <div class="card">
         <h1>Authorize ${name}</h1>
         <p class="lede">
-          It is asking for access to the projects you have connected to Exeora.
+          ${
+            target
+              ? html`It is asking for access to one project on one of your machines.`
+              : html`It is asking for access to the projects you have connected to Exeora.`
+          }
         </p>
 
         <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
 
+        ${
+          target
+            ? html`<dl class="target">
+              <div><dt>Project</dt><dd>${target.project}</dd></div>
+              <div><dt>Machine</dt><dd>${target.machine}</dd></div>
+              <div class="stack"><dt>Directory</dt><dd><code>${target.localPath}</code></dd></div>
+            </dl>`
+            : ""
+        }
+
         <div class="warn">
-          This grants <strong>${name}</strong> the ability to read, edit and run commands in the
-          project you connect it to, on whichever machine is serving it. Commands are not
-          filtered. Only approve applications you trust.
+          This grants <strong>${name}</strong> the ability to read, edit and run commands in
+          ${target ? html`that directory` : html`the project you connect it to`}, on
+          ${target ? html`${target.machine}` : html`whichever machine is serving it`}. Commands are
+          not filtered. Only approve applications you trust.
         </div>
 
         ${

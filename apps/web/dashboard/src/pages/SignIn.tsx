@@ -33,6 +33,14 @@ export function SignIn() {
             Your machines, your projects and what agents have been doing with them.
           </p>
 
+          {/* The question this screen actually raises. GitHub is asked for
+              `read:user user:email` and nothing more, so saying so is both
+              reassuring and true. */}
+          <p className="text-body-md text-foreground-faint mb-5">
+            GitHub is only used to check that you are you. Exeora reads your name, username and
+            email address. It asks for no access to your repositories and never sees your code.
+          </p>
+
           <button
             type="button"
             className="btn btn-primary w-full py-2.5"

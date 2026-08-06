@@ -6,6 +6,7 @@ import { consentPage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
+import { resolveAuthTarget } from "./target.js";
 import { resolveUser } from "./users.js";
 
 /**
@@ -55,6 +56,7 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
           userEmail: user.email,
           state: await parkAuthorization(c.env, { authRequest }),
           scopes: authRequest.scope,
+          target: await resolveAuthTarget(c.env, authRequest.resource, userId),
         }),
       );
     }
@@ -123,6 +125,7 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
         userEmail: user.email,
         state,
         scopes: pending.authRequest.scope,
+        target: await resolveAuthTarget(c.env, pending.authRequest.resource, user.id),
       }),
     );
   } catch (error) {
