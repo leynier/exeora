@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BASELINE_CAPABILITIES,
   decodeExecutorMessage,
   decodeRelayMessage,
   type ExecutorMessage,
@@ -95,8 +96,26 @@ describe("malformed frames", () => {
 });
 
 describe("tool registry", () => {
-  it("exposes exactly the six tools of the first release", () => {
+  it("exposes every tool, in a stable order", () => {
     expect(TOOL_NAMES).toEqual([
+      "read_file",
+      "list_files",
+      "grep",
+      "edit_file",
+      "write_file",
+      "run_command",
+      "start_command",
+      "get_command_output",
+      "send_command_input",
+      "kill_command",
+    ]);
+  });
+
+  it("keeps the baseline six frozen, whatever is added after them", () => {
+    // What an executor built before capabilities existed is taken to support.
+    // Derived from this list rather than from TOOL_NAMES, precisely so adding a
+    // tool does not silently claim every published CLI can run it.
+    expect(BASELINE_CAPABILITIES.tools).toEqual([
       "read_file",
       "list_files",
       "grep",

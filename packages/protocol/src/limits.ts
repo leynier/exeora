@@ -34,6 +34,37 @@ export const MAX_COMMAND_TIMEOUT_MS = 300_000;
  */
 export const RELAY_TIMEOUT_MS = 310_000;
 
+/**
+ * How much output one long-running process keeps, in bytes.
+ *
+ * A ring: once it is full the oldest bytes go, and the reader is told they did.
+ * A dev server left running for a day would otherwise be a memory leak with a
+ * scrollback, and the useful end of a log is the recent one.
+ */
+export const MAX_PROCESS_BUFFER_BYTES = 256_000;
+
+/** Largest slice `get_command_output` returns in one call, in bytes. */
+export const MAX_PROCESS_CHUNK_BYTES = 100_000;
+
+/**
+ * How many long-running processes one project may have at once.
+ *
+ * Low on purpose. These are dev servers and watch tasks, and an agent that has
+ * started twenty of something has lost track rather than found a use for them.
+ */
+export const MAX_PROCESSES_PER_PROJECT = 8;
+
+/**
+ * How long a call may wait for someone to confirm it, in milliseconds.
+ *
+ * Well inside RELAY_TIMEOUT_MS, so the relay is not the thing that gives up.
+ * The real ceiling is the calling AI client's own HTTP timeout, which for
+ * claude.ai and ChatGPT is around a minute: past that the answer arrives to
+ * nobody. Ninety seconds is long enough to read a command and short enough
+ * that an unattended machine fails rather than hangs.
+ */
+export const APPROVAL_WAIT_MS = 90_000;
+
 /** How often the CLI sends a heartbeat frame, in milliseconds. */
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 

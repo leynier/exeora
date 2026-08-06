@@ -14,6 +14,64 @@ import { TOOL_NAMES } from "./tools.js";
  */
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * The oldest version the relay still serves.
+ *
+ * A range rather than an equality, because the alternative is that every
+ * addition to this protocol disconnects every CLI in the world at the moment
+ * the gateway deploys. Anything a newer CLI gained is negotiated through
+ * `capabilities` below instead, which is a question the gateway can ask and an
+ * older CLI answers by omission.
+ *
+ * Raise this only for a change an old CLI would get *wrong*, as opposed to one
+ * it would merely not have. That is what the version is for, and it is why it
+ * should move rarely.
+ */
+export const MIN_SUPPORTED_PROTOCOL_VERSION = 1;
+
+/**
+ * What this executor can do beyond the baseline every version can.
+ *
+ * Absent means an executor built before this field existed: the six original
+ * tools, and no way to ask a person anything. Read that way rather than
+ * refused, which is the whole point.
+ */
+export const ExecutorCapabilities = z.object({
+  /**
+   * Whether there is a terminal here that a person could be asked at.
+   *
+   * False under systemd, in a detached tmux pane, or anywhere stdin is not a
+   * TTY. The gateway uses it to decide whether asking on the machine is worth
+   * trying at all, rather than sending a question into a void and waiting.
+   */
+  prompt: z.boolean(),
+  /**
+   * Tool names this executor can run.
+   *
+   * Deliberately `string` and not the tool enum: a CLI newer than the gateway
+   * may name tools this build has never heard of, and dropping the whole frame
+   * over that would reintroduce exactly the brittleness the version range
+   * removes. Unknown names are ignored by whoever reads this.
+   */
+  tools: z.array(z.string()),
+});
+
+export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
+
+/**
+ * What an executor that announced nothing is taken to do.
+ *
+ * The list is written out rather than derived from `TOOL_NAMES`, and that is
+ * the entire point of it: `TOOL_NAMES` grows, and a baseline that grew with it
+ * would claim that every CLI ever published supports whatever was added last
+ * week. These six are what shipped before capabilities existed, so this list is
+ * history and must never be edited to add a tool.
+ */
+export const BASELINE_CAPABILITIES: ExecutorCapabilities = {
+  prompt: false,
+  tools: ["read_file", "list_files", "grep", "edit_file", "write_file", "run_command"],
+};
+
 const errorShape = z.object({
   code: z.enum(ERROR_CODES),
   message: z.string(),
@@ -34,6 +92,8 @@ export const HelloMessage = z.object({
   platform: z.string(),
   /** Projects this executor can currently serve, so the relay can fail fast. */
   projects: z.array(z.object({ id: z.string(), slug: z.string() })),
+  /** Optional so a CLI predating the field still produces a valid `hello`. */
+  capabilities: ExecutorCapabilities.optional(),
 });
 
 export const HeartbeatMessage = z.object({
@@ -51,15 +111,29 @@ export const ToolResultMessage = z.object({
   ]),
 });
 
+/**
+ * The person at this machine answering an `approval.request`.
+ *
+ * A separate round from the tool call it belongs to, because the call has not
+ * been sent yet: nothing runs until this comes back true.
+ */
+export const ApprovalAnswerMessage = z.object({
+  type: z.literal("approval.answer"),
+  id: z.string(),
+  approved: z.boolean(),
+});
+
 export const ExecutorMessage = z.discriminatedUnion("type", [
   HelloMessage,
   HeartbeatMessage,
   ToolResultMessage,
+  ApprovalAnswerMessage,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessage>;
 export type HeartbeatMessage = z.infer<typeof HeartbeatMessage>;
 export type ToolResultMessage = z.infer<typeof ToolResultMessage>;
+export type ApprovalAnswerMessage = z.infer<typeof ApprovalAnswerMessage>;
 export type ExecutorMessage = z.infer<typeof ExecutorMessage>;
 
 // ---------------------------------------------------------------------------
@@ -70,6 +144,17 @@ export const HelloAckMessage = z.object({
   type: z.literal("hello.ack"),
   serverTime: z.number().int(),
   heartbeatIntervalMs: z.number().int(),
+  /**
+   * The newest CLI the gateway knows about, so `connect` can say a newer one
+   * exists.
+   *
+   * It comes from here rather than from a request to the npm registry: the
+   * gateway already knows which version it wants, and asking a third party on
+   * every connect would make signing in depend on a service that has nothing to
+   * do with any of this. Optional because a gateway predating the field sends
+   * none, and because the value is configuration that may simply be unset.
+   */
+  latestCliVersion: z.string().optional(),
 });
 
 export const ToolCallMessage = z.object({
@@ -124,17 +209,63 @@ export const ShutdownMessage = z.object({
   reason: z.string(),
 });
 
+/**
+ * Asking the person at this machine before a call runs.
+ *
+ * The path for clients that cannot be asked over MCP, which today is most of
+ * them. Sent only to an executor that announced `capabilities.prompt`, so an
+ * older CLI is never sent a question it would drop on the floor.
+ *
+ * Worth noting what is *not* here: no signature, and no hash of the arguments.
+ * The elicitation path needs both because its state travels out through the AI
+ * client and comes back as attacker-controlled input. This one never leaves the
+ * relay, which holds the arguments itself for the whole exchange, so there is
+ * nothing to bind and nothing to forge.
+ */
+export const ApprovalRequestMessage = z.object({
+  type: z.literal("approval.request"),
+  id: z.string(),
+  projectId: z.string(),
+  tool: z.enum(TOOL_NAMES),
+  /** One line, already written for a person: "Run `npm test`?" */
+  prompt: z.string(),
+  /** Which AI client is asking, when the gateway could name one. */
+  client: z
+    .object({
+      name: z.string().optional(),
+      version: z.string().optional(),
+    })
+    .optional(),
+  expiresAt: z.number().int(),
+});
+
+/**
+ * The question is over: answered somewhere else, or nobody answered in time.
+ *
+ * Sent so the terminal can take its prompt down. Without it, a question already
+ * settled in the dashboard would sit there waiting, and typing an answer into
+ * it would do nothing, which is worse than no prompt at all.
+ */
+export const ApprovalResolvedMessage = z.object({
+  type: z.literal("approval.resolved"),
+  id: z.string(),
+});
+
 export const RelayMessage = z.discriminatedUnion("type", [
   HelloAckMessage,
   ToolCallMessage,
   CancelMessage,
   ShutdownMessage,
+  ApprovalRequestMessage,
+  ApprovalResolvedMessage,
 ]);
 
 export type HelloAckMessage = z.infer<typeof HelloAckMessage>;
 export type ToolCallMessage = z.infer<typeof ToolCallMessage>;
 export type CancelMessage = z.infer<typeof CancelMessage>;
 export type ShutdownMessage = z.infer<typeof ShutdownMessage>;
+export type ApprovalRequestMessage = z.infer<typeof ApprovalRequestMessage>;
+export type ApprovalResolvedMessage = z.infer<typeof ApprovalResolvedMessage>;
 export type RelayMessage = z.infer<typeof RelayMessage>;
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,91 @@
+---
+import { TOOL_DEFINITIONS, TOOL_NAMES, toolFields } from "@exeora/protocol";
+import Doc from "../../layouts/Doc.astro";
+
+/**
+ * The tool reference, generated from the contract rather than written beside it.
+ *
+ * `TOOL_DEFINITIONS` is what the gateway advertises to the client and what the
+ * executor validates arguments against. Reading it here at build time is what
+ * stops this page from being the third description of the same thing, and the
+ * one that quietly goes out of date. Adding a tool publishes its reference.
+ */
+
+const tools = TOOL_NAMES.map((name) => ({
+  name,
+  title: TOOL_DEFINITIONS[name].title,
+  description: TOOL_DEFINITIONS[name].description,
+  readOnly: TOOL_DEFINITIONS[name].readOnly,
+  fields: toolFields(name),
+}));
+---
+
+<Doc
+  title="Tools"
+  description="What an agent connected to a project can do, and exactly what each tool takes."
+  canonicalPath="/docs/tools/"
+>
+  <p>
+    Every path is interpreted relative to the project root and confined to it before anything
+    touches the disk. An absolute path, or one that climbs out with <code>..</code>, is refused with
+    <code>PATH_ESCAPE</code> rather than resolved.
+  </p>
+
+  <p>
+    Which of these a project actually offers is up to its policy: see{" "}
+    <a href="/docs/policy/">what a project allows</a>. Tools marked <strong>read only</strong> change
+    nothing, which is what a project set to read only is left with, and what is never interrupted by
+    a confirmation prompt.
+  </p>
+
+  <p>
+    This page is generated from the same definitions the gateway advertises and the executor
+    validates against, so it cannot describe a tool that does not exist or miss an argument that
+    does.
+  </p>
+
+  {
+    tools.map((tool) => (
+      <section>
+        <h2 id={tool.name}>
+          <code>{tool.name}</code>
+        </h2>
+
+        <p>
+          <strong>{tool.title}</strong>
+          {tool.readOnly && <span class="text-foreground-faint"> · read only</span>}
+        </p>
+
+        <p>{tool.description}</p>
+
+        {tool.fields.length > 0 && (
+          <div class="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Argument</th>
+                  <th>Type</th>
+                  <th>What it means</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tool.fields.map((field) => (
+                  <tr>
+                    <td>
+                      <code>{field.name}</code>
+                      {!field.required && <span class="text-foreground-faint"> optional</span>}
+                    </td>
+                    <td>
+                      <code>{field.type}</code>
+                    </td>
+                    <td>{field.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    ))
+  }
+</Doc>

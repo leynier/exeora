@@ -287,6 +287,9 @@ describe("caller identity", () => {
         // A 2025-era request carries no elicitation answer, so nothing here has
         // been confirmed. Whether that matters is the project's policy to say.
         approved: false,
+        // And it cannot be asked over MCP either, which is what sends the
+        // question to the machine's terminal or the dashboard instead.
+        canElicit: false,
       },
     ]);
   });
@@ -448,11 +451,30 @@ describe("approval", () => {
     expect(typeof result.requestState).toBe("string");
   });
 
-  it("refuses a client that cannot be asked, rather than running it", async () => {
+  it("tells the dispatcher when a client cannot be asked over MCP", async () => {
+    const seen: boolean[] = [];
+
+    await payload(
+      await post(writeCall, {
+        rawDispatch: async (context) => {
+          seen.push(context.canElicit);
+          return { kind: "value", value: { ok: true } };
+        },
+      }),
+    );
+
+    // A 2025-era client, which is claude.ai and ChatGPT today. The dispatcher
+    // asks the machine's terminal or the dashboard instead; this layer only has
+    // to say which kind of client it is talking to.
+    expect(seen).toEqual([false]);
+  });
+
+  it("never answers a 2025-era client with an input_required it cannot read", async () => {
+    // The dispatcher is not supposed to ask for a confirmation from a client
+    // that cannot give one, so this stub is a bug being simulated. It must
+    // surface as an error rather than as a response that looks like a hang.
     const body = await payload(await post(writeCall, { rawDispatch: needsApproval }));
 
-    // A 2025-era client, which is claude.ai and ChatGPT today.
-    expect(JSON.stringify(body)).toContain("cannot be asked");
     expect(JSON.stringify(body)).not.toContain("input_required");
   });
 

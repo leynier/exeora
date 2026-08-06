@@ -4,6 +4,7 @@ import {
   isToolName,
   needsApproval,
   policyAllows,
+  TOOL_NAMES,
   type ToolName,
 } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
@@ -13,8 +14,14 @@ import { serveAssets } from "./assets.js";
 import { type CallerIdentity, rememberMcpClient, resolveTarget, touchClient } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
+import { describeCall } from "./approval.js";
 import { newId } from "./ids.js";
-import { createProjectMcpHandler, type DispatchResult, handshakeClientInfo } from "./mcp.js";
+import {
+  createProjectMcpHandler,
+  type DispatchResult,
+  handshakeClientInfo,
+  peekMethod,
+} from "./mcp.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -102,6 +109,13 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   // leaving a command running on someone's machine for its full timeout.
   const { signal } = c.req.raw;
 
+  // Which tools to advertise. Asked only for `tools/list`, so a tool call pays
+  // neither the lookup nor the round trip to the device.
+  const advertised =
+    (await peekMethod(c.req.raw.clone())) === "tools/list"
+      ? await advertisedTools(c.env, propsOf(c.executionCtx).userId, projectId)
+      : undefined;
+
   const handler = createProjectMcpHandler(
     projectId,
     async (context, tool, args) =>
@@ -112,9 +126,11 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
         args,
         caller: context.caller,
         approved: context.approved,
+        canElicit: context.canElicit,
         signal,
       }),
     c.env,
+    advertised,
   );
 
   // Cloned, not consumed: the handler needs the body intact. The clone is read
@@ -164,6 +180,8 @@ async function dispatchToDevice(
     caller: CallerIdentity;
     /** Whether the user has confirmed this exact call, on a previous round. */
     approved: boolean;
+    /** Whether this client can be asked over MCP, rather than out of band. */
+    canElicit: boolean;
     signal?: AbortSignal | undefined;
   },
 ): Promise<DispatchResult> {
@@ -207,16 +225,53 @@ async function dispatchToDevice(
     throw error;
   }
 
-  // Asked before anything is dispatched, and asked here rather than in the MCP
-  // layer because this is where the project's policy is known. The answer comes
-  // back on a second round carrying a signed state bound to these arguments.
-  if (needsApproval(project.policy, tool) && !call.approved) {
-    return { kind: "needs-approval" };
-  }
-
   const startedAt = Date.now();
   const requestId = newId("req");
   const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
+
+  // Asked before anything is dispatched, and asked here rather than in the MCP
+  // layer because this is where the project's policy is known.
+  if (needsApproval(project.policy, tool) && !call.approved) {
+    // A client speaking 2026-07-28 is asked over MCP: the answer comes back on
+    // a second round carrying a signed state bound to these arguments, which is
+    // the best available answer because the person is already looking at the
+    // conversation the call came from.
+    if (call.canElicit) return { kind: "needs-approval" };
+
+    // Everyone else is asked out of band. This used to refuse outright, which
+    // made the setting decorative for exactly the clients most people use:
+    // claude.ai and ChatGPT still speak the 2025 protocol today.
+    const outcome = await relay.requestApproval({
+      id: newId("apr"),
+      projectId,
+      tool,
+      prompt: describeCall(tool, args),
+      clientName: caller.clientName ?? caller.mcp?.name,
+      client: callerLabel(caller),
+    });
+
+    if (outcome !== "approved") {
+      const error =
+        outcome === "declined"
+          ? new ExeoraError("APPROVAL_DECLINED", "The call was not approved.")
+          : new ExeoraError(
+              "APPROVAL_TIMEOUT",
+              "This project asks for every change to be confirmed, and nobody answered. " +
+                "Confirm it in the terminal running `exeora connect`, or in the Exeora dashboard.",
+            );
+
+      await record(env, {
+        userId,
+        projectId,
+        tool,
+        caller,
+        startedAt,
+        status: "error",
+        errorCode: error.code,
+      });
+      throw error;
+    }
+  }
 
   // Registered before the call rather than after it: awaiting `callTool` first
   // would leave the window where the client hangs up unwatched, which is
@@ -251,6 +306,44 @@ async function dispatchToDevice(
   } finally {
     signal?.removeEventListener("abort", cancel);
   }
+}
+
+/**
+ * The tools the machine serving this project can actually run.
+ *
+ * Undefined means "offer every tool", and it is the answer to three different
+ * situations on purpose: an unresolvable project, a machine that is offline,
+ * and a machine too old to have said. None of them is a reason to publish a
+ * shorter list. A call that reaches an offline machine already fails with
+ * `LOCAL_EXECUTOR_OFFLINE`, which is the true answer; an endpoint that
+ * advertised nothing while a laptop slept would look broken instead.
+ */
+async function advertisedTools(
+  env: Env,
+  userId: string | undefined,
+  projectId: string,
+): Promise<ReadonlySet<ToolName> | undefined> {
+  if (!userId) return undefined;
+
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+
+  if (!project) return undefined;
+
+  const capabilities = await env.DEVICE_RELAY.getByName(
+    relayName(userId, project.deviceId),
+  ).capabilities();
+
+  if (!capabilities) return undefined;
+
+  // Intersected with what this gateway knows, because the executor may be the
+  // newer of the two: a tool this build has no schema for is a name and nothing
+  // it could register.
+  const announced = new Set<string>(capabilities.tools);
+  return new Set(TOOL_NAMES.filter((name) => announced.has(name)));
 }
 
 /**

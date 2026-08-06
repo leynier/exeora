@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TOOL_DEFINITIONS, type ToolName } from "./tools.js";
+import { TOOL_DEFINITIONS, TOOL_NAMES, type ToolName } from "./tools.js";
 
 /**
  * What a project allows an agent to do.
@@ -29,10 +29,28 @@ export const CommandPolicy = z.object({
    */
   mode: z.enum(POLICY_MODES),
   /**
-   * Programs `run_command` may invoke under `allow_list`, compared against the
-   * first word of the command. Ignored in the other two modes.
+   * Commands `run_command` may invoke under `allow_list`, and nothing else.
+   * Ignored in the other two modes, where the mode already answers the
+   * question.
+   *
+   * Each entry is a rule; see `matchesRule` for what one means.
    */
   allow: z.array(z.string()).default([]),
+  /**
+   * Commands `run_command` may never invoke, **in every mode, including
+   * `allow_all`**, and checked before `allow`.
+   *
+   * Applying only under `allow_list` would make this decoration: that mode
+   * already refuses everything it does not name. Its whole use is the project
+   * that permits commands generally and still wants `sudo` and `rm -rf`
+   * refused, which is a sentence only `allow_all` can express.
+   *
+   * A non-empty list also turns on the shell-syntax refusal that `allow_list`
+   * has always had. Without that, `npm test; sudo rm -rf /` is one command
+   * whose first word is `npm`, and a deny list naming `sudo` would let it
+   * through while appearing not to. `shell = true` opts out and says so.
+   */
+  deny: z.array(z.string()).default([]),
   /**
    * Whether a command may contain shell syntax under `allow_list`.
    *
@@ -56,6 +74,19 @@ export const CommandPolicy = z.object({
    * than waved through, since the alternative makes the setting decorative.
    */
   approve: z.boolean().default(false),
+  /**
+   * Which tools exist here at all, or null for every one of them.
+   *
+   * The granularity `mode` cannot express. `read_only` is the only per-tool
+   * statement the modes can make, and it is all-or-nothing: a project that
+   * wants an agent to read and edit files but never run a command has no way to
+   * say so without this.
+   *
+   * Null rather than "every name listed" so the meaning survives a new tool
+   * being added: a project that never restricted its tools should not silently
+   * refuse the next one to exist.
+   */
+  tools: z.array(z.enum(TOOL_NAMES)).nullable().default(null),
 });
 
 export type CommandPolicy = z.infer<typeof CommandPolicy>;
@@ -64,8 +95,10 @@ export type CommandPolicy = z.infer<typeof CommandPolicy>;
 export const DEFAULT_POLICY: CommandPolicy = {
   mode: "allow_all",
   allow: [],
+  deny: [],
   shell: false,
   approve: false,
+  tools: null,
 };
 
 /**
@@ -78,8 +111,12 @@ export const DEFAULT_POLICY: CommandPolicy = {
 export const CLOSED_POLICY: CommandPolicy = {
   mode: "read_only",
   allow: [],
+  deny: [],
   shell: false,
   approve: false,
+  // `read_only` already refuses everything that changes anything, and naming a
+  // shorter list here would say something this fallback has no way to know.
+  tools: null,
 };
 
 /**
@@ -114,7 +151,18 @@ const ALLOWED: PolicyVerdict = { allowed: true };
  * tool changes anything, which `TOOL_DEFINITIONS` already records.
  */
 export function policyAllows(policy: CommandPolicy, tool: ToolName, args: unknown): PolicyVerdict {
-  if (policy.mode === "allow_all") return ALLOWED;
+  // First, because it is the broadest statement a project can make: a tool that
+  // does not exist here is not worth asking any further question about.
+  if (policy.tools && !policy.tools.includes(tool)) {
+    return {
+      allowed: false,
+      // Lists what is permitted, because an agent that cannot see the rule
+      // cannot obey it, and will otherwise keep trying.
+      reason:
+        `This project does not offer \`${tool}\`. ` +
+        `Permitted: ${policy.tools.length > 0 ? policy.tools.join(", ") : "nothing"}.`,
+    };
+  }
 
   if (!TOOL_DEFINITIONS[tool].readOnly && policy.mode === "read_only") {
     return {
@@ -123,10 +171,12 @@ export function policyAllows(policy: CommandPolicy, tool: ToolName, args: unknow
     };
   }
 
-  if (tool !== "run_command") return ALLOWED;
-  if (policy.mode === "read_only") {
-    return { allowed: false, reason: "This project is read only. It runs no commands." };
-  }
+  // Every other tool is decided by what it is, which the two checks above have
+  // already settled. Only the two that name a command have arguments worth
+  // reading, and they are held to the same lists: `start_command` runs exactly
+  // what `run_command` runs, for longer, so a policy that distinguished them
+  // would be one an agent could step around by picking the other name.
+  if (tool !== "run_command" && tool !== "start_command") return ALLOWED;
 
   const command = (args as { command?: unknown } | null)?.command;
   if (typeof command !== "string") {
@@ -143,24 +193,45 @@ export function policyAllows(policy: CommandPolicy, tool: ToolName, args: unknow
  * example before anyone relies on it.
  */
 export function commandAllowed(policy: CommandPolicy, command: string): PolicyVerdict {
-  if (policy.mode === "allow_all") return ALLOWED;
   if (policy.mode === "read_only") {
     return { allowed: false, reason: "This project is read only. It runs no commands." };
   }
 
-  if (!policy.shell && SHELL_SYNTAX.test(command)) {
+  const words = tokenize(command);
+  const program = words[0];
+  if (!program) return { allowed: false, reason: "No command was given." };
+
+  /**
+   * Whether the first word of this command describes what it will do.
+   *
+   * True under `allow_list`, which has always refused shell syntax, and now
+   * also whenever a deny list exists. Both are lists compared against words,
+   * and `npm test; sudo rm -rf /` is one command whose first word is `npm`:
+   * without this, either list would appear to mean something it did not.
+   */
+  const readable = policy.mode === "allow_list" || policy.deny.length > 0;
+
+  if (readable && !policy.shell && SHELL_SYNTAX.test(command)) {
     return {
       allowed: false,
       reason:
-        "This project allows only plain commands from its allow list. " +
+        "This project allows only plain commands. " +
         "Shell syntax (pipes, redirection, substitution, chaining) is not permitted.",
     };
   }
 
-  const program = firstWord(command);
-  if (!program) return { allowed: false, reason: "No command was given." };
+  // Denial before permission, and in every mode. Under `allow_list` this is
+  // belt and braces; under `allow_all` it is the only thing being asked.
+  if (policy.deny.some((rule) => matchesRule(rule, words))) {
+    return {
+      allowed: false,
+      reason: `\`${program}\` is on this project's deny list.`,
+    };
+  }
 
-  if (!policy.allow.includes(program)) {
+  if (policy.mode === "allow_all") return ALLOWED;
+
+  if (!policy.allow.some((rule) => matchesRule(rule, words))) {
     return {
       allowed: false,
       // Names the program because the caller supplied it, and lists what is
@@ -175,6 +246,51 @@ export function commandAllowed(policy: CommandPolicy, command: string): PolicyVe
 }
 
 /**
+ * Whether one rule describes this command.
+ *
+ * A rule is a sequence of words, and a trailing `*` stands for any words that
+ * follow:
+ *
+ * ```text
+ * npm            any npm command      npm, npm test, npm run build
+ * git push       that command exactly git push, but not git push --force
+ * git *          any git command      git, git push origin main
+ * cargo build *  that, plus arguments cargo build --release
+ * ```
+ *
+ * **A single word still means the program and any arguments**, which is what a
+ * one-word entry meant before rules could be longer, and changing that would
+ * quietly tighten every allow list already written. Two or more words with no
+ * `*` is the exact form, which is the only way to say "this and nothing else".
+ *
+ * Deliberately not a glob. `*` is honoured as the final word and nowhere else,
+ * because a syntax that looks like a glob without being one is misread rather
+ * than learned, and because a `*` inside a real command is refused as shell
+ * syntax long before it gets here.
+ */
+export function matchesRule(rule: string, words: readonly string[]): boolean {
+  const parts = tokenize(rule);
+  if (parts.length === 0) return false;
+
+  const wildcard = parts[parts.length - 1] === "*";
+  const fixed = wildcard ? parts.slice(0, -1) : parts;
+
+  // The one-word case, kept as it was: the program, whatever follows it.
+  if (!wildcard && fixed.length === 1) return words[0] === fixed[0];
+
+  if (words.length < fixed.length) return false;
+  if (!wildcard && words.length !== fixed.length) return false;
+
+  return fixed.every((part, index) => words[index] === part);
+}
+
+/** A command or a rule as its words. */
+function tokenize(value: string): string[] {
+  const trimmed = value.trim();
+  return trimmed === "" ? [] : trimmed.split(/\s+/);
+}
+
+/**
  * A project's `exeora.toml`, which may leave anything out.
  *
  * Every field is optional, and that is load bearing rather than convenient: an
@@ -185,8 +301,10 @@ export function commandAllowed(policy: CommandPolicy, command: string): PolicyVe
 export const LocalCommandPolicy = z.object({
   mode: z.enum(POLICY_MODES).optional(),
   allow: z.array(z.string()).optional(),
+  deny: z.array(z.string()).optional(),
   shell: z.boolean().optional(),
   approve: z.boolean().optional(),
+  tools: z.array(z.enum(TOOL_NAMES)).optional(),
 });
 
 export type LocalCommandPolicy = z.infer<typeof LocalCommandPolicy>;
@@ -199,8 +317,8 @@ export type LocalCommandPolicy = z.infer<typeof LocalCommandPolicy>;
  * can tie their own hands further; they cannot untie them.
  *
  * Narrowing runs per field, and only where the file has an opinion. The
- * stricter mode wins, the allow lists intersect, and `shell` survives only if
- * both sides permit it.
+ * stricter mode wins, the allow lists and tool lists intersect, the deny lists
+ * unite, and `shell` survives only if both sides permit it.
  */
 export function narrowPolicy(remote: CommandPolicy, local: LocalCommandPolicy): CommandPolicy {
   const mode = local.mode === undefined ? remote.mode : stricter(remote.mode, local.mode);
@@ -209,22 +327,39 @@ export function narrowPolicy(remote: CommandPolicy, local: LocalCommandPolicy): 
   // account did not, and may not turn it off where the account did.
   const approve = remote.approve || (local.approve ?? false);
 
-  // Neither of these modes consults the list, so carrying one would only be
-  // something to misread later.
+  // Refusing is the strict direction too, so the lists unite rather than
+  // intersect: a command either side denies is denied. Note the asymmetry with
+  // `allow` below, and that it is the same rule seen from the other end.
+  const deny = [...new Set([...remote.deny, ...(local.deny ?? [])])];
+
+  // Null is "every tool", so it constrains nothing and the other side stands
+  // alone; two lists keep only what both name.
+  const tools =
+    local.tools === undefined
+      ? remote.tools
+      : remote.tools === null
+        ? [...local.tools]
+        : remote.tools.filter((tool) => local.tools?.includes(tool));
+
+  const shell = narrowShell(remote, local);
+
+  // Neither of these modes consults the allow list, so carrying one would only
+  // be something to misread later. The deny list survives: it applies in every
+  // mode, which is the whole reason it exists.
   if (mode === "allow_all" || mode === "read_only") {
-    return { mode, allow: [], shell: narrowShell(remote, local), approve };
+    return { mode, allow: [], deny, shell, approve, tools };
   }
 
-  // The list is only a restriction under allow_list. A side that is not in that
-  // mode is not constraining which programs may run, so it contributes nothing
-  // to intersect and its own list, if any, is not yet in force.
+  // The allow list is only a restriction under allow_list. A side that is not in
+  // that mode is not constraining which programs may run, so it contributes
+  // nothing to intersect and its own list, if any, is not yet in force.
   const lists: string[][] = [];
   if (remote.mode === "allow_list") lists.push(remote.allow);
   if (local.mode === "allow_list" && local.allow) lists.push(local.allow);
 
   const allow = lists.reduce((kept, list) => kept.filter((program) => list.includes(program)));
 
-  return { mode, allow, shell: narrowShell(remote, local), approve };
+  return { mode, allow, deny, shell, approve, tools };
 }
 
 function narrowShell(remote: CommandPolicy, local: LocalCommandPolicy): boolean {
@@ -234,9 +369,4 @@ function narrowShell(remote: CommandPolicy, local: LocalCommandPolicy): boolean 
 function stricter(a: CommandPolicy["mode"], b: CommandPolicy["mode"]): CommandPolicy["mode"] {
   // POLICY_MODES runs from most permissive to least, so the later one wins.
   return POLICY_MODES.indexOf(a) >= POLICY_MODES.indexOf(b) ? a : b;
-}
-
-/** The program a command runs, before any argument. */
-function firstWord(command: string): string {
-  return command.trim().split(/\s+/)[0] ?? "";
 }

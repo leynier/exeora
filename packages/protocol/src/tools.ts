@@ -5,6 +5,8 @@ import {
   MAX_COMMAND_TIMEOUT_MS,
   MAX_GREP_MATCHES,
   MAX_LIST_ENTRIES,
+  MAX_PROCESS_BUFFER_BYTES,
+  MAX_PROCESS_CHUNK_BYTES,
   MAX_READ_BYTES,
 } from "./limits.js";
 
@@ -178,6 +180,84 @@ export const RunCommandOutput = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Long-running processes
+// ---------------------------------------------------------------------------
+
+/**
+ * A dev server, a watch task, a test suite that takes twenty minutes.
+ *
+ * Four tools rather than a flag on `run_command`, because the shape is
+ * different: `start_command` answers at once with a handle, and everything
+ * after is a separate call about a process that is already running.
+ *
+ * Deliberately polled rather than streamed. The relay is request and response,
+ * and a call that answers immediately fits it exactly; streaming would need a
+ * second shape on the wire and would still not reach a 2025-era client, which
+ * has no way to receive one. Reading with a cursor works everywhere.
+ */
+
+const processId = z.string().min(1).describe("Handle returned by start_command.");
+
+export const StartCommandInput = z.object({
+  command: z.string().min(1).describe("Shell command to start inside the project."),
+  cwd: relativePath
+    .optional()
+    .describe("Working directory relative to the project root. Defaults to the root."),
+});
+
+export const StartCommandOutput = z.object({
+  processId: z.string(),
+  command: z.string(),
+  /** The operating system's id, for a person reading their own process list. */
+  pid: z.number().int().nullable(),
+});
+
+export const GetCommandOutputInput = z.object({
+  processId,
+  cursor: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Where to read from, as returned by the previous call. Omit to read from the start."),
+});
+
+export const GetCommandOutputOutput = z.object({
+  processId: z.string(),
+  /** Everything since the cursor, stdout and stderr interleaved as they arrived. */
+  chunk: z.string(),
+  /** Pass this back next time to continue where this call stopped. */
+  nextCursor: z.number().int(),
+  /** True when output between the cursor and this chunk was dropped from the ring. */
+  skipped: z.boolean(),
+  running: z.boolean(),
+  exitCode: z.number().int().nullable(),
+});
+
+export const SendCommandInputInput = z.object({
+  processId,
+  data: z.string().describe("Written to the process's stdin exactly as given."),
+  newline: z
+    .boolean()
+    .optional()
+    .describe("Append a newline. Defaults to true, since most prompts wait for one."),
+});
+
+export const SendCommandInputOutput = z.object({
+  processId: z.string(),
+  bytesWritten: z.number().int(),
+});
+
+export const KillCommandInput = z.object({ processId });
+
+export const KillCommandOutput = z.object({
+  processId: z.string(),
+  /** False when it had already exited, which is not an error. */
+  killed: z.boolean(),
+  exitCode: z.number().int().nullable(),
+});
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -245,6 +325,51 @@ export const TOOL_DEFINITIONS = {
     outputSchema: RunCommandOutput,
     readOnly: false,
   },
+  start_command: {
+    title: "Start a long-running command",
+    description:
+      "Start a command and return immediately with a handle, for anything that outlives a single " +
+      "call: a dev server, a watch task, a long test run. Read its output with get_command_output " +
+      "and stop it with kill_command. It keeps running until it exits or is killed, but dies with " +
+      "the connection to Exeora, so nothing is left running once nobody is watching. Use " +
+      "run_command for anything that finishes on its own.",
+    inputSchema: StartCommandInput,
+    outputSchema: StartCommandOutput,
+    readOnly: false,
+  },
+  get_command_output: {
+    title: "Read a command's output",
+    description:
+      "Read output from a process started with start_command, continuing from a cursor. Returns " +
+      `at most ${Math.round(MAX_PROCESS_CHUNK_BYTES / 1000)}KB per call, along with whether the ` +
+      "process is still running and its exit code if not. Only " +
+      `the last ${Math.round(MAX_PROCESS_BUFFER_BYTES / 1000)}KB is kept, so output is reported as ` +
+      "skipped rather than silently lost if you read too slowly.",
+    inputSchema: GetCommandOutputInput,
+    outputSchema: GetCommandOutputOutput,
+    // It changes nothing, which is what read_only means. A project set to
+    // read only cannot start a process in the first place, so nothing here
+    // becomes reachable that was not already.
+    readOnly: true,
+  },
+  send_command_input: {
+    title: "Write to a command's input",
+    description:
+      "Write to the standard input of a process started with start_command, for one waiting on an " +
+      "answer. Appends a newline unless told otherwise.",
+    inputSchema: SendCommandInputInput,
+    outputSchema: SendCommandInputOutput,
+    readOnly: false,
+  },
+  kill_command: {
+    title: "Stop a command",
+    description:
+      "Stop a process started with start_command, along with everything it started. Reports " +
+      "killed: false when it had already exited, which is not an error.",
+    inputSchema: KillCommandInput,
+    outputSchema: KillCommandOutput,
+    readOnly: false,
+  },
 } as const;
 
 export type ToolName = keyof typeof TOOL_DEFINITIONS;
@@ -265,6 +390,36 @@ export function isToolName(value: unknown): value is ToolName {
  */
 export function toolInputSchema<N extends ToolName>(name: N) {
   return TOOL_DEFINITIONS[name].inputSchema;
+}
+
+/** One argument of a tool, as something that only has to display it sees it. */
+export interface ToolField {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+/**
+ * A tool's arguments, flattened for display.
+ *
+ * Here rather than in whatever is rendering, so the documentation is generated
+ * from the contract instead of written next to it. A reference page that is a
+ * second description of the same thing is the one that goes quietly out of
+ * date, and the zod schema is already the first.
+ */
+export function toolFields(name: ToolName): ToolField[] {
+  const schema = z.toJSONSchema(TOOL_DEFINITIONS[name].inputSchema) as {
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
+
+  return Object.entries(schema.properties ?? {}).map(([field, spec]) => ({
+    name: field,
+    type: spec.type ?? "unknown",
+    required: (schema.required ?? []).includes(field),
+    description: spec.description ?? "",
+  }));
 }
 
 export type ToolInput<N extends ToolName> = z.infer<(typeof TOOL_DEFINITIONS)[N]["inputSchema"]>;

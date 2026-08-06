@@ -30,6 +30,16 @@ export const ERROR_CODES = [
   "UNKNOWN_PROJECT",
   /** The caller is authenticated but not allowed to reach this project. */
   "FORBIDDEN",
+  /** Someone was asked to confirm the call and said no. */
+  "APPROVAL_DECLINED",
+  /**
+   * The call needed confirming and nobody answered in time.
+   *
+   * Distinct from `APPROVAL_DECLINED` because they mean different things to
+   * whoever reads the audit log: one is a decision, the other is an empty
+   * chair. Both refuse the call, which is the only safe direction.
+   */
+  "APPROVAL_TIMEOUT",
   /** Something went wrong that we could not classify. */
   "INTERNAL_ERROR",
 ] as const;

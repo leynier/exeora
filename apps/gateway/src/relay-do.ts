@@ -1,10 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  APPROVAL_WAIT_MS,
+  BASELINE_CAPABILITIES,
   type CommandPolicy,
   decodeExecutorMessage,
+  type ExecutorCapabilities,
   ExeoraError,
   encodeMessage,
   HEARTBEAT_INTERVAL_MS,
+  MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
   RELAY_TIMEOUT_MS,
   type ToolName,
@@ -34,13 +38,45 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>;
 }
 
+/** How a request to confirm a call ended. */
+export type ApprovalOutcome = "approved" | "declined" | "unanswered";
+
+/** A pending approval as the dashboard needs to show it. */
+export interface ApprovalView {
+  id: string;
+  deviceId: string;
+  projectId: string;
+  tool: ToolName;
+  prompt: string;
+  clientName?: string;
+  requestedAt: number;
+  expiresAt: number;
+}
+
+interface PendingApproval {
+  settle: (outcome: ApprovalOutcome) => void;
+  timer: ReturnType<typeof setTimeout>;
+  view: ApprovalView;
+}
+
 interface SocketState {
   deviceId: string;
   projectIds: string[];
+  /** Absent for an executor that predates the field; read as the baseline. */
+  capabilities?: ExecutorCapabilities;
 }
 
 export class DeviceRelay extends DurableObject<Env> {
   private readonly pending = new Map<string, Pending>();
+
+  /**
+   * Calls waiting on someone to confirm them, keyed by approval id.
+   *
+   * In memory for the same reason `pending` is: the awaiting RPC keeps the
+   * object alive, and an approval that survived an eviction would be one
+   * answered long after the client that asked had given up.
+   */
+  private readonly approvals = new Map<string, PendingApproval>();
 
   // ---------------------------------------------------------------------
   // Executor side
@@ -78,11 +114,25 @@ export class DeviceRelay extends DurableObject<Env> {
 
     switch (message.type) {
       case "hello": {
-        if (message.protocolVersion !== PROTOCOL_VERSION) {
+        // A range, not an equality. Anything a newer CLI gained is negotiated
+        // through `capabilities`, so an older one is behind rather than broken,
+        // and only a change it would get actively wrong raises the floor.
+        const supported =
+          message.protocolVersion >= MIN_SUPPORTED_PROTOCOL_VERSION &&
+          message.protocolVersion <= PROTOCOL_VERSION;
+
+        if (!supported) {
+          const direction =
+            message.protocolVersion > PROTOCOL_VERSION
+              ? "This CLI is newer than the gateway. It will work again once the gateway catches up."
+              : "Update the CLI.";
+
           socket.send(
             encodeMessage({
               type: "shutdown",
-              reason: `This gateway speaks protocol v${PROTOCOL_VERSION}; the CLI speaks v${message.protocolVersion}. Update the CLI.`,
+              reason:
+                `This gateway speaks protocol v${MIN_SUPPORTED_PROTOCOL_VERSION} to v${PROTOCOL_VERSION}; ` +
+                `the CLI speaks v${message.protocolVersion}. ${direction}`,
             }),
           );
           socket.close(1008, "protocol version mismatch");
@@ -93,6 +143,7 @@ export class DeviceRelay extends DurableObject<Env> {
         socket.serializeAttachment({
           deviceId: state?.deviceId ?? message.deviceId,
           projectIds: message.projects.map((project) => project.id),
+          ...(message.capabilities ? { capabilities: message.capabilities } : {}),
         } satisfies SocketState);
 
         socket.send(
@@ -100,6 +151,9 @@ export class DeviceRelay extends DurableObject<Env> {
             type: "hello.ack",
             serverTime: Date.now(),
             heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+            ...(this.env.LATEST_CLI_VERSION
+              ? { latestCliVersion: this.env.LATEST_CLI_VERSION }
+              : {}),
           }),
         );
         await this.touch(message.deviceId, message.cliVersion);
@@ -109,6 +163,13 @@ export class DeviceRelay extends DurableObject<Env> {
       case "heartbeat": {
         const state = attachmentOf(socket);
         if (state) await this.touch(state.deviceId);
+        return;
+      }
+
+      case "approval.answer": {
+        // Unknown ids are normal: the dashboard may have answered first, or the
+        // question expired while someone was reading it.
+        this.settleApproval(message.id, message.approved ? "approved" : "declined");
         return;
       }
 
@@ -144,6 +205,22 @@ export class DeviceRelay extends DurableObject<Env> {
 
   async isOnline(): Promise<boolean> {
     return this.ctx.getWebSockets().length > 0;
+  }
+
+  /**
+   * What the connected executor can do, or null when nothing is connected.
+   *
+   * Null and "the baseline" are different answers and callers need both: an
+   * offline machine has no capabilities to report, which is not the same as a
+   * machine reporting the six tools every version has. Advertising nothing
+   * because a laptop is asleep would be the wrong answer to a different
+   * question.
+   */
+  async capabilities(): Promise<ExecutorCapabilities | null> {
+    const socket = this.ctx.getWebSockets()[0];
+    if (!socket) return null;
+
+    return attachmentOf(socket)?.capabilities ?? BASELINE_CAPABILITIES;
   }
 
   /**
@@ -210,6 +287,97 @@ export class DeviceRelay extends DurableObject<Env> {
   }
 
   /**
+   * Asks whether this call may run, and waits for an answer.
+   *
+   * The path for a client that cannot be asked over MCP, which today is most of
+   * them. Two places can answer: the terminal where `exeora connect` is running,
+   * if there is one, and the dashboard. **The first answer wins**, and the other
+   * side is told the question is over rather than left holding a prompt that no
+   * longer does anything.
+   *
+   * Refuses immediately when nothing is connected, for the same reason
+   * `callTool` does: asking someone to confirm a call that cannot run either way
+   * wastes the only thing this spends, which is a person's attention.
+   */
+  async requestApproval(options: {
+    id: string;
+    projectId: string;
+    tool: ToolName;
+    prompt: string;
+    clientName?: string | undefined;
+    client?: { name?: string; version?: string } | undefined;
+  }): Promise<ApprovalOutcome> {
+    const socket = this.ctx.getWebSockets()[0];
+    if (!socket) {
+      throw new ExeoraError(
+        "LOCAL_EXECUTOR_OFFLINE",
+        "No Exeora CLI is connected for this project. Run `exeora connect` on that machine.",
+      );
+    }
+
+    const state = attachmentOf(socket);
+    const requestedAt = Date.now();
+    const expiresAt = requestedAt + APPROVAL_WAIT_MS;
+
+    const view: ApprovalView = {
+      id: options.id,
+      deviceId: state?.deviceId ?? "",
+      projectId: options.projectId,
+      tool: options.tool,
+      prompt: options.prompt,
+      ...(options.clientName ? { clientName: options.clientName } : {}),
+      requestedAt,
+      expiresAt,
+    };
+
+    const answer = new Promise<ApprovalOutcome>((resolve) => {
+      const timer = setTimeout(() => {
+        this.settleApproval(options.id, "unanswered");
+      }, APPROVAL_WAIT_MS);
+
+      this.approvals.set(options.id, { settle: resolve, timer, view });
+    });
+
+    // Only to a machine that said it has someone to ask. A CLI running under
+    // systemd would drop the frame, and the question would sit here for the
+    // full ninety seconds waiting on a terminal nobody is looking at, when the
+    // dashboard could have answered it in five.
+    if (state?.capabilities?.prompt) {
+      try {
+        socket.send(
+          encodeMessage({
+            type: "approval.request",
+            id: options.id,
+            projectId: options.projectId,
+            tool: options.tool,
+            prompt: options.prompt,
+            client: options.client,
+            expiresAt,
+          }),
+        );
+      } catch {
+        // The socket went away. The dashboard can still answer, and the tool
+        // call that follows will fail on its own if the machine stays gone.
+      }
+    }
+
+    return answer;
+  }
+
+  /** Every question currently waiting, for the dashboard to show and answer. */
+  async listApprovals(): Promise<ApprovalView[]> {
+    return [...this.approvals.values()].map((approval) => approval.view);
+  }
+
+  /**
+   * Answers from the dashboard. Returns false when there was nothing to answer,
+   * which is what the person sees when the terminal got there first.
+   */
+  async answerApproval(id: string, approved: boolean): Promise<boolean> {
+    return this.settleApproval(id, approved ? "approved" : "declined");
+  }
+
+  /**
    * Abandons a call in flight, because the caller went away.
    *
    * Both halves matter. Rejecting the pending entry frees whoever is still
@@ -264,11 +432,45 @@ export class DeviceRelay extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Ends one question, whoever ended it, and tells the terminal so.
+   *
+   * The single door every outcome goes through, which is what makes "the first
+   * answer wins" true rather than approximately true: the map entry is deleted
+   * before anything else happens, so a second answer arriving a millisecond
+   * later finds nothing and changes nothing.
+   */
+  private settleApproval(id: string, outcome: ApprovalOutcome): boolean {
+    const approval = this.approvals.get(id);
+    if (!approval) return false;
+
+    this.approvals.delete(id);
+    clearTimeout(approval.timer);
+    approval.settle(outcome);
+
+    const socket = this.ctx.getWebSockets()[0];
+    try {
+      socket?.send(encodeMessage({ type: "approval.resolved", id }));
+    } catch {
+      // Best effort: the prompt goes away on its own deadline regardless.
+    }
+
+    return true;
+  }
+
   private failPending(reason: string): void {
     for (const [requestId, pending] of this.pending) {
       clearTimeout(pending.timer);
       pending.reject(new ExeoraError("LOCAL_EXECUTOR_OFFLINE", reason));
       this.pending.delete(requestId);
+    }
+
+    // A question waiting on a machine that has gone is a question nobody can
+    // usefully answer: the call it guards would fail the moment it was let
+    // through. Ending them here is what stops the caller waiting the full
+    // ninety seconds to be told the machine is offline.
+    for (const id of [...this.approvals.keys()]) {
+      this.settleApproval(id, "unanswered");
     }
   }
 

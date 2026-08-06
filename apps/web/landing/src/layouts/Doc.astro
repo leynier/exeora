@@ -1,0 +1,106 @@
+---
+import Footer from "../components/Footer.astro";
+import Navbar from "../components/Navbar.astro";
+import { DOC_PAGES } from "../lib/docs.js";
+import Layout from "./Layout.astro";
+
+/**
+ * The frame every documentation page sits in.
+ *
+ * Built from `Legal.astro`, which already solved the long-form prose: headings,
+ * paragraphs and lists styled once by element, so the pages themselves stay
+ * readable as source. What it adds is the navigation, since docs are a set
+ * rather than a single page, and a `pre` style, since half of what is being
+ * explained is commands and TOML.
+ *
+ * Written as Astro pages rather than pulled from a documentation framework.
+ * A framework would arrive with a design system of its own, and the choice
+ * would be to let it clash with this one or to rebuild it in these tokens,
+ * which is most of the work with none of the savings.
+ */
+
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath: string;
+}
+
+const { title, description, canonicalPath } = Astro.props;
+---
+
+<Layout title={`${title} · Exeora docs`} description={description} canonicalPath={canonicalPath}>
+  <Navbar />
+
+  <div class="mx-auto flex max-w-6xl gap-12 px-6 pt-24 pb-20">
+    <nav aria-label="Documentation" class="hidden w-52 shrink-0 lg:block">
+      <div class="sticky top-24">
+        <p class="text-label-md text-foreground-faint mb-3 font-mono uppercase">Docs</p>
+        <ul class="space-y-1">
+          {
+            DOC_PAGES.map((page) => (
+              <li>
+                <a
+                  href={page.href}
+                  aria-current={page.href === canonicalPath ? "page" : undefined}
+                  class:list={[
+                    "text-body-md block rounded-md px-2 py-1 transition-colors duration-fast",
+                    page.href === canonicalPath
+                      ? "bg-surface text-foreground"
+                      : "text-foreground-muted hover:text-foreground",
+                  ]}
+                >
+                  {page.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </nav>
+
+    <main class="min-w-0 flex-1">
+      <h1 class="text-headline-lg">{title}</h1>
+      <p class="text-body-lg text-foreground-muted mt-3">{description}</p>
+
+      <div
+        class="text-body-lg text-foreground-muted mt-10 space-y-5 [&_a]:underline [&_code]:font-mono [&_h2]:text-title-lg [&_h2]:text-foreground [&_h2]:mt-12 [&_h2]:mb-3 [&_h3]:text-title-md [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-2 [&_li]:ml-5 [&_li]:list-disc [&_pre]:border-border [&_pre]:bg-surface [&_pre]:text-body-md [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:p-4 [&_pre]:font-mono [&_strong]:text-foreground [&_table]:w-full [&_table]:text-body-md [&_td]:border-border-subtle [&_td]:border-t [&_td]:py-2 [&_td]:pr-4 [&_td]:align-top [&_th]:text-foreground [&_th]:py-2 [&_th]:pr-4 [&_th]:text-left"
+      >
+        <slot />
+      </div>
+
+      {/* Every page is a step in the same sequence, so the next one is always
+          worth offering: docs read in order far more often than they are
+          searched. */}
+      <nav class="border-border mt-16 flex flex-wrap justify-between gap-4 border-t pt-6">
+        {
+          (() => {
+            const index = DOC_PAGES.findIndex((page) => page.href === canonicalPath);
+            const previous = index > 0 ? DOC_PAGES[index - 1] : undefined;
+            const next = index >= 0 ? DOC_PAGES[index + 1] : undefined;
+
+            return (
+              <>
+                <span>
+                  {previous && (
+                    <a href={previous.href} class="text-body-md text-foreground-muted hover:text-foreground">
+                      ← {previous.label}
+                    </a>
+                  )}
+                </span>
+                <span>
+                  {next && (
+                    <a href={next.href} class="text-body-md text-foreground-muted hover:text-foreground">
+                      {next.label} →
+                    </a>
+                  )}
+                </span>
+              </>
+            );
+          })()
+        }
+      </nav>
+    </main>
+  </div>
+
+  <Footer />
+</Layout>

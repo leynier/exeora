@@ -2,7 +2,7 @@
 import Section from "./Section.astro";
 
 /**
- * The six tools an agent gets. Summaries of the contract in
+ * The tools an agent gets. Summaries of the contract in
  * packages/protocol/src/tools.ts, which is what the agent itself reads.
  */
 
@@ -37,13 +37,33 @@ const tools = [
     readOnly: false,
     body: "Run a shell command in the project directory. Bounded by a wall-clock budget, killed along with everything it started, and stdin is closed so nothing hangs waiting for input",
   },
+  {
+    name: "start_command",
+    readOnly: false,
+    body: "Start something that outlives one call: a dev server, a watch task, a long test run. Answers at once with a handle, and the process dies with the connection so nothing is left running unwatched",
+  },
+  {
+    name: "get_command_output",
+    readOnly: true,
+    body: "Read a running process's output from a cursor. Only the recent output is kept, and a reader that fell behind is told so rather than handed a log with a silent hole in it",
+  },
+  {
+    name: "send_command_input",
+    readOnly: false,
+    body: "Write to a running process's input, for one waiting on an answer",
+  },
+  {
+    name: "kill_command",
+    readOnly: false,
+    body: "Stop a running process and everything it started. Stopping one that already exited is reported, not treated as a failure",
+  },
 ];
 ---
 
 <Section
   id="tools"
   eyebrow="Tools"
-  title="Six tools, one project directory"
+  title="Ten tools, one project directory"
   subtitle="The same contract is compiled into the gateway and the CLI, so what the agent is promised and what runs cannot drift apart"
   wide
 >

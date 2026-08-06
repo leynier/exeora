@@ -1,0 +1,125 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="CLI reference"
+  description="Every command the exeora binary takes, and the flags worth knowing."
+  canonicalPath="/docs/cli/"
+>
+  <p>
+    Everything below <code>connect</code> is something <code>connect</code> already does for you.
+    They exist because a script sometimes wants one step without the others.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Command</th><th>What it does</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>connect [path]</code></td>
+        <td>Sign in, register and serve, skipping whatever is already done</td>
+      </tr>
+      <tr>
+        <td><code>login</code> / <code>logout</code></td>
+        <td>Sign in through the browser, or forget the session on this machine</td>
+      </tr>
+      <tr>
+        <td><code>device register</code> / <code>device list</code></td>
+        <td>Register this machine by hand, or list your machines</td>
+      </tr>
+      <tr>
+        <td><code>project add [path]</code></td>
+        <td>Register a directory without connecting</td>
+      </tr>
+      <tr>
+        <td><code>project list</code> / <code>project remove &lt;slug&gt;</code></td>
+        <td>Manage this machine's projects</td>
+      </tr>
+      <tr>
+        <td><code>init [path]</code></td>
+        <td>Write an <code>exeora.toml</code> restricting what agents may do in a directory</td>
+      </tr>
+      <tr>
+        <td><code>status</code></td>
+        <td>Show registration, gateway and projects</td>
+      </tr>
+      <tr>
+        <td><code>logs</code></td>
+        <td>Recent tool calls: what ran, which client asked, and how it ended</td>
+      </tr>
+      <tr>
+        <td><code>sync</code></td>
+        <td>Reconcile this machine's registration and projects with the dashboard</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>connect</h2>
+
+  <p>A few flags for the cases it cannot guess:</p>
+
+  <table>
+    <thead>
+      <tr><th>Flag</th><th>What it does</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--slug</code></td><td>Name the project in its URL</td></tr>
+      <tr><td><code>--name</code></td><td>Name the machine, when registering it</td></tr>
+      <tr>
+        <td><code>--no-add</code></td>
+        <td>Serve what is already registered, without adding this directory</td>
+      </tr>
+      <tr>
+        <td><code>--reset</code></td>
+        <td>Register the machine again, after revoking it from the dashboard</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>init</h2>
+
+  <p>
+    Interactive by default. Pass <code>--yes</code> to take the flags as given and ask nothing, and{" "}
+    <code>--force</code> to replace a file that already exists.
+  </p>
+
+  <pre>exeora init --yes --mode allow_list --allow "npm,git *" --deny "sudo,rm *"</pre>
+
+  <p>
+    <code>--tools</code> takes the same comma-separated form. See{" "}
+    <a href="/docs/policy/">what a project allows</a> for what the values mean.
+  </p>
+
+  <h2>Machine-readable output</h2>
+
+  <p>
+    <code>--json</code> makes <code>status</code>, <code>logs</code>, <code>device list</code> and{" "}
+    <code>project list</code> print one JSON document instead of drawing on the terminal. Errors
+    become JSON on stderr with a non-zero exit, so a caller piping stdout into a parser gets either
+    valid JSON or nothing.
+  </p>
+
+  <pre>exeora logs --json | jq '.[] | select(.status == "error")'</pre>
+
+  <p>
+    On <code>connect</code>, which never finishes, it prints one JSON object per line as things
+    happen, which is what a supervisor or a log collector can read as it arrives. In that mode there
+    is nobody at the terminal, so confirmations go to the dashboard instead.
+  </p>
+
+  <h2>Where things are stored</h2>
+
+  <p>
+    The refresh token goes to the OS keychain. Machines with no secret service, which is most Linux
+    servers and CI containers, get a <code>0600</code> file under{" "}
+    <code>$XDG_CONFIG_HOME/exeora/</code> instead, and the CLI says so when it happens. Everything
+    else is plain JSON; <code>exeora status</code> prints the path.
+  </p>
+
+  <p>
+    <code>EXEORA_GATEWAY_URL</code> points the CLI at a different gateway, which is only useful when
+    working on Exeora itself. It wins over the stored value without overwriting it.
+  </p>
+</Doc>

@@ -14,6 +14,7 @@ export const keys = {
   devices: ["devices"] as const,
   projects: ["projects"] as const,
   clients: ["clients"] as const,
+  approvals: ["approvals"] as const,
 
   /**
    * Every audit query at once. React Query matches keys by prefix, so this
@@ -39,6 +40,13 @@ export const keys = {
 /** Presence goes stale on its own, so it is polled rather than left to a reload. */
 const LIVE = 15_000;
 
+/**
+ * A pending approval has an AI client waiting on the other side of it, and it
+ * expires in ninety seconds, so fifteen would spend a fifth of its life not
+ * knowing it exists.
+ */
+const URGENT = 3_000;
+
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
 
 export const useDevices = () =>
@@ -49,6 +57,25 @@ export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: ap
 /** Polled too: "last used" is the only sign a client is still talking to us. */
 export const useClients = () =>
   useQuery({ queryKey: keys.clients, queryFn: api.clients, refetchInterval: LIVE });
+
+/**
+ * Calls waiting on someone to confirm them.
+ *
+ * Polled fast, and only while the tab is in front of someone: a question nobody
+ * is looking at is one the terminal or the deadline will settle, and polling
+ * every three seconds from a tab left open for a week would be work spent on
+ * nothing. `refetchIntervalInBackground` defaults to false, which is exactly
+ * that behaviour, and is named here because it is load bearing rather than
+ * incidental.
+ */
+export const useApprovals = () =>
+  useQuery({
+    queryKey: keys.approvals,
+    queryFn: api.approvals,
+    select: (page) => page.items,
+    refetchInterval: URGENT,
+    refetchIntervalInBackground: false,
+  });
 
 /**
  * The most recent page of the audit log, for the places that want a glance at

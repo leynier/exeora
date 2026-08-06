@@ -13,6 +13,7 @@ import {
 } from "@exeora/protocol";
 import { execa } from "execa";
 import { relativeToRoot, resolveInProject } from "../paths.js";
+import { killProcess, readProcess, startProcess, writeProcess } from "./processes.js";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,
@@ -79,6 +80,14 @@ export async function executeTool(
       return writeFileTool(context, args as never);
     case "run_command":
       return runCommandTool(context, args as never);
+    case "start_command":
+      return startCommandTool(context, args as never);
+    case "get_command_output":
+      return getCommandOutputTool(context, args as never);
+    case "send_command_input":
+      return sendCommandInputTool(context, args as never);
+    case "kill_command":
+      return killCommandTool(context, args as never);
     default: {
       const exhaustive: never = tool;
       throw new ExeoraError("UNKNOWN_TOOL", `Unknown tool: ${String(exhaustive)}`);
@@ -361,6 +370,44 @@ async function runCommandTool(
     truncated: stdout.truncated || stderr.truncated,
     timedOut,
   };
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The four tools for a process that outlives its call.
+ *
+ * Thin on purpose: the registry in `processes.ts` owns the state, the buffers
+ * and the killing, and these only resolve the working directory and hand over.
+ */
+
+async function startCommandTool(
+  { root }: ToolContext,
+  args: { command: string; cwd?: string },
+): Promise<ToolOutput<"start_command">> {
+  const cwd = await resolveInProject({ root, relativePath: args.cwd ?? "." });
+  return startProcess({ root, cwd, command: args.command });
+}
+
+function getCommandOutputTool(
+  { root }: ToolContext,
+  args: { processId: string; cursor?: number },
+): ToolOutput<"get_command_output"> {
+  return readProcess(root, args.processId, args.cursor);
+}
+
+function sendCommandInputTool(
+  { root }: ToolContext,
+  args: { processId: string; data: string; newline?: boolean },
+): ToolOutput<"send_command_input"> {
+  return writeProcess(root, args.processId, args.data, args.newline ?? true);
+}
+
+function killCommandTool(
+  { root }: ToolContext,
+  args: { processId: string },
+): ToolOutput<"kill_command"> {
+  return killProcess(root, args.processId);
 }
 
 /** Kills the command and everything it started. */

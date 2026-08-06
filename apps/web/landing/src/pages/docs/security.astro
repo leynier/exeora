@@ -1,0 +1,112 @@
+---
+import Doc from "../../layouts/Doc.astro";
+
+/**
+ * What is actually true about the boundaries, including where they end.
+ *
+ * A security page that only lists reassurances is one nobody can act on. The
+ * limits are as load bearing as the guarantees, and they are stated here in the
+ * same voice.
+ */
+---
+
+<Doc
+  title="Security"
+  description="What leaves your machine, what an agent can reach, and where the boundaries end."
+  canonicalPath="/docs/security/"
+>
+  <h2>What leaves the machine</h2>
+
+  <p>
+    The results of tool calls, and nothing else. Your repository is not uploaded, cloned or indexed.
+    A file's contents cross the network only when an agent reads that file, and only as far as the
+    client that asked.
+  </p>
+
+  <p>
+    The audit log records what ran and how it ended, never arguments or output. It knows that{" "}
+    <code>run_command</code> was called and that it failed; it does not know the command.
+  </p>
+
+  <h2>Nothing dials in</h2>
+
+  <p>
+    The CLI opens the connection outward and holds it. There is no listening socket on your machine,
+    no port to forward, and no tunnel. Revoking a machine from the dashboard closes its connection
+    immediately rather than at the end of whatever it was doing.
+  </p>
+
+  <h2>Projects are isolated at the token</h2>
+
+  <p>
+    Each project is a separate OAuth resource, so a token minted for one is not accepted at another.
+    Ownership is checked against the database as well, so there are two independent checks rather
+    than one, and an agent connected to one project has no way to name another.
+  </p>
+
+  <h2>Every path is confined</h2>
+
+  <p>
+    Paths are resolved and checked against the project root before anything touches the disk.
+    Absolute paths, and anything climbing out with <code>..</code>, are refused rather than resolved.
+    Symlinks are resolved before the check, so a link pointing outside the project does not become a
+    way through it.
+  </p>
+
+  <h2>Policy is checked twice</h2>
+
+  <p>
+    The gateway checks it because it is the only side holding the account's setting, and because an
+    older CLI would ignore a field it does not know. The executor checks it because it is the
+    authority on the machine, and the only side that can read a project's own{" "}
+    <code>exeora.toml</code>. Both run the same code, which is the only way "checked twice" is worth
+    more than "checked once".
+  </p>
+
+  <h2>Nothing is queued</h2>
+
+  <p>
+    With no executor connected, a call fails at once with <code>LOCAL_EXECUTOR_OFFLINE</code>, and
+    every call carries an absolute deadline the executor re-checks on arrival. A command landing
+    hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept.
+  </p>
+
+  <p>
+    The same rule runs the other way. When the client hangs up or the connection drops, the CLI kills
+    the command's whole process group, and processes started with <code>start_command</code> die with
+    the connection. Nothing keeps working once there is nobody left to read the answer.
+  </p>
+
+  <h2>Where the boundaries end</h2>
+
+  <p>
+    Worth being plain about, because a boundary you misjudge is worse than one you know:
+  </p>
+
+  <ul>
+    <li>
+      <strong>A project is a directory, not a sandbox.</strong> A command running inside it runs as
+      your user, with your environment and your network. It can reach anything that user can reach.
+      The confinement is on the paths the tools take, not on what a program does once it starts.
+    </li>
+    <li>
+      <strong>An allow list with <code>shell = true</code> is a suggestion.</strong> Turn it on only
+      for a project you would have left open regardless.
+    </li>
+    <li>
+      <strong>A new project allows everything.</strong> Nothing is restricted until you restrict it.
+    </li>
+    <li>
+      <strong>Confirmation only reaches a person who is there.</strong> A machine with no terminal
+      and nobody watching the dashboard will refuse the call after ninety seconds, which is safe but
+      is not the same as being asked.
+    </li>
+  </ul>
+
+  <h2>Reporting something</h2>
+
+  <p>
+    Mail <a href="mailto:hello@exeora.dev">hello@exeora.dev</a>, the same address as everything else.
+    Please do not open it anywhere public first.
+  </p>
+</Doc>

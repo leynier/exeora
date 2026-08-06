@@ -39,20 +39,45 @@ exeora connect
 | `project list` / `project remove <slug>` | Manage this machine's projects |
 | `sync` | Reconcile this machine's registration and projects with the dashboard |
 | `status` | Show registration, gateway and projects |
+| `logs` | Recent tool calls: what ran, which client asked, and how it ended |
+| `init [path]` | Write an `exeora.toml` restricting what agents may do in a directory |
 
 Everything below `connect` in that table is what `connect` does for you. They stay because a script sometimes wants one step without the others.
 
 `connect` takes a few flags for the cases it cannot guess: `--slug` to name the project in its URL, `--name` to name the machine, `--no-add` to serve what is already registered without adding this directory, and `--reset` to register the machine again after revoking it from the dashboard.
 
+`--json` makes `status`, `logs`, `device list` and `project list` print a JSON document instead of drawing on the terminal, and errors become JSON on stderr with a non-zero exit. On `connect`, which never finishes, it prints one JSON object per line as things happen, which is what a supervisor or a log collector can read as it arrives.
+
+## What an agent may do
+
+Set from the dashboard, per project: everything, read only, or only the commands you name. Independently of that, a deny list refuses commands in any mode, and a tool list says which tools exist here at all.
+
+A project may also carry an `exeora.toml` in its root, which `exeora init` writes for you:
+
+```toml
+mode = "allow_list"      # allow_all | allow_list | read_only
+allow = ["npm", "git *"]
+deny = ["sudo", "rm *"]
+approve = true
+```
+
+**It can only narrow what the account already allows, never widen it**, so whoever controls a machine can restrict an agent further and cannot grant themselves anything. Every key is optional, and leaving one out means the file has no opinion about it rather than asking for the strictest value.
+
+A single word permits that program with any arguments, `git push` permits exactly that, and a trailing `*` stands for whatever follows. Whenever a list is in force, commands carrying shell syntax are refused outright, because `npm test; rm -rf ~` is one command whose first word is `npm`.
+
+`approve` asks before anything that edits, writes or runs. Clients speaking MCP 2026-07-28 are asked in the conversation itself; everyone else, which today includes Claude and ChatGPT, is asked on this terminal and in the dashboard at the same time, and the first answer wins.
+
 It refuses to register your home directory or the filesystem root. A project is the boundary every tool is confined to, so those two would hand over the whole machine.
 
 ## Tools an agent can run
 
-`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `run_command`
+`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
 
 Every path is resolved and confined to the project root before anything touches the disk.
 
-**Commands are not filtered in this release, and there is no approval step.** An agent connected to a project can run anything inside that directory on whichever machine is serving it. Connect projects you are comfortable letting an agent change, and revoke a machine from the dashboard at <https://exeora.dev> the moment you want it to stop.
+**A new project allows everything**, which is what every project did before the setting existed. Until you narrow it, an agent connected to a project can run anything inside that directory on whichever machine is serving it. Connect projects you are comfortable letting an agent change, set a policy for the ones you are not, and revoke a machine from the dashboard at <https://exeora.dev> the moment you want it to stop.
+
+A process started with `start_command` dies when this CLI disconnects, so nothing is left running once nobody is watching it.
 
 ## Where things are stored
 

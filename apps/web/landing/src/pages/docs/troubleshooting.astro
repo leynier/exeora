@@ -1,0 +1,95 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Troubleshooting"
+  description="The errors you are most likely to see, and what each one actually means."
+  canonicalPath="/docs/troubleshooting/"
+>
+  <h2><code>LOCAL_EXECUTOR_OFFLINE</code></h2>
+
+  <p>
+    No CLI is connected for the machine that serves this project. Run{" "}
+    <code>exeora connect</code> there and leave it running.
+  </p>
+
+  <p>
+    It fails immediately rather than waiting, on purpose. Nothing is queued, because a command
+    landing hours later when a laptop wakes up is worse than one that never ran.
+  </p>
+
+  <h2>The gateway closed the connection</h2>
+
+  <p>Two reasons, and the message says which:</p>
+
+  <ul>
+    <li>
+      <strong>The machine was revoked</strong> from the dashboard. Registering it again takes{" "}
+      <code>exeora connect --reset</code>.
+    </li>
+    <li>
+      <strong>The protocol version is out of range.</strong> Update with{" "}
+      <code>npm i -g @exeora/cli</code>. Adding to the protocol does not normally break an installed
+      CLI, so this is rare; when it happens the message names both versions.
+    </li>
+  </ul>
+
+  <h2>A change is refused with "not approved"</h2>
+
+  <p>
+    The project asks for every change to be confirmed and nobody answered within ninety seconds.
+    Look at the terminal running <code>exeora connect</code>, or at the banner in the dashboard.
+  </p>
+
+  <p>
+    If that machine has no terminal, which is the case under systemd or in a detached tmux pane, the
+    question only ever goes to the dashboard. Keep a tab open, or turn confirmation off for that
+    project.
+  </p>
+
+  <h2>A command is refused as shell syntax</h2>
+
+  <p>
+    The project has a command list in force, and the command carries a pipe, a redirect, a
+    substitution or a chain. Any of those makes the first word a poor description of what the command
+    will do, so it is refused rather than matched.
+  </p>
+
+  <p>
+    Rewrite it as a plain command, or, if the project is one you would have left open anyway, turn on{" "}
+    <code>shell</code> and accept that both lists become suggestions. See{" "}
+    <a href="/docs/policy/">what a project allows</a>.
+  </p>
+
+  <h2>The agent cannot see a tool</h2>
+
+  <p>
+    Two things hide a tool. The project's <code>tools</code> list may not name it, which is a setting
+    in the dashboard. Or the connected machine may be running a CLI too old to have it, since the
+    gateway only advertises what the executor announced: update the CLI.
+  </p>
+
+  <h2>A project the gateway does not know</h2>
+
+  <p>
+    <code>exeora status</code> marks these, and they happen when a project was removed from the
+    dashboard while this machine was not looking. <code>exeora sync</code> reconciles the two.
+  </p>
+
+  <h2>A process disappeared</h2>
+
+  <p>
+    Processes started with <code>start_command</code> die when the CLI disconnects, including across
+    a reconnect. That is deliberate: a dev server nobody can reach, read or stop is not a feature.
+    Start it again after the connection comes back.
+  </p>
+
+  <h2>No keychain on this machine</h2>
+
+  <p>
+    Most Linux servers and CI containers have no secret service. The CLI falls back to a{" "}
+    <code>0600</code> file under <code>$XDG_CONFIG_HOME/exeora/</code> and says so when it happens.
+    Nothing else changes.
+  </p>
+</Doc>

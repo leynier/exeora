@@ -1,7 +1,15 @@
 #!/usr/bin/env node
+import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { basename, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import * as p from "@clack/prompts";
+import {
+  type CommandPolicy,
+  type LocalCommandPolicy,
+  narrowPolicy,
+  POLICY_MODES,
+} from "@exeora/protocol";
 import { Command } from "commander";
 import { gateway, type ToolCallView } from "./api.js";
 import { login } from "./auth/login.js";
@@ -16,7 +24,9 @@ import {
   upsertProject,
 } from "./config.js";
 import { connect } from "./connection.js";
+import { describePolicy, fromFlags, renderPolicyToml, splitList } from "./init.js";
 import { decideDevice, prepare, slugify } from "./onboard.js";
+import { POLICY_FILENAME } from "./policy.js";
 import { reconcile } from "./sync.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -25,7 +35,25 @@ const program = new Command()
   .description(
     "Connect AI agents to the development environment on this machine, wherever it runs.",
   )
-  .version(CLI_VERSION, "-v, --version");
+  .version(CLI_VERSION, "-v, --version")
+  .option("--json", "Print machine-readable output instead of drawing on the terminal");
+
+/**
+ * Whether this invocation asked for machine-readable output.
+ *
+ * A global flag rather than one per command, because the reason to want it is
+ * global: something other than a person is reading. Read through `program`
+ * rather than passed down, so adding it to a command is one branch and not a
+ * parameter through every call.
+ */
+function asJson(): boolean {
+  return program.opts().json === true;
+}
+
+/** One JSON document on stdout, which is the whole point of `--json`. */
+function emit(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
 
 // ---------------------------------------------------------------------------
 
@@ -97,6 +125,17 @@ device
   .action(
     guard(async () => {
       const devices = await gateway.listDevices();
+
+      if (asJson()) {
+        return emit(
+          devices.map((entry) => ({
+            ...entry,
+            online: online(entry.lastSeenAt),
+            thisMachine: entry.id === config.get("deviceId"),
+          })),
+        );
+      }
+
       if (devices.length === 0) return p.log.info("No devices registered yet.");
 
       for (const entry of devices) {
@@ -148,6 +187,16 @@ project
   .action(
     guard(async () => {
       const local = projects();
+
+      if (asJson()) {
+        return emit(
+          local.map((entry) => ({
+            ...entry,
+            mcpUrl: new URL(`/p/${entry.id}/mcp`, gatewayUrl()).toString(),
+          })),
+        );
+      }
+
       if (local.length === 0) return p.log.info("No projects yet. Run `exeora connect` in one.");
 
       for (const entry of local) {
@@ -189,7 +238,7 @@ program
         path: string | undefined,
         options: { add: boolean; reset: boolean; slug?: string; name?: string },
       ) => {
-        p.intro("Exeora");
+        if (!asJson()) p.intro("Exeora");
 
         // Sign in, register the machine and register the directory, skipping
         // whichever of those is already done. This is the whole reason the
@@ -202,26 +251,53 @@ program
           name: options.name,
         });
 
-        if (ready.project) {
-          p.note(
-            new URL(`/p/${ready.project.id}/mcp`, gatewayUrl()).toString(),
-            "MCP URL, add this to Claude, ChatGPT or Cursor",
-          );
-        } else if (projects().length === 0) {
-          p.log.warn("No projects registered on this machine yet.");
+        if (!asJson()) {
+          if (ready.project) {
+            p.note(
+              new URL(`/p/${ready.project.id}/mcp`, gatewayUrl()).toString(),
+              "MCP URL, add this to Claude, ChatGPT or Cursor",
+            );
+          } else if (projects().length === 0) {
+            p.log.warn("No projects registered on this machine yet.");
+          }
+
+          p.log.info(`Machine: ${ready.deviceName}`);
+          p.log.info(`Gateway: ${gatewayUrl()}`);
+          p.log.info("Press Ctrl+C to stop.\n");
         }
 
-        p.log.info(`Machine: ${ready.deviceName}`);
-        p.log.info(`Gateway: ${gatewayUrl()}`);
-        p.log.info("Press Ctrl+C to stop.\n");
+        /**
+         * One JSON object per line, rather than one document.
+         *
+         * `connect` never finishes, so there is no document to close. A line at
+         * a time is what a supervisor or a log collector can consume as it
+         * arrives, which is the only reason to want JSON from a command that
+         * runs all day.
+         */
+        const event = (payload: Record<string, unknown>) =>
+          process.stdout.write(`${JSON.stringify({ at: Date.now(), ...payload })}\n`);
 
         const connection = connect(ready.deviceId, {
-          onOpen: () => p.log.success("Connected. Waiting for tool calls."),
-          onClose: (reason) => p.log.warn(reason),
-          onError: (message) => p.log.error(message),
+          onOpen: () =>
+            asJson()
+              ? event({ event: "open" })
+              : p.log.success("Connected. Waiting for tool calls."),
+          onClose: (reason) => (asJson() ? event({ event: "close", reason }) : p.log.warn(reason)),
+          onError: (message) =>
+            asJson() ? event({ event: "error", message }) : p.log.error(message),
+          onNotice: (message) =>
+            asJson() ? event({ event: "notice", message }) : p.log.info(message),
+          // Not offered under `--json`: there is nobody at a terminal that is
+          // being piped somewhere, so the question goes to the dashboard.
+          ...(asJson() ? {} : { onApproval: confirmCall }),
           onCall: (tool, slug, client) =>
-            p.log.message(`→ ${tool} (${slug})${client ? ` · ${client}` : ""}`),
-          onResult: (tool, ok, ms) => p.log.message(`${ok ? "✓" : "✗"} ${tool} ${ms}ms`),
+            asJson()
+              ? event({ event: "call", tool, project: slug, client })
+              : p.log.message(`→ ${tool} (${slug})${client ? ` · ${client}` : ""}`),
+          onResult: (tool, ok, durationMs) =>
+            asJson()
+              ? event({ event: "result", tool, ok, durationMs })
+              : p.log.message(`${ok ? "✓" : "✗"} ${tool} ${durationMs}ms`),
         });
 
         const stop = () => connection.stop();
@@ -229,7 +305,7 @@ program
         process.once("SIGTERM", stop);
 
         await connection.closed;
-        p.outro("Disconnected.");
+        if (!asJson()) p.outro("Disconnected.");
       },
     ),
   );
@@ -240,25 +316,66 @@ program
   .action(
     guard(async () => {
       const deviceId = config.get("deviceId");
-      p.log.message(`Gateway   ${gatewayUrl()}`);
-      p.log.message(`Config    ${configPath()}`);
-      p.log.message(
-        `Device    ${deviceId ? `${config.get("deviceName")} (${deviceId})` : "not registered"}`,
-      );
+      const json = asJson();
 
-      try {
-        const user = await gateway.me();
-        p.log.message(`Signed in ${user.email}`);
-      } catch (error) {
+      if (!json) {
+        p.log.message(`Gateway   ${gatewayUrl()}`);
+        p.log.message(`Config    ${configPath()}`);
         p.log.message(
-          `Signed in ${error instanceof NotSignedInError ? "not signed in, run `exeora connect`" : "unknown"}`,
+          `Device    ${deviceId ? `${config.get("deviceName")} (${deviceId})` : "not registered"}`,
         );
+      }
+
+      let email: string | null = null;
+      try {
+        email = (await gateway.me()).email;
+        if (!json) p.log.message(`Signed in ${email}`);
+      } catch (error) {
+        const signedOut = error instanceof NotSignedInError;
+        const why = signedOut ? "not signed in, run `exeora connect`" : "unknown";
+
+        // Not signed in is a state to report, not a failure: `status` answering
+        // with an error would make it useless for the one question it exists
+        // for, which is whether this machine is set up at all.
+        //
+        // A gateway that cannot be reached is a different answer, and one a
+        // script acts on differently: it says nothing about whether anyone is
+        // signed in, so it must not be reported as a no.
+        if (json) {
+          return emit({
+            gateway: gatewayUrl(),
+            config: configPath(),
+            device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
+            signedIn: signedOut ? false : null,
+            ...(signedOut ? {} : { error: error instanceof Error ? error.message : String(error) }),
+            projects: [],
+          });
+        }
+
+        p.log.message(`Signed in ${why}`);
         return;
       }
 
       const remote = new Set((await gateway.listProjects()).map((project) => project.id));
-
       const local = projects();
+
+      if (json) {
+        return emit({
+          gateway: gatewayUrl(),
+          config: configPath(),
+          device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
+          signedIn: true,
+          email,
+          projects: local.map((entry) => ({
+            ...entry,
+            mcpUrl: new URL(`/p/${entry.id}/mcp`, gatewayUrl()).toString(),
+            // False means the gateway has never heard of it, usually because it
+            // was removed from the dashboard. `exeora sync` reconciles.
+            knownToGateway: remote.has(entry.id),
+          })),
+        });
+      }
+
       p.log.message(`Projects  ${local.length === 0 ? "none" : ""}`);
       for (const entry of local) {
         const known = remote.has(entry.id) ? "" : " (unknown to the gateway)";
@@ -301,6 +418,15 @@ program
           return true;
         });
 
+        if (asJson()) {
+          return emit(
+            rows.map((call) => ({
+              ...call,
+              projectSlug: byId.get(call.projectId)?.slug ?? null,
+            })),
+          );
+        }
+
         if (rows.length === 0) {
           p.log.info(
             calls.length === 0
@@ -317,6 +443,66 @@ program
             `${call.status === "ok" ? "✓" : "✗"} ${pad(call.tool, 12)} ${pad(slug, 16)} ${pad(nameOf(call), 20)} ${pad(`${call.durationMs}ms`, 8)} ${ago(call.createdAt)}${failure}`,
           );
         }
+      },
+    ),
+  );
+
+program
+  .command("init [path]")
+  .description(`Write an ${POLICY_FILENAME} restricting what agents may do in a directory`)
+  .option("-m, --mode <mode>", `One of ${POLICY_MODES.join(", ")}`)
+  .option("-a, --allow <commands>", "Commands to permit, comma separated")
+  .option("-d, --deny <commands>", "Commands to refuse, comma separated")
+  .option("-t, --tools <tools>", "Tools to offer, comma separated")
+  .option("-y, --yes", "Take the flags as given and ask nothing")
+  .option("-f, --force", `Overwrite an existing ${POLICY_FILENAME}`)
+  .action(
+    guard(
+      async (
+        path: string | undefined,
+        options: {
+          mode?: string;
+          allow?: string;
+          deny?: string;
+          tools?: string;
+          yes?: boolean;
+          force?: boolean;
+        },
+      ) => {
+        const root = resolve(path ?? ".");
+        const file = join(root, POLICY_FILENAME);
+
+        if (existsSync(file) && !options.force) {
+          throw new Error(
+            `${file} already exists. Pass --force to replace it, or edit it by hand.`,
+          );
+        }
+
+        const local = options.yes
+          ? fromFlags(options)
+          : await askForPolicy(fromFlags(options), root);
+
+        await writeFile(file, renderPolicyToml(local), "utf8");
+
+        // The other half of the answer. Written before it is shown, so what
+        // gets combined is the file that now exists rather than a draft.
+        const effective = await effectivePolicyFor(root, local);
+
+        if (asJson()) return emit({ path: file, policy: local, effective: effective ?? null });
+
+        p.log.success(`Wrote ${file}.`);
+
+        if (effective) {
+          p.note(describePolicy(effective).join("\n"), "What this project will actually allow");
+        }
+
+        // Said either way. Someone writing `mode = "allow_all"` here and
+        // expecting it to widen something is the misunderstanding worth heading
+        // off, and it is the one this file cannot correct on its own.
+        p.log.info(
+          "This file can only narrow what the project's policy already allows, never widen it. " +
+            "It takes effect on the next tool call.",
+        );
       },
     ),
   );
@@ -375,13 +561,132 @@ program
 
 // ---------------------------------------------------------------------------
 
-/** Turns a thrown error into one readable line instead of a stack trace. */
+/**
+ * What a project will actually allow, once this file narrows the account's
+ * policy, or nothing when that cannot be worked out.
+ *
+ * Best effort on purpose. Writing an `exeora.toml` is a local act and has to
+ * work on a machine that is not signed in, on a directory that is not a
+ * registered project yet, and with the gateway unreachable. In all three there
+ * is simply nothing to combine, and the file is no less correct for it.
+ */
+async function effectivePolicyFor(
+  root: string,
+  local: LocalCommandPolicy,
+): Promise<CommandPolicy | undefined> {
+  const here = projects().find((entry) => entry.root === root);
+  if (!here) return undefined;
+
+  try {
+    const remote = (await gateway.listProjects()).find((entry) => entry.id === here.id);
+    return remote ? narrowPolicy(remote.policy, local) : undefined;
+  } catch {
+    // Not signed in, or the gateway is not reachable. Neither is a reason to
+    // fail a command whose work is already done on disk.
+    return undefined;
+  }
+}
+
+/** Fills in what the flags did not say, by asking. */
+async function askForPolicy(draft: LocalCommandPolicy, root: string): Promise<LocalCommandPolicy> {
+  p.intro(`${POLICY_FILENAME} in ${root}`);
+
+  const mode =
+    draft.mode ??
+    (await p.select({
+      message: "What may an agent do here?",
+      initialValue: "allow_list" as (typeof POLICY_MODES)[number],
+      options: [
+        { value: "allow_list" as const, label: "Only the commands I name", hint: "recommended" },
+        { value: "read_only" as const, label: "Read, never change anything" },
+        { value: "allow_all" as const, label: "Anything the account allows" },
+      ],
+    }));
+
+  if (p.isCancel(mode)) {
+    p.cancel("Nothing written.");
+    process.exit(0);
+  }
+
+  const next: LocalCommandPolicy = { ...draft, mode };
+
+  if (mode === "allow_list" && next.allow === undefined) {
+    const allow = await p.text({
+      message: "Commands to permit, comma separated",
+      placeholder: "npm, git *, cargo build *",
+      defaultValue: "",
+    });
+    if (p.isCancel(allow)) {
+      p.cancel("Nothing written.");
+      process.exit(0);
+    }
+    if (allow.trim()) next.allow = splitList(allow);
+  }
+
+  if (mode !== "read_only" && next.deny === undefined) {
+    const deny = await p.text({
+      message: "Commands to refuse, comma separated (checked before the list above)",
+      placeholder: "sudo, rm *",
+      defaultValue: "",
+    });
+    if (p.isCancel(deny)) {
+      p.cancel("Nothing written.");
+      process.exit(0);
+    }
+    if (deny.trim()) next.deny = splitList(deny);
+  }
+
+  p.outro("Writing it now.");
+  return next;
+}
+
+/**
+ * Asks whether one call may run, on this terminal.
+ *
+ * The project asked for confirmation and the AI client cannot be asked, which
+ * today means claude.ai and ChatGPT. This is the only place left that has a
+ * person in front of it.
+ *
+ * Cancelling is a no. So is a prompt that goes away because the dashboard
+ * answered first or because the question expired: `signal` fires, `p.confirm`
+ * resolves as cancelled, and the caller ignores the answer either way. There is
+ * no reading of "the prompt disappeared" that means yes.
+ */
+async function confirmCall(ask: {
+  prompt: string;
+  tool: string;
+  projectSlug: string;
+  client?: string | undefined;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  const asked = `${ask.projectSlug}${ask.client ? ` · ${ask.client}` : ""}`;
+  p.log.warn(`${ask.prompt}  (${asked})`);
+
+  const answer = await p.confirm({
+    message: "Allow it?",
+    initialValue: false,
+    signal: ask.signal,
+  });
+
+  if (p.isCancel(answer)) return false;
+  return answer;
+}
+
+/**
+ * Turns a thrown error into one readable line instead of a stack trace.
+ *
+ * Under `--json` it becomes a document on stderr rather than stdout, so a
+ * caller piping stdout into a parser gets either valid JSON or nothing, never
+ * an error message where a result was expected. The exit code says which.
+ */
 function guard<A extends unknown[]>(action: (...args: A) => Promise<void>) {
   return async (...args: A) => {
     try {
       await action(...args);
     } catch (error) {
-      p.log.error(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      if (asJson()) process.stderr.write(`${JSON.stringify({ error: message })}\n`);
+      else p.log.error(message);
       process.exitCode = 1;
     }
   };

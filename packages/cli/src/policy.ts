@@ -20,8 +20,11 @@ import { parse as parseToml } from "smol-toml";
  * ```toml
  * # exeora.toml, in the project root
  * mode = "allow_list"     # allow_all | allow_list | read_only
- * allow = ["npm", "git"]
+ * allow = ["npm", "git *"]
+ * deny = ["sudo"]
  * shell = false
+ * approve = true
+ * tools = ["read_file", "grep"]
  * ```
  *
  * Every key is optional, and leaving one out means the file has no opinion

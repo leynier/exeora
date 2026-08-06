@@ -1,3 +1,4 @@
+import type { CommandPolicy } from "@exeora/protocol";
 import { accessToken } from "./auth/tokens.js";
 import { gatewayUrl } from "./config.js";
 
@@ -19,6 +20,8 @@ export interface ProjectView {
   deviceId: string;
   localPath: string;
   mcpUrl: string;
+  /** What the account allows here. A local `exeora.toml` can only narrow it. */
+  policy: CommandPolicy;
   createdAt: number;
 }
 

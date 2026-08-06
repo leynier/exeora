@@ -40,6 +40,16 @@ export interface McpToolContext {
   caller: CallerIdentity;
   /** True once the user has confirmed this exact call. */
   approved: boolean;
+  /**
+   * Whether this client can be asked over MCP.
+   *
+   * Only 2026-07-28 carries the mechanism. Passed down rather than decided here
+   * because the dispatcher is the side that knows the project's policy, and so
+   * the only side that can tell "no confirmation needed" from "needs one, and
+   * this client cannot give it". The second is not a failure: it means ask
+   * somewhere else.
+   */
+  canElicit: boolean;
 }
 
 /**
@@ -49,6 +59,10 @@ export interface McpToolContext {
  * project asked for the call to be confirmed, and the answer to that is a
  * question, not an error. Keeping it a return value also keeps this file free
  * of any knowledge of where policies are stored.
+ *
+ * It only ever comes back for a client that can be asked over MCP. When one
+ * cannot, the dispatcher asks the machine or the dashboard instead and answers
+ * with a value or an error, so this file never learns that path exists.
  */
 export type DispatchResult = { kind: "value"; value: unknown } | { kind: "needs-approval" };
 
@@ -68,10 +82,20 @@ export function createProjectMcpHandler(
   projectId: string,
   dispatch: ToolDispatcher,
   env: Pick<Env, "REQUEST_STATE_SECRET">,
+  /**
+   * The tools the connected executor announced, or undefined to offer them all.
+   *
+   * Undefined is the answer for an offline machine as well as for a request
+   * that is not `tools/list`, and both are deliberate. Hiding tools because a
+   * laptop is asleep would answer a question nobody asked: the call fails with
+   * `LOCAL_EXECUTOR_OFFLINE`, which says the true thing.
+   */
+  advertised?: ReadonlySet<ToolName>,
 ) {
   return createMcpHandler(
     (request) => {
       const codec = approvalCodec(env);
+      const offers = (name: ToolName) => advertised === undefined || advertised.has(name);
 
       const server = new McpServer(
         { name: "exeora", version: "0.2.0" },
@@ -96,21 +120,21 @@ export function createProjectMcpHandler(
               mcp: mcpClientInfo(ctx),
             },
             approved: await isApproved(ctx, projectId, tool, args),
+            canElicit: request.era === "modern",
           },
           tool,
           args,
         );
 
         if (result.kind === "needs-approval") {
-          // A 2025-era client cannot be asked: the mechanism arrived with
-          // 2026-07-28. Refusing is the only honest answer, since running it
-          // anyway would make the setting decorative for exactly the clients
-          // most people use today.
+          // The dispatcher asks for this only when it was told the client can be
+          // asked, so reaching it otherwise is a bug here rather than a state a
+          // caller can produce. Answering a 2025-era client with an
+          // `input_required` it cannot read would look like a hang.
           if (request.era !== "modern") {
             throw new ExeoraError(
-              "FORBIDDEN",
-              "This project asks for every change to be confirmed, and this client cannot be asked. " +
-                "Use a client that speaks MCP 2026-07-28, or turn confirmation off for the project.",
+              "INTERNAL_ERROR",
+              "A confirmation was requested from a client that cannot be asked.",
             );
           }
 
@@ -137,43 +161,89 @@ export function createProjectMcpHandler(
 
       // Registered one by one rather than in a loop: the SDK infers the
       // argument type of each callback from its own schema, and a loop would
-      // collapse the six schemas into a union that erases that inference.
+      // collapse the schemas into a union that erases that inference.
       const meta = <N extends ToolName>(name: N) => ({
         title: TOOL_DEFINITIONS[name].title,
         description: TOOL_DEFINITIONS[name].description,
         annotations: { readOnlyHint: TOOL_DEFINITIONS[name].readOnly },
       });
 
-      server.registerTool(
-        "read_file",
-        { ...meta("read_file"), inputSchema: TOOL_DEFINITIONS.read_file.inputSchema },
-        (args, ctx) => run("read_file", args, ctx),
-      );
-      server.registerTool(
-        "list_files",
-        { ...meta("list_files"), inputSchema: TOOL_DEFINITIONS.list_files.inputSchema },
-        (args, ctx) => run("list_files", args, ctx),
-      );
-      server.registerTool(
-        "grep",
-        { ...meta("grep"), inputSchema: TOOL_DEFINITIONS.grep.inputSchema },
-        (args, ctx) => run("grep", args, ctx),
-      );
-      server.registerTool(
-        "edit_file",
-        { ...meta("edit_file"), inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema },
-        (args, ctx) => run("edit_file", args, ctx),
-      );
-      server.registerTool(
-        "write_file",
-        { ...meta("write_file"), inputSchema: TOOL_DEFINITIONS.write_file.inputSchema },
-        (args, ctx) => run("write_file", args, ctx),
-      );
-      server.registerTool(
-        "run_command",
-        { ...meta("run_command"), inputSchema: TOOL_DEFINITIONS.run_command.inputSchema },
-        (args, ctx) => run("run_command", args, ctx),
-      );
+      if (offers("read_file")) {
+        server.registerTool(
+          "read_file",
+          { ...meta("read_file"), inputSchema: TOOL_DEFINITIONS.read_file.inputSchema },
+          (args, ctx) => run("read_file", args, ctx),
+        );
+      }
+      if (offers("list_files")) {
+        server.registerTool(
+          "list_files",
+          { ...meta("list_files"), inputSchema: TOOL_DEFINITIONS.list_files.inputSchema },
+          (args, ctx) => run("list_files", args, ctx),
+        );
+      }
+      if (offers("grep")) {
+        server.registerTool(
+          "grep",
+          { ...meta("grep"), inputSchema: TOOL_DEFINITIONS.grep.inputSchema },
+          (args, ctx) => run("grep", args, ctx),
+        );
+      }
+      if (offers("edit_file")) {
+        server.registerTool(
+          "edit_file",
+          { ...meta("edit_file"), inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema },
+          (args, ctx) => run("edit_file", args, ctx),
+        );
+      }
+      if (offers("write_file")) {
+        server.registerTool(
+          "write_file",
+          { ...meta("write_file"), inputSchema: TOOL_DEFINITIONS.write_file.inputSchema },
+          (args, ctx) => run("write_file", args, ctx),
+        );
+      }
+      if (offers("run_command")) {
+        server.registerTool(
+          "run_command",
+          { ...meta("run_command"), inputSchema: TOOL_DEFINITIONS.run_command.inputSchema },
+          (args, ctx) => run("run_command", args, ctx),
+        );
+      }
+      if (offers("start_command")) {
+        server.registerTool(
+          "start_command",
+          { ...meta("start_command"), inputSchema: TOOL_DEFINITIONS.start_command.inputSchema },
+          (args, ctx) => run("start_command", args, ctx),
+        );
+      }
+      if (offers("get_command_output")) {
+        server.registerTool(
+          "get_command_output",
+          {
+            ...meta("get_command_output"),
+            inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema,
+          },
+          (args, ctx) => run("get_command_output", args, ctx),
+        );
+      }
+      if (offers("send_command_input")) {
+        server.registerTool(
+          "send_command_input",
+          {
+            ...meta("send_command_input"),
+            inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema,
+          },
+          (args, ctx) => run("send_command_input", args, ctx),
+        );
+      }
+      if (offers("kill_command")) {
+        server.registerTool(
+          "kill_command",
+          { ...meta("kill_command"), inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema },
+          (args, ctx) => run("kill_command", args, ctx),
+        );
+      }
 
       return server;
     },
@@ -229,6 +299,36 @@ export async function isApproved(
  * where a `write_file` carries a whole file.
  */
 const MAX_HANDSHAKE_BYTES = 64 * 1024;
+
+/**
+ * The JSON-RPC method this request carries, when knowing it is cheap.
+ *
+ * Only `tools/list` has an answer that depends on which machine is connected,
+ * and only that answer is worth a round trip to find out. Everything else, this
+ * one included when it cannot tell, says undefined and the caller offers every
+ * tool.
+ *
+ * Bounded by the same ceiling as the handshake, and for a stronger reason here:
+ * a `tools/list` body is a few hundred bytes, so anything larger is certainly
+ * not one and never needs buffering to rule out. That is what keeps this off
+ * the path a `write_file` carrying a whole file takes.
+ */
+export async function peekMethod(request: Request): Promise<string | undefined> {
+  if (request.method !== "POST") return undefined;
+
+  const declared = Number(request.headers.get("Content-Length") ?? Number.NaN);
+  if (!Number.isFinite(declared) || declared > MAX_HANDSHAKE_BYTES) return undefined;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return undefined;
+  }
+
+  const method = (body as { method?: unknown } | null)?.method;
+  return typeof method === "string" ? method : undefined;
+}
 
 export async function handshakeClientInfo(request: Request): Promise<McpClientInfo | undefined> {
   if (request.method !== "POST") return undefined;

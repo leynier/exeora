@@ -266,8 +266,12 @@ describe("reading a stored policy", () => {
     expect(parsePolicy(stored)).toEqual({
       mode: "allow_list",
       allow: ["npm"],
+      // Filled in by the schema: a policy stored before these fields existed
+      // reads as one that has no opinion about them, not as a stricter one.
+      deny: [],
       shell: false,
       approve: false,
+      tools: null,
     });
   });
 
