@@ -7,7 +7,12 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
 import { createProjectMcpHandler } from "./mcp.js";
-import { CLI_SCOPES, getCliClientId } from "./oauth/cli-client.js";
+import {
+  CLI_SCOPES,
+  DASHBOARD_SCOPES,
+  getCliClientId,
+  getDashboardClientId,
+} from "./oauth/clients.js";
 import { oauthRoutes } from "./oauth/routes.js";
 
 export { DeviceRelay } from "./relay-do.js";
@@ -182,6 +187,17 @@ site.get("/oauth/cli-client", async (c) =>
   }),
 );
 
+/** The same, for the dashboard SPA, which is also a public PKCE client. */
+site.get("/oauth/dashboard-client", async (c) =>
+  c.json({
+    clientId: await getDashboardClientId(c.env),
+    authorizationEndpoint: new URL("/oauth/authorize", c.env.EXEORA_BASE_URL).toString(),
+    tokenEndpoint: new URL("/oauth/token", c.env.EXEORA_BASE_URL).toString(),
+    redirectUri: new URL("/dashboard/callback", c.env.EXEORA_BASE_URL).toString(),
+    scopes: DASHBOARD_SCOPES,
+  }),
+);
+
 export { isToolName };
 
 export default new OAuthProvider({
@@ -198,7 +214,7 @@ export default new OAuthProvider({
   clientRegistrationEndpoint: "/oauth/register",
   clientIdMetadataDocumentEnabled: true,
 
-  scopesSupported: ["tools:read", "tools:execute", ...CLI_SCOPES],
+  scopesSupported: ["tools:read", "tools:execute", ...CLI_SCOPES, ...DASHBOARD_SCOPES],
 
   // resourceMetadata.resource is deliberately left unset: the provider then
   // derives one resource identifier per path, so a token minted for

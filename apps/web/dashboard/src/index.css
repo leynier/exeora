@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@layer components {
+  .btn {
+    @apply rounded-lg border border-neutral-200 px-3 py-1.5 text-sm transition
+           hover:bg-neutral-50 disabled:opacity-50
+           dark:border-neutral-800 dark:hover:bg-neutral-900;
+  }
+}
+
+body {
+  @apply bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
+}

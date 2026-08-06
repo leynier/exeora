@@ -1,0 +1,13 @@
+import tailwind from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  root: "dashboard",
+  // Served from /dashboard/ by the Worker, so every asset URL must carry that
+  // prefix or the SPA shell will request them from the landing's root.
+  base: "/dashboard/",
+  plugins: [react(), tailwind()],
+  build: { outDir: "../public/dashboard", emptyOutDir: true },
+  server: { proxy: { "/api": "http://localhost:8787", "/oauth": "http://localhost:8787" } },
+});

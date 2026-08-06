@@ -13,3 +13,4 @@ dist/
 
 .DS_Store
 packages/cli/bin/
+apps/web/public/
