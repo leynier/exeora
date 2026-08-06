@@ -19,7 +19,11 @@ export async function setSession(c: Context<{ Bindings: Env }>, userId: string):
     // The OAuth redirect back from GitHub is a cross-site top-level
     // navigation, so Strict would drop the cookie exactly when it is needed.
     sameSite: "Lax",
-    secure: new URL(c.req.url).protocol === "https:",
+    // Derived from the configured base URL, not from c.req.url: wrangler dev
+    // rewrites the request host to the configured route, so reading the
+    // protocol off the request could mark the cookie Secure while the browser
+    // is on plain-http localhost — which silently drops it mid-login.
+    secure: new URL(c.env.EXEORA_BASE_URL).protocol === "https:",
     path: "/",
     maxAge: MAX_AGE_SECONDS,
   });

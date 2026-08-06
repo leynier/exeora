@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
 
-const env = { COOKIE_SECRET: "test-secret-value" } as Env;
+/** Only the bindings the session helpers actually read. */
+const env = {
+  COOKIE_SECRET: "test-secret-value",
+  EXEORA_BASE_URL: "http://localhost:8787",
+} as unknown as Env;
 
 /** Minimal app exposing the three session operations over HTTP. */
 const app = new Hono<{ Bindings: Env }>()
@@ -47,7 +51,7 @@ describe("session cookie", () => {
   });
 
   it("rejects a cookie signed with a different secret", async () => {
-    const other = { COOKIE_SECRET: "a-different-secret" } as Env;
+    const other = { ...env, COOKIE_SECRET: "a-different-secret" } as Env;
     const cookie = cookieFrom(await app.request("/set/usr_abc", {}, other));
     expect(await who(cookie)).toBe("anonymous");
   });
@@ -55,6 +59,17 @@ describe("session cookie", () => {
   it("does not confuse a user id that itself contains a dot", async () => {
     const cookie = cookieFrom(await app.request("/set/usr.with.dots", {}, env));
     expect(await who(cookie)).toBe("usr.with.dots");
+  });
+
+  it("omits Secure over http so a localhost login is not silently dropped", async () => {
+    const header = (await app.request("/set/usr_abc", {}, env)).headers.get("set-cookie") ?? "";
+    expect(header).not.toMatch(/Secure/i);
+  });
+
+  it("sets Secure when the configured base URL is https", async () => {
+    const prod = { ...env, EXEORA_BASE_URL: "https://exeora.dev" } as Env;
+    const header = (await app.request("/set/usr_abc", {}, prod)).headers.get("set-cookie") ?? "";
+    expect(header).toMatch(/Secure/i);
   });
 
   it("expires the cookie on clear", async () => {
