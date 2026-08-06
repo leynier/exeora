@@ -2,6 +2,10 @@
 import { NPM_URL } from "../lib/site.js";
 import Wordmark from "./Wordmark.astro";
 
+// The build year rather than a literal, so a deploy next January does not
+// leave a stale notice behind for someone to notice and file.
+const year = new Date().getFullYear();
+
 const links = [
   { href: "/dashboard/", label: "Dashboard" },
   { href: NPM_URL, label: "CLI", external: true },
@@ -14,13 +18,19 @@ const links = [
   <div
     class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row sm:gap-4"
   >
-    <Wordmark class="text-foreground-muted hover:text-foreground transition-colors duration-fast" />
+    <div class="flex flex-col items-center gap-2 sm:items-start">
+      <Wordmark
+        class="text-foreground-muted hover:text-foreground transition-colors duration-fast"
+      />
+      <p class="text-body-md text-foreground-faint">&copy; {year} Exeora</p>
+    </div>
 
     <nav class="text-body-md text-foreground-faint flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
       {
         links.map((link) => (
           <a
             href={link.href}
+            target={link.external ? "_blank" : undefined}
             rel={link.external ? "noopener" : undefined}
             class="hover:text-foreground transition-colors duration-fast"
           >

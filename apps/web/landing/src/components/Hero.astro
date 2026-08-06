@@ -6,17 +6,14 @@ import { QUICKSTART } from "../lib/site.js";
   <div class="hero-glow pointer-events-none absolute inset-x-0 top-0 h-[36rem]"></div>
 
   <div class="relative z-10 mx-auto max-w-4xl text-center">
+    <!-- No status dot. A pulsing dot is the universal gesture for "live", and
+         this states a fact about the design rather than a state, so the dot was
+         promising something that does not exist. -->
     <p
-      class="animate-fade-in-up opacity-0-initial border-border bg-surface text-label-md text-foreground-muted inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 font-mono uppercase"
+      class="animate-fade-in-up opacity-0-initial border-border bg-surface text-label-md text-foreground-muted inline-flex items-center rounded-pill border px-3.5 py-1.5 font-mono uppercase"
       style="animation-delay: 80ms"
     >
-      <span class="relative flex size-1.5">
-        <span
-          class="bg-brand absolute inline-flex size-full animate-ping rounded-full opacity-70"
-        ></span>
-        <span class="bg-brand relative inline-flex size-1.5 rounded-full"></span>
-      </span>
-      Outbound only
+      Nothing to expose, nothing to forward
     </p>
 
     <h1

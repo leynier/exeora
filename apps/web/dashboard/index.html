@@ -4,6 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+
+    <!--
+      The head the landing and the OAuth screens already had, and this shell
+      did not. Without the icon the browser falls back to /favicon.ico, which
+      does not exist, so the tab showed nothing; without color-scheme the
+      native selects on Activity and the scrollbars render light on a dark
+      page. The icon is served from the landing's build at the same origin.
+    -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d0f11" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
     <title>Dashboard · Exeora</title>
   </head>
   <body>
