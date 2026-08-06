@@ -64,9 +64,52 @@ const rows = [
   subtitle="A tunnel exposes a port you then have to defend. A sandbox gives an agent a copy of your project rather than the project."
   wide
 >
-  <!-- The table scrolls inside its own box, so the page body never does. -->
+  <!-- Below md the same rows are stacked, one card per dimension. A table of
+       four columns cannot be read on a phone: it either shrinks past legibility
+       or asks the reader to drag sideways, and dragging is the opposite of what
+       a comparison is for. Both layouts are built from `columns` and `rows`, so
+       the copy exists once. -->
+  <div class="grid gap-3 md:hidden">
+    {
+      rows.map((row, rowIndex) => (
+        <article
+          class="animate-fade-in-up opacity-0-initial border-border bg-surface rounded-xl border p-5"
+          style={`animation-delay: ${100 + rowIndex * 50}ms`}
+        >
+          <h3 class="text-label-md text-foreground-faint font-mono uppercase">{row.dimension}</h3>
+
+          <dl class="divide-border-subtle mt-3 divide-y">
+            {row.values.map((value, index) => (
+              <div class="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
+                <dt
+                  class:list={[
+                    "text-body-md",
+                    index === 0 ? "text-foreground" : "text-foreground-faint",
+                  ]}
+                >
+                  {columns[index]}
+                </dt>
+                <dd
+                  class:list={[
+                    "text-body-md",
+                    index === 0 ? "text-foreground" : "text-foreground-muted",
+                  ]}
+                >
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </article>
+      ))
+    }
+  </div>
+
+  <!-- From md up the table fits without scrolling: the well is 720px there and
+       the table asks for 672. `overflow-x-auto` stays as a guard, so a longer
+       cell later scrolls this box rather than the page. -->
   <div
-    class="animate-fade-in-up opacity-0-initial border-border bg-surface overflow-x-auto rounded-xl border"
+    class="animate-fade-in-up opacity-0-initial border-border bg-surface hidden overflow-x-auto rounded-xl border md:block"
   >
     <table class="w-full min-w-2xl border-collapse text-left">
       <thead>
