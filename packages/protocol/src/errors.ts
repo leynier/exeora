@@ -1,0 +1,45 @@
+/**
+ * Error codes exchanged between the gateway and the local executor.
+ *
+ * These cross a trust boundary, so the message attached to an error is always
+ * safe to show to the calling agent: never put absolute host paths, tokens or
+ * environment values in it.
+ */
+export const ERROR_CODES = [
+  /** No CLI is currently connected for the device that owns the project. */
+  "LOCAL_EXECUTOR_OFFLINE",
+  /** The executor did not answer within the relay deadline. */
+  "TOOL_TIMEOUT",
+  /** The resolved path escaped the project root. */
+  "PATH_ESCAPE",
+  /** The path exists but is not the expected kind (file vs directory). */
+  "PATH_NOT_FOUND",
+  /** The tool ran but the underlying operation failed (ENOENT, EACCES, ...). */
+  "TOOL_FAILED",
+  /** The arguments did not match the tool's input schema. */
+  "INVALID_ARGUMENTS",
+  /** The tool name is not one this executor serves. */
+  "UNKNOWN_TOOL",
+  /** The project id is not registered on this executor. */
+  "UNKNOWN_PROJECT",
+  /** The caller is authenticated but not allowed to reach this project. */
+  "FORBIDDEN",
+  /** Something went wrong that we could not classify. */
+  "INTERNAL_ERROR",
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+export class ExeoraError extends Error {
+  readonly code: ErrorCode;
+
+  constructor(code: ErrorCode, message: string) {
+    super(message);
+    this.name = "ExeoraError";
+    this.code = code;
+  }
+}
+
+export function isErrorCode(value: unknown): value is ErrorCode {
+  return typeof value === "string" && (ERROR_CODES as readonly string[]).includes(value);
+}

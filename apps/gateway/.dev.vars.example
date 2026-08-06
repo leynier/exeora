@@ -1,0 +1,13 @@
+# Copy to .dev.vars (git-ignored) and fill in.
+# In production these are set with `wrangler secret put <NAME>`.
+
+# GitHub OAuth app — callback: http://localhost:8787/oauth/callback/github
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# Google OAuth client — callback: http://localhost:8787/oauth/callback/google
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Any long random string: openssl rand -hex 32
+COOKIE_SECRET=

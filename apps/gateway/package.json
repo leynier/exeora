@@ -1,0 +1,30 @@
+{
+  "name": "@exeora/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply exeora --local",
+    "db:migrate": "wrangler d1 migrations apply exeora --remote"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "0.10.1",
+    "@exeora/protocol": "workspace:*",
+    "@hono/zod-validator": "0.9.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "agents": "0.20.1",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.13.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.20.2",
+    "@types/node": "latest",
+    "drizzle-kit": "latest",
+    "wrangler": "4.119.0"
+  }
+}

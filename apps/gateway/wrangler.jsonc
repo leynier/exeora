@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "exeora-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  // nodejs_compat: the MCP SDK and OAuth provider reach for node builtins.
+  // global_fetch_strictly_public: required by workers-oauth-provider to fetch
+  // Client ID Metadata Documents (CIMD) without looping back into this Worker.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE_RELAY", "class_name": "DeviceRelay" }]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DeviceRelay"]
+    }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "exeora",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }],
+
+  "vars": {
+    "EXEORA_BASE_URL": "https://exeora.dev"
+  },
+
+  "routes": [
+    { "pattern": "exeora.dev/oauth/*", "zone_name": "exeora.dev" },
+    { "pattern": "exeora.dev/.well-known/*", "zone_name": "exeora.dev" },
+    { "pattern": "exeora.dev/p/*", "zone_name": "exeora.dev" },
+    { "pattern": "exeora.dev/api/*", "zone_name": "exeora.dev" }
+  ]
+}
