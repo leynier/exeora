@@ -12,7 +12,7 @@
   "scripts": {
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "typecheck": "tsc --build",
+    "typecheck": "tsc --build && tsc -p apps/web/dashboard/tsconfig.json",
     "test": "vitest run",
     "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
     "deploy": "bun run --cwd apps/web build && bun run --cwd apps/gateway deploy",

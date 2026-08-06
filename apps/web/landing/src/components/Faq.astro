@@ -1,0 +1,73 @@
+---
+import Section from "./Section.astro";
+
+const questions = [
+  {
+    q: "Can you see my code?",
+    a: "No. The gateway routes tool calls and returns their results; it never receives a copy of your repository. What does cross the wire is whatever a tool returns, for example the lines a grep matched, and none of that is stored. The audit log records the tool name, the outcome and the duration, never arguments or output.",
+  },
+  {
+    q: "What happens when I close my laptop?",
+    a: "The connection drops and calls to that project fail immediately with LOCAL_EXECUTOR_OFFLINE. Nothing is queued, by design: every call also carries an absolute deadline that the CLI rechecks on arrival, so a command asked for hours ago cannot run when the machine wakes up.",
+  },
+  {
+    q: "Can I limit which commands run?",
+    a: "Not in this release. There is no allowlist and no approval prompt, which is why the warning above is written plainly. Path confinement to the project root is the control that does exist, and it is enforced before any tool touches the disk.",
+  },
+  {
+    q: "Does this work behind my company's firewall?",
+    a: "If the machine can make outbound HTTPS requests, yes. The CLI opens the connection outward and keeps it, so there is no inbound rule to request, no port to forward and no VPN to join.",
+  },
+  {
+    q: "What does the audit log actually contain?",
+    a: "One row per tool call: which project, which tool, whether it succeeded, the error code when it did not, how long it took, and which OAuth client asked, so you can tell Claude apart from ChatGPT. Arguments and output are never written.",
+  },
+  {
+    q: "How do I revoke access?",
+    a: "Revoke the machine from the dashboard. That closes its live socket at once and stops it serving anything, rather than waiting for a token to expire. Removing a project takes its MCP URL out of service the same way.",
+  },
+  {
+    q: "Can I connect more than one machine?",
+    a: "Yes. Each machine registers separately and each project belongs to one machine, so a laptop and a desktop can serve different projects under the same account at the same time.",
+  },
+  {
+    q: "Which clients does it work with?",
+    a: "Any client that speaks MCP over Streamable HTTP with OAuth 2.1. That covers Claude, ChatGPT connectors, Claude Code, Cursor and VS Code today. Dynamic client registration and CIMD are both supported, so a client that insists on either will work.",
+  },
+];
+---
+
+<Section
+  id="faq"
+  eyebrow="FAQ"
+  title="The questions worth asking first"
+  subtitle="Mostly about what Exeora can see, what it cannot stop, and how to make it stop."
+>
+  <div class="border-border bg-surface divide-border-subtle divide-y overflow-hidden rounded-xl border">
+    {
+      questions.map((item, index) => (
+        <details
+          class="animate-fade-in-up opacity-0-initial group"
+          style={`animation-delay: ${100 + index * 40}ms`}
+        >
+          <summary class="hover:bg-surface-variant flex list-none items-center justify-between gap-4 px-5 py-4 transition-colors duration-fast [&::-webkit-details-marker]:hidden">
+            <span class="text-title-md text-foreground">{item.q}</span>
+            <svg
+              viewBox="0 0 24 24"
+              class="text-foreground-faint size-4 shrink-0 transition-transform duration-mid group-open:rotate-180"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
+          <p class="text-body-md text-foreground-muted px-5 pb-5">{item.a}</p>
+        </details>
+      ))
+    }
+  </div>
+</Section>

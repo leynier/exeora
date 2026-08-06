@@ -1,0 +1,50 @@
+---
+/**
+ * Which clients this works with.
+ *
+ * Deliberately typographic rather than a logo wall: these are other people's
+ * trademarks, and an approximate redrawing of someone's mark is worse than
+ * their name set properly. Drop real SVGs into public/clients/ later if the
+ * licences allow it.
+ */
+
+const clients = [
+  { name: "Claude", note: "web, desktop, mobile" },
+  { name: "ChatGPT", note: "connectors" },
+  { name: "Claude Code", note: "CLI" },
+  { name: "Cursor", note: "editor" },
+  { name: "VS Code", note: "editor" },
+];
+---
+
+<section class="defer-offscreen-rendering px-6 py-16">
+  <div class="mx-auto max-w-5xl">
+    <p
+      class="animate-fade-in-up opacity-0-initial text-label-md text-foreground-faint text-center font-mono uppercase"
+    >
+      Speaks MCP, so it works with
+    </p>
+
+    <ul class="mt-8 flex flex-wrap items-stretch justify-center gap-3">
+      {
+        clients.map((client, index) => (
+          <li
+            class="animate-fade-in-up opacity-0-initial border-border bg-surface hover:bg-surface-variant hover:border-foreground-faint/20 min-w-36 flex-1 rounded-xl border px-4 py-3.5 text-center transition-all duration-mid"
+            style={`animation-delay: ${120 + index * 60}ms`}
+          >
+            <p class="text-title-md text-foreground">{client.name}</p>
+            <p class="text-label-md text-foreground-faint mt-1 font-mono">{client.note}</p>
+          </li>
+        ))
+      }
+    </ul>
+
+    <p
+      class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-6 text-center"
+      style="animation-delay: 420ms"
+    >
+      Anything that speaks Streamable HTTP and OAuth 2.1 can connect. There is no Exeora plugin to
+      install on the client side.
+    </p>
+  </div>
+</section>

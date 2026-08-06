@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# The dashboard needs a token to render anything, and the OAuth screens already
+# send `noindex` in their markup. Neither is worth a crawl.
+Disallow: /dashboard/
+Disallow: /oauth/
+
+Sitemap: https://exeora.dev/sitemap-index.xml

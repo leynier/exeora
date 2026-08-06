@@ -1,0 +1,46 @@
+---
+import { GITHUB_URL } from "../lib/site.js";
+import Wordmark from "./Wordmark.astro";
+
+const links = [
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#features", label: "Features" },
+  { href: "/#tools", label: "Tools" },
+  { href: "/#compare", label: "Compare" },
+  { href: "/#faq", label: "FAQ" },
+];
+---
+
+<header
+  class="border-border-subtle bg-bg/70 fixed inset-x-0 top-0 z-50 border-b backdrop-blur-xl"
+>
+  <nav class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-6 px-6">
+    <Wordmark />
+
+    <div class="text-body-md text-foreground-muted hidden items-center gap-7 md:flex">
+      {
+        links.map((link) => (
+          <a href={link.href} class="hover:text-foreground transition-colors duration-fast">
+            {link.label}
+          </a>
+        ))
+      }
+    </div>
+
+    <div class="flex items-center gap-2">
+      <a
+        href={GITHUB_URL}
+        rel="noopener"
+        class="text-body-md text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 border-border rounded-lg border px-3 py-1.5 transition-colors duration-fast max-sm:hidden"
+      >
+        GitHub
+      </a>
+      <a
+        href="/dashboard/"
+        class="text-body-md bg-accent text-on-accent hover:bg-foreground rounded-lg px-3.5 py-1.5 font-medium transition-colors duration-fast"
+      >
+        Dashboard
+      </a>
+    </div>
+  </nav>
+</header>

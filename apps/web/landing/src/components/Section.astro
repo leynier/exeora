@@ -1,0 +1,37 @@
+---
+/**
+ * The rhythm every section below the hero shares: a divider, generous vertical
+ * padding, and a centred header of eyebrow, heading and one line of context.
+ *
+ * `content-visibility` is set here rather than per section, so nothing below
+ * the fold costs layout or paint until it scrolls close.
+ */
+
+interface Props {
+  id: string;
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+  /** Widens the content well past the default for tables and large grids. */
+  wide?: boolean;
+}
+
+const { id, eyebrow, title, subtitle, wide = false } = Astro.props;
+---
+
+<section
+  id={id}
+  class="defer-offscreen-rendering border-t border-border-subtle px-6 py-20 sm:py-24"
+>
+  <div class:list={["mx-auto", wide ? "max-w-6xl" : "max-w-4xl"]}>
+    <div class="animate-fade-in-up opacity-0-initial mx-auto max-w-2xl text-center">
+      <p class="text-label-md text-foreground-faint font-mono uppercase">{eyebrow}</p>
+      <h2 class="text-headline-lg sm:text-[32px] mt-3">{title}</h2>
+      {subtitle && <p class="text-body-lg text-foreground-muted mt-4">{subtitle}</p>}
+    </div>
+
+    <div class="mt-12">
+      <slot />
+    </div>
+  </div>
+</section>

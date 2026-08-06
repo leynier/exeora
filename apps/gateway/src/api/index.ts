@@ -229,5 +229,6 @@ function toDeviceView(device: typeof schema.devices.$inferSelect) {
     cliVersion: device.cliVersion,
     lastSeenAt: device.lastSeenAt?.getTime() ?? null,
     revokedAt: device.revokedAt?.getTime() ?? null,
+    createdAt: device.createdAt.getTime(),
   };
 }

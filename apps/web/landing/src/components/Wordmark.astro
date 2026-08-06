@@ -1,0 +1,27 @@
+---
+/**
+ * The mark plus the name. A half-lit circle: the far side is the gateway, the
+ * lit side is the machine that is actually yours.
+ */
+
+interface Props {
+  href?: string;
+  class?: string;
+}
+
+const { href = "/", class: className = "" } = Astro.props;
+---
+
+<a href={href} class:list={["group flex items-center gap-2", className]} aria-label="Exeora, home">
+  <svg
+    viewBox="0 0 64 64"
+    class="text-brand size-6 shrink-0"
+    aria-hidden="true"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="32" cy="32" r="17" stroke="currentColor" stroke-width="4"></circle>
+    <path d="M32 15a17 17 0 0 0 0 34z" fill="currentColor"></path>
+  </svg>
+  <span class="text-title-lg tracking-tight">Exeora</span>
+</a>

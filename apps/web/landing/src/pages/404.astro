@@ -1,0 +1,30 @@
+---
+import Footer from "../components/Footer.astro";
+import Navbar from "../components/Navbar.astro";
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout
+  title="Not found · Exeora"
+  description="That page does not exist."
+  canonicalPath="/404"
+  noIndex
+>
+  <Navbar />
+  <main class="grid min-h-[70vh] place-items-center px-6 pt-14">
+    <div class="animate-fade-in-up opacity-0-initial max-w-md text-center">
+      <p class="text-label-md text-foreground-faint font-mono uppercase">404</p>
+      <h1 class="text-headline-lg mt-3">That page does not exist</h1>
+      <p class="text-body-lg text-foreground-muted mt-4">
+        The link may be out of date, or the address slightly off.
+      </p>
+      <a
+        href="/"
+        class="bg-accent text-on-accent hover:bg-foreground text-title-md mt-8 inline-block rounded-lg px-5 py-2.5 transition-colors duration-fast"
+      >
+        Back to the start
+      </a>
+    </div>
+  </main>
+  <Footer />
+</Layout>

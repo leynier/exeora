@@ -1,116 +1,36 @@
 ---
-import "../styles/global.css";
-
-const tools = ["read_file", "list_files", "grep", "edit_file", "write_file", "run_command"];
+import Clients from "../components/Clients.astro";
+import Comparison from "../components/Comparison.astro";
+import CtaSection from "../components/CtaSection.astro";
+import Faq from "../components/Faq.astro";
+import Features from "../components/Features.astro";
+import Footer from "../components/Footer.astro";
+import Hero from "../components/Hero.astro";
+import Navbar from "../components/Navbar.astro";
+import Roadmap from "../components/Roadmap.astro";
+import Security from "../components/Security.astro";
+import Tools from "../components/Tools.astro";
+import Workflow from "../components/Workflow.astro";
+import Layout from "../layouts/Layout.astro";
 ---
 
-<!doctype html>
-<html lang="en" class="scroll-smooth">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Exeora: Secure execution for AI agents on any machine</title>
-    <meta
-      name="description"
-      content="Connect any AI agent to the development environment on any machine (even your own) without exposing ports, uploading your source code, or managing tunnels."
-    />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◐</text></svg>" />
-  </head>
-
-  <body
-    class="min-h-screen bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100"
-  >
-    <header class="mx-auto flex max-w-3xl items-center justify-between px-6 py-6">
-      <span class="font-semibold tracking-tight">Exeora</span>
-      <a
-        href="/dashboard/"
-        class="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm transition hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
-        >Dashboard</a
-      >
-    </header>
-
-    <main class="mx-auto max-w-3xl px-6 pb-24">
-      <section class="pt-12 pb-16">
-        <h1 class="text-4xl font-semibold tracking-tight sm:text-5xl">
-          Secure execution for AI agents, on any machine.
-        </h1>
-        <p class="mt-5 max-w-xl text-lg text-neutral-600 dark:text-neutral-400">
-          Connect any AI agent to the development environment on any machine you can run a
-          command on (a server, a VM, a build box, even your own laptop), without opening a
-          port, uploading your source code, or wiring up a tunnel.
-        </p>
-
-        <div class="mt-8 rounded-xl border border-neutral-200 dark:border-neutral-800">
-          <pre class="overflow-x-auto p-4 text-sm"><code>npm install -g @exeora/cli
-exeora login
-exeora project add .
-exeora connect</code></pre>
-        </div>
-      </section>
-
-      <section class="border-t border-neutral-200 py-12 dark:border-neutral-800">
-        <h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">
-          How it works
-        </h2>
-        <ol class="mt-6 space-y-5">
-          <li>
-            <p class="font-medium">The CLI dials out. Nothing dials in.</p>
-            <p class="mt-1 text-neutral-600 dark:text-neutral-400">
-              The machine opens an outbound connection to Exeora. There is no inbound port, no
-              tunnel to configure and no VPN, which is the same reason this reaches a laptop
-              behind NAT and a box behind a corporate firewall alike.
-            </p>
-          </li>
-          <li>
-            <p class="font-medium">Your code never leaves the machine.</p>
-            <p class="mt-1 text-neutral-600 dark:text-neutral-400">
-              Exeora routes tool calls; it does not store your repository. Files are read, edited
-              and searched where they already are.
-            </p>
-          </li>
-          <li>
-            <p class="font-medium">One URL per project.</p>
-            <p class="mt-1 text-neutral-600 dark:text-neutral-400">
-              Each project gets its own MCP endpoint, and its access token is bound to that
-              endpoint alone. An agent connected to one project cannot reach another.
-            </p>
-          </li>
-        </ol>
-      </section>
-
-      <section class="border-t border-neutral-200 py-12 dark:border-neutral-800">
-        <h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">Tools</h2>
-        <div class="mt-6 flex flex-wrap gap-2">
-          {
-            tools.map((tool) => (
-              <code class="rounded-lg border border-neutral-200 px-2.5 py-1 text-sm dark:border-neutral-800">
-                {tool}
-              </code>
-            ))
-          }
-        </div>
-        <p class="mt-4 text-neutral-600 dark:text-neutral-400">
-          Works with any MCP client: Claude, ChatGPT, Cursor, VS Code, Claude Code.
-        </p>
-      </section>
-
-      <section class="border-t border-neutral-200 py-12 dark:border-neutral-800">
-        <h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">
-          What you are agreeing to
-        </h2>
-        <p class="mt-6 text-neutral-600 dark:text-neutral-400">
-          An agent connected to a project can read, edit and run commands inside that project's
-          directory on whichever machine is serving it. Paths are confined to the project root,
-          but commands are not filtered. Connect projects you are comfortable letting an agent
-          change, and revoke a machine from the dashboard the moment you want it to stop.
-        </p>
-      </section>
-    </main>
-
-    <footer
-      class="mx-auto max-w-3xl border-t border-neutral-200 px-6 py-8 text-sm text-neutral-500 dark:border-neutral-800"
-    >
-      Exeora
-    </footer>
-  </body>
-</html>
+<Layout
+  title="Exeora: Secure local execution for AI agents"
+  description="Connect any MCP client to the development environment on your own machine, without opening a port, uploading your source code, or wiring up a tunnel."
+  canonicalPath="/"
+>
+  <Navbar />
+  <main>
+    <Hero />
+    <Clients />
+    <Workflow />
+    <Features />
+    <Tools />
+    <Comparison />
+    <Security />
+    <Faq />
+    <Roadmap />
+    <CtaSection />
+  </main>
+  <Footer />
+</Layout>

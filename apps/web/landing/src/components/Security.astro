@@ -1,0 +1,40 @@
+---
+/**
+ * The section that must not be softened. It sits outside the `Section`
+ * rhythm on purpose: a warning that looks like every other card reads as
+ * marketing, and this one is the honest limit of the current release.
+ */
+---
+
+<section id="security" class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20">
+  <div class="mx-auto max-w-3xl">
+    <div
+      class="animate-fade-in-up opacity-0-initial border-warning/35 bg-warning/[0.04] rounded-xl border p-7 sm:p-9"
+    >
+      <p class="text-label-md text-warning font-mono uppercase">What you are agreeing to</p>
+
+      <h2 class="text-headline-md mt-3">
+        An agent you connect can run anything inside that project.
+      </h2>
+
+      <div class="text-body-lg text-foreground-muted mt-5 space-y-4">
+        <p>
+          Paths are confined to the project root, and that confinement is the single security
+          control in this release. Commands are <strong class="text-foreground">not filtered</strong
+          >, and there is no approval step: <code class="text-foreground font-mono">run_command</code
+          > will run what it is given, inside that directory, on your machine.
+        </p>
+        <p>
+          Connect projects you are comfortable letting an agent change. Revoking a machine from the
+          dashboard closes its connection immediately, so that is the stop button.
+        </p>
+      </div>
+
+      <p class="text-body-md text-foreground-faint border-warning/20 mt-6 border-t pt-5">
+        Remote approvals are the next thing to build. MCP 2026-07-28 standardised the mechanism
+        (<code class="font-mono">inputRequired</code>) and it is already available in the SDK, so
+        this limit is a matter of scope rather than one of design.
+      </p>
+    </div>
+  </div>
+</section>

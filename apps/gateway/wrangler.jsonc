@@ -30,6 +30,15 @@
 
   "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "9eaeb4270e5d4ef996018912075d97bc" }],
 
+  // The OAuth screens are the one place this Worker renders HTML, and they
+  // inline their CSS: a sign-in page cannot afford a blocking stylesheet
+  // request. This rule lets them import the shared design tokens as a string
+  // so the palette is written down once rather than copied. Scoped to that one
+  // filename rather than `*.css`, which would claim every stylesheet, and
+  // `fallthrough` so it adds to wrangler's built-in Text rule for .txt/.html/
+  // .sql rather than replacing it.
+  "rules": [{ "type": "Text", "globs": ["**/tokens.css"], "fallthrough": true }],
+
   // The landing and dashboard, built by apps/web. `run_worker_first` because
   // the OAuth provider has to see every request: it owns /oauth/token and the
   // metadata documents, and only what it does not claim reaches the assets.

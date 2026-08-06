@@ -1,0 +1,35 @@
+---
+import { GITHUB_URL } from "../lib/site.js";
+import Wordmark from "./Wordmark.astro";
+
+const links = [
+  { href: "/dashboard/", label: "Dashboard" },
+  { href: GITHUB_URL, label: "GitHub", external: true },
+  { href: "/#security", label: "Security" },
+  { href: "/#faq", label: "FAQ" },
+];
+---
+
+<footer class="border-border-subtle border-t px-6 py-10">
+  <div
+    class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row sm:gap-4"
+  >
+    <Wordmark class="text-foreground-muted hover:text-foreground transition-colors duration-fast" />
+
+    <nav class="text-body-md text-foreground-faint flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+      {
+        links.map((link) => (
+          <a
+            href={link.href}
+            rel={link.external ? "noopener" : undefined}
+            class="hover:text-foreground transition-colors duration-fast"
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <p class="text-body-md text-foreground-faint">Your code stays on your machine.</p>
+  </div>
+</footer>

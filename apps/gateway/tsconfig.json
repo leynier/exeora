@@ -8,6 +8,6 @@
     "outDir": "dist",
     "noEmit": false
   },
-  "include": ["src/**/*.ts", "worker-configuration.d.ts", "cloudflare-test.d.ts"],
+  "include": ["src/**/*.ts", "worker-configuration.d.ts", "cloudflare-test.d.ts", "css.d.ts"],
   "references": [{ "path": "../../packages/protocol" }]
 }

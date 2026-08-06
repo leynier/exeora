@@ -1,0 +1,92 @@
+---
+import Section from "./Section.astro";
+
+/**
+ * What the system actually guarantees, one card per guarantee. Each line is
+ * something the code does today, not a roadmap item.
+ */
+
+const features = [
+  {
+    title: "No inbound port",
+    body: "Nothing listens on your machine. The CLI opens the connection and holds it, so there is nothing to expose and nothing to forward.",
+    icon: "M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-3z",
+  },
+  {
+    title: "Behind NAT and firewalls",
+    body: "Outbound HTTPS is the only requirement. Home routers, corporate proxies and cloud VMs with no public address all work unconfigured.",
+    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18",
+  },
+  {
+    title: "A token per project",
+    body: "Each project is its own OAuth resource under its own path. A token minted for one endpoint is refused at another, and ownership is checked in the database too.",
+    icon: "M14 8a4 4 0 1 0-3.6 4L4 18.4V21h3v-2h2v-2h1.6L14 13.6A4 4 0 0 0 14 8z",
+  },
+  {
+    title: "Nothing is queued",
+    body: "With no executor connected a call fails at once. Every call also carries an absolute deadline the executor rechecks on arrival, so a command from hours ago never runs when a laptop wakes.",
+    icon: "M13 3L5 14h6l-2 7 8-11h-6l2-7z",
+  },
+  {
+    title: "Paths stay in the project",
+    body: "Every path is resolved through realpath before anything touches disk. A `..` or a symlink pointing outward is rejected rather than followed.",
+    icon: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z",
+  },
+  {
+    title: "An audit log you can show someone",
+    body: "Which tool ran, how it ended, how long it took, and which client asked for it. Never the arguments, never the output.",
+    icon: "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
+  },
+  {
+    title: "Revoke and it stops",
+    body: "Revoking a machine closes its live socket immediately. It stops serving that instant, not whenever a token happens to expire.",
+    icon: "M12 3v9M7.5 6.5a8 8 0 1 0 9 0",
+  },
+  {
+    title: "Idle costs nothing",
+    body: "The relay uses the WebSocket hibernation API, so a machine that stays connected all day is not billed as compute all day.",
+    icon: "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z",
+  },
+  {
+    title: "Bring your own client",
+    body: "Streamable HTTP with OAuth 2.1, PKCE, dynamic client registration and RFC 9728 metadata. No plugin to install, no fork, no lock-in.",
+    icon: "M9 3v6M15 3v6M6 9h12v3a6 6 0 0 1-12 0V9zM12 18v3",
+  },
+];
+---
+
+<Section
+  id="features"
+  eyebrow="Features"
+  title="Built so the dangerous parts are small"
+  subtitle="One outbound connection, one resource per project, and a log that records what happened without recording what was in it."
+  wide
+>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      features.map((feature, index) => (
+        <article
+          class="animate-fade-in-up opacity-0-initial group border-border bg-surface hover:bg-surface-variant hover:border-foreground-faint/20 rounded-xl border p-6 transition-all duration-mid"
+          style={`animation-delay: ${120 + index * 50}ms`}
+        >
+          <div class="bg-accent-subtle text-foreground flex size-9 items-center justify-center rounded-lg transition-transform duration-mid group-hover:scale-110">
+            <svg
+              viewBox="0 0 24 24"
+              class="size-[18px]"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d={feature.icon} />
+            </svg>
+          </div>
+          <h3 class="text-title-lg mt-4">{feature.title}</h3>
+          <p class="text-body-md text-foreground-muted mt-2">{feature.body}</p>
+        </article>
+      ))
+    }
+  </div>
+</Section>

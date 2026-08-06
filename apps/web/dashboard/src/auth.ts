@@ -51,15 +51,21 @@ export function signOut(): void {
   window.location.href = "/";
 }
 
-/** Sends the browser to the authorization endpoint. Does not return. */
-export async function beginSignIn(): Promise<void> {
+/**
+ * Sends the browser to the authorization endpoint. Does not return.
+ *
+ * `returnTo` is explicit because the sign-in screen is itself a route: reading
+ * the current location here would send the user back to /signin after a
+ * successful sign-in, which is a loop.
+ */
+export async function beginSignIn(returnTo?: string): Promise<void> {
   const info = await client();
   const verifier = randomString(64);
   const state = randomString(24);
 
   sessionStorage.setItem(VERIFIER_KEY, verifier);
   sessionStorage.setItem(STATE_KEY, state);
-  sessionStorage.setItem(RETURN_KEY, window.location.pathname + window.location.search);
+  sessionStorage.setItem(RETURN_KEY, returnTo ?? window.location.pathname + window.location.search);
 
   const url = new URL(info.authorizationEndpoint);
   url.searchParams.set("response_type", "code");

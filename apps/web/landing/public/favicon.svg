@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Exeora</title>
+  <rect width="64" height="64" rx="14" fill="#0d0f11" />
+  <!-- A half-lit circle: the remote half is dark, the local half is yours. -->
+  <circle cx="32" cy="32" r="17" fill="none" stroke="#4fd1c5" stroke-width="4" />
+  <path d="M32 15a17 17 0 0 0 0 34z" fill="#4fd1c5" />
+</svg>

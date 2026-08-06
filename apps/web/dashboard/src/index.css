@@ -1,11 +1,92 @@
 @import "tailwindcss";
+@import "@exeora/design/tokens.css";
 
-@layer components {
-  .btn {
-    @apply rounded-lg border border-neutral-200 px-3 py-1.5 text-sm transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-800 dark:hover:bg-neutral-900;
+/* The same self-hosted faces the landing uses, served from its public/ at the
+   shared origin. Both are variable, so one file per family covers every
+   weight; the landing carries the latin-ext subsets for the copy that needs
+   them, and the dashboard's own strings are latin. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fonts/inter-latin.woff2) format("woff2-variations");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format("woff2-variations");
+}
+
+@layer base {
+  html {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-bg text-foreground antialiased;
+  }
+
+  a,
+  button:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+
+  /* Focus has to stay visible: this is a screen where the destructive action
+     is one keystroke away. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
   }
 }
 
-body {
-  @apply bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-1.5 text-title-md text-foreground-muted transition-colors duration-fast;
+    @apply hover:bg-surface-variant hover:text-foreground disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply border-transparent bg-accent text-on-accent hover:bg-foreground hover:text-on-accent;
+  }
+
+  .btn-danger {
+    @apply border-error/40 text-error hover:bg-error/10 hover:text-error;
+  }
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-variant) 25%,
+    var(--color-surface-elevated) 50%,
+    var(--color-surface-variant) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* `animation: none`, not a short duration: a running animation's styles beat
+   normal declarations, so shortening one leaves whatever it was animating
+   pinned to its first frame. The skeleton sweep and the presence ping both
+   stop outright here, which is the point. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
 }

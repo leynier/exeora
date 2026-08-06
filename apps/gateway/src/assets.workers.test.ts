@@ -27,7 +27,10 @@ describe("static files", () => {
   it("serves the landing at the root", async () => {
     const response = await get("/");
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Secure execution for AI agents");
+    // Asserted on the title rather than on a headline: this test exists to
+    // prove the root is the landing and not the dashboard shell, and pinning
+    // it to marketing copy breaks it every time a sentence is reworded.
+    expect(await response.text()).toContain("<title>Exeora:");
   });
 
   it("serves the dashboard shell", async () => {

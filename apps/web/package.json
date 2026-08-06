@@ -10,17 +10,20 @@
     "dev:dashboard": "vite --config dashboard/vite.config.ts"
   },
   "dependencies": {
+    "@exeora/design": "workspace:*",
     "@tanstack/react-query": "5.101.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-router": "8.3.0"
   },
   "devDependencies": {
+    "@astrojs/sitemap": "3.7.3",
+    "@tailwindcss/vite": "4.3.3",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "astro": "7.1.6",
     "tailwindcss": "4.3.3",
-    "@tailwindcss/vite": "4.3.3",
     "vite": "8.2.0"
   },
   "description": "Static sources for the Exeora site. Built here, served by the gateway Worker."

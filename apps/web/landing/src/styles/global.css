@@ -1,6 +1,182 @@
 @import "tailwindcss";
+@import "@exeora/design/tokens.css";
 
+/* Inter and JetBrains Mono are self-hosted so that loading the site does not
+   hand the visitor's IP address to a font CDN. Both are under the SIL Open
+   Font License; see public/fonts/OFL.txt.
+
+   Both are variable fonts, so one file per subset covers every weight through
+   a `font-weight` range. Declaring the same file once per weight, as is often
+   copied around, downloads it repeatedly and still renders a single instance. */
+
+/* latin */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fonts/inter-latin.woff2) format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fonts/inter-latin-ext.woff2) format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin-ext.woff2) format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The animation shorthands live here rather than in the shared tokens: they
+   name keyframes, and the keyframes have to travel with them. The gateway
+   inlines the tokens into a `:root` block where an `@keyframes` would be
+   invalid, so the pair stays on this side. */
 @theme {
-  --color-ink: oklch(0.18 0 0);
-  --color-paper: oklch(0.99 0 0);
+  --animate-fade-in-up: fade-in-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.5s ease-out forwards;
+
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  html {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Anchored sections would otherwise land under the fixed navbar. */
+  [id] {
+    scroll-margin-top: 5rem;
+  }
+
+  a,
+  button:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}
+
+/* Sections start hidden and fade in on their own delay. Reduced motion turns
+   the animations off, so the initial opacity has to be reverted with them or
+   the whole page stays blank. */
+@utility opacity-0-initial {
+  opacity: 0;
+}
+
+/* Everything below the fold skips layout and paint until it scrolls close. */
+@utility defer-offscreen-rendering {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
+}
+
+@utility text-gradient-accent {
+  background: linear-gradient(135deg, #ffffff 0%, #ececec 45%, #9aa2ab 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@utility hero-glow {
+  background: radial-gradient(
+    ellipse 75% 55% at 50% -8%,
+    rgba(79, 209, 197, 0.07) 0%,
+    rgba(236, 236, 236, 0.03) 35%,
+    transparent 70%
+  );
+  animation: hero-glow-breathe 9s ease-in-out infinite;
+}
+
+/* A faint film of noise over the hero, so the large flat dark area does not
+   band on wide gradients. Generated in the browser, not downloaded. */
+.noise-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes hero-glow-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+/* Anything that animates in must also be visible without animation.
+   `!important` is what makes this beat Tailwind's animation utilities, which
+   is why biome.json turns off noImportantStyles for this file.
+
+   `animation: none`, not a very short duration. Shortening it looks like it
+   works and does not: styles from a running animation sit above normal
+   declarations in the cascade, and inside a section with
+   `content-visibility: auto` an offscreen animation never advances past its
+   first frame. Every element would sit at `opacity: 0` forever, with the
+   override below powerless to lift it. Removing the animation outright is
+   what lets that override apply. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .opacity-0-initial {
+    opacity: 1;
+  }
 }

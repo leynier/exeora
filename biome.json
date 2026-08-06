@@ -41,7 +41,18 @@
       "linter": {
         "rules": {
           "correctness": {
-            "noUnusedVariables": "off"
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/landing/src/styles/global.css", "apps/web/dashboard/src/index.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
           }
         }
       }

@@ -1,0 +1,10 @@
+{
+  "name": "@exeora/design",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "description": "The design tokens, written down once. Read as an @theme block by the two Tailwind builds and as inline text by the gateway's OAuth screens."
+}

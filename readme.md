@@ -32,6 +32,7 @@ flowchart TD
 | Path | What it is |
 |---|---|
 | `packages/protocol` | The tool contract in zod, plus the relay wire format. Imported by both sides, so it exists exactly once. |
+| `packages/design` | The design tokens, written down once. The landing and dashboard `@import` them into their Tailwind build; the gateway imports the same file as text and inlines it into the OAuth screens. |
 | `packages/cli` | The `exeora` binary: login, device and project registration, and the executor that runs tool calls. |
 | `apps/gateway` | The Worker: OAuth authorization server, MCP endpoint, relay, dashboard API, and the static site. |
 | `apps/web` | Sources for the Astro landing at `/` and the React dashboard at `/dashboard/`. Built here, served by the gateway. |

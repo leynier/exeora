@@ -9,5 +9,13 @@ export default defineConfig({
   base: "/dashboard/",
   plugins: [react(), tailwind()],
   build: { outDir: "../public/dashboard", emptyOutDir: true },
-  server: { proxy: { "/api": "http://localhost:8787", "/oauth": "http://localhost:8787" } },
+  // The fonts live in the landing's public/ and are served from the same
+  // origin in production, so `vite dev` has to reach for them too.
+  server: {
+    proxy: {
+      "/api": "http://localhost:8787",
+      "/oauth": "http://localhost:8787",
+      "/fonts": "http://localhost:8787",
+    },
+  },
 });

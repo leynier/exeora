@@ -7,6 +7,7 @@ export interface Device {
   cliVersion: string | null;
   lastSeenAt: number | null;
   revokedAt: number | null;
+  createdAt: number;
 }
 
 export interface Project {
@@ -56,11 +57,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** The server caps this; asking for more just gets the cap. */
+export const MAX_TOOL_CALLS = 200;
+
 export const api = {
   me: () => request<User>("/api/me"),
   devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
-  toolCalls: () => request<ToolCall[]>("/api/tool-calls?limit=50"),
+  toolCalls: (limit = MAX_TOOL_CALLS) => request<ToolCall[]>(`/api/tool-calls?limit=${limit}`),
   revokeDevice: (id: string) => request<{ ok: true }>(`/api/devices/${id}`, { method: "DELETE" }),
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
 };

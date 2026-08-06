@@ -1,0 +1,106 @@
+---
+import "../styles/global.css";
+
+/**
+ * Every page's `<head>`, in one place.
+ *
+ * The landing is static HTML with no islands, so this is also the only place
+ * that can get metadata wrong. Keeping canonical, Open Graph and JSON-LD here
+ * means adding a page cannot forget them.
+ */
+
+interface Props {
+  title: string;
+  description: string;
+  /** Path with a leading slash, e.g. "/". Used for the canonical URL. */
+  canonicalPath: string;
+  noIndex?: boolean;
+}
+
+const { title, description, canonicalPath, noIndex = false } = Astro.props;
+
+const canonical = new URL(canonicalPath, Astro.site).href;
+const ogImage = new URL("/og-banner.png", Astro.site).href;
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Exeora",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS, Linux, Windows",
+  description,
+  url: Astro.site?.href,
+  codeRepository: "https://github.com/leynier/exeora",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d0f11" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noIndex && <meta name="robots" content="noindex, nofollow" />}
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <!-- Both faces are variable, so one file covers every weight. Only the
+         latin subset is preloaded; latin-ext arrives on demand through its
+         unicode-range, which is the point of splitting them. -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Exeora" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Exeora: secure local execution for AI agents" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} is:inline />
+  </head>
+
+  <body class="bg-bg text-foreground antialiased">
+    <slot />
+
+    <script>
+      // One delegated listener for every copy button on the page. Buttons opt
+      // in with `data-copy-target="<id of the element holding the text>"`,
+      // which keeps the markup declarative and the JS to a single block.
+      document.addEventListener("click", async (event) => {
+        const button = (event.target as HTMLElement).closest<HTMLElement>("[data-copy-target]");
+        if (!button) return;
+
+        const source = document.getElementById(button.dataset.copyTarget ?? "");
+        if (!source?.textContent) return;
+
+        try {
+          await navigator.clipboard.writeText(source.textContent.trim());
+        } catch {
+          return; // No clipboard permission; leave the label alone rather than lie.
+        }
+
+        const label = button.querySelector("[data-copy-label]") ?? button;
+        const original = label.textContent;
+        label.textContent = "Copied";
+        setTimeout(() => {
+          label.textContent = original;
+        }, 2000);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,113 @@
+---
+import Section from "./Section.astro";
+
+/**
+ * Where Exeora sits between the two things people already reach for. Written
+ * as what each option does, not as who wins: a tunnel and a cloud sandbox are
+ * both reasonable tools, they just answer a different question.
+ */
+
+const columns = ["Exeora", "ngrok, Cloudflare Tunnel", "Cloud sandbox"];
+
+const rows = [
+  {
+    dimension: "Where your code lives",
+    values: ["Your machine", "Your machine", "A copy on their infrastructure"],
+  },
+  {
+    dimension: "Inbound port",
+    values: ["None", "None, but the tunnel publishes a public URL", "None"],
+  },
+  {
+    dimension: "What is reachable",
+    values: [
+      "Six tools, one project directory",
+      "Whatever is listening on that port",
+      "A full shell in the copy",
+    ],
+  },
+  {
+    dimension: "Per-project isolation",
+    values: ["A separate OAuth resource and token", "You build it", "One sandbox per project"],
+  },
+  {
+    dimension: "Authentication",
+    values: [
+      "OAuth 2.1, built in",
+      "Whatever your service does, often nothing",
+      "The vendor's account",
+    ],
+  },
+  {
+    dimension: "Your real toolchain and state",
+    values: ["Yes", "Yes", "Reinstalled, and never quite the same"],
+  },
+  {
+    dimension: "Setup",
+    values: [
+      "Install, log in, add a project",
+      "Run the tunnel, then secure it yourself",
+      "Push your code",
+    ],
+  },
+];
+---
+
+<Section
+  id="compare"
+  eyebrow="Compare"
+  title="Neither a tunnel nor a sandbox"
+  subtitle="A tunnel exposes a port you then have to defend. A sandbox gives an agent a copy of your project rather than the project."
+  wide
+>
+  <!-- The table scrolls inside its own box, so the page body never does. -->
+  <div
+    class="animate-fade-in-up opacity-0-initial border-border bg-surface overflow-x-auto rounded-xl border"
+  >
+    <table class="w-full min-w-2xl border-collapse text-left">
+      <thead>
+        <tr class="border-border-subtle border-b">
+          <th class="text-label-md text-foreground-faint px-5 py-3.5 font-mono uppercase"> </th>
+          {
+            columns.map((column, index) => (
+              <th
+                class:list={[
+                  "text-title-md px-5 py-3.5",
+                  index === 0
+                    ? "text-foreground bg-accent-subtle"
+                    : "text-foreground-muted font-normal",
+                ]}
+              >
+                {column}
+              </th>
+            ))
+          }
+        </tr>
+      </thead>
+      <tbody>
+        {
+          rows.map((row) => (
+            <tr class="border-border-subtle border-b last:border-b-0">
+              <th
+                scope="row"
+                class="text-body-md text-foreground-muted w-56 px-5 py-3.5 font-normal"
+              >
+                {row.dimension}
+              </th>
+              {row.values.map((value, index) => (
+                <td
+                  class:list={[
+                    "text-body-md px-5 py-3.5",
+                    index === 0 ? "text-foreground bg-accent-subtle" : "text-foreground-faint",
+                  ]}
+                >
+                  {value}
+                </td>
+              ))}
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</Section>
