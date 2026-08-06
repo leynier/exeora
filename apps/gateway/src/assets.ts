@@ -60,5 +60,16 @@ export async function serveAssets(request: Request, env: Pick<Env, "ASSETS">): P
     return new Response(shell.body, { status: 200, headers: shell.headers });
   }
 
-  return env.ASSETS.fetch(request);
+  const asset = await env.ASSETS.fetch(request);
+  if (asset.status !== 404) return asset;
+
+  // `not_found_handling` is set to `none` so this Worker decides the fallback,
+  // which leaves the landing's own 404 page to be served by hand. Without this
+  // a mistyped URL gets an empty body.
+  //
+  // Requested as `/404` rather than `/404.html`: Static Assets answers the
+  // explicit filename with a redirect to the canonical extensionless URL, and
+  // a redirect is not a page.
+  const page = await env.ASSETS.fetch(new Request(`${url.origin}/404`));
+  return page.ok ? new Response(page.body, { status: 404, headers: page.headers }) : asset;
 }

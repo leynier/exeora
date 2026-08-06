@@ -46,6 +46,16 @@ describe("static files", () => {
   it("404s off the dashboard rather than serving the SPA everywhere", async () => {
     expect((await get("/nope")).status).toBe(404);
   });
+
+  it("gives that 404 the landing's own page rather than an empty body", async () => {
+    // `not_found_handling: none` means Static Assets hands the 404 back for
+    // this Worker to answer, so the page has to be fetched by hand. Skipping
+    // that is invisible until someone mistypes a URL.
+    const response = await get("/nope");
+
+    expect(response.headers.get("content-type") ?? "").toContain("text/html");
+    expect(await response.text()).toContain("<title>Not found");
+  });
 });
 
 describe("client routes", () => {
