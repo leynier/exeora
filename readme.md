@@ -33,10 +33,10 @@ flowchart TD
 |---|---|
 | `packages/protocol` | The tool contract in zod, plus the relay wire format. Imported by both sides, so it exists exactly once. |
 | `packages/cli` | The `exeora` binary: login, device and project registration, and the executor that runs tool calls. |
-| `apps/gateway` | Cloudflare Worker: OAuth authorization server, MCP endpoint, relay, dashboard API. |
-| `apps/web` | Cloudflare Worker: the Astro landing at `/` and the React dashboard at `/dashboard/`. |
+| `apps/gateway` | The Worker: OAuth authorization server, MCP endpoint, relay, dashboard API, and the static site. |
+| `apps/web` | Sources for the Astro landing at `/` and the React dashboard at `/dashboard/`. Built here, served by the gateway. |
 
-Both Workers sit on one zone and are separated by route specificity. The gateway claims `/oauth/*`, `/.well-known/*`, `/p/*` and `/api/*`; everything else falls through to the web Worker.
+One Worker owns the whole hostname. The site was briefly a Worker of its own, until it turned out neither half needs a server: Astro emits static HTML and the dashboard is a Vite bundle, so an `ASSETS` binding is enough.
 
 ## Tools
 
@@ -53,8 +53,10 @@ Requires Node 22+ and Bun.
 ```bash
 bun install
 bun run db:migrate:local     # applies the D1 schema locally
-bun run dev                  # gateway on http://localhost:8787
+bun run dev                  # everything on http://localhost:8787
 ```
+
+`dev` builds the landing and dashboard first. Wrangler refuses to start when the directory behind the `ASSETS` binding does not exist, so skipping that step fails outright rather than serving an empty site.
 
 Use `bun run dev`, not `wrangler dev` directly. `wrangler dev` takes its origin from the production `routes`, which makes the OAuth issuer report `exeora.dev` while your client is talking to localhost, and a client that validates the issuer (including this CLI) will rightly reject that. The script pins it with `--local-upstream`.
 
@@ -68,11 +70,10 @@ An OAuth App admits a single callback URL, so development and production need se
 
 Adding Google later is one new file implementing `UpstreamProvider`, one entry in `apps/gateway/src/oauth/providers/index.ts`, and two secrets. No migration is needed: the `provider` column is plain TEXT and the Drizzle enum is a compile-time constraint only.
 
-### The web app
+### Working on the dashboard
 
 ```bash
-cd apps/web
-bun run build && bunx wrangler dev --port 8788
+bun run --cwd apps/web dev:dashboard   # Vite, proxying /api and /oauth to :8787
 ```
 
 ### Checks
@@ -111,7 +112,7 @@ Stopping `connect` should make the next tool call fail immediately with `LOCAL_E
 
 ## Deploying
 
-Every push to `main` runs CI and, if it passes, applies the D1 migrations and deploys both Workers (`.github/workflows/deploy.yml`). `workflow_dispatch` triggers the same run by hand.
+Every push to `main` runs CI and, if it passes, applies the D1 migrations, builds the site and deploys the Worker (`.github/workflows/deploy.yml`). `workflow_dispatch` triggers the same run by hand.
 
 ### One-time setup
 
@@ -133,6 +134,8 @@ bunx wrangler kv namespace create OAUTH_KV
 | Account · D1 | Edit |
 | Zone · Workers Routes | Edit (on `exeora.dev`) |
 
+The hostname also needs a proxied DNS record, or Cloudflare never routes it to the Worker. A single `AAAA` on `@` pointing at `100::` with the proxy on is enough; nothing ever connects to that address.
+
 **4. Add the repository secrets** under Settings → Secrets and variables → Actions:
 
 | Secret | Value |
@@ -153,8 +156,7 @@ bun run secret GITHUB_CLIENT_SECRET
 bun run secret COOKIE_SECRET
 
 bun run db:migrate
-bun run deploy
-bun run --cwd apps/web deploy
+bun run deploy      # builds the site, then deploys the Worker
 ```
 
 ## Design notes

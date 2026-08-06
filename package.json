@@ -14,7 +14,7 @@
     "check:fix": "biome check --write .",
     "typecheck": "tsc --build",
     "test": "vitest run",
-    "dev": "bun run --cwd apps/gateway dev",
+    "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
     "deploy": "bun run --cwd apps/web build && bun run --cwd apps/gateway deploy",
     "db:generate": "bun run --cwd apps/gateway db:generate",
     "db:migrate:local": "bun run --cwd apps/gateway db:migrate:local",
