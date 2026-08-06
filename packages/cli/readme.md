@@ -37,6 +37,7 @@ exeora connect
 | `device register` / `device list` | Register this machine by hand, or list your machines |
 | `project add [path]` | Register a directory without connecting |
 | `project list` / `project remove <slug>` | Manage this machine's projects |
+| `sync` | Reconcile this machine's registration and projects with the dashboard |
 | `status` | Show registration, gateway and projects |
 
 Everything below `connect` in that table is what `connect` does for you. They stay because a script sometimes wants one step without the others.
