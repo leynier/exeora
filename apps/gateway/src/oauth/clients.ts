@@ -39,9 +39,11 @@ const CLI: ClientSpec = {
   redirectUris: ["http://127.0.0.1/callback"],
 };
 
+const DASHBOARD_KV_KEY = "dashboard_client_id";
+
 function dashboard(env: Env): ClientSpec {
   return {
-    kvKey: "dashboard_client_id",
+    kvKey: DASHBOARD_KV_KEY,
     clientName: "Exeora Dashboard",
     redirectUris: [new URL("/dashboard/callback", env.EXEORA_BASE_URL).toString()],
   };
@@ -49,6 +51,18 @@ function dashboard(env: Env): ClientSpec {
 
 export const getCliClientId = (env: Env) => clientIdFor(env, CLI);
 export const getDashboardClientId = (env: Env) => clientIdFor(env, dashboard(env));
+
+/**
+ * Whether this client is the dashboard, which is Exeora's own first-party UI.
+ *
+ * Read straight from KV rather than through `getDashboardClientId`, because
+ * that one registers the client when it is missing and an authorize request
+ * naming some other client should not have that side effect.
+ */
+export async function isDashboardClient(env: Env, clientId: string): Promise<boolean> {
+  const stored = await env.OAUTH_KV.get(DASHBOARD_KV_KEY);
+  return stored !== null && stored === clientId;
+}
 
 /**
  * Returns the client's id, registering it on first use. Idempotent, so a fresh

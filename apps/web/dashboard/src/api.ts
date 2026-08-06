@@ -66,6 +66,10 @@ export const api = {
   projects: () => request<Project[]>("/api/projects"),
   toolCalls: (limit = MAX_TOOL_CALLS) => request<ToolCall[]>(`/api/tool-calls?limit=${limit}`),
   revokeDevice: (id: string) => request<{ ok: true }>(`/api/devices/${id}`, { method: "DELETE" }),
+
+  /** Only accepted once the machine is revoked; the server returns 409 if not. */
+  deleteDevice: (id: string) =>
+    request<{ ok: true }>(`/api/devices/${id}/permanently`, { method: "DELETE" }),
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
 };
 

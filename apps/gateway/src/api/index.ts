@@ -104,6 +104,38 @@ api.delete("/api/devices/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Permanent deletion, allowed only once a machine is revoked.
+ *
+ * Two steps rather than one on purpose: revoking is the urgent action and has
+ * to stay a single click, while this one cannot be undone and takes the
+ * machine's projects and their audit history with it through the foreign keys.
+ * Requiring the machine to be stopped first means nobody reaches this by
+ * misclicking next to `Revoke`.
+ */
+api.delete("/api/devices/:id/permanently", async (c) => {
+  const userId = c.get("userId");
+  const id = c.req.param("id");
+
+  const device = await db(c.env)
+    .select({ revokedAt: schema.devices.revokedAt })
+    .from(schema.devices)
+    .where(and(eq(schema.devices.id, id), eq(schema.devices.userId, userId)))
+    .get();
+
+  if (!device) return c.json({ error: "not_found" }, 404);
+  if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
+
+  // projects cascade from devices, and tool_calls cascade from projects, so
+  // this one statement removes all three.
+  await db(c.env)
+    .delete(schema.devices)
+    .where(and(eq(schema.devices.id, id), eq(schema.devices.userId, userId)))
+    .run();
+
+  return c.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
 // Projects
 // ---------------------------------------------------------------------------

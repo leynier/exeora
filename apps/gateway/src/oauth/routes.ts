@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
+import { isDashboardClient } from "./clients.js";
 import { consentPage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
@@ -18,8 +19,10 @@ import { resolveUser } from "./users.js";
  */
 export const oauthRoutes = new Hono<{ Bindings: Env }>();
 
+type AuthRequest = Awaited<ReturnType<Env["OAUTH_PROVIDER"]["parseAuthRequest"]>>;
+
 oauthRoutes.get("/oauth/authorize", async (c) => {
-  let authRequest: Awaited<ReturnType<Env["OAUTH_PROVIDER"]["parseAuthRequest"]>>;
+  let authRequest: AuthRequest;
   try {
     authRequest = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
   } catch (error) {
@@ -31,33 +34,36 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
     return c.html(errorPage("No identity provider is configured on this server."), 500);
   }
 
-  const state = await parkAuthorization(c.env, { authRequest });
   const userId = await getSessionUserId(c);
 
-  if (!userId) {
-    return c.html(signInPage(providers, state));
-  }
+  if (userId) {
+    const user = await db(c.env)
+      .select({ email: schema.users.email })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .get();
 
-  const user = await db(c.env)
-    .select({ email: schema.users.email })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId))
-    .get();
+    if (user) {
+      if (await isDashboardClient(c.env, authRequest.clientId)) {
+        const { redirectTo } = await complete(c.env, authRequest, userId);
+        return c.redirect(redirectTo);
+      }
 
-  // A cookie whose user no longer exists: treat it as signed out.
-  if (!user) {
+      return c.html(
+        consentPage({
+          client: await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId),
+          userEmail: user.email,
+          state: await parkAuthorization(c.env, { authRequest }),
+          scopes: authRequest.scope,
+        }),
+      );
+    }
+
+    // A cookie whose user no longer exists: treat it as signed out.
     clearSession(c);
-    return c.html(signInPage(providers, state));
   }
 
-  return c.html(
-    consentPage({
-      client: await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId),
-      userEmail: user.email,
-      state,
-      scopes: authRequest.scope,
-    }),
-  );
+  return c.html(signInPage(providers, await parkAuthorization(c.env, { authRequest })));
 });
 
 oauthRoutes.get("/oauth/login/:provider", async (c) => {
@@ -102,6 +108,15 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
     const user = await resolveUser(db(c.env), provider.id, identity);
     await setSession(c, user.id);
 
+    if (await isDashboardClient(c.env, pending.authRequest.clientId)) {
+      // Claimed rather than left parked, so the entry cannot be replayed.
+      const claimed = await claimAuthorization(c.env, state);
+      if (!claimed) return c.html(errorPage("This sign-in has expired. Start again."), 400);
+
+      const { redirectTo } = await complete(c.env, claimed.authRequest, user.id);
+      return c.redirect(redirectTo);
+    }
+
     return c.html(
       consentPage({
         client: await c.env.OAUTH_PROVIDER.lookupClient(pending.authRequest.clientId),
@@ -142,17 +157,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
     .get();
   if (!user) return c.html(errorPage("Your account could not be found."), 400);
 
-  const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
-    request: pending.authRequest,
-    userId,
-    scope: pending.authRequest.scope,
-    metadata: { approvedAt: Date.now() },
-    // Everything a tool handler learns about the caller. Deliberately minimal:
-    // no upstream token, no email: just who they are, resolved again from D1
-    // on every call that needs more.
-    props: { userId, clientId: pending.authRequest.clientId },
-  });
-
+  const { redirectTo } = await complete(c.env, pending.authRequest, userId);
   return c.redirect(redirectTo);
 });
 
@@ -160,6 +165,27 @@ oauthRoutes.get("/oauth/logout", (c) => {
   clearSession(c);
   return c.redirect("/");
 });
+
+/**
+ * Mints the authorization code, from the one place that decides what a token
+ * carries.
+ *
+ * Reached from three directions: an explicit approval, a first-party client
+ * with a session, and a first-party client that has just signed in. Splitting
+ * the props across those would be how one of them quietly ends up different.
+ */
+function complete(env: Env, authRequest: AuthRequest, userId: string) {
+  return env.OAUTH_PROVIDER.completeAuthorization({
+    request: authRequest,
+    userId,
+    scope: authRequest.scope,
+    metadata: { approvedAt: Date.now() },
+    // Everything a tool handler learns about the caller. Deliberately minimal:
+    // no upstream token, no email: just who they are, resolved again from D1
+    // on every call that needs more.
+    props: { userId, clientId: authRequest.clientId },
+  });
+}
 
 /**
  * Built from the configured base URL, never from the incoming request.
