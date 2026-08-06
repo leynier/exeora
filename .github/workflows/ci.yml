@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Called by the deploy workflow, so nothing reaches production without
+  # passing the same checks first.
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Lint and format
+        run: bun run check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # The gateway's tests run under workerd, which needs the wrangler config
+      # to resolve bindings. It reads .dev.vars for secrets, so a placeholder
+      # file is enough: no test touches a real credential.
+      - name: Prepare test secrets
+        run: |
+          cat > apps/gateway/.dev.vars <<'EOF'
+          EXEORA_BASE_URL=http://localhost:8787
+          GITHUB_CLIENT_ID=ci-placeholder
+          GITHUB_CLIENT_SECRET=ci-placeholder
+          COOKIE_SECRET=ci-placeholder-cookie-secret
+          EOF
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: |
+          bun run --cwd packages/cli build
+          bun run --cwd apps/web build

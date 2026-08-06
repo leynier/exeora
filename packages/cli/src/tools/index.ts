@@ -330,15 +330,43 @@ function capture(raw: unknown): { text: string; truncated: boolean } {
   return { text: text.slice(-MAX_COMMAND_OUTPUT_BYTES), truncated: true };
 }
 
-/** Minimal glob support: `*` within a segment, `**` across segments, and `?`. */
+/**
+ * Minimal glob support: `*` within a segment, `**` across segments, and `?`.
+ *
+ * Scans the pattern once rather than chaining replaces. The chained version
+ * needed placeholder strings to stop the `*` rule from eating `**`, and any
+ * placeholder can also occur in a real filename.
+ */
 function globToRegExp(glob: string): RegExp {
-  const pattern = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, " SLASH ")
-    .replace(/\*\*/g, " ANY ")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, "[^/]")
-    .replace(/ SLASH /g, "(?:.*/)?")
-    .replace(/ ANY /g, ".*");
+  let pattern = "";
+
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i];
+
+    if (char === "*") {
+      if (glob[i + 1] === "*") {
+        // `**/` matches zero directories too, so `**/*.ts` finds a top-level a.ts.
+        if (glob[i + 2] === "/") {
+          pattern += "(?:.*/)?";
+          i += 2;
+        } else {
+          pattern += ".*";
+          i += 1;
+        }
+      } else {
+        pattern += "[^/]*";
+      }
+      continue;
+    }
+
+    if (char === "?") {
+      pattern += "[^/]";
+      continue;
+    }
+
+    // Everything else is literal, including regex metacharacters.
+    pattern += char === undefined ? "" : char.replace(/[.+^${}()|[\]\\]/, "\\$&");
+  }
+
   return new RegExp(`^${pattern}$`);
 }

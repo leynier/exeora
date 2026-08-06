@@ -111,13 +111,46 @@ Stopping `connect` should make the next tool call fail immediately with `LOCAL_E
 
 ## Deploying
 
-```bash
-bunx wrangler d1 create exeora             # put the id in apps/gateway/wrangler.jsonc
-bunx wrangler kv namespace create OAUTH_KV # likewise
+Every push to `main` runs CI and, if it passes, applies the D1 migrations and deploys both Workers (`.github/workflows/deploy.yml`). `workflow_dispatch` triggers the same run by hand.
 
-bun run secret GITHUB_CLIENT_ID            # from the production OAuth App
+### One-time setup
+
+**1. Create the resources** and put their ids in `apps/gateway/wrangler.jsonc`, replacing the two `REPLACE_WITH_*` placeholders. Ids are not secrets.
+
+```bash
+bunx wrangler d1 create exeora
+bunx wrangler kv namespace create OAUTH_KV
+```
+
+**2. Create a production GitHub OAuth App.** An OAuth App admits one callback URL, so this has to be separate from the development one: homepage `https://exeora.dev`, callback `https://exeora.dev/oauth/callback/github`.
+
+**3. Create a Cloudflare API token** at <https://dash.cloudflare.com/profile/api-tokens>. The OAuth credentials wrangler uses locally are not usable from CI. It needs:
+
+| Scope | Permission |
+|---|---|
+| Account · Workers Scripts | Edit |
+| Account · Workers KV Storage | Edit |
+| Account · D1 | Edit |
+| Zone · Workers Routes | Edit (on `exeora.dev`) |
+
+**4. Add the repository secrets** under Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | the token from step 3 |
+| `CLOUDFLARE_ACCOUNT_ID` | the account owning the `exeora.dev` zone |
+| `GH_OAUTH_CLIENT_ID` | client id from step 2 |
+| `GH_OAUTH_CLIENT_SECRET` | client secret from step 2 |
+| `COOKIE_SECRET` | `openssl rand -hex 32`, different from development |
+
+The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` the Worker actually reads.
+
+### Deploying by hand
+
+```bash
+bun run secret GITHUB_CLIENT_ID
 bun run secret GITHUB_CLIENT_SECRET
-bun run secret COOKIE_SECRET               # a different value from development
+bun run secret COOKIE_SECRET
 
 bun run db:migrate
 bun run deploy
