@@ -44,10 +44,13 @@ jobs:
           COOKIE_SECRET=ci-placeholder-cookie-secret
           EOF
 
+      # Before the tests, not after: the gateway serves the built site through
+      # its ASSETS binding, and the tests that cover that read the real files.
+      - name: Build
+        run: |
+          bun run --cwd apps/web build
+          bun run --cwd packages/cli build
+
       - name: Test
         run: bun run test
 
-      - name: Build
-        run: |
-          bun run --cwd packages/cli build
-          bun run --cwd apps/web build
