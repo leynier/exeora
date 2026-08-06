@@ -6,15 +6,20 @@
  * are merged into the generated interface here. Set them with
  * `wrangler secret put <NAME>` in production and in `.dev.vars` locally.
  */
+import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+
 declare global {
   interface Env {
     GITHUB_CLIENT_ID: string;
     GITHUB_CLIENT_SECRET: string;
-    GOOGLE_CLIENT_ID: string;
-    GOOGLE_CLIENT_SECRET: string;
-    /** Signing key for the cookie that approves an OAuth client for a user. */
+    /** Signing key for the session cookie. */
     COOKIE_SECRET: string;
+
+    /**
+     * Injected into `env` by OAuthProvider before it calls either handler.
+     * Declared here so there is a single Env type across the Worker rather
+     * than an intersection that has to be threaded through every helper.
+     */
+    OAUTH_PROVIDER: OAuthHelpers;
   }
 }
-
-export type {};

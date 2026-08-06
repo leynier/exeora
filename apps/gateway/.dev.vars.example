@@ -5,9 +5,9 @@
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
-# Google OAuth client — callback: http://localhost:8787/oauth/callback/google
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
 # Any long random string: openssl rand -hex 32
 COOKIE_SECRET=
+
+# Overrides the wrangler.jsonc var during local development, so the GitHub
+# callback points at localhost instead of the production route.
+EXEORA_BASE_URL=http://localhost:8787
