@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --local-upstream localhost:8787 --upstream-protocol http",
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "db:generate": "drizzle-kit generate",
