@@ -1,6 +1,10 @@
 /** Values that appear in more than one component, so they cannot drift. */
 
-export const GITHUB_URL = "https://github.com/leynier/exeora";
+/**
+ * The CLI is published and MIT licensed; the repository behind it is not
+ * public. Nothing here should link to a source tree or imply one exists.
+ */
+export const NPM_URL = "https://www.npmjs.com/package/@exeora/cli";
 
 /**
  * What a first-time visitor pastes into a terminal, in order.

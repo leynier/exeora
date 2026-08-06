@@ -1,11 +1,11 @@
 ---
-import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
+import { QUICKSTART } from "../lib/site.js";
 ---
 
 <section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-28">
   <div class="hero-glow pointer-events-none absolute inset-x-0 top-0 h-[36rem]"></div>
 
-  <div class="relative z-10 mx-auto max-w-3xl text-center">
+  <div class="relative z-10 mx-auto max-w-4xl text-center">
     <p
       class="animate-fade-in-up opacity-0-initial border-border bg-surface text-label-md text-foreground-muted inline-flex items-center gap-2 rounded-pill border px-3 py-1.5 font-mono uppercase"
       style="animation-delay: 80ms"
@@ -20,19 +20,20 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
     </p>
 
     <h1
-      class="animate-fade-in-up opacity-0-initial mt-7 text-[34px] leading-[1.05] font-semibold tracking-[-1.4px] sm:text-[52px] lg:text-[60px]"
+      class="animate-fade-in-up opacity-0-initial mt-7 text-[32px] leading-[1.06] font-semibold tracking-[-1.2px] sm:text-[46px] lg:text-[56px]"
       style="animation-delay: 160ms"
     >
-      <span class="text-gradient-accent">Secure local execution</span><br />
-      <span class="text-foreground-muted">for AI agents.</span>
+      <span class="text-gradient-accent">Secure execution for AI agents,</span><br />
+      <span class="text-foreground-muted">on any machine.</span>
     </h1>
 
     <p
-      class="animate-fade-in-up opacity-0-initial text-body-lg text-foreground-muted mx-auto mt-6 max-w-xl sm:text-[17px]"
+      class="animate-fade-in-up opacity-0-initial text-body-lg text-foreground-muted mx-auto mt-6 max-w-2xl sm:text-[17px]"
       style="animation-delay: 240ms"
     >
-      Connect any MCP client to the development environment on your own machine, without opening a
-      port, uploading your source code, or wiring up a tunnel.
+      Connect any MCP client to the development environment on any machine you can run a command
+      on: a server, a VM, a build box, a Raspberry Pi, or your own laptop. No port to open, no
+      source code to upload, no tunnel to wire up.
     </p>
 
     <div
@@ -46,11 +47,10 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
         Get started
       </a>
       <a
-        href={GITHUB_URL}
-        rel="noopener"
+        href="#how-it-works"
         class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md w-full rounded-lg border px-5 py-2.5 transition-colors duration-fast sm:w-auto"
       >
-        View source
+        How it works
       </a>
     </div>
 
@@ -58,7 +58,7 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
          project. Copying the block is the fastest path, so the button takes
          all four rather than one line at a time. -->
     <div
-      class="animate-fade-in-up opacity-0-initial border-border bg-surface mt-12 overflow-hidden rounded-xl border text-left"
+      class="animate-fade-in-up opacity-0-initial border-border bg-surface mx-auto mt-12 max-w-2xl overflow-hidden rounded-xl border text-left"
       style="animation-delay: 400ms"
     >
       <div class="border-border-subtle flex items-center justify-between border-b px-4 py-2.5">

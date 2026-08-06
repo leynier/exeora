@@ -98,7 +98,7 @@ export function Projects() {
       <ConfirmDialog
         open={pendingRemove !== null}
         title={`Remove ${pendingRemove?.name ?? ""}?`}
-        body="Its MCP URL stops resolving, so any client still pointed at it will start failing. The files on your machine are untouched."
+        body="Its MCP URL stops resolving, so any client still pointed at it will start failing. The files on the machine are untouched."
         confirmLabel="Remove"
         pending={remove.isPending}
         onCancel={() => setPendingRemove(null)}

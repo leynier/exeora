@@ -9,7 +9,7 @@ import Section from "./Section.astro";
 const features = [
   {
     title: "No inbound port",
-    body: "Nothing listens on your machine. The CLI opens the connection and holds it, so there is nothing to expose and nothing to forward.",
+    body: "Nothing listens on the machine serving a project. The CLI opens the connection and holds it, so there is nothing to expose and nothing to forward.",
     icon: "M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-3z",
   },
   {
@@ -24,7 +24,7 @@ const features = [
   },
   {
     title: "Nothing is queued",
-    body: "With no executor connected a call fails at once. Every call also carries an absolute deadline the executor rechecks on arrival, so a command from hours ago never runs when a laptop wakes.",
+    body: "With no executor connected a call fails at once. Every call also carries an absolute deadline the executor rechecks on arrival, so a command from hours ago never runs when a sleeping laptop or a paused VM comes back.",
     icon: "M13 3L5 14h6l-2 7 8-11h-6l2-7z",
   },
   {

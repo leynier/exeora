@@ -240,7 +240,7 @@ export function signInPage(providers: UpstreamProvider[], state: string) {
       <div class="card">
         <h1>Sign in to continue</h1>
         <p class="lede">
-          An application is asking to connect to the development environment on your machine.
+          An application is asking to connect to the development environment on one of your machines.
         </p>
 
         ${providers.map(
@@ -277,8 +277,8 @@ export function consentPage(options: {
 
         <div class="warn">
           This grants <strong>${name}</strong> the ability to read, edit and run commands in the
-          project you connect it to, on your own machine. Commands are not filtered. Only approve
-          applications you trust.
+          project you connect it to, on whichever machine is serving it. Commands are not
+          filtered. Only approve applications you trust.
         </div>
 
         ${

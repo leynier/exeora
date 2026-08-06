@@ -7,7 +7,7 @@ const questions = [
     a: "No. The gateway routes tool calls and returns their results; it never receives a copy of your repository. What does cross the wire is whatever a tool returns, for example the lines a grep matched, and none of that is stored. The audit log records the tool name, the outcome and the duration, never arguments or output.",
   },
   {
-    q: "What happens when I close my laptop?",
+    q: "What happens when the machine goes away?",
     a: "The connection drops and calls to that project fail immediately with LOCAL_EXECUTOR_OFFLINE. Nothing is queued, by design: every call also carries an absolute deadline that the CLI rechecks on arrival, so a command asked for hours ago cannot run when the machine wakes up.",
   },
   {
@@ -15,7 +15,7 @@ const questions = [
     a: "Not in this release. There is no allowlist and no approval prompt, which is why the warning above is written plainly. Path confinement to the project root is the control that does exist, and it is enforced before any tool touches the disk.",
   },
   {
-    q: "Does this work behind my company's firewall?",
+    q: "Does this work behind a corporate firewall?",
     a: "If the machine can make outbound HTTPS requests, yes. The CLI opens the connection outward and keeps it, so there is no inbound rule to request, no port to forward and no VPN to join.",
   },
   {
@@ -28,7 +28,7 @@ const questions = [
   },
   {
     q: "Can I connect more than one machine?",
-    a: "Yes. Each machine registers separately and each project belongs to one machine, so a laptop and a desktop can serve different projects under the same account at the same time.",
+    a: "Yes. Each machine registers separately and each project belongs to one machine, so a laptop, a build server and a Raspberry Pi can serve different projects under the same account at the same time.",
   },
   {
     q: "Which clients does it work with?",

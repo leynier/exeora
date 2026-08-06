@@ -17,6 +17,13 @@ import { github } from "./providers/github.js";
 
 const render = (page: ReturnType<typeof errorPage>) => page.toString();
 
+/**
+ * The same HTML with runs of whitespace collapsed, for asserting on a sentence
+ * the browser will render as one line. Without it, rewrapping the source
+ * splits a phrase across lines and fails a test that nothing has broken.
+ */
+const text = (page: ReturnType<typeof errorPage>) => render(page).replace(/\s+/g, " ");
+
 function styleBlock(html: string): string {
   const match = html.match(/<style>([\s\S]*?)<\/style>/)?.[1];
   if (match === undefined) throw new Error("the page rendered no <style> block");
@@ -82,7 +89,7 @@ describe("consent", () => {
   it("says plainly that commands are not filtered", async () => {
     // The one sentence on this screen that must not quietly disappear in a
     // redesign: it is the only warning a user gets before granting execution.
-    expect(render(consentPage(base))).toContain("Commands are not filtered");
+    expect(text(consentPage(base))).toContain("Commands are not filtered");
   });
 
   it("posts both decisions to the approval endpoint", async () => {

@@ -1,10 +1,10 @@
 ---
-import { GITHUB_URL } from "../lib/site.js";
+import { NPM_URL } from "../lib/site.js";
 import Wordmark from "./Wordmark.astro";
 
 const links = [
   { href: "/dashboard/", label: "Dashboard" },
-  { href: GITHUB_URL, label: "GitHub", external: true },
+  { href: NPM_URL, label: "CLI", external: true },
   { href: "/#security", label: "Security" },
   { href: "/#faq", label: "FAQ" },
 ];
@@ -30,6 +30,6 @@ const links = [
       }
     </nav>
 
-    <p class="text-body-md text-foreground-faint">Your code stays on your machine.</p>
+    <p class="text-body-md text-foreground-faint">Your code never leaves the machine it is on.</p>
   </div>
 </footer>
