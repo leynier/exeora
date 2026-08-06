@@ -19,21 +19,30 @@
 
       <div class="text-body-lg text-foreground-muted mt-5 space-y-4">
         <p>
-          Paths are confined to the project root, and that confinement is the single security
-          control in this release. Commands are <strong class="text-foreground">not filtered</strong
-          >, and there is no approval step: <code class="text-foreground font-mono">run_command</code
-          > will run what it is given, inside that directory, on whichever machine is serving it.
+          <strong class="text-foreground">A new project allows everything</strong> until you narrow
+          it. From the dashboard you can set it to read only, name the commands it may run, refuse
+          specific ones in any mode, choose which tools exist, and ask to confirm every change
+          before it happens. Paths stay confined to the project root either way, but that
+          confinement is not a sandbox: a command that runs still runs as you, with your environment
+          and your network.
         </p>
         <p>
-          Connect projects you are comfortable letting an agent change. Revoking a machine from the
-          dashboard closes its connection immediately, so that is the stop button.
+          An allow list with <code class="text-foreground font-mono">shell</code> turned on is only
+          a suggestion. Confirmation only reaches a person who is there: in the conversation on MCP
+          2026-07-28, and otherwise on the machine's terminal or in the dashboard. Revoking a
+          machine from the dashboard closes its connection immediately, so that is the stop button.
         </p>
       </div>
 
       <p class="text-body-md text-foreground-faint border-warning/20 mt-6 border-t pt-5">
-        Remote approvals are the next thing to build. MCP 2026-07-28 standardised the mechanism
-        (<code class="font-mono">inputRequired</code>) and it is already available in the SDK, so
-        this limit is a matter of scope rather than one of design.
+        The full model is in{" "}
+        <a
+          href="/docs/policy/"
+          class="text-foreground underline-offset-2 hover:underline"
+        >
+          what a project allows
+        </a>
+        .
       </p>
     </div>
   </div>

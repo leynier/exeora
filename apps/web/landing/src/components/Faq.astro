@@ -12,7 +12,7 @@ const questions = [
   },
   {
     q: "Can I limit which commands run?",
-    a: "Not in this release. There is no allowlist and no approval prompt, which is why the warning above is written plainly. Path confinement to the project root is the control that does exist, and it is enforced before any tool touches the disk.",
+    a: 'Yes. From the dashboard you can set a project to read only, name the commands it may run, refuse specific ones in any mode, choose which tools exist, and ask to confirm every change before it happens. A project may also carry an <code class="font-mono">exeora.toml</code> that can only narrow those rules, never widen them. See <a href="/docs/policy/" class="text-foreground underline-offset-2 hover:underline">what a project allows</a>.',
   },
   {
     q: "Does this work behind a corporate firewall?",
@@ -65,7 +65,7 @@ const questions = [
               <path d="m6 9 6 6 6-6" />
             </svg>
           </summary>
-          <p class="text-body-md text-foreground-muted px-5 pb-5">{item.a}</p>
+          <p class="text-body-md text-foreground-muted px-5 pb-5" set:html={item.a} />
         </details>
       ))
     }

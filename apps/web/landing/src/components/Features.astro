@@ -33,6 +33,16 @@ const features = [
     icon: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z",
   },
   {
+    title: "Modes and command rules",
+    body: "A project can be read only, limited to the commands you name, or open with a deny list. Whenever a list is in force, shell metacharacters are refused unless the project turns shell on",
+    icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4",
+  },
+  {
+    title: "Confirm before it runs",
+    body: "Turning approve on asks a person before anything that edits, writes or runs. MCP 2026-07-28 clients are asked in the conversation; everyone else is asked on the terminal and in the dashboard at once",
+    icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+  },
+  {
     title: "An audit log you can show someone",
     body: "Which tool ran, how it ended, how long it took, and which client asked for it. Never the arguments, never the output",
     icon: "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
@@ -59,7 +69,7 @@ const features = [
   id="features"
   eyebrow="Features"
   title="Built so the dangerous parts are small"
-  subtitle="One outbound connection, one resource per project, and a log that records what happened without recording what was in it"
+  subtitle="One outbound connection, one resource per project, rules you can tighten, and a log that records what happened without recording what was in it"
   wide
 >
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
