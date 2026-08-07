@@ -41,7 +41,23 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     Each project is a separate OAuth resource, so a token minted for one is not accepted at another.
     Ownership is checked against the database as well, so there are two independent checks rather
-    than one, and an agent connected to one project has no way to name another.
+    than one, and an agent connected to one project's URL has no way to name another: the project
+    comes from the path, never from anything the client sends.
+  </p>
+
+  <p>
+    The account URL, <code>https://exeora.dev/mcp</code>, is a separate OAuth resource of its own,
+    and its token is refused at every project URL just as a project's token is refused there. What it
+    does not do is decide the project from the path, so the boundary moves to the consent screen:
+    you tick which projects it may reach, and it reaches those and nothing else. Ticking one gives
+    the same reach as a project URL. Which of the ticked projects a call lands in is state the agent
+    can change, and that is the whole of the difference.
+  </p>
+
+  <p>
+    A client cannot widen that by asking. If a request names both URLs at once, the project URL wins
+    and you are shown the screen that names the project, so the consent you give and the token you
+    hand out cannot describe different things.
   </p>
 
   <h2>Every path is confined</h2>

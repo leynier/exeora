@@ -37,6 +37,7 @@ export function ClientList({
     toast(message);
     setPending(null);
     queryClient.invalidateQueries({ queryKey: keys.clients });
+    queryClient.invalidateQueries({ queryKey: keys.accountClients });
     queryClient.invalidateQueries({ queryKey: keys.allCalls });
   };
 
@@ -81,6 +82,9 @@ export function ClientList({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-title-md truncate">{clientLabel(client)}</p>
+                  {/* Which door it came through. Only worth saying for the one
+                      that covers more than this project. */}
+                  {client.endpoint === "account" && <Badge>account url</Badge>}
                   {client.revokedAt && <Badge tone="error">revoked</Badge>}
                 </div>
                 <p className="text-body-md text-foreground-faint truncate">
@@ -123,8 +127,13 @@ export function ClientList({
         }
         body={
           pending?.action === "delete"
-            ? "Its calls on this project are removed from the activity log, and the application is unregistered. This cannot be undone."
-            : "Its access token stops working immediately and the next tool call it makes is refused. Authorizing it again from the client restores access."
+            ? "Its calls on this project are removed from the activity log, unless it still reaches the project another way, and the application is unregistered. This cannot be undone."
+            : // An account-URL row is one project out of several on a single
+              // connection, so its token survives until the last of them goes.
+              // Saying otherwise here would promise a cut-off this does not make.
+              pending?.client.endpoint === "account"
+              ? "It can no longer reach this project, and the next tool call it makes here is refused. The other projects on the same connection are untouched, and its token stops working only once the last of them is taken away."
+              : "Its access token stops working immediately and the next tool call it makes is refused. Authorizing it again from the client restores access."
         }
         confirmLabel={pending?.action === "delete" ? "Delete permanently" : "Revoke"}
         pending={busy}

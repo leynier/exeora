@@ -95,16 +95,17 @@ export const projects = sqliteTable(
 );
 
 /**
- * An MCP client that has been authorized against one project's endpoint.
+ * An MCP client that has been authorized to reach one project.
  *
- * A row is written when the user approves a consent screen naming that project,
- * which is the only moment we learn the client's registered name. It is
- * deliberately per project rather than per account: a token here is bound to
- * one endpoint, so "Claude may read this repository" has to be answerable one
- * repository at a time.
+ * A row is written when the user approves a consent screen covering that
+ * project, which is the only moment we learn the client's registered name. It
+ * is deliberately per project rather than per account: "Claude may read this
+ * repository" has to be answerable one repository at a time.
  *
  * The authoritative record of access is the OAuth grant in KV; this table is
- * what makes it nameable, listable and revocable from the dashboard.
+ * what makes it nameable, listable and revocable from the dashboard. On the
+ * account endpoint it is more than that, because a token there is bound to
+ * `/mcp` rather than to any one project: see `endpoint` below.
  */
 export const projectClients = sqliteTable(
   "project_clients",
@@ -116,6 +117,23 @@ export const projectClients = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    /**
+     * Which URL this access was granted through.
+     *
+     * `project` is a token bound by audience to `/p/:id/mcp`, so the row is
+     * bookkeeping and the token is the authority. `account` is a token bound to
+     * `/mcp`, which names no project at all, so there the row **is** the
+     * authority and a call to a project without one is refused.
+     *
+     * The two are kept apart rather than merged into one access list because
+     * they are two different consents. Authorizing Claude on one project's URL
+     * and later authorizing it on the account URL without ticking that project
+     * are two answers to two questions, and a merged list would silently make
+     * the first answer the second one too.
+     */
+    endpoint: text("endpoint", { enum: ["project", "account"] })
+      .notNull()
+      .default("project"),
     /** Opaque when the client registered through DCR; a metadata URL under CIMD. */
     clientId: text("client_id").notNull(),
     /** RFC 7591 `client_name`, copied here so no tool call has to read KV. */
@@ -136,9 +154,42 @@ export const projectClients = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
-    uniqueIndex("project_clients_project_client").on(table.projectId, table.clientId),
+    uniqueIndex("project_clients_project_client_endpoint").on(
+      table.projectId,
+      table.clientId,
+      table.endpoint,
+    ),
     index("project_clients_user").on(table.userId),
   ],
+);
+
+/**
+ * Which project a client is currently working in, on the account endpoint.
+ *
+ * One per user per client, which is the granularity the endpoint can actually
+ * offer: `/mcp` is stateless, and the clients most people use still speak the
+ * 2025 protocol and carry nothing across requests, so there is no session to
+ * hang this on and it has to be stored. The cost is that two conversations open
+ * in the same client share one selection and can move each other; the `project`
+ * argument the account endpoint adds to every tool is the way out of that for a
+ * single call.
+ *
+ * `onDelete: "cascade"` on the project matters: deleting a project must not
+ * leave a client pointed at a row that is no longer there.
+ */
+export const activeProjects = sqliteTable(
+  "active_projects",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("active_projects_user_client").on(table.userId, table.clientId)],
 );
 
 /** Audit trail shown in the dashboard. Never stores tool arguments or output. */
@@ -176,4 +227,6 @@ export type User = typeof users.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;
+export type ClientEndpoint = ProjectClient["endpoint"];
+export type ActiveProject = typeof activeProjects.$inferSelect;
 export type ToolCall = typeof toolCalls.$inferSelect;

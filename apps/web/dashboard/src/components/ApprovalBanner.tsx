@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AlreadyAnswered, type Approval, api } from "../api.js";
-import { keys, useApprovals } from "../queries.js";
+import { keys, useApprovals, useProjects } from "../queries.js";
 import { useToast } from "./toast.js";
 
 /**
@@ -18,22 +18,26 @@ import { useToast } from "./toast.js";
  */
 export function ApprovalBanner() {
   const approvals = useApprovals();
+  const projects = useProjects();
   const pending = approvals.data ?? [];
 
   if (pending.length === 0) return null;
+
+  const nameOf = (projectId: string) =>
+    projects.data?.find((project) => project.id === projectId)?.name;
 
   return (
     <div className="border-accent/40 bg-accent-subtle border-b">
       <div className="mx-auto max-w-5xl space-y-3 px-5 py-4">
         {pending.map((approval) => (
-          <ApprovalRow key={approval.id} approval={approval} />
+          <ApprovalRow key={approval.id} approval={approval} project={nameOf(approval.projectId)} />
         ))}
       </div>
     </div>
   );
 }
 
-function ApprovalRow({ approval }: { approval: Approval }) {
+function ApprovalRow({ approval, project }: { approval: Approval; project?: string }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [answering, setAnswering] = useState(false);
@@ -61,7 +65,12 @@ function ApprovalRow({ approval }: { approval: Approval }) {
     }
   }
 
-  const where = [approval.deviceName, approval.clientName].filter(Boolean).join(" · ");
+  // The project first, and it is the part that cannot be left out. One machine
+  // serves several projects, and on the account URL one client reaches several
+  // too, so "Run `rm -rf build`?" on a named machine still does not say which
+  // repository it lands in. The terminal running `exeora connect` has always
+  // named it; this half is asked the same question and deserves the same answer.
+  const where = [project, approval.deviceName, approval.clientName].filter(Boolean).join(" · ");
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">

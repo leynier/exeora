@@ -70,6 +70,38 @@ import Doc from "../../layouts/Doc.astro";
     gateway only advertises what the executor announced: update the CLI.
   </p>
 
+  <h2><code>NO_ACTIVE_PROJECT</code></h2>
+
+  <p>
+    Only on the account URL, and only when nothing has said which project a call is for. Call{" "}
+    <code>list_projects</code> to see what the connection reaches, then <code>set_active_project</code>{" "}
+    to choose one. A connection given exactly one project never sees this: there is nothing to
+    choose between.
+  </p>
+
+  <p>
+    The message differs in the case worth telling apart. <em>"The project you were working in is no
+    longer available"</em> means access to the chosen project was revoked while the connection was
+    using it. It is refused rather than moved somewhere else on your behalf, even when one project
+    is left, because the agent still believes it is where it chose. Choose again and it continues.
+  </p>
+
+  <p>
+    <em>"This connection has not been given access to any project"</em> means every project it had
+    was revoked or deleted. Authorize the client again from its own settings and tick the projects
+    it should reach; if it still appears under Clients in the dashboard you can give it projects
+    back there instead.
+  </p>
+
+  <h2>The account URL offers a tool a project cannot run</h2>
+
+  <p>
+    <code>tools/list</code> is answered for the project the connection is currently working in, so a
+    client that listed its tools while pointed at one machine can be holding a list the next
+    project's machine does not serve. The call fails rather than doing something unexpected. Ask the
+    client to reconnect, or update the older machine's CLI.
+  </p>
+
   <h2>A project the gateway does not know</h2>
 
   <p>

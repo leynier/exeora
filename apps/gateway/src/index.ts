@@ -1,5 +1,6 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import {
+  type AccountToolName,
   ExeoraError,
   isToolName,
   needsApproval,
@@ -11,7 +12,19 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { api, pruneToolCalls, relayName } from "./api/index.js";
 import { serveAssets } from "./assets.js";
-import { type CallerIdentity, rememberMcpClient, resolveTarget, touchClient } from "./clients.js";
+import {
+  type AccountProject,
+  accountProjects,
+  activeProjectChoice,
+  type CallerIdentity,
+  rememberAccountMcpClient,
+  rememberMcpClient,
+  resolveAccountTarget,
+  resolveTarget,
+  setActiveProjectId,
+  touchAccountClient,
+  touchClient,
+} from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { describeCall } from "./approval.js";
@@ -22,6 +35,12 @@ import {
   handshakeClientInfo,
   peekMethod,
 } from "./mcp.js";
+import {
+  ACCOUNT_MCP_ROUTE,
+  type AccountCall,
+  type AccountDispatchResult,
+  createAccountMcpHandler,
+} from "./mcp-account.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -161,6 +180,266 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
 });
 
 /**
+ * The account endpoint: one URL for every project a client was given.
+ *
+ * Which project a call lands in is state rather than path, so it is resolved
+ * per call: the `project` argument if the call named one, then the client's
+ * active project, then the only project it can reach if there is only one.
+ */
+authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
+  const { signal } = c.req.raw;
+  const { userId, clientId } = propsOf(c.executionCtx);
+
+  const advertised =
+    (await peekMethod(c.req.raw.clone())) === "tools/list"
+      ? await advertisedAccountTools(c.env, userId, clientId)
+      : undefined;
+
+  const handler = createAccountMcpHandler(
+    (call, tool, args) => dispatchAccountCall(c.env, call, tool, args, signal),
+    (call, tool, args) => answerAccountTool(c.env, call, tool, args),
+    c.env,
+    advertised,
+  );
+
+  const peek = c.req.raw.clone();
+  const response = await handler(c.req.raw, c.env, c.executionCtx as unknown as ExecutionContext);
+
+  if (userId && clientId) {
+    c.executionCtx.waitUntil(
+      handshakeClientInfo(peek)
+        .then((info) =>
+          info ? rememberAccountMcpClient(c.env, { userId, clientId }, info) : undefined,
+        )
+        .catch(() => undefined),
+    );
+  }
+
+  return response;
+});
+
+/**
+ * Where a call on the account endpoint runs.
+ *
+ * The order is the call's own `project`, then the client's choice, then the one
+ * project it can reach if it never made one. That last step is a convenience
+ * with a hard limit: it applies only to a connection that has never chosen. A
+ * connection whose choice has since been revoked is refused instead, because the
+ * agent still believes it is where it chose and nothing on a stateless endpoint
+ * has told it otherwise.
+ *
+ * A client that reaches exactly one project and never chose is not ambiguous,
+ * so making it say so first would be ceremony. With two, guessing would be
+ * picking a repository on someone's behalf, and the honest answer is to name
+ * the tools that settle it.
+ *
+ * Resolved rather than persisted when it falls through to the only project: the
+ * pointer would say something the access list already says, and it would go
+ * stale the moment a second project is granted.
+ *
+ * Exported for its tests. This decides which repository a call lands in, so the
+ * order above is worth pinning down somewhere that fails when it changes.
+ */
+export async function resolveAccountProject(
+  // Only the binding it reads, for the same reason `limiterFor` narrows its
+  // own: `OAUTH_PROVIDER` is injected by the provider on the way into a
+  // handler, so asking for the whole Env would make this uncallable from a test.
+  env: Pick<Env, "DB">,
+  entry: { userId: string; clientId: string; named: string | undefined },
+): Promise<AccountProject> {
+  // Asked together, because neither answer depends on the other and this pair
+  // sits in front of every tool call the endpoint serves. A call that names its
+  // own project skips the second question entirely: nothing below reads it.
+  const [reachable, choice] =
+    entry.named !== undefined
+      ? [await accountProjects(env, entry), null]
+      : await Promise.all([accountProjects(env, entry), activeProjectChoice(env, entry)]);
+
+  if (entry.named !== undefined) {
+    const named = reachable.find(
+      (project) => project.slug === entry.named || project.id === entry.named,
+    );
+    // Same answer for a project that does not exist, is someone else's, or was
+    // never granted to this client: telling them apart would make ids and slugs
+    // enumerable from a connection that cannot reach them.
+    if (!named) {
+      throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available on this connection.");
+    }
+    return named;
+  }
+
+  if (choice?.reachable) {
+    const chosen = reachable.find((project) => project.id === choice.projectId);
+    if (chosen) return chosen;
+  }
+
+  // Authorizing again is named first because it is the one answer that always
+  // works. A connection with no rows at all is not listed under Clients and
+  // cannot be given a project from there: that happens when the authorization
+  // never named `/mcp` as its resource, so no projects were ever ticked, and
+  // when every project it had has since been deleted. Sending someone to a
+  // screen that cannot show them the client would be a dead end.
+  if (reachable.length === 0) {
+    throw new ExeoraError(
+      "NO_ACTIVE_PROJECT",
+      "This connection has not been given access to any project. Authorize it again from the " +
+        "client and tick the projects it may reach, or give it one under Clients in the Exeora " +
+        "dashboard if it is listed there.",
+    );
+  }
+
+  // A choice that no longer stands is refused rather than replaced, even when
+  // only one project is left to replace it with. The agent still believes it is
+  // in the project it chose, and nothing on a stateless endpoint has told it
+  // otherwise, so quietly resolving somewhere else is how a `write_file` meant
+  // for one repository lands in another. Saying so is the only answer that
+  // cannot be wrong.
+  if (choice) {
+    throw new ExeoraError(
+      "NO_ACTIVE_PROJECT",
+      "The project you were working in is no longer available on this connection. " +
+        "Call list_projects to see what is, then set_active_project to choose one.",
+    );
+  }
+
+  // Never chose, and there is only one thing it could have meant.
+  if (reachable.length === 1 && reachable[0]) return reachable[0];
+
+  throw new ExeoraError(
+    "NO_ACTIVE_PROJECT",
+    "No project is selected. Call list_projects to see what is available, then set_active_project to choose one.",
+  );
+}
+
+/** Resolves the project, then hands the call to the same dispatcher as always. */
+async function dispatchAccountCall(
+  env: Env,
+  call: AccountCall,
+  tool: ToolName,
+  args: unknown,
+  signal: AbortSignal | undefined,
+): Promise<AccountDispatchResult> {
+  const { userId, caller } = call;
+  const clientId = caller.clientId;
+
+  // Every account token is minted through a consent screen that records the
+  // client, so there is always one. A call without it has no access list and
+  // therefore no access.
+  if (!clientId) {
+    throw new ExeoraError("FORBIDDEN", "This connection cannot be identified.");
+  }
+
+  const project = await resolveAccountProject(env, { userId, clientId, named: call.project });
+
+  const result = await dispatchToDevice(env, {
+    userId,
+    projectId: project.id,
+    tool,
+    args,
+    caller,
+    // An approval names the project it was given for, and is worth nothing
+    // anywhere else. Without this comparison, confirming `run_command` in one
+    // project would confirm the same command in every other.
+    approved: call.approvedProjectId === project.id,
+    canElicit: call.canElicit,
+    signal,
+    endpoint: "account",
+  });
+
+  return result.kind === "needs-approval"
+    ? { kind: "needs-approval", projectId: project.id, project: project.slug }
+    : result;
+}
+
+/** The three tools that never leave the gateway. */
+async function answerAccountTool(
+  env: Env,
+  call: Pick<AccountCall, "userId" | "caller">,
+  tool: AccountToolName,
+  args: unknown,
+): Promise<unknown> {
+  const { userId, caller } = call;
+  const clientId = caller.clientId;
+
+  if (!clientId) {
+    throw new ExeoraError("FORBIDDEN", "This connection cannot be identified.");
+  }
+
+  const entry = { userId, clientId };
+
+  // Bookkeeping only, and never a reason for the call to fail.
+  const touch = () => touchAccountClient(env, entry, caller.mcp).catch(() => undefined);
+
+  if (tool === "set_active_project") {
+    const named = (args as { project?: unknown } | null)?.project;
+
+    // Refused rather than inferred. The schema makes the argument required, so
+    // reaching here without it means a client that did not validate; falling
+    // through to `resolveAccountProject` would answer "switched" for a call
+    // that named nothing, or refuse with `NO_ACTIVE_PROJECT` from the one tool
+    // whose job is to get out of that state.
+    if (typeof named !== "string" || named.length === 0) {
+      throw new ExeoraError("INVALID_ARGUMENTS", "Name the project to switch to, by slug or id.");
+    }
+
+    const project = await resolveAccountProject(env, { ...entry, named });
+
+    await setActiveProjectId(env, { ...entry, projectId: project.id });
+    await record(env, {
+      userId,
+      projectId: project.id,
+      tool,
+      caller,
+      startedAt: Date.now(),
+      status: "ok",
+      endpoint: "account",
+    });
+
+    return { project: { ...summarise(project), active: true } };
+  }
+
+  const [reachable, choice] = await Promise.all([
+    accountProjects(env, entry),
+    activeProjectChoice(env, entry),
+  ]);
+
+  // The same rule the dispatcher applies, so what these two report is where the
+  // next call would actually go rather than a second opinion about it. A choice
+  // that no longer stands reports nothing, because the next call refuses: saying
+  // "the only project" there would promise a redirect that will not happen.
+  const effective = choice
+    ? choice.reachable
+      ? choice.projectId
+      : null
+    : ((reachable.length === 1 ? reachable[0]?.id : undefined) ?? null);
+
+  await touch();
+
+  if (tool === "get_active_project") {
+    const chosen = reachable.find((project) => project.id === effective);
+    return { project: chosen ? { ...summarise(chosen), active: true } : null };
+  }
+
+  return {
+    projects: reachable.map((project) => ({
+      ...summarise(project),
+      active: project.id === effective,
+    })),
+    activeProject: reachable.find((project) => project.id === effective)?.slug ?? null,
+  };
+}
+
+/** A project as an agent sees it. Never its id, and never its path on disk. */
+function summarise(project: AccountProject) {
+  return {
+    slug: project.slug,
+    name: project.name,
+    machine: project.machine,
+    online: project.online,
+  };
+}
+
+/**
  * Resolves the project, checks it belongs to the caller and that the caller's
  * client has not been revoked, and forwards the call to that project's device.
  *
@@ -183,11 +462,31 @@ async function dispatchToDevice(
     /** Whether this client can be asked over MCP, rather than out of band. */
     canElicit: boolean;
     signal?: AbortSignal | undefined;
+    /**
+     * Which URL the call arrived on. Only the audit trail and the client's
+     * bookkeeping care: by this point the project is resolved and everything
+     * below runs the same either way.
+     */
+    endpoint?: "project" | "account";
   },
 ): Promise<DispatchResult> {
-  const { userId, projectId, tool, args, caller, signal } = call;
+  const { userId, projectId, tool, args, caller, signal, endpoint = "project" } = call;
 
-  const project = await resolveTarget(env, { userId, projectId, clientId: caller.clientId });
+  // On the account endpoint the caller has already been checked against the
+  // access list, which is the only thing that grants a project there; this
+  // resolves the device and the policy for it.
+  //
+  // A call that arrived there without a client id resolves to nothing rather
+  // than falling back to `resolveTarget`, which lets an unknown client through
+  // by design. That default is right for a token bound to one project's URL and
+  // wrong here, where the client is the whole access list: falling back would
+  // turn "we cannot tell who this is" into "reach any project on the account".
+  const project =
+    endpoint === "account"
+      ? caller.clientId
+        ? await resolveAccountTarget(env, { userId, projectId, clientId: caller.clientId })
+        : null
+      : await resolveTarget(env, { userId, projectId, clientId: caller.clientId });
 
   // Same answer whether the project does not exist or belongs to someone else:
   // distinguishing them would make project ids enumerable.
@@ -195,7 +494,7 @@ async function dispatchToDevice(
     throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available.");
   }
 
-  if (project.clientRevokedAt) {
+  if ("clientRevokedAt" in project && project.clientRevokedAt) {
     throw new ExeoraError(
       "FORBIDDEN",
       "This application's access to the project was revoked. Authorize it again to restore it.",
@@ -221,6 +520,7 @@ async function dispatchToDevice(
       startedAt: Date.now(),
       status: "error",
       errorCode: error.code,
+      endpoint,
     });
     throw error;
   }
@@ -236,7 +536,7 @@ async function dispatchToDevice(
     // a second round carrying a signed state bound to these arguments, which is
     // the best available answer because the person is already looking at the
     // conversation the call came from.
-    if (call.canElicit) return { kind: "needs-approval" };
+    if (call.canElicit) return { kind: "needs-approval", projectId };
 
     // Everyone else is asked out of band. This used to refuse outright, which
     // made the setting decorative for exactly the clients most people use:
@@ -268,6 +568,7 @@ async function dispatchToDevice(
         startedAt,
         status: "error",
         errorCode: error.code,
+        endpoint,
       });
       throw error;
     }
@@ -290,7 +591,7 @@ async function dispatchToDevice(
       // with the project's own `exeora.toml` before running anything.
       policy: project.policy,
     });
-    await record(env, { userId, projectId, tool, caller, startedAt, status: "ok" });
+    await record(env, { userId, projectId, tool, caller, startedAt, status: "ok", endpoint });
     return { kind: "value", value };
   } catch (error) {
     await record(env, {
@@ -301,6 +602,7 @@ async function dispatchToDevice(
       startedAt,
       status: "error",
       errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
+      endpoint,
     });
     throw error;
   } finally {
@@ -347,6 +649,49 @@ async function advertisedTools(
 }
 
 /**
+ * The same question on the account endpoint, asked of whichever project the
+ * connection is currently pointed at.
+ *
+ * Undefined, meaning "offer every tool", whenever there is nothing to narrow
+ * by: no project selected, or several to choose from and none chosen. That is
+ * the right answer rather than an empty list, because the three management
+ * tools are always registered and a connection whose whole purpose is to be
+ * pointed somewhere should not look empty before it has been.
+ *
+ * Switching the active project can change this answer, and nothing tells the
+ * client so: the endpoint is stateless and there is no session to notify. A
+ * client that never lists again keeps offering a tool the current project's
+ * machine cannot run, and that call fails with `LOCAL_EXECUTOR_OFFLINE` or
+ * `UNKNOWN_TOOL`, which is the same thing it would have said anyway.
+ */
+async function advertisedAccountTools(
+  env: Env,
+  userId: string | undefined,
+  clientId: string | undefined,
+): Promise<ReadonlySet<ToolName> | undefined> {
+  if (!userId || !clientId) return undefined;
+
+  const [reachable, choice] = await Promise.all([
+    accountProjects(env, { userId, clientId }),
+    activeProjectChoice(env, { userId, clientId }),
+  ]);
+
+  // The dispatcher's rule, not a second reading of it: the fallback to the only
+  // project belongs to a connection that never chose. A choice that no longer
+  // stands is refused there rather than replaced, so narrowing by whatever is
+  // left would publish a toolset for a project no call will reach.
+  const chosen = choice
+    ? choice.reachable
+      ? reachable.find((project) => project.id === choice.projectId)
+      : undefined
+    : reachable.length === 1
+      ? reachable[0]
+      : undefined;
+
+  return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
+}
+
+/**
  * What the executor is told about the caller, so `exeora connect` can name it.
  *
  * Only the two display fields, never the client id: the machine's terminal is
@@ -371,6 +716,7 @@ async function record(
     startedAt: number;
     status: "ok" | "error";
     errorCode?: string;
+    endpoint?: "project" | "account";
   },
 ): Promise<void> {
   const { caller } = entry;
@@ -394,7 +740,12 @@ async function record(
     if (caller.clientId) {
       await touchClient(
         env,
-        { userId: entry.userId, projectId: entry.projectId, clientId: caller.clientId },
+        {
+          userId: entry.userId,
+          projectId: entry.projectId,
+          clientId: caller.clientId,
+          endpoint: entry.endpoint ?? "project",
+        },
         caller.mcp,
       );
     }
@@ -448,7 +799,13 @@ site.all("*", (c) => serveAssets(c.req.raw, c.env));
 export { isToolName };
 
 const provider = new OAuthProvider({
-  apiRoute: ["/p/", "/api/"],
+  // Prefix matched, so `/mcp` also claims anything starting with those four
+  // characters, and what it claims never reaches the static site: a path like
+  // `/mcpx` is answered by the authenticated handler, which has no route for it
+  // and no token to check it against. Nothing on this hostname starts that way,
+  // so the reach costs nothing today, and anything added under it would have to
+  // be a route here rather than a page.
+  apiRoute: ["/p/", "/api/", ACCOUNT_MCP_ROUTE],
   apiHandler: authenticated,
   defaultHandler: site,
 

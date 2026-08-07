@@ -2,7 +2,7 @@ import type { ClientInfo } from "@cloudflare/workers-oauth-provider";
 import tokens from "@exeora/design/tokens.css";
 import { html, raw } from "hono/html";
 import type { UpstreamProvider } from "./providers/index.js";
-import type { AuthTarget } from "./target.js";
+import type { AccountTargetProject, AuthTarget } from "./target.js";
 
 /**
  * The only HTML the gateway serves. The landing page and dashboard live in
@@ -212,6 +212,45 @@ const styles = `
     color: var(--color-foreground-faint);
     font-size: .8125rem;
   }
+
+  /* The account endpoint names no project, so the person names them here. The
+     list is the access list: what is left unticked is what is taken away. */
+  .picker {
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .picker li { border-bottom: 1px solid var(--color-border-subtle); }
+  .picker li:last-child { border-bottom: 0; }
+  .picker label {
+    display: flex;
+    gap: .65rem;
+    align-items: flex-start;
+    padding: .6rem .8rem;
+    cursor: pointer;
+  }
+  .picker input { margin-top: .2rem; flex: none; accent-color: var(--color-foreground); }
+  .picker .who-what { min-width: 0; font-size: .8125rem; }
+  .picker .name { display: block; }
+  .picker .where {
+    display: block;
+    margin-top: .1rem;
+    color: var(--color-foreground-faint);
+    font-size: .9em;
+    overflow-wrap: anywhere;
+  }
+
+  .empty {
+    margin: 0 0 1.25rem;
+    padding: .8rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    color: var(--color-foreground-faint);
+    font-size: .8125rem;
+  }
 `;
 
 /**
@@ -356,6 +395,109 @@ export function consentPage(options: {
       </div>
 
       <p class="foot">You can revoke this at any time from the dashboard.</p>
+    `,
+  );
+}
+
+/**
+ * The consent screen for the account endpoint, `exeora.dev/mcp`.
+ *
+ * Its own function rather than a branch inside `consentPage`, because it asks a
+ * different question. The per-project screen states what the token is for and
+ * takes yes or no; this one has to be answered, since `/mcp` names no project
+ * and an unanswered screen would either grant everything or nothing.
+ *
+ * The tick boxes are the access list, not a way to add to one: they arrive
+ * ticked for whatever this client already reaches through this endpoint, and
+ * unticking one revokes it. Access granted through a project's own URL is a
+ * separate consent and never appears here, so nothing this screen was not asked
+ * about can be taken away by it.
+ */
+export function accountConsentPage(options: {
+  client: ClientInfo | null;
+  userEmail: string;
+  state: string;
+  scopes: string[];
+  projects: AccountTargetProject[];
+  /** Shown when a previous submission could not be accepted as it stood. */
+  problem?: string;
+}) {
+  const name = options.client?.clientName ?? options.client?.clientId ?? "An application";
+  const { projects } = options;
+
+  return layout(
+    "Authorize",
+    html`
+      <div class="card">
+        <h1>Authorize ${name}</h1>
+        <p class="lede">
+          It is asking for one connection covering several projects. Choose which ones it may
+          reach.
+        </p>
+
+        <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
+
+        ${options.problem ? html`<div class="warn">${options.problem}</div>` : ""}
+
+        ${
+          projects.length === 0
+            ? html`<p class="empty">
+                You have not connected any projects yet. Run <code>exeora connect</code> in a
+                directory on the machine you want to serve, then authorize this application again.
+              </p>
+              <form method="post" action="/oauth/approve">
+                <input type="hidden" name="state" value="${options.state}" />
+                <button class="btn secondary" type="submit" name="decision" value="deny">
+                  Cancel
+                </button>
+              </form>`
+            : html`<form method="post" action="/oauth/approve">
+              <input type="hidden" name="state" value="${options.state}" />
+
+              <ul class="picker">
+                ${projects.map(
+                  (project) => html`<li>
+                    <label>
+                      <input
+                        type="checkbox"
+                        name="project"
+                        value="${project.id}"
+                        ${project.granted ? raw("checked") : ""}
+                      />
+                      <span class="who-what">
+                        <span class="name">${project.project}</span>
+                        <span class="where"
+                          >${project.machine} · <code>${project.localPath}</code></span
+                        >
+                      </span>
+                    </label>
+                  </li>`,
+                )}
+              </ul>
+
+              <div class="warn">
+                This grants <strong>${name}</strong> the ability to read, edit and run commands in
+                every project you tick, on the machine serving it. It chooses which of them to work
+                in, one at a time. Commands are not filtered. Only approve applications you trust.
+              </div>
+
+              ${
+                options.scopes.length > 0
+                  ? html`<ul class="scopes">
+                    ${options.scopes.map((scope) => html`<li><code>${scope}</code></li>`)}
+                  </ul>`
+                  : ""
+              }
+
+              <button class="btn" type="submit" name="decision" value="approve">Authorize</button>
+              <button class="btn secondary" type="submit" name="decision" value="deny">
+                Cancel
+              </button>
+            </form>`
+        }
+      </div>
+
+      <p class="foot">You can change which projects it reaches, or revoke it, from the dashboard.</p>
     `,
   );
 }

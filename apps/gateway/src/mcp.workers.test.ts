@@ -392,6 +392,23 @@ describe("per-project routing", () => {
     expect(mcpRoute("prj_b")).not.toBe(mcpRoute("prj_a"));
   });
 
+  /**
+   * The account endpoint adds a `project` argument to every tool. This one must
+   * not, and the reason is the whole point of it: the project is in the path,
+   * so offering the model a field for naming one would hand back exactly what
+   * this endpoint exists to withhold.
+   */
+  it("offers no way to name a project in a tool's arguments", async () => {
+    const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
+    const tools = (
+      body.result as { tools: Array<{ inputSchema: { properties?: Record<string, unknown> } }> }
+    ).tools;
+
+    for (const tool of tools) {
+      expect(tool.inputSchema.properties ?? {}).not.toHaveProperty("project");
+    }
+  });
+
   it("reports the project it was built for, not one taken from the request", async () => {
     const seen: string[] = [];
     await payload(
@@ -425,7 +442,10 @@ describe("per-project routing", () => {
  * setting decorative for exactly the clients most people use today.
  */
 describe("approval", () => {
-  const needsApproval: ToolDispatcher = async () => ({ kind: "needs-approval" });
+  const needsApproval: ToolDispatcher = async () => ({
+    kind: "needs-approval",
+    projectId: PROJECT,
+  });
 
   const writeCall = {
     jsonrpc: "2.0",

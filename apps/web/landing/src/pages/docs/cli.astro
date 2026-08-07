@@ -104,6 +104,12 @@ import Doc from "../../layouts/Doc.astro";
   <pre>exeora logs --json | jq '.[] | select(.status == "error")'</pre>
 
   <p>
+    <code>status</code> carries <code>accountMcpUrl</code> alongside each project's own{" "}
+    <code>mcpUrl</code>, on both the signed-in and signed-out shapes, so a script can find the URL
+    that covers every project without having to build it.
+  </p>
+
+  <p>
     On <code>connect</code>, which never finishes, it prints one JSON object per line as things
     happen, which is what a supervisor or a log collector can read as it arrives. In that mode there
     is nobody at the terminal, so confirmations go to the dashboard instead.

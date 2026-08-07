@@ -20,7 +20,7 @@ flowchart TD
         repo[("your repository")]
     end
 
-    client -->|"Streamable HTTP<br/>/p/:projectId/mcp"| gateway
+    client -->|"Streamable HTTP<br/>/mcp · /p/:projectId/mcp"| gateway
     gateway --> relay
     cli -.->|"outbound WebSocket<br/>the CLI dials, never the reverse"| relay
     relay -->|"tool.call"| cli
@@ -41,9 +41,21 @@ The documentation lives at `apps/web/landing/src/pages/docs/`, with its order an
 
 One Worker owns the whole hostname. The site was briefly a Worker of its own, until it turned out neither half needs a server: Astro emits static HTML and the dashboard is a Vite bundle, so an `ASSETS` binding is enough.
 
+## Two URLs
+
+`https://exeora.dev/p/:projectId/mcp` is one project and nothing else. The id is in the path and lives in the handler's closure, never in anything the client sends, so an agent connected to one project has no way to name another: the separation is structural rather than something the model is asked to respect. The cost is one entry per project in every client.
+
+`https://exeora.dev/mcp` is the same URL for everyone and covers several projects at once. Authorizing a client on it shows a consent screen listing your projects, you tick the ones it may reach, and **those ticks are the access list**: what is left unticked is taken away, and it can be changed later from the dashboard. The client then moves between them itself with `list_projects` and `set_active_project`, and the ten tools take an optional `project` to run one call elsewhere without moving. Add it once and it keeps working as projects come and go.
+
+The second URL is the weaker guarantee, and it is weaker in exactly one place: which of the projects you ticked a call lands in is state the agent can change, not a fact about the URL. Ticking one project gives you back the first URL's reach. Both go through the same policy, the same confirmations and the same audit log once the project is known, and the two are separate consents, so a client authorized both ways keeps whichever you do not take away.
+
+The active project is one per client rather than one per conversation, because the endpoint is stateless and the clients most people use carry nothing between requests. Two conversations open in the same client therefore share it and can move each other; the `project` argument is the way out of that for a single call.
+
 ## Tools
 
 `read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
+
+On the account URL, three more: `list_projects` · `get_active_project` · `set_active_project`. They are answered by the gateway and never reach a machine, which is why they are a registry of their own in `packages/protocol` rather than three more entries in `TOOL_DEFINITIONS`: the executor announces that list and can run none of these, and the command policy is defined over it.
 
 Every path is resolved and confined to the project root before anything touches the disk. See `packages/cli/src/paths.ts`, whose tests are its specification.
 

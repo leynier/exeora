@@ -86,6 +86,12 @@ export interface ToolCall {
 export interface Client {
   id: string;
   projectId: string;
+  /**
+   * Which URL this access was granted through. Two rows can name the same
+   * client and the same project and mean different consents, so the view has to
+   * say which one it is showing.
+   */
+  endpoint: "project" | "account";
   clientId: string;
   clientName: string | null;
   clientUri: string | null;
@@ -101,6 +107,34 @@ export interface User {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  /** The one MCP URL that covers every project a client is given. */
+  accountMcpUrl: string;
+}
+
+/** One project an account-endpoint client was given, as that view lists it. */
+export interface AccountClientProject {
+  /** The `project_clients` row, which is what revoking acts on. */
+  id: string;
+  projectId: string;
+  revokedAt: number | null;
+}
+
+/**
+ * A client connected through the account URL.
+ *
+ * One entry per client rather than per project, because that is what it is: one
+ * connection that reaches several projects and works in one of them at a time.
+ */
+export interface AccountClient {
+  clientId: string;
+  clientName: string | null;
+  clientUri: string | null;
+  mcpName: string | null;
+  mcpVersion: string | null;
+  authorizedAt: number;
+  lastUsedAt: number | null;
+  activeProjectId: string | null;
+  projects: AccountClientProject[];
 }
 
 export class Unauthorized extends Error {}
@@ -217,6 +251,23 @@ export const api = {
   },
 
   clients: () => request<Client[]>("/api/clients"),
+  accountClients: () => request<AccountClient[]>("/api/account-clients"),
+
+  /** The whole access list, not a delta: what is missing is revoked. */
+  setAccountClientProjects: (clientId: string, projectIds: string[]) =>
+    request<{ ok: true }>("/api/account-clients/projects", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, projectIds }),
+    }),
+
+  setAccountClientActiveProject: (clientId: string, projectId: string | null) =>
+    request<{ ok: true }>("/api/account-clients/active-project", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, projectId }),
+    }),
+
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),
 
   /** Only accepted once the client is revoked; the server returns 409 if not. */

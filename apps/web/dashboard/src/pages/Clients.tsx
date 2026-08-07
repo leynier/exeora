@@ -1,20 +1,30 @@
+import { AccountClientList } from "../components/AccountClientList.js";
 import { ClientList } from "../components/ClientList.js";
 import { Card, EmptyState, PageHeader, SkeletonRows } from "../components/ui.js";
-import { useClients, useProjects } from "../queries.js";
+import { useAccountClients, useClients, useProjects } from "../queries.js";
 
 /**
- * Every AI client that has been let into a project, across all of them.
+ * Every AI client that has been let in, across every project.
  *
- * The list is per project rather than per application on purpose: a token here
- * is bound to one endpoint, so "Claude has access" is never the whole answer,
- * and the same client authorized against two projects is two decisions to make
- * separately.
+ * Split by the URL it was authorized against, because the two grant different
+ * things and are undone differently. A client on a project's own URL reaches
+ * that project and nothing else, so it is one row per project and revoking one
+ * says nothing about the others. A client on the account URL is one connection
+ * covering the projects it was given, so it is one row with a list inside it.
+ *
+ * The same application can appear in both, and that is not a duplicate: they are
+ * two separate consents, and taking one away leaves the other standing.
  */
 export function Clients() {
   const clients = useClients();
+  const accountClients = useAccountClients();
   const projects = useProjects();
 
-  const rows = clients.data ?? [];
+  // Only per-project rows here; the account ones have a section of their own,
+  // where a client is a connection rather than a project.
+  const rows = (clients.data ?? []).filter((client) => client.endpoint === "project");
+  const accountRows = accountClients.data ?? [];
+
   const nameOf = (projectId: string) =>
     projects.data?.find((project) => project.id === projectId)?.name ?? "removed project";
 
@@ -25,18 +35,43 @@ export function Clients() {
         subtitle="The AI clients you have authorized, and what each of them can still reach."
       />
 
-      <Card title={rows.length === 0 ? undefined : `${rows.length} authorized`}>
-        {clients.isLoading ? (
+      <Card
+        title="On the account URL"
+        subtitle="One connection each, covering the projects you gave it."
+      >
+        {/* Both queries, because this list is drawn from the two together: the
+            projects are the tick boxes and the names in the dropdown, so
+            rendering before they land shows a connection with no projects to
+            give it and every project it already has as "removed". */}
+        {accountClients.isLoading || projects.isLoading ? (
           <SkeletonRows />
-        ) : rows.length === 0 ? (
-          <EmptyState title="No clients yet">
-            Add a project's MCP URL to Claude, ChatGPT or Cursor and approve it. It shows up here
-            once you do.
+        ) : accountRows.length === 0 ? (
+          <EmptyState title="No clients on the account URL">
+            Add the account MCP URL to a client and choose which projects it may reach. It shows up
+            here once you do.
           </EmptyState>
         ) : (
-          <ClientList clients={rows} projectNameOf={nameOf} />
+          <AccountClientList clients={accountRows} projects={projects.data ?? []} />
         )}
       </Card>
+
+      <div className="mt-6">
+        <Card
+          title="On a project's own URL"
+          subtitle="One row per project, each authorized on its own."
+        >
+          {clients.isLoading ? (
+            <SkeletonRows />
+          ) : rows.length === 0 ? (
+            <EmptyState title="No clients on a project URL">
+              Add a project's MCP URL to Claude, ChatGPT or Cursor and approve it. It shows up here
+              once you do.
+            </EmptyState>
+          ) : (
+            <ClientList clients={rows} projectNameOf={nameOf} />
+          )}
+        </Card>
+      </div>
     </>
   );
 }

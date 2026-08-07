@@ -28,6 +28,15 @@ export const ERROR_CODES = [
   "UNKNOWN_TOOL",
   /** The project id is not registered on this executor. */
   "UNKNOWN_PROJECT",
+  /**
+   * The account endpoint was asked to run something and no project is selected.
+   *
+   * Not a failure but a question nobody has answered yet, which is why the
+   * message names the two tools that answer it. Only reachable on the account
+   * endpoint: a per-project URL carries its project in the path and can never
+   * be in this state.
+   */
+  "NO_ACTIVE_PROJECT",
   /** The caller is authenticated but not allowed to reach this project. */
   "FORBIDDEN",
   /** Someone was asked to confirm the call and said no. */

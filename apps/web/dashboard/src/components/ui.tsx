@@ -7,11 +7,14 @@ import type { ReactNode } from "react";
 
 export function Card({
   title,
+  subtitle,
   action,
   children,
   className = "",
 }: {
   title?: string;
+  /** One line under the title, for a card whose name does not say enough. */
+  subtitle?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -20,7 +23,10 @@ export function Card({
     <section className={`border-border bg-surface overflow-hidden rounded-xl border ${className}`}>
       {title && (
         <header className="border-border-subtle flex items-center justify-between gap-4 border-b px-5 py-3.5">
-          <h2 className="text-title-md text-foreground">{title}</h2>
+          <div className="min-w-0">
+            <h2 className="text-title-md text-foreground">{title}</h2>
+            {subtitle && <p className="text-body-md text-foreground-faint mt-0.5">{subtitle}</p>}
+          </div>
           {action}
         </header>
       )}

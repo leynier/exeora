@@ -73,7 +73,10 @@ export function limiterFor(
   method: string,
   pathname: string,
 ): RateLimit | undefined {
-  if (pathname.startsWith("/p/")) return env.RL_MCP;
+  // Both MCP endpoints, on one budget keyed by user: the limit is about how
+  // much work one account can ask a machine to do, and which URL it came in on
+  // does not change that.
+  if (pathname.startsWith("/p/") || pathname === "/mcp") return env.RL_MCP;
 
   if (method === "POST" && (pathname === "/api/devices" || pathname === "/api/projects")) {
     return env.RL_WRITE;

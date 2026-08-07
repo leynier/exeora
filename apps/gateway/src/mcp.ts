@@ -64,7 +64,16 @@ export interface McpToolContext {
  * cannot, the dispatcher asks the machine or the dashboard instead and answers
  * with a value or an error, so this file never learns that path exists.
  */
-export type DispatchResult = { kind: "value"; value: unknown } | { kind: "needs-approval" };
+export type DispatchResult =
+  | { kind: "value"; value: unknown }
+  /**
+   * `projectId` rides along because on the account endpoint the dispatcher is
+   * the only side that knows which project the call resolved to, and the
+   * approval has to be bound to it. Without that binding, a confirmation given
+   * for `run_command` in one project would verify against the same arguments in
+   * another.
+   */
+  | { kind: "needs-approval"; projectId: string };
 
 /** Runs a tool on the user's machine, through the relay. */
 export type ToolDispatcher = (
@@ -138,25 +147,10 @@ export function createProjectMcpHandler(
             );
           }
 
-          return inputRequired({
-            inputRequests: {
-              [APPROVAL_KEY]: inputRequired.elicit({
-                message: describeCall(tool, args),
-                requestedSchema: APPROVAL_SCHEMA,
-              }),
-            },
-            requestState: await codec.mint(
-              { projectId, tool, argsHash: await hashArguments(args) },
-              ctx,
-            ),
-          });
+          return askToConfirm(codec, ctx, result.projectId, tool, args);
         }
 
-        const { value } = result;
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(value) }],
-          structuredContent: value as Record<string, unknown>,
-        };
+        return toolResult(result.value);
       };
 
       // Registered one by one rather than in a loop: the SDK infers the
@@ -251,26 +245,69 @@ export function createProjectMcpHandler(
   );
 }
 
+/** The shape every tool answers with, so the two endpoints build it once. */
+export function toolResult(value: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(value) }],
+    structuredContent: value as Record<string, unknown>,
+  };
+}
+
 /**
- * Whether this round carries a confirmation for this exact call.
+ * Asks the client to confirm this exact call, on this exact project.
  *
- * All four conditions have to hold, and the last is the one that matters most.
- * Without comparing the arguments, a client could have `ls` approved and retry
- * with `rm -rf ~` carrying the same state: the signature would verify, the tool
- * would match, and the approval would be for a call nobody ever saw.
+ * `where` names the project in the question, and is given only where the
+ * question needs it. A per-project URL reaches one project and the person
+ * approving already knows which; the account URL reaches several, so "Run
+ * `rm -rf build`?" on its own asks someone to approve a command without saying
+ * which repository it lands in, which is not a question anybody can answer.
+ */
+export async function askToConfirm(
+  codec: ReturnType<typeof approvalCodec>,
+  ctx: ServerContext,
+  projectId: string,
+  tool: ToolName,
+  args: unknown,
+  where?: string,
+) {
+  const question = describeCall(tool, args);
+
+  return inputRequired({
+    inputRequests: {
+      [APPROVAL_KEY]: inputRequired.elicit({
+        message: where ? `In ${where}: ${question}` : question,
+        requestedSchema: APPROVAL_SCHEMA,
+      }),
+    },
+    requestState: await codec.mint({ projectId, tool, argsHash: await hashArguments(args) }, ctx),
+  });
+}
+
+/**
+ * The confirmation this round carries, if it is one for this exact call, and
+ * the project it was given for.
+ *
+ * Every condition has to hold, and the argument hash is the one that matters
+ * most. Without comparing the arguments, a client could have `ls` approved and
+ * retry with `rm -rf ~` carrying the same state: the signature would verify,
+ * the tool would match, and the approval would be for a call nobody ever saw.
+ *
+ * The project is returned rather than compared, because the account endpoint
+ * does not know which project the call is for until the dispatcher resolves it.
+ * Whoever does know still has to compare: an approval carries one project and
+ * is worth nothing anywhere else.
  *
  * The state itself has already been verified by the seam, since the server is
  * built with `requestState.verify`; a forged or expired one never reaches here.
  */
-export async function isApproved(
+export async function approvalFor(
   ctx: Pick<ServerContext, "mcpReq">,
-  projectId: string,
   tool: ToolName,
   args: unknown,
-): Promise<boolean> {
+): Promise<{ projectId: string } | null> {
   const state = ctx.mcpReq.requestState<ApprovalState>();
-  if (!state || typeof state !== "object") return false;
-  if (state.projectId !== projectId || state.tool !== tool) return false;
+  if (!state || typeof state !== "object") return null;
+  if (state.tool !== tool) return null;
 
   const answer = acceptedContent<{ [APPROVAL_KEY]?: unknown }>(
     ctx.mcpReq.inputResponses,
@@ -278,9 +315,22 @@ export async function isApproved(
   );
   // `undefined` covers a declined or cancelled elicitation as well as a missing
   // one, which is right: none of them is a yes.
-  if (answer?.[APPROVAL_KEY] !== true) return false;
+  if (answer?.[APPROVAL_KEY] !== true) return null;
 
-  return state.argsHash === (await hashArguments(args));
+  if (state.argsHash !== (await hashArguments(args))) return null;
+
+  return { projectId: state.projectId };
+}
+
+/** Whether this round confirms this exact call on this project. */
+export async function isApproved(
+  ctx: Pick<ServerContext, "mcpReq">,
+  projectId: string,
+  tool: ToolName,
+  args: unknown,
+): Promise<boolean> {
+  const approval = await approvalFor(ctx, tool, args);
+  return approval?.projectId === projectId;
 }
 
 /**
@@ -356,7 +406,7 @@ export async function handshakeClientInfo(request: Request): Promise<McpClientIn
  * into a per-request `_meta` envelope; and even there the spec demoted it to a
  * SHOULD, so an absent value is normal rather than an error.
  */
-function mcpClientInfo(ctx: ServerContext): McpClientInfo | undefined {
+export function mcpClientInfo(ctx: ServerContext): McpClientInfo | undefined {
   const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
   return readClientInfo(envelope?.[CLIENT_INFO_META_KEY]);
 }
@@ -373,7 +423,7 @@ function readClientInfo(value: unknown): McpClientInfo | undefined {
   };
 }
 
-function propsOf(): { userId?: string; clientId?: string; clientName?: string } {
+export function propsOf(): { userId?: string; clientId?: string; clientName?: string } {
   return (getMcpAuthContext()?.props ?? {}) as {
     userId?: string;
     clientId?: string;

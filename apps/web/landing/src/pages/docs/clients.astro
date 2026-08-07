@@ -16,16 +16,33 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/clients/"
 >
   <p>
-    <code>exeora connect</code> prints a URL of the form{" "}
-    <code>https://exeora.dev/p/&lt;project&gt;/mcp</code>. Every client below takes that same URL and
-    signs in through your browser the first time it is used. Nothing else has to be configured on
+    There are two URLs to choose between, and every client below takes either one. Both sign in
+    through your browser the first time they are used, and nothing else has to be configured on
     either side.
   </p>
 
+  <h2 id="which-url">Which URL</h2>
+
   <p>
-    Authorization is per project. Approving a client once lets it reach that project and no other,
-    and every application that has been let in is listed in the dashboard under Clients, where it can
-    be revoked one at a time.
+    <code>https://exeora.dev/mcp</code> is the same for everyone and covers several projects at once.
+    When you authorize a client on it, the consent screen lists your projects and you tick the ones
+    it may reach; it then moves between them itself with <code>list_projects</code> and{" "}
+    <code>set_active_project</code>. Add it once and it keeps working as projects come and go.
+  </p>
+
+  <p>
+    <code>https://exeora.dev/p/&lt;project&gt;/mcp</code>, which <code>exeora connect</code> prints,
+    is one project and nothing else. The project is in the URL rather than in anything the client
+    sends, so a client on it has no way to name another project: the separation is structural rather
+    than something the model is asked to respect. That is the stronger guarantee, and the cost is one
+    entry per project in every client.
+  </p>
+
+  <p>
+    Ticking a single project on the account URL gives you the same reach as a project URL, and you
+    can change which projects a client reaches, or cut it off entirely, from the dashboard under
+    Clients. The two are separate consents: a client authorized both ways keeps whichever you do not
+    take away.
   </p>
 
   <h2>Claude Code</h2>

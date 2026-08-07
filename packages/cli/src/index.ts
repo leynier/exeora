@@ -177,6 +177,7 @@ project
       const url = new URL(`/p/${added.id}/mcp`, gatewayUrl()).toString();
       p.log.success(`Added ${added.name}.`);
       p.note(url, "MCP URL, add this to Claude, ChatGPT or Cursor");
+      p.log.info(`Or ${accountMcpUrl()} once, for every project at the same time.`);
       p.log.info("Run `exeora connect` here and leave it running.");
     }),
   );
@@ -203,6 +204,8 @@ project
         p.log.message(`${pad(entry.slug, 20)} ${entry.root}`);
         p.log.message(`${" ".repeat(20)} ${new URL(`/p/${entry.id}/mcp`, gatewayUrl())}`);
       }
+
+      p.log.info(`Or ${accountMcpUrl()} once, for every project at the same time.`);
     }),
   );
 
@@ -257,6 +260,7 @@ program
               new URL(`/p/${ready.project.id}/mcp`, gatewayUrl()).toString(),
               "MCP URL, add this to Claude, ChatGPT or Cursor",
             );
+            p.log.info(`Or ${accountMcpUrl()} once, for every project at the same time.`);
           } else if (projects().length === 0) {
             p.log.warn("No projects registered on this machine yet.");
           }
@@ -320,6 +324,10 @@ program
 
       if (!json) {
         p.log.message(`Gateway   ${gatewayUrl()}`);
+        // Printed whether or not this machine serves anything: it is the same
+        // URL for every account, and someone reading `status` to find out what
+        // to paste into a client should not have to go and look it up.
+        p.log.message(`One URL   ${accountMcpUrl()}`);
         p.log.message(`Config    ${configPath()}`);
         p.log.message(
           `Device    ${deviceId ? `${config.get("deviceName")} (${deviceId})` : "not registered"}`,
@@ -345,6 +353,7 @@ program
           return emit({
             gateway: gatewayUrl(),
             config: configPath(),
+            accountMcpUrl: accountMcpUrl(),
             device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
             signedIn: signedOut ? false : null,
             ...(signedOut ? {} : { error: error instanceof Error ? error.message : String(error) }),
@@ -363,6 +372,7 @@ program
         return emit({
           gateway: gatewayUrl(),
           config: configPath(),
+          accountMcpUrl: accountMcpUrl(),
           device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
           signedIn: true,
           email,
@@ -698,6 +708,17 @@ function online(lastSeenAt: number | null): boolean {
 
 function pad(value: string, width: number): string {
   return value.length >= width ? value : value + " ".repeat(width - value.length);
+}
+
+/**
+ * The one URL that covers every project, mentioned wherever a project's own is
+ * printed.
+ *
+ * Built from the configured gateway rather than hard-coded, so it points at
+ * localhost during development exactly as the per-project URLs do.
+ */
+function accountMcpUrl(): string {
+  return new URL("/mcp", gatewayUrl()).toString();
 }
 
 /**

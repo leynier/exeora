@@ -14,6 +14,7 @@ export const keys = {
   devices: ["devices"] as const,
   projects: ["projects"] as const,
   clients: ["clients"] as const,
+  accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
 
   /**
@@ -57,6 +58,20 @@ export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: ap
 /** Polled too: "last used" is the only sign a client is still talking to us. */
 export const useClients = () =>
   useQuery({ queryKey: keys.clients, queryFn: api.clients, refetchInterval: LIVE });
+
+/**
+ * The same clients seen through the account URL, grouped one row each.
+ *
+ * A separate query rather than a regrouping of `useClients`, because the server
+ * is the side that knows which project each one is currently working in and
+ * that is half of what this view shows.
+ */
+export const useAccountClients = () =>
+  useQuery({
+    queryKey: keys.accountClients,
+    queryFn: api.accountClients,
+    refetchInterval: LIVE,
+  });
 
 /**
  * Calls waiting on someone to confirm them.
