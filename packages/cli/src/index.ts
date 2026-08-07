@@ -27,6 +27,7 @@ import { connect } from "./connection.js";
 import { describePolicy, fromFlags, renderPolicyToml, splitList } from "./init.js";
 import { decideDevice, prepare, slugify } from "./onboard.js";
 import { POLICY_FILENAME } from "./policy.js";
+import { interactive, maybeAskForStar } from "./star.js";
 import { reconcile } from "./sync.js";
 import { CLI_VERSION } from "./version.js";
 
@@ -54,6 +55,17 @@ function asJson(): boolean {
 function emit(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
+
+/**
+ * Counts the run, and on the third one asks for a star.
+ *
+ * A hook rather than a line in each action: it fires once per command actually
+ * run, subcommands included, and it fires after the options are parsed, so
+ * `asJson()` is already the truth by the time it is read. `--help` and
+ * `--version` never reach an action and so never count as a run, which is
+ * right — nobody used the tool.
+ */
+program.hook("preAction", () => maybeAskForStar(interactive(asJson())));
 
 // ---------------------------------------------------------------------------
 

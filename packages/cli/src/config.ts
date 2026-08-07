@@ -15,11 +15,30 @@ export interface ProjectEntry {
   root: string;
 }
 
+/**
+ * What is left of the one favour the CLI ever asks for.
+ *
+ * Kept here rather than in `star.ts` because it is state about this machine
+ * like any other, and because a reader who opens `config.json` to see what
+ * Exeora remembers about them deserves to find it in plain sight.
+ */
+export interface StarPrompt {
+  /** Interactive runs seen so far. */
+  runs: number;
+  /** The run number from which the question may be put on screen. */
+  askAt: number;
+  /** How many times it actually was. */
+  asked: number;
+  /** Nothing left to do: already starred, or turned down twice. */
+  done: boolean;
+}
+
 interface Schema {
   gatewayUrl: string;
   deviceId?: string;
   deviceName?: string;
   projects: ProjectEntry[];
+  star: StarPrompt;
 }
 
 const DEFAULT_GATEWAY = "https://exeora.dev";
@@ -29,6 +48,7 @@ export const config = new Conf<Schema>({
   defaults: {
     gatewayUrl: process.env.EXEORA_GATEWAY_URL ?? DEFAULT_GATEWAY,
     projects: [],
+    star: { runs: 0, askAt: 3, asked: 0, done: false },
   },
 });
 
