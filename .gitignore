@@ -14,3 +14,6 @@ dist/
 .DS_Store
 packages/cli/bin/
 apps/web/public/
+
+# Working notes kept locally, not published with the source tree.
+context.md
