@@ -53,6 +53,31 @@ jobs:
             exit 1
           fi
 
+      # The gateway tells every connecting executor which CLI is newest, from a
+      # var in wrangler.jsonc. A release that forgets to bump it ships a CLI
+      # that then reports itself outdated forever, so a stable tag must agree
+      # with the var. Prereleases are exempt: they should not be advertised as
+      # latest, so they must not require the var to point at them.
+      - name: Check the gateway advertises this version
+        run: |
+          version="${GITHUB_REF_NAME#cli-v}"
+          if [[ "$version" == *-* ]]; then
+            echo "Prerelease $version: skipping the LATEST_CLI_VERSION check."
+            exit 0
+          fi
+          advertised="$(
+            node -e "
+              const line = require('fs').readFileSync('apps/gateway/wrangler.jsonc', 'utf8')
+                .split('\n').find((l) => l.includes('LATEST_CLI_VERSION'));
+              console.log(line.match(/\"[0-9]+\.[0-9]+\.[0-9]+[^\"]*\"/)[0].replaceAll('\"', ''));
+            "
+          )"
+          if [ "$version" != "$advertised" ]; then
+            echo "Tag $GITHUB_REF_NAME says $version, but apps/gateway/wrangler.jsonc advertises $advertised." >&2
+            echo "Bump LATEST_CLI_VERSION on main, let it deploy, then retag." >&2
+            exit 1
+          fi
+
       - name: Install
         run: bun install --frozen-lockfile
 
