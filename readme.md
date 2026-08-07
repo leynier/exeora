@@ -2,7 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![npm](https://img.shields.io/npm/v/@exeora/cli.svg)](https://www.npmjs.com/package/@exeora/cli)
-[![CI](https://github.com/leynier/exeora/actions/workflows/ci.yml/badge.svg)](https://github.com/leynier/exeora/actions/workflows/ci.yml)
+[![CI](https://github.com/leynier/exeora/actions/workflows/deploy.yml/badge.svg)](https://github.com/leynier/exeora/actions/workflows/deploy.yml)
 [![GitHub stars](https://img.shields.io/github/stars/leynier/exeora?style=social)](https://github.com/leynier/exeora)
 
 **Secure execution for AI agents, on any machine.**
