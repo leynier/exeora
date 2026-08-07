@@ -19,6 +19,19 @@ export const users = sqliteTable("users", {
 });
 
 /**
+ * Fixed allow-list of people who can open the administration panel.
+ *
+ * Keyed by email rather than user id so a person who deletes and recreates
+ * their account keeps the privilege, and so the list can be seeded before
+ * anyone has signed in. It is only ever written by a migration: there is no
+ * endpoint that adds or removes a row.
+ */
+export const adminUsers = sqliteTable("admin_users", {
+  email: text("email").primaryKey(),
+  createdAt: createdAt(),
+});
+
+/**
  * One row per upstream login. A user who signs in with both GitHub and Google
  * on the same verified email gets two rows and one `users` row.
  */
@@ -224,6 +237,7 @@ export const toolCalls = sqliteTable(
 );
 
 export type User = typeof users.$inferSelect;
+export type AdminUser = typeof adminUsers.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;

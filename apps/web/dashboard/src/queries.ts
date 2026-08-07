@@ -16,6 +16,9 @@ export const keys = {
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
+  adminOverview: ["admin", "overview"] as const,
+  adminUsers: ["admin", "users"] as const,
+  adminUser: (id: string) => ["admin", "users", id] as const,
 
   /**
    * Every audit query at once. React Query matches keys by prefix, so this
@@ -49,6 +52,38 @@ const LIVE = 15_000;
 const URGENT = 3_000;
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
+
+/**
+ * Admin queries stay quiet until `/api/me` confirms the allow-list. That keeps
+ * ordinary accounts from firing requests that the server would 404, and keeps
+ * the nav from flashing an Admin link that never loads.
+ */
+export const useAdminOverview = () => {
+  const me = useMe();
+  return useQuery({
+    queryKey: keys.adminOverview,
+    queryFn: api.adminOverview,
+    enabled: me.data?.isAdmin === true,
+  });
+};
+
+export const useAdminUsers = () => {
+  const me = useMe();
+  return useQuery({
+    queryKey: keys.adminUsers,
+    queryFn: api.adminUsers,
+    enabled: me.data?.isAdmin === true,
+  });
+};
+
+export const useAdminUser = (id: string) => {
+  const me = useMe();
+  return useQuery({
+    queryKey: keys.adminUser(id),
+    queryFn: () => api.adminUser(id),
+    enabled: me.data?.isAdmin === true && id.length > 0,
+  });
+};
 
 export const useDevices = () =>
   useQuery({ queryKey: keys.devices, queryFn: api.devices, refetchInterval: LIVE });

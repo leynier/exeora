@@ -4,27 +4,34 @@ import { and, desc, eq, gt, inArray, isNull, lt, or, type SQL } from "drizzle-or
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  isMetadataDocumentClient,
   parsePolicy,
   rememberAuthorization,
   revokeAccountProjectsExcept,
   setActiveProjectId,
-  stillAuthorized,
 } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
 import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
-import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
 import { ownedProjectIds } from "../oauth/target.js";
+import { admin } from "./admin.js";
+import {
+  deleteAccount,
+  forgetOAuthClient,
+  relayName,
+  revokeAccountGrants,
+  revokeClient,
+  revokeDevice,
+} from "./ops.js";
 
 /**
  * The dashboard and CLI API. Everything here runs behind `apiRoute`, so the
  * OAuth provider has already validated the bearer token; `ctx.props` carries
  * the grant's props and is the only source of the caller's identity.
  *
- * Every query is filtered by that user id. There is no "admin" path and no
- * lookup by id alone, so a guessed device or project id cannot cross accounts.
+ * Every owner query is filtered by that user id. The administration panel is
+ * the one exception: it is gated by an email allow-list and can look across
+ * accounts, but only through the `/api/admin` routes below.
  */
 
 type Variables = { userId: string };
@@ -53,62 +60,30 @@ api.get("/api/me", async (c) => {
     .where(eq(schema.users.id, c.get("userId")))
     .get();
 
-  return user
-    ? c.json({
-        ...user,
-        // The one URL that is the same for every account. Sent from here rather
-        // than written into the dashboard so it follows `EXEORA_BASE_URL` in
-        // development, exactly as every project's own URL does.
-        accountMcpUrl: new URL(ACCOUNT_MCP_ROUTE, c.env.EXEORA_BASE_URL).toString(),
-      })
-    : c.json({ error: "not_found" }, 404);
+  if (!user) return c.json({ error: "not_found" }, 404);
+
+  const adminRow = await db(c.env)
+    .select({ email: schema.adminUsers.email })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.email, user.email))
+    .get();
+
+  return c.json({
+    ...user,
+    isAdmin: adminRow !== undefined,
+    // The one URL that is the same for every account. Sent from here rather
+    // than written into the dashboard so it follows `EXEORA_BASE_URL` in
+    // development, exactly as every project's own URL does.
+    accountMcpUrl: new URL(ACCOUNT_MCP_ROUTE, c.env.EXEORA_BASE_URL).toString(),
+  });
 });
 
 /**
- * Deletes the account and everything hanging off it.
- *
- * The order is the whole design. Machines are cut off first, because a socket
- * that is still open is the only thing here that can still run a command;
- * grants next, so no token outlives the row it was issued against; then the
- * user, whose foreign keys take the devices, projects, authorizations and audit
- * history with them in one statement. Unregistering the clients comes last,
- * because whether a client is still needed is answered by the rows that step
- * has just removed.
- *
- * Not reversible and deliberately not a soft delete: an account someone asked
- * to have deleted is not a record to keep.
+ * Deletes the caller's own account. Same cascade as the admin path; the helper
+ * is shared so the order of operations cannot drift between the two doors.
  */
 api.delete("/api/me", async (c) => {
-  const userId = c.get("userId");
-  const database = db(c.env);
-
-  const devices = await database
-    .select({ id: schema.devices.id })
-    .from(schema.devices)
-    .where(eq(schema.devices.userId, userId))
-    .all();
-
-  for (const device of devices) {
-    // Sequential rather than in parallel: each one is a call into a different
-    // Durable Object, and there is no deadline pressure on a deletion.
-    await c.env.DEVICE_RELAY.getByName(relayName(userId, device.id)).revoke();
-  }
-
-  await revokeGrants(c.env, userId, () => true);
-
-  // Read before the delete, since afterwards there is nothing left to read.
-  const authorized = await database
-    .selectDistinct({ clientId: schema.projectClients.clientId })
-    .from(schema.projectClients)
-    .where(eq(schema.projectClients.userId, userId))
-    .all();
-
-  await database.delete(schema.users).where(eq(schema.users.id, userId)).run();
-
-  for (const client of authorized) {
-    await forgetOAuthClient(c.env, client.clientId);
-  }
-
+  await deleteAccount(c.env, c.get("userId"));
   return c.json({ ok: true });
 });
 
@@ -155,21 +130,8 @@ api.get("/api/devices", async (c) => {
  * references, and the relay refuses a socket whose device has `revokedAt` set.
  */
 api.delete("/api/devices/:id", async (c) => {
-  const result = await db(c.env)
-    .update(schema.devices)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(eq(schema.devices.id, c.req.param("id")), eq(schema.devices.userId, c.get("userId"))),
-    )
-    .run();
-
-  if (result.meta.changes === 0) return c.json({ error: "not_found" }, 404);
-
-  // Close any live socket immediately, rather than waiting for the executor to
-  // notice on its next call.
-  await c.env.DEVICE_RELAY.getByName(relayName(c.get("userId"), c.req.param("id"))).revoke();
-
-  return c.json({ ok: true });
+  const ok = await revokeDevice(c.env, c.get("userId"), c.req.param("id"));
+  return ok ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
 });
 
 /**
@@ -344,70 +306,9 @@ api.get("/api/clients", async (c) => {
  * of them has to be found by the project id we recorded in its metadata.
  */
 api.delete("/api/clients/:id", async (c) => {
-  const userId = c.get("userId");
-
-  const client = await db(c.env)
-    .select()
-    .from(schema.projectClients)
-    .where(
-      and(
-        eq(schema.projectClients.id, c.req.param("id")),
-        eq(schema.projectClients.userId, userId),
-      ),
-    )
-    .get();
-
-  if (!client) return c.json({ error: "not_found" }, 404);
-
-  await db(c.env)
-    .update(schema.projectClients)
-    .set({ revokedAt: new Date() })
-    .where(eq(schema.projectClients.id, client.id))
-    .run();
-
-  await revokeGrantsAfter(c.env, userId, client);
-
-  return c.json({ ok: true });
+  const ok = await revokeClient(c.env, c.get("userId"), c.req.param("id"));
+  return ok ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
 });
-
-/**
- * Drops whatever grants the row that was just revoked was carrying.
- *
- * The two endpoints need different answers because their grants mean different
- * things. A per-project grant names one project and does nothing else, so
- * revoking that project revokes the grant. An account grant names `/mcp`, which
- * every project on that connection shares, so taking one project away must
- * leave it alone; only the last one closes it.
- */
-async function revokeGrantsAfter(
-  env: Env,
-  userId: string,
-  client: typeof schema.projectClients.$inferSelect,
-): Promise<void> {
-  if (client.endpoint === "project") {
-    await revokeGrantsFor(env, userId, client.projectId, client.clientId);
-    return;
-  }
-
-  const remaining = await db(env)
-    .select({ id: schema.projectClients.id })
-    .from(schema.projectClients)
-    .where(
-      and(
-        eq(schema.projectClients.userId, userId),
-        eq(schema.projectClients.clientId, client.clientId),
-        eq(schema.projectClients.endpoint, "account"),
-        isNull(schema.projectClients.revokedAt),
-      ),
-    )
-    .all();
-
-  if (remaining.length > 0) return;
-
-  // Same ending as emptying the list from the account view: with nothing left
-  // to reach, the token goes too.
-  await revokeAccountGrants(env, userId, client.clientId);
-}
 
 /**
  * Permanent deletion, allowed only once a client is revoked.
@@ -659,17 +560,6 @@ api.put("/api/account-clients/projects", zValidator("json", accessInput), async 
   return c.json({ ok: true });
 });
 
-/** Drops the grants a client holds for the account endpoint, and only those. */
-async function revokeAccountGrants(env: Env, userId: string, clientId: string): Promise<void> {
-  await revokeGrants(
-    env,
-    userId,
-    (grant) =>
-      grant.clientId === clientId &&
-      Array.isArray((grant.metadata as { projectIds?: unknown } | null)?.projectIds),
-  );
-}
-
 const activeInput = z.object({
   clientId: z.string().min(1),
   projectId: z.string().min(1).nullable(),
@@ -729,83 +619,6 @@ function latest(a: number | null, b: number | null): number | null {
   if (a === null) return b;
   if (b === null) return a;
   return Math.max(a, b);
-}
-
-/** Drops every grant this user holds for one client on one project. */
-async function revokeGrantsFor(
-  env: Env,
-  userId: string,
-  projectId: string,
-  clientId: string,
-): Promise<void> {
-  await revokeGrants(
-    env,
-    userId,
-    (grant) =>
-      grant.clientId === clientId &&
-      (grant.metadata as { projectId?: string } | null)?.projectId === projectId,
-  );
-}
-
-/**
- * Walks the user's grants and revokes the ones a predicate picks out.
- *
- * The walk is the same whether one client on one project is being revoked or
- * the whole account is going away, and it is the part with the cursor to get
- * right, so it lives once. Only the predicate differs.
- */
-async function revokeGrants(
-  env: Env,
-  userId: string,
-  matches: (grant: { clientId: string; metadata: unknown }) => boolean,
-): Promise<void> {
-  try {
-    let cursor: string | undefined;
-
-    do {
-      const page = await env.OAUTH_PROVIDER.listUserGrants(userId, {
-        ...(cursor ? { cursor } : {}),
-      });
-
-      for (const grant of page.items) {
-        if (!matches(grant)) continue;
-        await env.OAUTH_PROVIDER.revokeGrant(grant.id, userId);
-      }
-
-      cursor = page.cursor;
-    } while (cursor);
-  } catch {
-    // The row is already marked revoked and the MCP endpoint reads that on
-    // every call, so access is closed either way. Failing the request here
-    // would only make the user think it was not.
-  }
-}
-
-/**
- * Unregisters the OAuth client itself, once nothing points at it any more.
- *
- * Clients are global objects: one registration can be shared by several
- * accounts. So this refuses every case that is knowably shared — a metadata
- * document, whose id is a URL published by the client's author; Exeora's own
- * CLI and dashboard; and any client another authorization still names, whoever
- * it belongs to.
- *
- * Call this only after the rows that pointed at the client are gone, since that
- * is what `stillAuthorized` reads.
- */
-async function forgetOAuthClient(env: Env, clientId: string): Promise<void> {
-  try {
-    if (isMetadataDocumentClient(clientId)) return;
-    if (await stillAuthorized(env, clientId)) return;
-
-    const [cli, dashboard] = await Promise.all([getCliClientId(env), getDashboardClientId(env)]);
-    if (clientId === cli || clientId === dashboard) return;
-
-    await env.OAUTH_PROVIDER.deleteClient(clientId);
-  } catch {
-    // The client is already gone from the user's account; a stale registration
-    // in KV is not worth failing the deletion they asked for.
-  }
 }
 
 function toClientView(client: typeof schema.projectClients.$inferSelect) {
@@ -1067,9 +880,11 @@ function parseCallsCursor(raw: string | undefined): { createdAt: number; id: str
 
 // ---------------------------------------------------------------------------
 
-export function relayName(userId: string, deviceId: string): string {
-  return `${userId}:${deviceId}`;
-}
+export { relayName } from "./ops.js";
+
+// Administration panel. Mounted last so its middleware only sees /api/admin/*
+// after the shared auth middleware has already bound the caller.
+api.route("/", admin);
 
 function toDeviceView(device: typeof schema.devices.$inferSelect) {
   return {

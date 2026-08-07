@@ -6,6 +6,8 @@ import { storedToken } from "./auth.js";
 import { ToastProvider } from "./components/toast.js";
 import { AppShell } from "./layouts/AppShell.js";
 import { Activity } from "./pages/Activity.js";
+import { Admin } from "./pages/Admin.js";
+import { AdminUser } from "./pages/AdminUser.js";
 import { Callback } from "./pages/Callback.js";
 import { Clients } from "./pages/Clients.js";
 import { Machines } from "./pages/Machines.js";
@@ -14,6 +16,7 @@ import { ProjectDetail } from "./pages/ProjectDetail.js";
 import { Projects } from "./pages/Projects.js";
 import { Settings } from "./pages/Settings.js";
 import { SignIn } from "./pages/SignIn.js";
+import { useMe } from "./queries.js";
 import "./index.css";
 
 /**
@@ -52,6 +55,17 @@ function RequireAuth({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Keeps the admin pages off the ordinary accounts' UI. The server still 404s
+ * every admin call for non-admins; this is only so the shell never renders.
+ */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const me = useMe();
+  if (me.isLoading) return null;
+  if (me.data?.isAdmin !== true) return <Navigate to="/" replace />;
+  return children;
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
@@ -80,6 +94,22 @@ createRoot(root).render(
               <Route path="clients" element={<Clients />} />
               <Route path="activity" element={<Activity />} />
               <Route path="settings" element={<Settings />} />
+              <Route
+                path="admin"
+                element={
+                  <RequireAdmin>
+                    <Admin />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="admin/users/:userId"
+                element={
+                  <RequireAdmin>
+                    <AdminUser />
+                  </RequireAdmin>
+                }
+              />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

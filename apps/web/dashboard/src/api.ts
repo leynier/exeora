@@ -107,8 +107,54 @@ export interface User {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  /** True when this account's email is on the fixed admin allow-list. */
+  isAdmin: boolean;
   /** The one MCP URL that covers every project a client is given. */
   accountMcpUrl: string;
+}
+
+/** Global totals for the administration overview. */
+export interface AdminOverview {
+  users: number;
+  devices: number;
+  devicesOnline: number;
+  projects: number;
+  clients: number;
+  toolCalls: number;
+  toolCalls24h: number;
+  toolCalls7d: number;
+  /** 0–1 fraction of tool calls in the last 7 days that failed. */
+  errorRate7d: number;
+}
+
+/** One row of the admin user list. */
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  name: string | null;
+  avatarUrl: string | null;
+  createdAt: number;
+  devices: number;
+  devicesOnline: number;
+  projects: number;
+  clients: number;
+  toolCalls: number;
+  lastActivityAt: number | null;
+}
+
+/** Full admin view of one account. */
+export interface AdminUserDetail extends AdminUserSummary {
+  machineList: Device[];
+  projectList: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    deviceId: string;
+    localPath: string;
+    createdAt: number;
+  }>;
+  clientList: Client[];
+  recentCalls: ToolCall[];
 }
 
 /** One project an account-endpoint client was given, as that view lists it. */
@@ -273,6 +319,19 @@ export const api = {
   /** Only accepted once the client is revoked; the server returns 409 if not. */
   deleteClient: (id: string) =>
     request<{ ok: true }>(`/api/clients/${id}/permanently`, { method: "DELETE" }),
+
+  adminOverview: () => request<AdminOverview>("/api/admin/overview"),
+  adminUsers: () => request<AdminUserSummary[]>("/api/admin/users"),
+  adminUser: (id: string) => request<AdminUserDetail>(`/api/admin/users/${id}`),
+
+  adminRevokeDevice: (userId: string, deviceId: string) =>
+    request<{ ok: true }>(`/api/admin/users/${userId}/devices/${deviceId}`, { method: "DELETE" }),
+
+  adminRevokeClient: (userId: string, clientId: string) =>
+    request<{ ok: true }>(`/api/admin/users/${userId}/clients/${clientId}`, { method: "DELETE" }),
+
+  adminDeleteUser: (userId: string) =>
+    request<{ ok: true }>(`/api/admin/users/${userId}`, { method: "DELETE" }),
 };
 
 /** A device is online if it checked in within the heartbeat timeout. */

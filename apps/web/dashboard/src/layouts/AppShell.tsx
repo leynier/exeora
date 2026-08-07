@@ -31,6 +31,7 @@ export function AppShell() {
     { to: "/clients", label: "Clients" },
     { to: "/activity", label: "Activity" },
     { to: "/settings", label: "Settings" },
+    ...(me.data?.isAdmin ? [{ to: "/admin", label: "Admin", end: false }] : []),
   ];
 
   return (
