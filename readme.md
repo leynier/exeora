@@ -279,14 +279,7 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 ## License
 
-This repository is dual-licensed by path. Full text in [`LICENSE`](./LICENSE) and [`LICENSE.NONCOMMERCIAL`](./LICENSE.NONCOMMERCIAL).
-
-| Path | License | What that means |
-|---|---|---|
-| `packages/cli` | MIT | Install it, modify it, use it at work, connect it to exeora.dev. The part that lands on other people's machines has to be free to run. |
-| Everything else | [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) | Read it, fork it, self-host it for personal / hobby use. No commercial use: no paid forks, no selling a hosted Exeora, no running the gateway to support a business. |
-
-Commercial licensing for the gateway and the rest of the platform: `hello@exeora.dev`.
+`packages/cli` is MIT, since it is the part that gets installed on other people's machines. The rest of this repository is not licensed for reuse.
 
 ## Design notes
 
