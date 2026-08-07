@@ -9,12 +9,15 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
     <!-- No status dot. A pulsing dot is the universal gesture for "live", and
          this states a fact about the design rather than a state, so the dot was
          promising something that does not exist. -->
-    <p
-      class="animate-fade-in-up opacity-0-initial bg-accent text-on-accent text-label-md inline-flex items-center gap-2 rounded-pill px-3.5 py-1.5 font-mono uppercase"
+    <a
+      href={GITHUB_URL}
+      target="_blank"
+      rel="noopener"
+      class="animate-fade-in-up opacity-0-initial bg-accent text-on-accent hover:bg-foreground text-label-md inline-flex cursor-pointer items-center gap-2 rounded-pill px-3.5 py-1.5 font-mono uppercase transition-colors duration-fast"
       style="animation-delay: 80ms"
     >
       Open source · audit every line
-    </p>
+    </a>
 
     <h1
       class="animate-fade-in-up opacity-0-initial mt-7 text-[32px] leading-[1.06] font-semibold tracking-[-1.2px] sm:text-[46px] lg:text-[56px]"
