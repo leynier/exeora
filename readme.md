@@ -90,6 +90,8 @@ flowchart TD
 
 On the account URL, three more for multi-project clients: `list_projects` · `get_active_project` · `set_active_project`.
 
+Both URLs also carry `get_agent_prompt`, which reaches no machine: it hands back Exeora's own coding-agent instructions, for a client that arrived without any. See [the agent prompt](#the-agent-prompt).
+
 Full reference: [exeora.dev/docs/tools](https://exeora.dev/docs/tools/).
 
 ## Clients
@@ -103,6 +105,24 @@ Works with any MCP client that speaks Streamable HTTP and OAuth, including:
 - [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 
 Setup per client: [exeora.dev/docs/clients](https://exeora.dev/docs/clients/).
+
+## The agent prompt
+
+Claude Code and Cursor arrive knowing how to be a coding agent. claude.ai, ChatGPT and anything you wired up yourself do not, and it shows: they read files to find a symbol, overwrite a file they only half read, and treat a policy refusal as a problem to route around.
+
+So Exeora ships a coding-agent prompt of its own, on four channels, because clients disagree about which they support:
+
+- **`instructions`** in the MCP handshake. A short brief, arriving with nobody asking.
+- **The `coding_agent` prompt**, for clients with an MCP prompt menu.
+- **The `get_agent_prompt` tool**, for everything else, and for a model that decides to read first.
+- **`exeora prompt`**, for whatever is not an MCP client at all.
+
+```bash
+exeora prompt > AGENTS.md     # or | pbcopy, or into a system prompt box
+exeora prompt --account       # the variant for the account URL
+```
+
+It is about Exeora rather than about your codebase, so keep your own `AGENTS.md` exactly as it is. Read it at [exeora.dev/docs/agent-prompt](https://exeora.dev/docs/agent-prompt/).
 
 ## Install
 
@@ -130,6 +150,7 @@ claude mcp add --transport http exeora <the URL>
 |---|---|
 | Getting started | [exeora.dev/docs](https://exeora.dev/docs/) |
 | Connecting a client | [exeora.dev/docs/clients](https://exeora.dev/docs/clients/) |
+| The agent prompt | [exeora.dev/docs/agent-prompt](https://exeora.dev/docs/agent-prompt/) |
 | What a project allows | [exeora.dev/docs/policy](https://exeora.dev/docs/policy/) |
 | Security model | [exeora.dev/docs/security](https://exeora.dev/docs/security/) |
 | Self-hosting | [docs/SELF-HOSTING.md](./docs/SELF-HOSTING.md) · [site guide](https://exeora.dev/docs/self-hosting/) |

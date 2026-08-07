@@ -3,6 +3,7 @@ import {
   type AccountToolName,
   ExeoraError,
   ProjectRef,
+  serverInstructions,
   TOOL_DEFINITIONS,
   type ToolName,
 } from "@exeora/protocol";
@@ -11,7 +12,14 @@ import { createMcpHandler } from "agents/mcp/server";
 import { approvalCodec } from "./approval.js";
 import type { CallerIdentity } from "./clients.js";
 import "./env.js";
-import { approvalFor, askToConfirm, mcpClientInfo, propsOf, toolResult } from "./mcp.js";
+import {
+  approvalFor,
+  askToConfirm,
+  mcpClientInfo,
+  propsOf,
+  registerAgentPrompt,
+  toolResult,
+} from "./mcp.js";
 
 /**
  * The account endpoint: one URL, `exeora.dev/mcp`, the same for everyone.
@@ -101,8 +109,15 @@ export function createAccountMcpHandler(
 
       const server = new McpServer(
         { name: "exeora", version: "0.2.0" },
-        { requestState: { verify: codec.verify } },
+        {
+          // The account variant, which is the one that has projects to choose
+          // between and so the only one where saying so is worth the tokens.
+          instructions: serverInstructions({ account: true }),
+          requestState: { verify: codec.verify },
+        },
       );
+
+      registerAgentPrompt(server, true);
 
       /**
        * One of the ten, forwarded to whichever machine serves the project this

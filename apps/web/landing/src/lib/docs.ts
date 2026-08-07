@@ -9,6 +9,7 @@ export const DOC_PAGES = [
   { href: "/docs/", label: "Getting started" },
   { href: "/docs/clients/", label: "Connecting a client" },
   { href: "/docs/tools/", label: "Tools" },
+  { href: "/docs/agent-prompt/", label: "The agent prompt" },
   { href: "/docs/policy/", label: "What a project allows" },
   { href: "/docs/cli/", label: "CLI reference" },
   { href: "/docs/plans/", label: "Plans and limits" },

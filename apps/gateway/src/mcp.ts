@@ -1,4 +1,13 @@
-import { ExeoraError, TOOL_DEFINITIONS, type ToolName } from "@exeora/protocol";
+import {
+  AGENT_PROMPT_NAME,
+  AGENT_PROMPT_TITLE,
+  AGENT_PROMPT_TOOL,
+  agentPrompt,
+  ExeoraError,
+  serverInstructions,
+  TOOL_DEFINITIONS,
+  type ToolName,
+} from "@exeora/protocol";
 import {
   acceptedContent,
   CLIENT_INFO_META_KEY,
@@ -108,11 +117,16 @@ export function createProjectMcpHandler(
 
       const server = new McpServer(
         { name: "exeora", version: "0.2.0" },
-        // Without this hook the SDK hands the handler whatever string the
-        // client echoed, unverified, which for state that decides whether a
-        // command runs is the whole vulnerability.
-        { requestState: { verify: codec.verify } },
+        {
+          instructions: serverInstructions(),
+          // Without this hook the SDK hands the handler whatever string the
+          // client echoed, unverified, which for state that decides whether a
+          // command runs is the whole vulnerability.
+          requestState: { verify: codec.verify },
+        },
       );
+
+      registerAgentPrompt(server, false);
 
       // Every tool is forwarded verbatim to the executor, which validates the
       // arguments again against the same schema before touching the disk.
@@ -242,6 +256,43 @@ export function createProjectMcpHandler(
       return server;
     },
     { route: mcpRoute(projectId) },
+  );
+}
+
+/**
+ * Offers Exeora's coding-agent prompt, as a prompt and as a tool.
+ *
+ * Three channels for one text, because clients disagree about which they have.
+ * `instructions` on the handshake is the only one that arrives without anyone
+ * asking, but it is charged to the context of every request, so it carries the
+ * brief and not the whole thing. `prompts/get` is what a person invokes, and it
+ * is the right shape: a prompt is a message the user sends, not a tool result.
+ * The tool is for everything that never grew prompt support, ChatGPT included,
+ * and for the model that decides on its own it should read the manual first.
+ *
+ * Answered here in the Worker, so both work with the machine asleep. Neither is
+ * gated by what the executor advertises: `advertised` describes the tools a CLI
+ * serves, and this is not one of them.
+ */
+export function registerAgentPrompt(server: McpServer, account: boolean): void {
+  const text = agentPrompt({ account });
+
+  server.registerPrompt(
+    AGENT_PROMPT_NAME,
+    { title: AGENT_PROMPT_TITLE, description: AGENT_PROMPT_TOOL.description },
+    () => ({
+      messages: [{ role: "user" as const, content: { type: "text" as const, text } }],
+    }),
+  );
+
+  server.registerTool(
+    AGENT_PROMPT_TOOL.name,
+    {
+      title: AGENT_PROMPT_TOOL.title,
+      description: AGENT_PROMPT_TOOL.description,
+      annotations: { readOnlyHint: AGENT_PROMPT_TOOL.readOnly },
+    },
+    () => toolResult({ prompt: text }),
   );
 }
 

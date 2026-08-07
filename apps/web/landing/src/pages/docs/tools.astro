@@ -2,6 +2,8 @@
 import {
   ACCOUNT_TOOL_DEFINITIONS,
   ACCOUNT_TOOL_NAMES,
+  AGENT_PROMPT_NAME,
+  AGENT_PROMPT_TOOL,
   TOOL_DEFINITIONS,
   TOOL_NAMES,
   toolFields,
@@ -170,4 +172,29 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
       </section>
     ))
   }
+
+  <h2 id="reading-the-manual">Reading the manual</h2>
+
+  <p>
+    One more, on both URLs, taking no arguments and reaching no machine.
+  </p>
+
+  <section>
+    <h2 id={AGENT_PROMPT_TOOL.name}>
+      <code>{AGENT_PROMPT_TOOL.name}</code>
+    </h2>
+
+    <p>
+      <strong>{AGENT_PROMPT_TOOL.title}</strong>
+      <span class="text-foreground-faint"> · read only</span>
+    </p>
+
+    <p>{AGENT_PROMPT_TOOL.description}</p>
+
+    <p>
+      It returns a constant from the gateway, so it answers with the machine asleep and no project
+      policy applies to it. The same text arrives as the <code>{AGENT_PROMPT_NAME}</code> prompt, and
+      a shorter form of it in the handshake. See <a href="/docs/agent-prompt/">the agent prompt</a>.
+    </p>
+  </section>
 </Doc>

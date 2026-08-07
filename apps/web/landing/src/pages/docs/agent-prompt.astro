@@ -1,0 +1,146 @@
+---
+import { AGENT_PROMPT_NAME, AGENT_PROMPT_TOOL, agentPrompt } from "@exeora/protocol";
+import Doc from "../../layouts/Doc.astro";
+
+/**
+ * The agent prompt, read from the package that serves it rather than pasted.
+ *
+ * The same reason the tool reference is generated: a prompt written out again
+ * here is the copy that goes quietly out of date, and this one has four other
+ * readers already. Publishing it is a side effect of shipping it.
+ */
+
+const project = agentPrompt();
+const account = agentPrompt({ account: true });
+---
+
+<Doc
+  title="The agent prompt"
+  description="Exeora's own instructions for behaving like a coding agent, and the four ways a client can get them."
+  canonicalPath="/docs/agent-prompt/"
+>
+  <p>
+    Exeora hands a client ten tools and a project directory. What it cannot hand over is the
+    judgement to use them well: search before reading, edit rather than overwrite, start a dev server
+    with <code>start_command</code> instead of watching <code>run_command</code> time out, and stop
+    when the project's policy says no rather than looking for another way in.
+  </p>
+
+  <p>
+    Claude Code and Cursor arrive with a coding-agent prompt of their own and need none of this.
+    claude.ai, ChatGPT, MCP Inspector and anything you have wired up yourself do not. So Exeora
+    ships one.
+  </p>
+
+  <h2 id="how">How a client gets it</h2>
+
+  <p>
+    Four routes, because clients disagree about which they support. You do not have to choose: they
+    all serve the same text, and taking it twice costs nothing.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Route</th>
+        <th>Who it is for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>instructions</code></td>
+        <td>
+          Every client. A short brief travels in the MCP handshake, with no one asking for it. It is
+          held for the whole session, so it carries the rules that cannot wait rather than the whole
+          prompt.
+        </td>
+      </tr>
+      <tr>
+        <td><code>{AGENT_PROMPT_NAME}</code></td>
+        <td>
+          Clients with MCP prompt support, where this appears in the slash-command or prompt menu.
+          Invoke it once at the start of a session.
+        </td>
+      </tr>
+      <tr>
+        <td><code>{AGENT_PROMPT_TOOL.name}</code></td>
+        <td>
+          Everything that never grew prompt support, and any model that decides on its own to read
+          the manual first. An ordinary tool call, answered by the gateway.
+        </td>
+      </tr>
+      <tr>
+        <td><code>exeora prompt</code></td>
+        <td>
+          Anything that is not an MCP client at all: a custom GPT with a system prompt box, an agent
+          framework, a project's own <code>AGENTS.md</code>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The first three are answered inside the gateway and never reach your machine, so they work with
+    the CLI stopped and no project policy applies to them.
+  </p>
+
+  <pre>{`# straight into a file, or into the clipboard
+exeora prompt > AGENTS.md
+exeora prompt | pbcopy
+
+# the account URL reaches several projects, so its prompt says how to choose
+exeora prompt --account`}</pre>
+
+  <h2 id="prompt">The prompt</h2>
+
+  <p>
+    This is the text itself, read at build time from the same package the gateway and the CLI read,
+    so this page cannot describe a prompt that is not the one being served.
+  </p>
+
+  <div class="flex items-center justify-between gap-4">
+    <p class="text-body-md text-foreground-faint">
+      For a project URL, <code>https://exeora.dev/p/&lt;id&gt;/mcp</code>
+    </p>
+    <button
+      type="button"
+      data-copy-target="prompt-project"
+      class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+    >
+      <span data-copy-label>Copy</span>
+    </button>
+  </div>
+
+  <pre id="prompt-project" class="max-h-[32rem] overflow-y-auto whitespace-pre-wrap">{project}</pre>
+
+  <div class="flex items-center justify-between gap-4">
+    <p class="text-body-md text-foreground-faint">
+      For the account URL, <code>https://exeora.dev/mcp</code>
+    </p>
+    <button
+      type="button"
+      data-copy-target="prompt-account"
+      class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+    >
+      <span data-copy-label>Copy</span>
+    </button>
+  </div>
+
+  <pre id="prompt-account" class="max-h-[32rem] overflow-y-auto whitespace-pre-wrap">{account}</pre>
+
+  <h2 id="your-own">Your own instructions come first</h2>
+
+  <p>
+    This prompt is about Exeora: what the tools do, what the limits are, and what a refusal means.
+    It says nothing about your codebase, and it is not trying to. Keep your <code>AGENTS.md</code> or
+    <code>CLAUDE.md</code> exactly as it is and let this sit alongside it. Where they disagree about
+    style or process, yours wins.
+  </p>
+
+  <p>
+    The one part that is not advice is the section on policy. An agent that treats
+    <code>FORBIDDEN</code> as a problem to solve defeats the reason the setting exists, so the prompt
+    is blunt about it: a refusal is an answer, and the run stops there. See{" "}
+    <a href="/docs/policy/">what a project allows</a> for what does the refusing.
+  </p>
+</Doc>

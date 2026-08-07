@@ -1,5 +1,11 @@
 import { createExecutionContext } from "cloudflare:test";
-import { ExeoraError, TOOL_NAMES } from "@exeora/protocol";
+import {
+  AGENT_PROMPT_NAME,
+  AGENT_PROMPT_TOOL,
+  agentPrompt,
+  ExeoraError,
+  TOOL_NAMES,
+} from "@exeora/protocol";
 import {
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
@@ -126,11 +132,13 @@ async function payload(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("tools/list", () => {
-  it("advertises exactly the six tools of the contract", async () => {
+  it("advertises exactly the contract, plus the one the gateway answers itself", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
     const tools = (body.result as { tools: Array<{ name: string }> }).tools;
 
-    expect(tools.map((tool) => tool.name).sort()).toEqual([...TOOL_NAMES].sort());
+    expect(tools.map((tool) => tool.name).sort()).toEqual(
+      [...TOOL_NAMES, AGENT_PROMPT_TOOL.name].sort(),
+    );
   });
 
   it("derives each JSON Schema from the shared zod definition", async () => {
@@ -148,6 +156,82 @@ describe("tools/list", () => {
     expect(tools.find((tool) => tool.name === "run_command")?.annotations).toMatchObject({
       readOnlyHint: false,
     });
+  });
+});
+
+/**
+ * Exeora's own coding-agent guidance, on the three channels that carry it.
+ *
+ * All three are answered inside the Worker, which is the property worth
+ * asserting: an agent that has just connected should be able to read how to
+ * behave here before, and regardless of whether, any machine is awake.
+ */
+describe("the agent prompt", () => {
+  it("hands the brief to every client in the handshake", async () => {
+    const body = await payload(
+      await post({
+        jsonrpc: "2.0",
+        id: 30,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "inspector", version: "2.1.0" },
+        },
+      }),
+    );
+
+    const result = body.result as { instructions?: string; capabilities?: Record<string, unknown> };
+
+    expect(result.instructions).toContain("PATH_ESCAPE");
+    // The per-project endpoint has no project to choose between, so it must not
+    // spend the handshake explaining how.
+    expect(result.instructions).not.toContain("list_projects");
+    // The handshake is also where a client decides whether prompts/list is
+    // worth sending. Registering a prompt nobody is told about serves nobody.
+    expect(result.capabilities).toHaveProperty("prompts");
+  });
+
+  it("offers the full prompt to clients that speak prompts", async () => {
+    const listed = await payload(await post({ jsonrpc: "2.0", id: 31, method: "prompts/list" }));
+    const prompts = (listed.result as { prompts: Array<{ name: string }> }).prompts;
+    expect(prompts.map((prompt) => prompt.name)).toContain(AGENT_PROMPT_NAME);
+
+    const got = await payload(
+      await post({
+        jsonrpc: "2.0",
+        id: 32,
+        method: "prompts/get",
+        params: { name: AGENT_PROMPT_NAME },
+      }),
+    );
+
+    const messages = (got.result as { messages: Array<{ content: { text: string } }> }).messages;
+    expect(messages[0]?.content.text).toBe(agentPrompt());
+  });
+
+  it("serves the same text as a tool, without troubling the executor", async () => {
+    let dispatched = false;
+
+    const body = await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 33,
+          method: "tools/call",
+          params: { name: AGENT_PROMPT_TOOL.name, arguments: {} },
+        },
+        {
+          dispatch: async () => {
+            dispatched = true;
+            return {};
+          },
+        },
+      ),
+    );
+
+    expect(dispatched).toBe(false);
+    expect(body.result).toMatchObject({ structuredContent: { prompt: agentPrompt() } });
   });
 });
 

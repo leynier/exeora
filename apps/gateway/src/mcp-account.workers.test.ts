@@ -1,5 +1,11 @@
 import { createExecutionContext } from "cloudflare:test";
-import { ACCOUNT_TOOL_NAMES, TOOL_NAMES } from "@exeora/protocol";
+import {
+  ACCOUNT_TOOL_NAMES,
+  AGENT_PROMPT_NAME,
+  AGENT_PROMPT_TOOL,
+  agentPrompt,
+  TOOL_NAMES,
+} from "@exeora/protocol";
 import {
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
@@ -108,17 +114,17 @@ function toolsOf(body: Record<string, unknown>) {
 }
 
 describe("tools/list", () => {
-  it("offers the ten executor tools and the three that choose between projects", async () => {
+  it("offers the executor tools, the three that choose between projects, and the prompt", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
 
     expect(
       toolsOf(body)
         .map((tool) => tool.name)
         .sort(),
-    ).toEqual([...TOOL_NAMES, ...ACCOUNT_TOOL_NAMES].sort());
+    ).toEqual([...TOOL_NAMES, ...ACCOUNT_TOOL_NAMES, AGENT_PROMPT_TOOL.name].sort());
   });
 
-  it("keeps the management tools when the executor tools are narrowed", async () => {
+  it("keeps the gateway's own tools when the executor tools are narrowed", async () => {
     const body = await payload(
       await post(
         { jsonrpc: "2.0", id: 1, method: "tools/list" },
@@ -130,7 +136,7 @@ describe("tools/list", () => {
       toolsOf(body)
         .map((tool) => tool.name)
         .sort(),
-    ).toEqual([...ACCOUNT_TOOL_NAMES, "read_file"].sort());
+    ).toEqual([...ACCOUNT_TOOL_NAMES, AGENT_PROMPT_TOOL.name, "read_file"].sort());
   });
 
   it("adds an optional project argument to every executor tool", async () => {
@@ -156,6 +162,69 @@ describe("tools/list", () => {
       | undefined;
 
     expect(listProjects?.inputSchema.properties ?? {}).not.toHaveProperty("project");
+  });
+});
+
+/**
+ * The same guidance as the per-project endpoint, plus the part only this one
+ * needs: with several projects in reach, something has to say which.
+ */
+describe("the agent prompt", () => {
+  it("explains choosing a project, which the per-project endpoint cannot need", async () => {
+    const body = await payload(
+      await post({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "inspector", version: "2.1.0" },
+        },
+      }),
+    );
+
+    expect((body.result as { instructions?: string }).instructions).toContain("set_active_project");
+  });
+
+  it("serves the account variant on both the prompt and the tool", async () => {
+    const expected = agentPrompt({ account: true });
+
+    const got = await payload(
+      await post({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "prompts/get",
+        params: { name: AGENT_PROMPT_NAME },
+      }),
+    );
+    const messages = (got.result as { messages: Array<{ content: { text: string } }> }).messages;
+    expect(messages[0]?.content.text).toBe(expected);
+
+    const called = await payload(
+      await post({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: AGENT_PROMPT_TOOL.name, arguments: {} },
+      }),
+    );
+    expect(called.result).toMatchObject({ structuredContent: { prompt: expected } });
+  });
+
+  /**
+   * The one thing that could go wrong quietly. Every other tool here takes a
+   * `project`, and a prompt that took one would imply the text differs per
+   * project, which it does not.
+   */
+  it("takes no project argument, having nothing to do with one", async () => {
+    const body = await payload(await post({ jsonrpc: "2.0", id: 4, method: "tools/list" }));
+
+    const tool = toolsOf(body).find((candidate) => candidate.name === AGENT_PROMPT_TOOL.name) as
+      | { inputSchema: { properties?: Record<string, unknown> } }
+      | undefined;
+
+    expect(tool?.inputSchema.properties ?? {}).not.toHaveProperty("project");
   });
 });
 

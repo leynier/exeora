@@ -46,6 +46,10 @@ import Doc from "../../layouts/Doc.astro";
         <td>Write an <code>exeora.toml</code> restricting what agents may do in a directory</td>
       </tr>
       <tr>
+        <td><code>prompt</code></td>
+        <td>Print Exeora's coding-agent prompt, for a client that cannot fetch it itself</td>
+      </tr>
+      <tr>
         <td><code>status</code></td>
         <td>Show registration, gateway and projects</td>
       </tr>
@@ -108,6 +112,21 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     <code>--tools</code> takes the same comma-separated form. See{" "}
     <a href="/docs/policy/">what a project allows</a> for what the values mean.
+  </p>
+
+  <h2>prompt</h2>
+
+  <p>
+    Writes the prompt to stdout and nothing else, so it pipes. Every MCP client already receives this
+    over the wire; the command is for the ones that never ask. Pass <code>--account</code> for the
+    variant that explains choosing between projects.
+  </p>
+
+  <pre>exeora prompt > AGENTS.md</pre>
+
+  <p>
+    See <a href="/docs/agent-prompt/">the agent prompt</a> for what it says and the other three ways
+    to get it.
   </p>
 
   <h2>Machine-readable output</h2>
