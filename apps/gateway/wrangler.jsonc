@@ -87,7 +87,7 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.3.0"
+    "LATEST_CLI_VERSION": "0.4.1"
   },
 
   // One Worker owns the whole hostname now, so a single route replaces the
