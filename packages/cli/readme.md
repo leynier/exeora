@@ -85,4 +85,4 @@ The refresh token goes to the OS keychain. Machines with no secret service, whic
 
 `EXEORA_GATEWAY_URL` points the CLI at a different gateway, which is only useful when working on Exeora itself. It wins over the stored value without overwriting it.
 
-MIT licensed. <https://exeora.dev>
+AGPL-3.0-only. Source: <https://github.com/leynier/exeora>. Site: <https://exeora.dev>

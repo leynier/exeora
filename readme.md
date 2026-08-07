@@ -1,5 +1,9 @@
 # Exeora
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/@exeora/cli.svg)](https://www.npmjs.com/package/@exeora/cli)
+[![CI](https://github.com/leynier/exeora/actions/workflows/ci.yml/badge.svg)](https://github.com/leynier/exeora/actions/workflows/ci.yml)
+
 Secure execution for AI agents, on any machine.
 
 Connect any MCP client (Claude, ChatGPT, Cursor, VS Code, Claude Code) to the development environment on any machine you can run a command on: a server, a VM, a build box, a Raspberry Pi, or your own laptop. No port to open, no source code to upload, no tunnel to wire up.
@@ -243,6 +247,8 @@ The hostname also needs a proxied DNS record, or Cloudflare never routes it to t
 
 The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` the Worker actually reads.
 
+**Administrators.** On a fresh database the first account to sign in becomes the admin (the panel at `/dashboard/` that can see every account). To name the operators ahead of time instead, set the Worker var `ADMIN_EMAILS` to a comma-separated list (for example `you@example.com,ops@example.com`). Matching addresses are promoted when they register; everyone else stays ordinary. It is a var, not a secret.
+
 ### Deploying by hand
 
 ```bash
@@ -267,7 +273,7 @@ The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, ch
 
 A stable tag must also agree with `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish otherwise, so bumping the var and letting it deploy is part of the release, not an afterthought. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
 
-No provenance attestation: npm only generates one when the source repository is public, and this one is not. The published manifest carries no `repository` field for the same reason, since a link nobody can open is worse than no link. Everything points at `https://exeora.dev` instead.
+Publishing uses npm provenance over OIDC (`npm publish --provenance`). The package points at this repository.
 
 Releases are deliberately not tied to `main`: the gateway deploys on every push, the CLI ships when a tag says so.
 
@@ -279,7 +285,11 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 ## License
 
-`packages/cli` is MIT, since it is the part that gets installed on other people's machines. The rest of this repository is not licensed for reuse.
+[AGPL-3.0-only](./LICENSE). The whole repository, including the CLI.
+
+That is a strong copyleft license: if you modify Exeora and offer it as a network service, you must offer the corresponding source to the users of that service. See the license text for the precise terms. Vendored third-party notices for the CLI live in [`packages/cli/LICENSE`](./packages/cli/LICENSE).
+
+Security reports: see [`SECURITY.md`](./SECURITY.md).
 
 ## Design notes
 

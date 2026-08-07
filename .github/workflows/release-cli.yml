@@ -32,8 +32,8 @@ jobs:
 
       # Both runtimes: bun installs and builds as everywhere else in this repo,
       # npm publishes. Trusted publishing needs npm 11.5.1+, which is newer
-      # than what ships with Node 22, hence the explicit upgrade. OIDC works
-      # from a private repository; provenance does not, so it stays off.
+      # than what ships with Node 22, hence the explicit upgrade. Provenance
+      # needs a public repository and the same OIDC token.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -85,7 +85,7 @@ jobs:
         run: bun run --cwd packages/cli build
 
       - name: Publish
-        run: npm publish
+        run: npm publish --provenance --access public
         working-directory: packages/cli
 
   release:

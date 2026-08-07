@@ -12,9 +12,16 @@
     "cursor"
   ],
   "homepage": "https://exeora.dev",
-  "bugs": "https://exeora.dev",
-  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/leynier/exeora/issues"
+  },
+  "license": "AGPL-3.0-only",
   "author": "Leynier Gutiérrez González <leynier41@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leynier/exeora.git",
+    "directory": "packages/cli"
+  },
   "type": "module",
   "bin": {
     "exeora": "./bin/index.mjs"
