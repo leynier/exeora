@@ -10,7 +10,7 @@ import {
 } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { api, pruneToolCalls, relayName } from "./api/index.js";
+import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
 import { serveAssets } from "./assets.js";
 import {
   type AccountProject,
@@ -849,14 +849,17 @@ export default {
   },
 
   /**
-   * Nightly housekeeping. Neither half belongs to a request: the audit log is
-   * written by tool calls that have long since answered, and expired grants are
-   * only noticed by whoever tries to use one.
+   * Nightly housekeeping. None of this belongs to a request: the audit log is
+   * written by tool calls that have long since answered, the usage rollup is
+   * derived from it before the prune, and expired grants are only noticed by
+   * whoever tries to use one.
    *
-   * The two are independent, so a failure in one must not skip the other.
+   * Rollup prefers to run first so it still sees rows the prune is about to
+   * drop, but a failure there must not skip the prune: retention is the job
+   * that bounds an unbounded table. The OAuth purge is independent of both.
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(pruneToolCalls(env));
+    ctx.waitUntil(runNightlyHousekeeping(env));
     ctx.waitUntil(provider.purgeExpiredData(env).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

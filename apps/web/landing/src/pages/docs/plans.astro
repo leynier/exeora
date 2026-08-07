@@ -1,0 +1,78 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Plans and limits"
+  description="What each account plan allows, and what happens when a limit is reached."
+  canonicalPath="/docs/plans/"
+>
+  <p>
+    Every account is on a plan. Plans decide how many machines and projects you may keep, and how
+    long the audit log is retained. There is no self-serve billing yet: the free plan is the default
+    for everyone, and moving someone onto Pro is a manual change until payments exist.
+  </p>
+
+  <h2>Current plans</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Plan</th>
+        <th>Live machines</th>
+        <th>Projects</th>
+        <th>Audit retention</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>free</code></td>
+        <td>10</td>
+        <td>25</td>
+        <td>90 days</td>
+      </tr>
+      <tr>
+        <td><code>pro</code></td>
+        <td>Unlimited</td>
+        <td>Unlimited</td>
+        <td>365 days</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The free caps are deliberately generous: they are there so the enforcement path is real, not to
+    constrain ordinary personal use. They will tighten when billing lands.
+  </p>
+
+  <h2>What counts</h2>
+
+  <p>
+    <strong>Machines</strong> count only while they are live. Revoking a machine from the dashboard
+    frees its slot immediately; the row stays for the audit trail, but it no longer consumes the
+    plan. Deleting a revoked machine is permanent and also frees nothing extra, because the slot was
+    already free.
+  </p>
+
+  <p>
+    <strong>Projects</strong> count every project on the account. Re-registering a project that
+    already exists under the same slug (what <code>exeora connect</code> does on a machine that is
+    already known) does not consume a new slot.
+  </p>
+
+  <h2>When a limit is hit</h2>
+
+  <p>
+    Registering one machine or project too many returns a clear error from the CLI and a{" "}
+    <code>403</code> with <code>error: "plan_limit"</code> from the API. The dashboard Settings page
+    shows the current plan and how much of each cap is in use.
+  </p>
+
+  <h2>Usage</h2>
+
+  <p>
+    Tool calls are rolled up once a night into a per-day counter that survives the audit-log prune.
+    Settings shows the total for the current UTC month. The rollup is metering, not a billable meter:
+    nothing is charged against it today.
+  </p>
+</Doc>

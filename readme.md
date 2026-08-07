@@ -117,6 +117,17 @@ Who gets asked depends on the client:
 
 That second path carries no signature and no hash of the arguments, and does not need either: the question never leaves the relay, which holds the arguments itself for the whole exchange. There is nothing in flight to forge. It is the structurally safer of the two, and it exists because the first one reaches almost nobody today.
 
+## Plans and limits
+
+Every account is on a plan. Plans cap how many live machines and projects an account may keep, and how long the audit log is retained. There is no billing yet: everyone starts on `free`, and moving someone onto `pro` is a manual change.
+
+| Plan | Live machines | Projects | Audit retention |
+|---|---:|---:|---:|
+| `free` | 10 | 25 | 90 days |
+| `pro` | unlimited | unlimited | 365 days |
+
+The free caps are deliberately generous so ordinary personal use is unaffected while the enforcement path stays real. Revoking a machine frees its slot; re-registering an existing project slug does not consume a new one. The dashboard Settings page shows the current plan and usage; the CLI prints a clear error when a cap is hit. See the [plans docs](https://exeora.dev/docs/plans/).
+
 ## Install
 
 ```bash

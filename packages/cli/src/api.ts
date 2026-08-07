@@ -25,10 +25,23 @@ export interface ProjectView {
   createdAt: number;
 }
 
+export interface PlanLimits {
+  maxDevices: number | null;
+  maxProjects: number | null;
+  retentionDays: number;
+}
+
 export interface UserView {
   id: string;
   email: string;
   name: string | null;
+  plan?: "free" | "pro";
+  limits?: PlanLimits;
+  usage?: {
+    devices: number;
+    projects: number;
+    toolCallsMonth: number;
+  };
 }
 
 /** One row of the audit log. Never carries a tool's arguments or its output. */
@@ -63,11 +76,44 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `${init.method ?? "GET"} ${path} failed (${response.status}): ${detail.slice(0, 200)}`,
-    );
+    throw new Error(formatGatewayError(init.method ?? "GET", path, response.status, detail));
   }
   return (await response.json()) as T;
+}
+
+/**
+ * Turn a gateway error body into something a person can act on.
+ *
+ * Most failures stay as the status and a short body slice. `plan_limit` is
+ * special because the CLI is the place someone hits the cap first (registering
+ * a machine or a project), and dumping JSON at them is not an answer.
+ */
+function formatGatewayError(method: string, path: string, status: number, detail: string): string {
+  try {
+    const body = JSON.parse(detail) as {
+      error?: string;
+      limit?: string;
+      max?: number;
+      plan?: string;
+    };
+    if (body.error === "plan_limit" && body.limit && typeof body.max === "number") {
+      if (body.limit === "devices") {
+        return (
+          `Your ${body.plan ?? "current"} plan allows ${body.max} live machines. ` +
+          "Revoke one from the dashboard before registering another."
+        );
+      }
+      if (body.limit === "projects") {
+        return (
+          `Your ${body.plan ?? "current"} plan allows ${body.max} projects. ` +
+          "Remove one from the dashboard before adding another."
+        );
+      }
+    }
+  } catch {
+    // Body was not JSON; fall through to the generic form.
+  }
+  return `${method} ${path} failed (${status}): ${detail.slice(0, 200)}`;
 }
 
 export const gateway = {

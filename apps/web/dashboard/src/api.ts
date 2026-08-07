@@ -102,15 +102,30 @@ export interface Client {
   revokedAt: number | null;
 }
 
+/** Caps that come with the account's plan. Null means no cap. */
+export interface PlanLimits {
+  maxDevices: number | null;
+  maxProjects: number | null;
+  retentionDays: number;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  /** Which plan this account is on. There is no self-serve upgrade yet. */
+  plan: "free" | "pro";
   /** True when this account's email is on the fixed admin allow-list. */
   isAdmin: boolean;
   /** The one MCP URL that covers every project a client is given. */
   accountMcpUrl: string;
+  limits: PlanLimits;
+  usage: {
+    devices: number;
+    projects: number;
+    toolCallsMonth: number;
+  };
 }
 
 /** Global totals for the administration overview. */

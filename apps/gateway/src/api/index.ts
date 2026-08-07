@@ -1,6 +1,21 @@
 import { CommandPolicy, HEARTBEAT_TIMEOUT_MS } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, gt, inArray, isNull, lt, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+  sum,
+} from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -14,6 +29,7 @@ import "../env.js";
 import { newId } from "../ids.js";
 import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
 import { ownedProjectIds } from "../oauth/target.js";
+import { isPlanId, limitsFor, PLAN_IDS, type PlanId, retentionTiers } from "../plans.js";
 import { admin } from "./admin.js";
 import {
   deleteAccount,
@@ -49,32 +65,67 @@ api.use("/api/*", async (c, next) => {
 api.get("/api/health", (c) => c.json({ ok: true, service: "exeora-gateway" }));
 
 api.get("/api/me", async (c) => {
+  const userId = c.get("userId");
   const user = await db(c.env)
     .select({
       id: schema.users.id,
       email: schema.users.email,
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
+      plan: schema.users.plan,
     })
     .from(schema.users)
-    .where(eq(schema.users.id, c.get("userId")))
+    .where(eq(schema.users.id, userId))
     .get();
 
   if (!user) return c.json({ error: "not_found" }, 404);
 
-  const adminRow = await db(c.env)
+  const database = db(c.env);
+  const plan = normalizePlan(user.plan);
+
+  const adminRow = await database
     .select({ email: schema.adminUsers.email })
     .from(schema.adminUsers)
     .where(eq(schema.adminUsers.email, user.email))
     .get();
 
+  const [deviceCount, projectCount, monthCalls] = await Promise.all([
+    database
+      .select({ n: count() })
+      .from(schema.devices)
+      .where(and(eq(schema.devices.userId, userId), isNull(schema.devices.revokedAt)))
+      .get(),
+    database
+      .select({ n: count() })
+      .from(schema.projects)
+      .where(eq(schema.projects.userId, userId))
+      .get(),
+    database
+      .select({ n: sum(schema.usageDaily.toolCalls) })
+      .from(schema.usageDaily)
+      .where(and(eq(schema.usageDaily.userId, userId), gte(schema.usageDaily.day, monthStartUtc())))
+      .get(),
+  ]);
+
+  const limits = limitsFor(plan);
+
   return c.json({
-    ...user,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    plan,
     isAdmin: adminRow !== undefined,
     // The one URL that is the same for every account. Sent from here rather
     // than written into the dashboard so it follows `EXEORA_BASE_URL` in
     // development, exactly as every project's own URL does.
     accountMcpUrl: new URL(ACCOUNT_MCP_ROUTE, c.env.EXEORA_BASE_URL).toString(),
+    limits,
+    usage: {
+      devices: deviceCount?.n ?? 0,
+      projects: projectCount?.n ?? 0,
+      toolCallsMonth: Number(monthCalls?.n ?? 0),
+    },
   });
 });
 
@@ -99,18 +150,42 @@ const deviceInput = z.object({
 
 api.post("/api/devices", zValidator("json", deviceInput), async (c) => {
   const body = c.req.valid("json");
+  const userId = c.get("userId");
+  const plan = await planOf(c.env, userId);
+  const limits = limitsFor(plan);
   const id = newId("dev");
+  const cliVersion = body.cliVersion ?? null;
 
-  await db(c.env)
-    .insert(schema.devices)
-    .values({
-      id,
-      userId: c.get("userId"),
-      name: body.name,
-      platform: body.platform,
-      cliVersion: body.cliVersion ?? null,
-    })
-    .run();
+  // Cap and insert are one statement when limited, so two concurrent registers
+  // cannot both pass a separate count and both land. SQLite serialises writers;
+  // the WHERE sees the other insert or it does not, never a stale mid-count.
+  if (limits.maxDevices !== null) {
+    const result = await db(c.env).run(
+      sql`
+          INSERT INTO devices (id, user_id, name, platform, cli_version)
+          SELECT ${id}, ${userId}, ${body.name}, ${body.platform}, ${cliVersion}
+          WHERE (
+            SELECT COUNT(*) FROM devices
+            WHERE user_id = ${userId} AND revoked_at IS NULL
+          ) < ${limits.maxDevices}
+        `,
+    );
+
+    if ((result.meta.changes ?? 0) === 0) {
+      return c.json({ error: "plan_limit", limit: "devices", max: limits.maxDevices, plan }, 403);
+    }
+  } else {
+    await db(c.env)
+      .insert(schema.devices)
+      .values({
+        id,
+        userId,
+        name: body.name,
+        platform: body.platform,
+        cliVersion,
+      })
+      .run();
+  }
 
   return c.json({ id, name: body.name, platform: body.platform }, 201);
 });
@@ -202,16 +277,41 @@ api.post("/api/projects", zValidator("json", projectInput), async (c) => {
   const id = existing?.id ?? newId("prj");
 
   if (existing) {
+    // Re-registering an existing slug does not consume a new slot.
     await db(c.env)
       .update(schema.projects)
       .set({ deviceId: body.deviceId, name: body.name, localPath: body.localPath })
       .where(eq(schema.projects.id, id))
       .run();
   } else {
-    await db(c.env)
-      .insert(schema.projects)
-      .values({ id, userId, ...body })
-      .run();
+    const plan = await planOf(c.env, userId);
+    const limits = limitsFor(plan);
+
+    // Same atomic pattern as devices: the cap lives in the INSERT, not in a
+    // prior SELECT that a second request could race.
+    if (limits.maxProjects !== null) {
+      const result = await db(c.env).run(
+        sql`
+            INSERT INTO projects (id, user_id, device_id, name, slug, local_path)
+            SELECT ${id}, ${userId}, ${body.deviceId}, ${body.name}, ${body.slug}, ${body.localPath}
+            WHERE (
+              SELECT COUNT(*) FROM projects WHERE user_id = ${userId}
+            ) < ${limits.maxProjects}
+          `,
+      );
+
+      if ((result.meta.changes ?? 0) === 0) {
+        return c.json(
+          { error: "plan_limit", limit: "projects", max: limits.maxProjects, plan },
+          403,
+        );
+      }
+    } else {
+      await db(c.env)
+        .insert(schema.projects)
+        .values({ id, userId, ...body })
+        .run();
+    }
   }
 
   return c.json({ id, slug: body.slug, name: body.name }, existing ? 200 : 201);
@@ -807,9 +907,6 @@ api.post(
   },
 );
 
-/** How long an audit row is kept. */
-const CALLS_RETENTION_DAYS = 90;
-
 /**
  * Rows deleted per statement, and statements per run.
  *
@@ -821,38 +918,165 @@ const PRUNE_BATCH = 1_000;
 const PRUNE_MAX_BATCHES = 20;
 
 /**
- * Drops audit rows past the retention window.
+ * Drops audit rows past each plan's retention window.
  *
- * Called from the scheduled handler rather than from a request. Nothing else
- * bounds this table: every tool call writes one row, and an agent working
- * through a repository writes hundreds a minute.
+ * Walked per tier rather than with one global cutoff, so a Pro account keeps
+ * a year of history while Free keeps ninety days. Unknown plan strings are
+ * treated as free here, matching `limitsFor`: a hand-edited typo must not
+ * leave an account's audit trail unpruned forever. Called from the scheduled
+ * handler rather than from a request. Nothing else bounds this table: every
+ * tool call writes one row, and an agent working through a repository writes
+ * hundreds a minute.
  */
 export async function pruneToolCalls(env: Pick<Env, "DB">): Promise<number> {
-  const cutoff = new Date(Date.now() - CALLS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   const database = db(env);
-
   let deleted = 0;
 
-  for (let batch = 0; batch < PRUNE_MAX_BATCHES; batch += 1) {
-    // A subquery with its own LIMIT, because SQLite only supports
-    // `DELETE ... LIMIT` when it is compiled with an option D1 does not enable.
-    const doomed = database
-      .select({ id: schema.toolCalls.id })
-      .from(schema.toolCalls)
-      .where(lt(schema.toolCalls.createdAt, cutoff))
-      .limit(PRUNE_BATCH);
+  for (const tier of retentionTiers()) {
+    const cutoff = new Date(Date.now() - tier.retentionDays * 24 * 60 * 60 * 1000);
+    // Free is the default bucket: anyone not on a recognised longer plan.
+    const onTier =
+      tier.plan === "free"
+        ? or(eq(schema.users.plan, "free"), notInArray(schema.users.plan, [...PLAN_IDS]))
+        : eq(schema.users.plan, tier.plan);
 
-    const result = await database
-      .delete(schema.toolCalls)
-      .where(inArray(schema.toolCalls.id, doomed))
-      .run();
+    for (let batch = 0; batch < PRUNE_MAX_BATCHES; batch += 1) {
+      // A subquery with its own LIMIT, because SQLite only supports
+      // `DELETE ... LIMIT` when it is compiled with an option D1 does not enable.
+      // The plan join is the tier boundary: free and pro cut off on different days.
+      const doomed = database
+        .select({ id: schema.toolCalls.id })
+        .from(schema.toolCalls)
+        .innerJoin(schema.users, eq(schema.toolCalls.userId, schema.users.id))
+        .where(and(onTier, lt(schema.toolCalls.createdAt, cutoff)))
+        .limit(PRUNE_BATCH);
 
-    const count = result.meta.changes ?? 0;
-    deleted += count;
-    if (count < PRUNE_BATCH) break;
+      const result = await database
+        .delete(schema.toolCalls)
+        .where(inArray(schema.toolCalls.id, doomed))
+        .run();
+
+      const n = result.meta.changes ?? 0;
+      deleted += n;
+      if (n < PRUNE_BATCH) break;
+    }
   }
 
   return deleted;
+}
+
+/**
+ * Folds yesterday's (and any earlier unrolled) tool calls into `usage_daily`.
+ *
+ * Runs before the prune so the rows it counts are still there. Monotonic on
+ * conflict: the stored total only rises. That matters when someone deletes a
+ * project or machine and cascades part of a day's audit rows — the rollup is
+ * meant to outlive the trail, so a later recount of what remains must not
+ * quietly shrink last month's usage.
+ *
+ * Days the prune has already cleared drop out of the source query and their
+ * rollup row is left alone. Re-running the same night with unchanged source
+ * rows is a no-op on the numbers.
+ */
+export async function rollupUsageDaily(env: Pick<Env, "DB">): Promise<number> {
+  const database = db(env);
+  const today = utcDay(new Date());
+
+  // Everything strictly before today that is still in the audit log. Once the
+  // prune removes a day, this query stops seeing it and the rollup row stands.
+  const groups = await database
+    .select({
+      userId: schema.toolCalls.userId,
+      day: sql<string>`strftime('%Y-%m-%d', ${schema.toolCalls.createdAt} / 1000, 'unixepoch')`.as(
+        "day",
+      ),
+      n: count(),
+    })
+    .from(schema.toolCalls)
+    .where(
+      lt(
+        schema.toolCalls.createdAt,
+        // Midnight UTC of today, as epoch ms.
+        new Date(`${today}T00:00:00.000Z`),
+      ),
+    )
+    .groupBy(
+      schema.toolCalls.userId,
+      sql`strftime('%Y-%m-%d', ${schema.toolCalls.createdAt} / 1000, 'unixepoch')`,
+    )
+    .all();
+
+  let written = 0;
+
+  for (const group of groups) {
+    await database
+      .insert(schema.usageDaily)
+      .values({
+        userId: group.userId,
+        day: group.day,
+        toolCalls: group.n,
+      })
+      .onConflictDoUpdate({
+        target: [schema.usageDaily.userId, schema.usageDaily.day],
+        set: {
+          toolCalls: sql`max(${schema.usageDaily.toolCalls}, excluded.tool_calls)`,
+        },
+      })
+      .run();
+    written += 1;
+  }
+
+  return written;
+}
+
+/**
+ * Rollup then prune for the nightly cron.
+ *
+ * Prune always runs: a rollup failure must not leave `tool_calls` unbounded.
+ * Dependencies are injectable so a test can fail the rollup without stubbing
+ * the module graph.
+ */
+export async function runNightlyHousekeeping(
+  env: Pick<Env, "DB">,
+  deps: {
+    rollup?: (env: Pick<Env, "DB">) => Promise<unknown>;
+    prune?: (env: Pick<Env, "DB">) => Promise<unknown>;
+  } = {},
+): Promise<void> {
+  const rollup = deps.rollup ?? rollupUsageDaily;
+  const prune = deps.prune ?? pruneToolCalls;
+
+  try {
+    await rollup(env);
+  } catch (error) {
+    console.error("usage rollup failed; continuing to prune", error);
+  }
+  await prune(env);
+}
+
+/** Canonical plan id, defaulting unknown or missing values to free. */
+function normalizePlan(plan: string | null | undefined): PlanId {
+  return isPlanId(plan) ? plan : "free";
+}
+
+/** The caller's plan, defaulting to free if the row is somehow missing. */
+async function planOf(env: Pick<Env, "DB">, userId: string): Promise<PlanId> {
+  const row = await db(env)
+    .select({ plan: schema.users.plan })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .get();
+  return normalizePlan(row?.plan);
+}
+
+/** UTC calendar day as `YYYY-MM-DD`. */
+function utcDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** First day of the current UTC month as `YYYY-MM-DD`. */
+function monthStartUtc(now = new Date()): string {
+  return `${now.toISOString().slice(0, 7)}-01`;
 }
 
 /**

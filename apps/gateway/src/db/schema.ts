@@ -1,10 +1,17 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 /**
- * Everything hangs off `userId`. There is no billing in this release, but the
- * schema is multi-tenant from day one so adding organisations later does not
- * require rewriting ownership checks.
+ * Everything hangs off `userId`. Plans and limits live on the user row; there
+ * is still no billing in this release. The schema is multi-tenant from day one
+ * so adding organisations later does not require rewriting ownership checks.
  */
 
 const createdAt = () =>
@@ -15,6 +22,14 @@ export const users = sqliteTable("users", {
   email: text("email").notNull(),
   name: text("name"),
   avatarUrl: text("avatar_url"),
+  /**
+   * Which plan this account is on. There is no billing yet, so the column is
+   * a default everyone shares and a place for enforcement to look. Changing
+   * it by hand is how a person is moved onto Pro until payments exist.
+   */
+  plan: text("plan", { enum: ["free", "pro"] })
+    .notNull()
+    .default("free"),
   createdAt: createdAt(),
 });
 
@@ -205,6 +220,29 @@ export const activeProjects = sqliteTable(
   (table) => [uniqueIndex("active_projects_user_client").on(table.userId, table.clientId)],
 );
 
+/**
+ * Daily rollup of tool calls per account.
+ *
+ * Survives the audit-log prune: the row-level trail is retention-limited, but
+ * "how much did this account use last month" has to outlive that. Written by
+ * the nightly cron from `tool_calls`, never on the request path.
+ *
+ * `day` is a UTC calendar day as `YYYY-MM-DD`. Counting happens in the cron
+ * rather than on every call so the hot path stays one insert into `tool_calls`.
+ */
+export const usageDaily = sqliteTable(
+  "usage_daily",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    toolCalls: integer("tool_calls").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);
+
 /** Audit trail shown in the dashboard. Never stores tool arguments or output. */
 export const toolCalls = sqliteTable(
   "tool_calls",
@@ -244,3 +282,5 @@ export type ProjectClient = typeof projectClients.$inferSelect;
 export type ClientEndpoint = ProjectClient["endpoint"];
 export type ActiveProject = typeof activeProjects.$inferSelect;
 export type ToolCall = typeof toolCalls.$inferSelect;
+export type UsageDaily = typeof usageDaily.$inferSelect;
+export type UserPlan = User["plan"];

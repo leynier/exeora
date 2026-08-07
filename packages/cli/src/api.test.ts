@@ -120,3 +120,46 @@ describe("listToolCalls", () => {
     );
   });
 });
+
+describe("plan_limit errors", () => {
+  it("turns a device cap into a readable message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: "plan_limit", limit: "devices", max: 10, plan: "free" }),
+            { status: 403 },
+          ),
+      ),
+    );
+
+    await expect(gateway.registerDevice({ name: "box", platform: "linux" })).rejects.toThrow(
+      "Your free plan allows 10 live machines. Revoke one from the dashboard before registering another.",
+    );
+  });
+
+  it("turns a project cap into a readable message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: "plan_limit", limit: "projects", max: 25, plan: "free" }),
+            { status: 403 },
+          ),
+      ),
+    );
+
+    await expect(
+      gateway.addProject({
+        deviceId: "dev_1",
+        name: "api",
+        slug: "api",
+        localPath: "/work",
+      }),
+    ).rejects.toThrow(
+      "Your free plan allows 25 projects. Remove one from the dashboard before adding another.",
+    );
+  });
+});
