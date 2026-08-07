@@ -55,7 +55,7 @@
     },
     "packages/cli": {
       "name": "@exeora/cli",
-      "version": "0.2.1",
+      "version": "0.4.0",
       "bin": {
         "exeora": "./bin/index.mjs",
       },
@@ -88,6 +88,9 @@
         "zod": "4.4.3",
       },
     },
+  },
+  "patchedDependencies": {
+    "@cloudflare/workers-oauth-provider@0.10.1": "patches/@cloudflare%2Fworkers-oauth-provider@0.10.1.patch",
   },
   "packages": {
     "@astrojs/compiler-binding": ["@astrojs/compiler-binding@0.3.2", "", { "optionalDependencies": { "@astrojs/compiler-binding-darwin-arm64": "0.3.2", "@astrojs/compiler-binding-darwin-x64": "0.3.2", "@astrojs/compiler-binding-linux-arm64-gnu": "0.3.2", "@astrojs/compiler-binding-linux-arm64-musl": "0.3.2", "@astrojs/compiler-binding-linux-x64-gnu": "0.3.2", "@astrojs/compiler-binding-linux-x64-musl": "0.3.2", "@astrojs/compiler-binding-wasm32-wasi": "0.3.2", "@astrojs/compiler-binding-win32-arm64-msvc": "0.3.2", "@astrojs/compiler-binding-win32-x64-msvc": "0.3.2" } }, "sha512-8w/9CWmYrAJJ8N0SY3O43ws2BgxoW6u3QsD8u2mE140lMYAlwh+tlNoUeSBq22wVheFuiBbR212l6ixZ2IIgCQ=="],

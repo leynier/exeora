@@ -26,5 +26,8 @@
     "@biomejs/biome": "2.5.7",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
+  },
+  "patchedDependencies": {
+    "@cloudflare/workers-oauth-provider@0.10.1": "patches/@cloudflare%2Fworkers-oauth-provider@0.10.1.patch"
   }
 }

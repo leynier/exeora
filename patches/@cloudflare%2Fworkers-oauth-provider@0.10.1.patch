@@ -1,0 +1,18 @@
+diff --git a/dist/oauth-provider.js b/dist/oauth-provider.js
+index 156a658cb9a209e5600a52ad08d4fdfcc9b608fb..a0ccbdc41c52ce223ee527418312000d7fb6e310 100644
+--- a/dist/oauth-provider.js
++++ b/dist/oauth-provider.js
+@@ -2612,11 +2612,11 @@ var OAuthProviderImpl = class OAuthProviderImpl {
+ 			const redirectUris = OAuthProviderImpl.validateStringArray(rawMetadata.redirect_uris, "redirect_uris");
+ 			const declaredAuthMethod = OAuthProviderImpl.validateStringField(rawMetadata.token_endpoint_auth_method, "token_endpoint_auth_method");
+ 			const authMethodChoices = OAuthProviderImpl.validateStringArray(rawMetadata.token_endpoint_auth_methods_supported, "token_endpoint_auth_methods_supported");
+-			const tokenEndpointAuthMethod = declaredAuthMethod ?? (authMethodChoices?.includes("none") ? "none" : void 0);
++			const tokenEndpointAuthMethod = declaredAuthMethod && OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.includes(declaredAuthMethod) ? declaredAuthMethod : authMethodChoices?.find((method) => OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.includes(method));
+ 			if (clientId !== metadataUrl) throw new Error(`client_id "${clientId}" does not match metadata URL "${metadataUrl}"`);
+ 			if (!clientName?.trim()) throw new Error("client_name is required and must not be empty");
+ 			if (!redirectUris || redirectUris.length === 0) throw new Error("redirect_uris is required and must not be empty");
+-			if (declaredAuthMethod && !OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.includes(declaredAuthMethod) || authMethodChoices && !authMethodChoices.some((method) => OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.includes(method))) throw new Error(`CIMD client does not support an accepted token endpoint authentication method. Supported methods: ${OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.join(", ")}`);
++			if (!tokenEndpointAuthMethod && (declaredAuthMethod !== void 0 || authMethodChoices !== void 0)) throw new Error(`CIMD client does not support an accepted token endpoint authentication method. Supported methods: ${OAuthProviderImpl.CIMD_ALLOWED_AUTH_METHODS.join(", ")}`);
+ 			const advertisedGrantTypes = OAuthProviderImpl.validateStringArray(rawMetadata.grant_types, "grant_types") || [GrantType.AUTHORIZATION_CODE];
+ 			const advertisedResponseTypes = OAuthProviderImpl.validateStringArray(rawMetadata.response_types, "response_types") || ["code"];
+ 			const effectiveAuthMethod = tokenEndpointAuthMethod || "none";
