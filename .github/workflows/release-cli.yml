@@ -34,7 +34,7 @@ jobs:
       # npm publishes. Trusted publishing needs npm 11.5.1+, which is newer
       # than what ships with Node 22, hence the explicit upgrade. Provenance
       # needs a public repository and the same OIDC token.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
