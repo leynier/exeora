@@ -44,6 +44,12 @@ export interface ToolCallView {
   createdAt: number;
 }
 
+/** What the gateway answers with: one page of the log and the way to the next. */
+export interface ToolCallsPage {
+  items: ToolCallView[];
+  cursor: string | null;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   const response = await fetch(new URL(path, gatewayUrl()), {
@@ -87,6 +93,22 @@ export const gateway = {
 
   removeProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
 
-  /** Newest first. The gateway caps the limit at 200 whatever is asked for. */
-  listToolCalls: (limit: number) => request<ToolCallView[]>(`/api/tool-calls?limit=${limit}`),
+  /**
+   * Newest first. The gateway pages the audit log with a cursor rather than
+   * taking a limit, so "the newest N" means walking pages until N rows have
+   * accumulated or the log runs out.
+   */
+  listToolCalls: async (limit: number): Promise<ToolCallView[]> => {
+    const calls: ToolCallView[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+      const page: ToolCallsPage = await request<ToolCallsPage>(`/api/tool-calls${query}`);
+      calls.push(...page.items);
+      // An empty page means the log is exhausted, cursor or not: following it
+      // further would re-ask forever.
+      cursor = page.items.length === 0 ? null : page.cursor;
+    } while (cursor !== null && calls.length < limit);
+    return calls.slice(0, limit);
+  },
 };

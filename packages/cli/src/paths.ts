@@ -5,10 +5,12 @@ import { ExeoraError } from "@exeora/protocol";
 /**
  * Keeps every filesystem operation inside the project the caller asked for.
  *
- * This is the only security control in this release: there is no command
- * allowlist and no approval prompt, so a tool call that escapes the project
- * root escapes into the user's whole machine. Treat this file accordingly;
- * the tests in `paths.test.ts` are the specification.
+ * Path confinement is the layer that cannot be talked out of: whatever the
+ * account's policy and the local `exeora.toml` allow, and however the user
+ * answers an approval prompt, no file tool may touch anything outside this
+ * root. The allow/deny lists and the approval flow live in `policy.ts` and the
+ * gateway; this is the last line in front of the user's machine. Treat this
+ * file accordingly; the tests in `paths.test.ts` are the specification.
  *
  * Two distinct escapes have to be stopped:
  *
