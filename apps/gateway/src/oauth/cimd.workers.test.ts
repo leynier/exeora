@@ -14,11 +14,11 @@ import { NEGOTIABLE_CLIENT, REDIRECT_URI, UNUSABLE_CLIENT } from "./cimd-fixture
  * is a preference followed by the list to negotiate against, and `none` is in
  * it.
  *
- * @cloudflare/workers-oauth-provider 0.10.1 read only the first field and
+ * @cloudflare/workers-oauth-provider read only the first field until 0.10.2 and
  * refused the whole document, which turned every ChatGPT connection into an
- * error page. `patches/@cloudflare%2Fworkers-oauth-provider@0.10.1.patch` makes
- * it negotiate instead. These tests exist because that patch is invisible:
- * nothing else here would notice if an upgrade dropped it.
+ * error page. 0.10.2 negotiates the two instead. These tests exist because that
+ * behaviour is invisible from here: nothing else would notice a version that
+ * went back to reading the preference as a requirement.
  */
 
 /**

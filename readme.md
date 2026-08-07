@@ -279,7 +279,14 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 ## License
 
-`packages/cli` is MIT, since it is the part that gets installed on other people's machines. The rest of this repository is not licensed for reuse.
+This repository is dual-licensed by path. Full text in [`LICENSE`](./LICENSE) and [`LICENSE.NONCOMMERCIAL`](./LICENSE.NONCOMMERCIAL).
+
+| Path | License | What that means |
+|---|---|---|
+| `packages/cli` | MIT | Install it, modify it, use it at work, connect it to exeora.dev. The part that lands on other people's machines has to be free to run. |
+| Everything else | [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) | Read it, fork it, self-host it for personal / hobby use. No commercial use: no paid forks, no selling a hosted Exeora, no running the gateway to support a business. |
+
+Commercial licensing for the gateway and the rest of the platform: `hello@exeora.dev`.
 
 ## Design notes
 
@@ -295,7 +302,7 @@ The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown 
 
 **`packages/cli/src/tools/vendor/` is copied, not imported.** The edit matching and the truncation come from pi-coding-agent, which is MIT and better at both than a first attempt would be. Depending on it cost 172 MB of the 189 MB an install weighed, because its published tools are built for a terminal and pulled in a syntax highlighter, a wasm image resizer and an agent runtime to render output Exeora throws away. Taking the two pure modules brought the install to 18 MB. The origin and its license are recorded in `packages/cli/LICENSE`.
 
-**`@cloudflare/workers-oauth-provider` is patched, and the patch is why ChatGPT can connect.** Its Client ID Metadata Document support read `token_endpoint_auth_method` as a requirement rather than a preference, so a document declaring `private_key_jwt` was refused even when it advertised `none` alongside it in `token_endpoint_auth_methods_supported`. That is the document ChatGPT publishes, and the refusal reached the user as an error page on `/oauth/authorize`. `patches/@cloudflare%2Fworkers-oauth-provider@0.10.1.patch` makes the two fields negotiate: the declared method is kept when the gateway implements it, and otherwise the first mutually supported one is chosen. A CIMD client still cannot end up with anything but `none`, which is the only method available to a client the gateway never issued a secret to. Reported as [cloudflare/workers-oauth-provider#293](https://github.com/cloudflare/workers-oauth-provider/issues/293) with the same fix offered as [#294](https://github.com/cloudflare/workers-oauth-provider/pull/294); drop the patch once a release carries it. `apps/gateway/src/oauth/cimd.workers.test.ts` fails if it goes missing before then.
+**`@cloudflare/workers-oauth-provider` is pinned at 0.10.2 or later because that is where ChatGPT can connect.** Before it, Client ID Metadata Document support read `token_endpoint_auth_method` as a requirement rather than a preference, so a document declaring `private_key_jwt` was refused even when it advertised `none` alongside it in `token_endpoint_auth_methods_supported`. That is the document ChatGPT publishes, and the refusal reached the user as an error page on `/oauth/authorize`. Reported as [cloudflare/workers-oauth-provider#293](https://github.com/cloudflare/workers-oauth-provider/issues/293) and fixed upstream in 0.10.2, which negotiates the two fields instead: a CIMD client still cannot end up with anything but `none`, the only method available to a client the gateway never issued a secret to. `apps/gateway/src/oauth/cimd.workers.test.ts` holds that behaviour to the version this depends on.
 
 ## Not in this release
 
