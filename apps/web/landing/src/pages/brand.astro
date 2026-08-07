@@ -1,0 +1,416 @@
+---
+import { BRAND_BASE, BRAND_GROUPS, brandFiles, KIT_FILENAME } from "@exeora/design/brand";
+import brandData from "@exeora/design/brand-data.json";
+import { MARK_RADIUS, MARK_TILE, MARK_TILES } from "@exeora/design/mark";
+import Footer from "../components/Footer.astro";
+import Navbar from "../components/Navbar.astro";
+import Layout from "../layouts/Layout.astro";
+import { CORE_SWATCHES, SURFACE_SWATCHES, TYPE_SCALE, USAGE_DO, USAGE_DONT } from "../lib/brand.js";
+import { GITHUB_URL } from "../lib/site.js";
+
+/**
+ * The press kit.
+ *
+ * Everything here comes from `bun run brand`: the files, the manifest they are
+ * named by, and `brand-data.json`, which carries the byte sizes and the palette
+ * out of that same run. So a variant cannot be listed and missing, and a size
+ * cannot be quoted and wrong. Sizes matter here more than they look like they
+ * should - the listings that ask for a logo tend to also cap it at ten
+ * kilobytes, and that is the question this page exists to answer quickly.
+ */
+
+const { sizes, tokens } = brandData as {
+  sizes: Record<string, number>;
+  tokens: Record<string, string>;
+};
+
+/** A token's value, or a throw: a missing one means the JSON is out of date. */
+function token(name: string): string {
+  const value = tokens[name];
+  if (value === undefined) throw new Error(`No value for ${name}. Run \`bun run brand\`.`);
+  return value;
+}
+
+function bytesOf(name: string): number {
+  const bytes = sizes[name];
+  if (bytes === undefined) throw new Error(`No recorded size for ${name}. Run \`bun run brand\`.`);
+  return bytes;
+}
+
+function weight(name: string): string {
+  const bytes = bytesOf(name);
+  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
+}
+
+const kitBytes = bytesOf(KIT_FILENAME);
+
+/** The clear-space diagram's frame: one tile out from the mark on every side. */
+const frame = `${-MARK_TILE} ${-MARK_TILE} ${64 + MARK_TILE * 2} ${44 + MARK_TILE * 2}`;
+---
+
+<Layout
+  title="Brand · Exeora"
+  description="The Exeora mark and wordmark, in every variant, with the palette, the type and the rules for using them. Download the whole kit or a single file."
+  canonicalPath="/brand/"
+>
+  <Navbar />
+
+  <main>
+    <section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-16 sm:pt-40 sm:pb-20">
+      <div class="hero-glow pointer-events-none absolute inset-x-0 top-0 h-[28rem]"></div>
+
+      <div class="relative z-10 mx-auto max-w-3xl text-center">
+        <p class="text-label-md text-foreground-faint font-mono uppercase">Brand</p>
+        <h1 class="text-gradient-accent mt-4 text-[32px] leading-[1.08] font-semibold tracking-[-1.2px] sm:text-[44px]">
+          The mark, the name, and how to use them
+        </h1>
+        <p class="text-body-lg text-foreground-muted mx-auto mt-6 max-w-2xl">
+          Everything below is drawn from one definition of the mark, so the file you download is the
+          shape you see on this page. Take the whole kit, or the single file you came for.
+        </p>
+
+        <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <a
+            href={`${BRAND_BASE}/${KIT_FILENAME}`}
+            download
+            class="bg-accent text-on-accent hover:bg-foreground text-title-md w-full rounded-lg px-5 py-2.5 transition-colors duration-fast sm:w-auto"
+          >
+            Download the kit
+          </a>
+          <p class="text-body-md text-foreground-faint">
+            {brandFiles().length} files · {Math.round(kitBytes / 1024)} KB · ZIP
+          </p>
+        </div>
+      </div>
+    </section>
+
+    {
+      BRAND_GROUPS.map((group) => (
+        <section
+          id={group.id}
+          class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+        >
+          <div class="mx-auto max-w-4xl">
+            <div class="animate-fade-in-up opacity-0-initial max-w-2xl">
+              <h2 class="text-headline-lg">{group.title}</h2>
+              <p class="text-body-lg text-foreground-muted mt-4">{group.blurb}</p>
+            </div>
+
+            <div class="mt-10 grid gap-4 sm:grid-cols-2">
+              {group.variants.map((variant) => (
+                <div class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial flex flex-col overflow-hidden rounded-xl border">
+                  {/* The preview is the file itself, so a broken asset shows up
+                      here rather than in someone's download. */}
+                  <div
+                    class:list={[
+                      "flex min-h-[9rem] items-center justify-center p-8",
+                      variant.surface === "light" && "bg-foreground",
+                      variant.surface === "dark" && "bg-bg",
+                    ]}
+                  >
+                    <img
+                      src={`${BRAND_BASE}/${variant.svg}`}
+                      alt={`Exeora ${group.title.toLowerCase().replace("the ", "")}, ${variant.label.toLowerCase()}`}
+                      width="96"
+                      height="96"
+                      loading="lazy"
+                      decoding="async"
+                      class={group.id === "wordmark" ? "h-auto w-full max-w-[13rem]" : "size-16"}
+                    />
+                  </div>
+
+                  <div class="border-border-subtle flex flex-1 flex-col border-t p-5">
+                    <p class="text-title-md">{variant.label}</p>
+                    <p class="text-body-md text-foreground-faint mt-1.5 flex-1">{variant.note}</p>
+
+                    <div class="mt-5 flex flex-wrap items-center gap-2">
+                      {variant.svg && (
+                        <a
+                          href={`${BRAND_BASE}/${variant.svg}`}
+                          download
+                          class="border-border text-label-md text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 rounded-md border px-2.5 py-1.5 font-mono uppercase transition-colors duration-fast"
+                        >
+                          SVG
+                        </a>
+                      )}
+                      {variant.pngSizes.map((size) => (
+                        <a
+                          href={`${BRAND_BASE}/${variant.png(size)}`}
+                          download
+                          title={`${variant.png(size)} · ${weight(variant.png(size))}`}
+                          class="border-border text-label-md text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 rounded-md border px-2.5 py-1.5 font-mono uppercase transition-colors duration-fast"
+                        >
+                          PNG {size}
+                          <span class="text-foreground-faint"> · {weight(variant.png(size))}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {group.id === "mark" && (
+              <p class="text-body-md text-foreground-faint animate-fade-in-up opacity-0-initial mt-6">
+                Need the mark to take its colour from whatever it sits in? {" "}
+                <a
+                  href={`${BRAND_BASE}/exeora-mark.svg`}
+                  download
+                  class="text-foreground underline-offset-2 hover:underline"
+                >
+                  exeora-mark.svg
+                </a>{" "}
+                and{" "}
+                <a
+                  href={`${BRAND_BASE}/exeora-wordmark.svg`}
+                  download
+                  class="text-foreground underline-offset-2 hover:underline"
+                >
+                  exeora-wordmark.svg
+                </a>{" "}
+                carry <code class="text-foreground font-mono">currentColor</code> instead of a fill.
+              </p>
+            )}
+          </div>
+        </section>
+      ))
+    }
+
+    <section
+      id="clear-space"
+      class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+    >
+      <div class="mx-auto max-w-4xl">
+        <div class="animate-fade-in-up opacity-0-initial max-w-2xl">
+          <h2 class="text-headline-lg">Clear space</h2>
+          <p class="text-body-lg text-foreground-muted mt-4">
+            Keep at least the width of one tile free on every side. It is the only spacing rule, and
+            it is generous on purpose: the mark reads as three separate shapes, and crowding it
+            makes them read as part of whatever is next to them.
+          </p>
+        </div>
+
+        <div
+          class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial mt-10 overflow-hidden rounded-xl border p-8 sm:p-12"
+        >
+          <!-- Drawn to scale from the same geometry as the files, rather than
+               described: a spacing rule stated only in prose is a spacing rule
+               nobody follows. The viewBox is the frame. -->
+          <svg
+            viewBox={frame}
+            class="mx-auto h-auto w-full max-w-sm"
+            role="img"
+            aria-label="The Exeora mark inside a dashed frame set one tile's width out from it on every side"
+          >
+            <rect
+              x={-MARK_TILE}
+              y={-MARK_TILE}
+              width={64 + MARK_TILE * 2}
+              height={44 + MARK_TILE * 2}
+              fill="none"
+              stroke={token("--color-foreground-faint")}
+              stroke-width="1"
+              stroke-dasharray="4 4"></rect>
+            <g fill={token("--color-foreground")}>
+              {
+                MARK_TILES.map((tile) => (
+                  <rect
+                    x={tile.x}
+                    y={tile.y}
+                    width={MARK_TILE}
+                    height={MARK_TILE}
+                    rx={MARK_RADIUS}
+                  />
+                ))
+              }
+            </g>
+            <g fill={token("--color-foreground-muted")} font-family="monospace" font-size="7">
+              <text x="32" y={-MARK_TILE / 2 + 2} text-anchor="middle">one tile</text>
+              <text x={-MARK_TILE / 2} y="25" text-anchor="middle">1×</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="colour"
+      class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+    >
+      <div class="mx-auto max-w-4xl">
+        <div class="animate-fade-in-up opacity-0-initial max-w-2xl">
+          <h2 class="text-headline-lg">Colour</h2>
+          <p class="text-body-lg text-foreground-muted mt-4">
+            Grayscale, with one near-white accent carrying every primary action and one cool hue
+            reserved for connection state. There is no light theme to keep in sync, which is why the
+            mark ships in exactly two colours.
+          </p>
+        </div>
+
+        <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {
+            CORE_SWATCHES.map((swatch) => (
+              <div class="border-border-subtle animate-fade-in-up opacity-0-initial overflow-hidden rounded-xl border">
+                <div class="h-24" style={`background: ${token(swatch.token)}`} />
+                <div class="bg-surface border-border-subtle border-t p-4">
+                  <p class="text-title-md">{swatch.label}</p>
+                  <button
+                    type="button"
+                    data-copy-target={`swatch${swatch.token}`}
+                    class="text-label-md text-foreground-muted hover:text-foreground mt-2 flex cursor-pointer items-center gap-2 font-mono uppercase transition-colors duration-fast"
+                  >
+                    <span data-copy-label id={`swatch${swatch.token}`}>
+                      {token(swatch.token)}
+                    </span>
+                  </button>
+                  <p class="text-body-md text-foreground-faint mt-2">{swatch.note}</p>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+
+        <div
+          class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial mt-4 rounded-xl border p-5"
+        >
+          <p class="text-label-md text-foreground-faint font-mono uppercase">The rest of the scale</p>
+          <div class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            {
+              SURFACE_SWATCHES.map((swatch) => (
+                <div class="flex items-center gap-3">
+                  <span
+                    class="border-border size-8 shrink-0 rounded-md border"
+                    style={`background: ${token(swatch.token)}`}
+                  />
+                  <div class="min-w-0">
+                    <p class="text-body-md text-foreground truncate">{swatch.label}</p>
+                    <p class="text-label-md text-foreground-faint font-mono">
+                      {token(swatch.token)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="type"
+      class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+    >
+      <div class="mx-auto max-w-4xl">
+        <div class="animate-fade-in-up opacity-0-initial max-w-2xl">
+          <h2 class="text-headline-lg">Type</h2>
+          <p class="text-body-lg text-foreground-muted mt-4">
+            <strong class="text-foreground">Inter</strong> for everything read as prose, {" "}
+            <strong class="text-foreground">JetBrains Mono</strong> for commands, code, and the small
+            uppercase labels. Both are variable faces, self-hosted rather than fetched from a CDN,
+            and both are under the{" "}
+            <a href="/fonts/OFL.txt" class="text-foreground underline-offset-2 hover:underline">
+              SIL Open Font License 1.1
+            </a>
+            , so you can use them yourself.
+          </p>
+        </div>
+
+        <div
+          class="border-border-subtle divide-border-subtle bg-surface animate-fade-in-up opacity-0-initial mt-10 divide-y rounded-xl border"
+        >
+          {
+            TYPE_SCALE.map((sample) => (
+              <div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 p-5">
+                <p class={sample.className}>Secure execution</p>
+                <p class="text-label-md text-foreground-faint font-mono">
+                  {sample.label} · {token(sample.token)}
+                </p>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="usage"
+      class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+    >
+      <div class="mx-auto max-w-4xl">
+        <div class="animate-fade-in-up opacity-0-initial max-w-2xl">
+          <h2 class="text-headline-lg">Using the mark</h2>
+          <p class="text-body-lg text-foreground-muted mt-4">
+            Short list, because there is not much to get wrong: the mark is three rectangles and one
+            of two colours.
+          </p>
+        </div>
+
+        <div class="mt-10 grid gap-4 sm:grid-cols-2">
+          <div
+            class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial rounded-xl border p-6"
+          >
+            <p class="text-label-md text-success font-mono uppercase">Do</p>
+            <ul class="text-body-md text-foreground-muted mt-4 space-y-3">
+              {USAGE_DO.map((rule) => <li>{rule}</li>)}
+            </ul>
+          </div>
+
+          <div
+            class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial rounded-xl border p-6"
+          >
+            <p class="text-label-md text-error font-mono uppercase">Do not</p>
+            <ul class="text-body-md text-foreground-muted mt-4 space-y-3">
+              {USAGE_DONT.map((rule) => <li>{rule}</li>)}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="licence"
+      class="defer-offscreen-rendering border-border-subtle border-t px-6 py-20 sm:py-24"
+    >
+      <div class="mx-auto max-w-3xl">
+        <div
+          class="border-border-subtle bg-surface animate-fade-in-up opacity-0-initial rounded-xl border p-7 sm:p-9"
+        >
+          <p class="text-label-md text-foreground-faint font-mono uppercase">Licence</p>
+          <h2 class="text-headline-md mt-3">The code is AGPL. The name and the mark are not.</h2>
+
+          <div class="text-body-lg text-foreground-muted mt-5 space-y-4">
+            <p>
+              Exeora's source is{" "}
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener"
+                class="text-foreground underline-offset-2 hover:underline">AGPL-3.0-only</a
+              >, and you are welcome to fork it. That licence covers the code; it does not hand over
+              the name or the mark, which stay Exeora's.
+            </p>
+            <p>
+              <strong class="text-foreground">This page is permission</strong> to use both to refer
+              to Exeora: in writing about it, in a client's list of integrations, in documentation,
+              in a talk. It is not permission to use them as your own, or in a way that suggests
+              Exeora built, endorses or is affiliated with something it did not.
+            </p>
+            <p>
+              A fork under the AGPL is still a fork: give it its own name and its own mark. If you
+              are unsure whether a use is fine, ask - the answer is usually yes and always quick.
+            </p>
+          </div>
+
+          <p class="text-body-md text-foreground-faint border-border-subtle mt-6 border-t pt-5">
+            <a
+              href="mailto:hello@exeora.dev"
+              class="text-foreground underline-offset-2 hover:underline">hello@exeora.dev</a
+            >
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>

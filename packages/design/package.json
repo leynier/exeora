@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./tokens.css": "./tokens.css"
+    "./tokens.css": "./tokens.css",
+    "./tokens": "./tokens.ts",
+    "./mark": "./mark.ts",
+    "./brand": "./brand.ts",
+    "./brand-data.json": "./brand-data.json",
+    "./wordmark.svg": "./wordmark.svg"
   },
-  "description": "The design tokens, written down once. Read as an @theme block by the two Tailwind builds and as inline text by the gateway's OAuth screens."
+  "description": "The design tokens and the mark, written down once. The tokens are read as an @theme block by the two Tailwind builds and as inline text by the gateway's OAuth screens; the mark's geometry is read by the landing and by the brand asset generator."
 }
