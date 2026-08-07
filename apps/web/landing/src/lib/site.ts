@@ -1,9 +1,9 @@
 /** Values that appear in more than one component, so they cannot drift. */
 
-/**
- * The CLI is published and MIT licensed; the repository behind it is not
- * public. Nothing here should link to a source tree or imply one exists.
- */
+/** Public source tree. */
+export const GITHUB_URL = "https://github.com/leynier/exeora";
+
+/** Published CLI package. */
 export const NPM_URL = "https://www.npmjs.com/package/@exeora/cli";
 
 /**

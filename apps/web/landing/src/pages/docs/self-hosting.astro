@@ -1,0 +1,112 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Self-hosting"
+  description="Run your own Exeora gateway on Cloudflare Workers."
+  canonicalPath="/docs/self-hosting/"
+>
+  <p>
+    Exeora is open source under the AGPL-3.0. You can run the gateway yourself on Cloudflare
+    Workers with your own domain, database and OAuth app. This page is the setup path; the
+    repository at{" "}
+    <a href="https://github.com/leynier/exeora" target="_blank" rel="noopener"
+      >github.com/leynier/exeora</a
+    >{" "}
+    is the source of truth for every file named below.
+  </p>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>A Cloudflare account with Workers, D1 and KV available</li>
+    <li>A domain on Cloudflare (or any zone you can point at Workers)</li>
+    <li>A GitHub OAuth App whose callback hits your gateway</li>
+    <li>Node 22+ and <a href="https://bun.sh">Bun</a> to build and deploy</li>
+  </ul>
+
+  <h2>1. Clone and install</h2>
+  <pre>{`git clone https://github.com/leynier/exeora.git
+cd exeora
+bun install`}</pre>
+
+  <h2>2. Create the Cloudflare resources</h2>
+  <p>
+    Put the returned ids into <code>apps/gateway/wrangler.jsonc</code>. Ids are not secrets.
+  </p>
+  <pre>{`bunx wrangler d1 create exeora
+bunx wrangler kv namespace create OAUTH_KV`}</pre>
+  <p>
+    Also set <code>EXEORA_BASE_URL</code> and the <code>routes</code> pattern in that file to your
+    hostname, and create a proxied DNS record for it (a single <code>AAAA</code> on{" "}
+    <code>@</code> pointing at <code>100::</code> with the proxy on is enough).
+  </p>
+
+  <h2>3. Create a GitHub OAuth App</h2>
+  <p>
+    Homepage and callback must match your hostname. Callback path:{" "}
+    <code>/oauth/callback/github</code>. An OAuth App admits one callback URL, so keep a separate
+    app for local development if you need one.
+  </p>
+
+  <h2>4. Set Worker secrets</h2>
+  <pre>{`bun run secret GITHUB_CLIENT_ID
+bun run secret GITHUB_CLIENT_SECRET
+bun run secret COOKIE_SECRET
+bun run secret REQUEST_STATE_SECRET`}</pre>
+  <p>
+    Generate the two secrets with <code>openssl rand -hex 32</code>, and use different values than
+    development. <code>REQUEST_STATE_SECRET</code> signs approvals that travel through an AI client;
+    keep it separate from <code>COOKIE_SECRET</code> on purpose.
+  </p>
+
+  <h2>5. Administrators</h2>
+  <p>
+    On a fresh database, the <strong>first account to sign in becomes the admin</strong>. That
+    person can open the administration panel and act on every account. Protect that first sign-in
+    the same way you would protect any root account.
+  </p>
+  <p>
+    To name operators ahead of time instead, set the Worker var <code>ADMIN_EMAILS</code> to a
+    comma-separated list:
+  </p>
+  <pre>{`# apps/gateway/wrangler.jsonc, under "vars":
+"ADMIN_EMAILS": "you@example.com,ops@example.com"`}</pre>
+  <p>
+    Matching addresses are promoted when they register; everyone else stays ordinary. It is a var,
+    not a secret. Leave it unset to keep the first-user rule.
+  </p>
+
+  <h2>6. Migrate and deploy</h2>
+  <pre>{`bun run db:migrate
+bun run deploy`}</pre>
+  <p>
+    <code>deploy</code> builds the landing and dashboard, then deploys the Worker. The Worker
+    serves the built site through its <code>ASSETS</code> binding.
+  </p>
+
+  <h2>7. Point the CLI at your gateway</h2>
+  <p>
+    Set <code>EXEORA_GATEWAY_URL</code> to your base URL when running the CLI, or configure the
+    stored gateway after login. Without that, the published CLI talks to{" "}
+    <code>https://exeora.dev</code>.
+  </p>
+  <pre>{`EXEORA_GATEWAY_URL=https://your.example.com npx @exeora/cli connect`}</pre>
+
+  <h2>Local development</h2>
+  <p>
+    Copy <code>apps/gateway/.dev.vars.example</code> to <code>.dev.vars</code> and fill in the same
+    four secrets plus a development GitHub OAuth App whose callback is{" "}
+    <code>http://localhost:8787/oauth/callback/github</code>. Then:
+  </p>
+  <pre>{`bun run db:migrate:local
+bun run dev`}</pre>
+
+  <h2>License</h2>
+  <p>
+    Self-hosting is permitted under the{" "}
+    <a href="https://github.com/leynier/exeora/blob/main/LICENSE">AGPL-3.0</a>. If you modify Exeora
+    and offer it as a network service, you must offer the corresponding source to the users of that
+    service.
+  </p>
+</Doc>

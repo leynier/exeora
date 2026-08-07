@@ -1,5 +1,5 @@
 ---
-import { NPM_URL } from "../lib/site.js";
+import { GITHUB_URL, NPM_URL } from "../lib/site.js";
 import Wordmark from "./Wordmark.astro";
 
 // The build year rather than a literal, so a deploy next January does not
@@ -9,6 +9,7 @@ const year = new Date().getFullYear();
 const links = [
   { href: "/dashboard/", label: "Dashboard" },
   { href: NPM_URL, label: "CLI", external: true },
+  { href: GITHUB_URL, label: "GitHub", external: true },
   { href: "/#security", label: "Security" },
   { href: "/#faq", label: "FAQ" },
   // Trailing slashes, like /dashboard/ above: Astro emits these as directories

@@ -10,15 +10,15 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     Every account is on a plan. Plans decide how many machines and projects you may keep, and how
     long the audit log is retained. There is no self-serve billing yet: the free plan is the default
-    for everyone, and moving someone onto Pro is a manual change until payments exist.
+    for everyone.
   </p>
 
-  <h2>Current plans</h2>
+  <h2>Free</h2>
 
   <table>
     <thead>
       <tr>
-        <th>Plan</th>
+        <th></th>
         <th>Live machines</th>
         <th>Projects</th>
         <th>Audit retention</th>
@@ -31,18 +31,19 @@ import Doc from "../../layouts/Doc.astro";
         <td>25</td>
         <td>90 days</td>
       </tr>
-      <tr>
-        <td><code>pro</code></td>
-        <td>Unlimited</td>
-        <td>Unlimited</td>
-        <td>365 days</td>
-      </tr>
     </tbody>
   </table>
 
   <p>
     The free caps are deliberately generous: they are there so the enforcement path is real, not to
     constrain ordinary personal use. They will tighten when billing lands.
+  </p>
+
+  <h2>Pro — coming soon</h2>
+
+  <p>
+    A paid plan with higher limits is on the way. Nothing is charged today, and there is no
+    self-serve upgrade yet. When it ships, this page will list what it includes.
   </p>
 
   <h2>What counts</h2>

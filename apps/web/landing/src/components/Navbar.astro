@@ -1,4 +1,5 @@
 ---
+import { GITHUB_URL } from "../lib/site.js";
 import Wordmark from "./Wordmark.astro";
 
 const links = [
@@ -28,6 +29,15 @@ const links = [
     </div>
 
     <div class="flex items-center gap-2">
+      <a
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener"
+        class="text-body-md text-foreground-muted hover:text-foreground hidden rounded-lg px-2.5 py-1.5 transition-colors duration-fast sm:inline-flex"
+        aria-label="Exeora on GitHub"
+      >
+        GitHub
+      </a>
       <a
         href="/dashboard/"
         class="text-body-md bg-accent text-on-accent hover:bg-foreground rounded-lg px-3.5 py-1.5 font-medium transition-colors duration-fast"
