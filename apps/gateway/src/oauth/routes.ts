@@ -112,7 +112,7 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
       redirectUri: callbackUri(c.env, provider.id),
     });
     const identity = await provider.fetchIdentity(accessToken);
-    const user = await resolveUser(db(c.env), provider.id, identity);
+    const user = await resolveUser(db(c.env), provider.id, identity, c.env.ADMIN_EMAILS);
     await setSession(c, user.id);
 
     if (await isDashboardClient(c.env, pending.authRequest.clientId)) {

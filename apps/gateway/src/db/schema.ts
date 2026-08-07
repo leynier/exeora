@@ -34,12 +34,13 @@ export const users = sqliteTable("users", {
 });
 
 /**
- * Fixed allow-list of people who can open the administration panel.
+ * Allow-list of people who can open the administration panel.
  *
  * Keyed by email rather than user id so a person who deletes and recreates
- * their account keeps the privilege, and so the list can be seeded before
- * anyone has signed in. It is only ever written by a migration: there is no
- * endpoint that adds or removes a row.
+ * their account keeps the privilege. Rows are written at registration time:
+ * either the addresses named in `ADMIN_EMAILS`, or the first account to sign
+ * in when that binding is unset. There is no endpoint that adds or removes a
+ * row.
  */
 export const adminUsers = sqliteTable("admin_users", {
   email: text("email").primaryKey(),

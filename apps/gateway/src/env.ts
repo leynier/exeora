@@ -27,6 +27,14 @@ declare global {
     REQUEST_STATE_SECRET: string;
 
     /**
+     * Optional comma-separated emails that become administrators on first
+     * sign-in. When unset, the first account to register is promoted instead
+     * (self-hosted bootstrap). Not a secret: it only names who may open the
+     * admin panel after they authenticate.
+     */
+    ADMIN_EMAILS?: string;
+
+    /**
      * Injected into `env` by OAuthProvider before it calls either handler.
      * Declared here so there is a single Env type across the Worker rather
      * than an intersection that has to be threaded through every helper.
