@@ -154,6 +154,6 @@ Issues and pull requests are welcome. For vulnerabilities, email **hello@exeora.
 
 ## License
 
-[AGPL-3.0-only](./LICENSE). The whole monorepo, including the CLI.
+[AGPL-3.0-only](./LICENSE).
 
 If you modify Exeora and offer it as a network service, you must offer the corresponding source to the users of that service. Vendored third-party notices for the CLI live in [`packages/cli/LICENSE`](./packages/cli/LICENSE).

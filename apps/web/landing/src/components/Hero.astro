@@ -1,5 +1,5 @@
 ---
-import { QUICKSTART } from "../lib/site.js";
+import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
 ---
 
 <section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-28">
@@ -10,10 +10,12 @@ import { QUICKSTART } from "../lib/site.js";
          this states a fact about the design rather than a state, so the dot was
          promising something that does not exist. -->
     <p
-      class="animate-fade-in-up opacity-0-initial border-border bg-surface text-label-md text-foreground-muted inline-flex items-center rounded-pill border px-3.5 py-1.5 font-mono uppercase"
+      class="animate-fade-in-up opacity-0-initial border-border bg-surface text-label-md text-foreground-muted inline-flex items-center gap-2 rounded-pill border px-3.5 py-1.5 font-mono uppercase"
       style="animation-delay: 80ms"
     >
-      Nothing to expose, nothing to forward
+      <span>Open source</span>
+      <span class="text-foreground-faint" aria-hidden="true">·</span>
+      <span>AGPL-3.0</span>
     </p>
 
     <h1
@@ -30,7 +32,8 @@ import { QUICKSTART } from "../lib/site.js";
     >
       Connect any MCP client to the development environment on any machine you can run a command
       on: a server, a VM, a build box, a Raspberry Pi, or your own laptop. No port to open, no
-      source code to upload, no tunnel to wire up.
+      source code to upload, no tunnel to wire up. The whole stack is public - audit it, fork it,
+      contribute.
     </p>
 
     <div
@@ -44,10 +47,12 @@ import { QUICKSTART } from "../lib/site.js";
         Get started
       </a>
       <a
-        href="#how-it-works"
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener"
         class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md w-full rounded-lg border px-5 py-2.5 transition-colors duration-fast sm:w-auto"
       >
-        How it works
+        Star on GitHub
       </a>
     </div>
 
