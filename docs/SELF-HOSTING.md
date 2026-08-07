@@ -93,11 +93,24 @@ The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets
 
 ## 7. Point the CLI at your gateway
 
+The published CLI talks to `https://exeora.dev` until you tell it otherwise. Tell it once:
+
 ```bash
-EXEORA_GATEWAY_URL=https://your.example.com npx @exeora/cli connect
+npx @exeora/cli gateway use https://your.example.com
+npx @exeora/cli connect
 ```
 
-Without that, the published CLI talks to `https://exeora.dev`.
+Or in one step, which is the same thing followed immediately by `connect`:
+
+```bash
+npx @exeora/cli connect --gateway https://your.example.com
+```
+
+The choice is stored, so every later command talks to your gateway with no flag and no variable. `exeora gateway` prints the active one, and `exeora gateway reset` goes back to the hosted one.
+
+One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another; the CLI says what it is about to forget and asks first.
+
+`EXEORA_GATEWAY_URL` still works and outranks the stored value, which makes it the right tool for one shell or one command rather than for living on a self-hosted gateway.
 
 ## Local development
 

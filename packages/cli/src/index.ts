@@ -18,12 +18,16 @@ import { cacheAccessToken, forgetAccessToken, NotSignedInError } from "./auth/to
 import {
   config,
   configPath,
+  DEFAULT_GATEWAY,
+  forgetLocalState,
+  gatewaySource,
   gatewayUrl,
   projects,
   removeProject,
   upsertProject,
 } from "./config.js";
 import { connect } from "./connection.js";
+import { normalizeGateway, switchGateway } from "./gateway.js";
 import { describePolicy, fromFlags, renderPolicyToml, splitList } from "./init.js";
 import { decideDevice, prepare, slugify } from "./onboard.js";
 import { POLICY_FILENAME } from "./policy.js";
@@ -72,9 +76,13 @@ program.hook("preAction", () => maybeAskForStar(interactive(asJson())));
 program
   .command("login")
   .description("Sign in to Exeora in your browser")
+  .option("-g, --gateway <url>", "Sign in to this Exeora instead, and remember it")
+  .option("-y, --yes", "Do not ask before switching gateway")
   .action(
-    guard(async () => {
+    guard(async (options: { gateway?: string; yes?: boolean }) => {
       p.intro("Exeora");
+      if (!(await useGateway(options))) return;
+
       const spinner = p.spinner();
       spinner.start("Waiting for the browser…");
 
@@ -99,7 +107,60 @@ program
     guard(async () => {
       await clearCredentials();
       forgetAccessToken();
-      p.log.success("Signed out. The device is still registered; revoke it in the dashboard.");
+      p.log.success(
+        `Signed out of ${gatewayUrl()}. The device is still registered; revoke it in the dashboard.`,
+      );
+    }),
+  );
+
+// ---------------------------------------------------------------------------
+
+/** What to do once the gateway has changed and nothing is registered on it. */
+const CONNECT_NEXT = "Run `exeora connect` to sign in and register this machine.";
+
+/**
+ * Which Exeora this install talks to.
+ *
+ * The gateway is open source, so the hosted one is a default and not an
+ * address. Every URL the CLI builds is rooted at whatever this holds, which is
+ * why changing it is a command of its own rather than a setting buried in
+ * `connect`.
+ */
+const gatewayCommand = program
+  .command("gateway")
+  .description("Show or change the Exeora this machine talks to")
+  .action(
+    guard(async () => {
+      const source = gatewaySource();
+
+      if (asJson()) return emit({ gateway: gatewayUrl(), source });
+
+      p.log.message(`Gateway  ${gatewayUrl()}  (${describeSource(source)})`);
+      if (source === "env") {
+        p.log.info(`Stored:  ${config.get("gatewayUrl")}, which the variable is covering up.`);
+      }
+    }),
+  );
+
+gatewayCommand
+  .command("use <url>")
+  .description("Talk to a different Exeora, forgetting what belongs to this one")
+  .option("-y, --yes", "Do not ask before forgetting the current registration")
+  .option("--force", "Switch without checking that a gateway answers there")
+  .action(
+    guard(async (url: string, options: { yes?: boolean; force?: boolean }) => {
+      await changeGateway(url, { ...options, nextStep: CONNECT_NEXT });
+    }),
+  );
+
+gatewayCommand
+  .command("reset")
+  .description(`Go back to ${DEFAULT_GATEWAY}`)
+  .option("-y, --yes", "Do not ask before forgetting the current registration")
+  .option("--force", "Switch without checking that a gateway answers there")
+  .action(
+    guard(async (options: { yes?: boolean; force?: boolean }) => {
+      await changeGateway(DEFAULT_GATEWAY, { ...options, nextStep: CONNECT_NEXT });
     }),
   );
 
@@ -247,13 +308,26 @@ program
   .option("-n, --name <name>", "Display name for this machine, when registering it")
   .option("--no-add", "Serve the projects already registered, without adding this directory")
   .option("--reset", "Forget the stored machine and register a fresh one")
+  .option("-g, --gateway <url>", "Serve to this Exeora instead, and remember it")
+  .option("-y, --yes", "Do not ask before switching gateway")
   .action(
     guard(
       async (
         path: string | undefined,
-        options: { add: boolean; reset: boolean; slug?: string; name?: string },
+        options: {
+          add: boolean;
+          reset: boolean;
+          slug?: string;
+          name?: string;
+          gateway?: string;
+          yes?: boolean;
+        },
       ) => {
         if (!asJson()) p.intro("Exeora");
+
+        // Before anything is asked of a gateway, settle which one. Signing in
+        // and registering the machine both have to land on the new one.
+        if (!(await useGateway(options))) return;
 
         // Sign in, register the machine and register the directory, skipping
         // whichever of those is already done. This is the whole reason the
@@ -335,7 +409,7 @@ program
       const json = asJson();
 
       if (!json) {
-        p.log.message(`Gateway   ${gatewayUrl()}`);
+        p.log.message(`Gateway   ${gatewayUrl()} (${describeSource(gatewaySource())})`);
         // Printed whether or not this machine serves anything: it is the same
         // URL for every account, and someone reading `status` to find out what
         // to paste into a client should not have to go and look it up.
@@ -364,6 +438,7 @@ program
         if (json) {
           return emit({
             gateway: gatewayUrl(),
+            gatewaySource: gatewaySource(),
             config: configPath(),
             accountMcpUrl: accountMcpUrl(),
             device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
@@ -383,6 +458,7 @@ program
       if (json) {
         return emit({
           gateway: gatewayUrl(),
+          gatewaySource: gatewaySource(),
           config: configPath(),
           accountMcpUrl: accountMcpUrl(),
           device: deviceId ? { id: deviceId, name: config.get("deviceName") } : null,
@@ -548,9 +624,7 @@ program
         // The dashboard deleted this machine permanently, which cascades its
         // projects; the local config is the only place they still exist.
         const count = projects().length;
-        config.delete("deviceId");
-        config.delete("deviceName");
-        config.set("projects", []);
+        forgetLocalState();
         p.log.warn(
           `This machine was deleted from the dashboard. Forgot it and its ${count} project${count === 1 ? "" : "s"}. Run \`exeora connect\` to register again.`,
         );
@@ -582,6 +656,91 @@ program
   );
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Applies a `--gateway` flag, or does nothing when there was none.
+ *
+ * Returns whether the command may carry on, which is a no exactly when the
+ * switch was offered and turned down. The flag persists the choice rather than
+ * applying it for one run: the one-run version already exists as
+ * `EXEORA_GATEWAY_URL`, and it was the missing persistent one that made a
+ * self-hosted gateway awkward to live with.
+ */
+async function useGateway(options: {
+  gateway?: string | undefined;
+  yes?: boolean | undefined;
+}): Promise<boolean> {
+  if (!options.gateway) return true;
+
+  const target = normalizeGateway(options.gateway);
+  const override = process.env.EXEORA_GATEWAY_URL;
+
+  // Two contradictory instructions in one invocation. Storing the flag and then
+  // quietly serving the variable's gateway instead would do neither.
+  if (override && originOf(override) !== target) {
+    throw new Error(
+      `--gateway says ${target}, but EXEORA_GATEWAY_URL says ${override} and the variable wins. ` +
+        "Unset it, or drop the flag.",
+    );
+  }
+
+  return await changeGateway(options.gateway, { yes: options.yes });
+}
+
+/** Switches, reports it, and says whether the caller may continue. */
+async function changeGateway(
+  url: string,
+  options: { yes?: boolean | undefined; force?: boolean | undefined; nextStep?: string },
+): Promise<boolean> {
+  const outcome = await switchGateway({
+    input: url,
+    yes: options.yes,
+    force: options.force,
+    json: asJson(),
+  });
+
+  if (asJson()) {
+    emit({ gateway: outcome.target, source: gatewaySource(), outcome: outcome.kind });
+    return outcome.kind !== "declined";
+  }
+
+  if (outcome.kind === "unchanged") p.log.info(`Already using ${outcome.target}.`);
+  else if (outcome.kind === "declined") p.log.info("Left the gateway as it was.");
+  else {
+    p.log.success(`Now using ${outcome.target}.`);
+    if (options.nextStep) p.log.info(options.nextStep);
+
+    // The change is on disk either way, but this shell will not act on it.
+    if (gatewaySource() === "env") {
+      p.log.warn(
+        `EXEORA_GATEWAY_URL is set to ${process.env.EXEORA_GATEWAY_URL} here and wins over the ` +
+          "stored value, so nothing changes until it is unset.",
+      );
+    }
+  }
+
+  return outcome.kind !== "declined";
+}
+
+/**
+ * The origin of a string that ought to be a gateway, or the string itself.
+ *
+ * Only used to compare two configured values. A malformed `EXEORA_GATEWAY_URL`
+ * is a problem on its own and will be reported by whatever tries to use it;
+ * failing here would blame the flag for it.
+ */
+function originOf(value: string): string {
+  try {
+    return normalizeGateway(value);
+  } catch {
+    return value;
+  }
+}
+
+function describeSource(source: ReturnType<typeof gatewaySource>): string {
+  if (source === "env") return "from EXEORA_GATEWAY_URL";
+  return source === "default" ? "default" : "configured";
+}
 
 /**
  * What a project will actually allow, once this file narrows the account's

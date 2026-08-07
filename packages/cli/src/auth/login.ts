@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import open from "open";
 import { gatewayUrl } from "../config.js";
+import { discoverClient } from "./client.js";
 import { createPkce, createState } from "./pkce.js";
 import { saveCredentials } from "./store.js";
 
@@ -15,13 +16,6 @@ import { saveCredentials } from "./store.js";
  * 127.0.0.1 rather than `localhost`: the name can resolve to ::1 or be
  * redirected by a hosts file, and the literal cannot.
  */
-
-interface CliClientInfo {
-  clientId: string;
-  authorizationEndpoint: string;
-  tokenEndpoint: string;
-  scopes: string[];
-}
 
 export interface LoginResult {
   accessToken: string;
@@ -72,14 +66,6 @@ export async function login(): Promise<LoginResult> {
     accessToken: tokens.access_token,
     expiresAt: Date.now() + tokens.expires_in * 1000,
   };
-}
-
-async function discoverClient(gateway: string): Promise<CliClientInfo> {
-  const response = await fetch(new URL("/oauth/cli-client", gateway));
-  if (!response.ok) {
-    throw new Error(`Could not reach the Exeora gateway at ${gateway} (${response.status}).`);
-  }
-  return (await response.json()) as CliClientInfo;
 }
 
 interface TokenResponse {

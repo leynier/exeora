@@ -1,4 +1,5 @@
 import { gatewayUrl } from "../config.js";
+import { discoverClient } from "./client.js";
 import { clearCredentials, loadCredentials } from "./store.js";
 
 /**
@@ -46,10 +47,7 @@ export async function accessToken(): Promise<string> {
     );
   }
 
-  const client = (await (await fetch(new URL("/oauth/cli-client", gateway))).json()) as {
-    clientId: string;
-    tokenEndpoint: string;
-  };
+  const client = await discoverClient(gateway);
 
   const response = await fetch(client.tokenEndpoint, {
     method: "POST",

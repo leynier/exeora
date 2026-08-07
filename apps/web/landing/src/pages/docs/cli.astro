@@ -26,6 +26,10 @@ import Doc from "../../layouts/Doc.astro";
         <td>Sign in through the browser, or forget the session on this machine</td>
       </tr>
       <tr>
+        <td><code>gateway</code> / <code>gateway use &lt;url&gt;</code> / <code>gateway reset</code></td>
+        <td>Show or change which Exeora this machine talks to</td>
+      </tr>
+      <tr>
         <td><code>device register</code> / <code>device list</code></td>
         <td>Register this machine by hand, or list your machines</td>
       </tr>
@@ -75,8 +79,22 @@ import Doc from "../../layouts/Doc.astro";
         <td><code>--reset</code></td>
         <td>Register the machine again, after revoking it from the dashboard</td>
       </tr>
+      <tr>
+        <td><code>--gateway</code></td>
+        <td>Serve to a different Exeora, and remember it</td>
+      </tr>
     </tbody>
   </table>
+
+  <h2>gateway</h2>
+
+  <p>
+    Exeora is open source, so <code>https://exeora.dev</code> is a default rather than an address. <code>exeora gateway use https://your.example.com</code> points this machine at your own deployment and stores the choice, so every later command follows it with no flag and no variable. <code>exeora gateway</code> prints the active one and where it came from; <code>exeora gateway reset</code> goes back to the hosted one. <code>exeora login</code> and <code>exeora connect</code> take <code>--gateway</code> to do the same thing on the way past.
+  </p>
+
+  <p>
+    One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI lists what it is about to forget and asks before it does. It also checks that a gateway actually answers at the address before touching anything, so a typo leaves a working setup exactly as it was.
+  </p>
 
   <h2>init</h2>
 
@@ -125,8 +143,7 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
-    <code>EXEORA_GATEWAY_URL</code> points the CLI at a different gateway, which is only useful when
-    working on Exeora itself. It wins over the stored value without overwriting it.
+    <code>EXEORA_GATEWAY_URL</code> points the CLI at a different gateway for one shell, without overwriting the stored value it outranks. For anything longer lived, including a self-hosted deployment you use every day, <code>exeora gateway use</code> is the one that sticks.
   </p>
 
   <h2>The one thing it asks for</h2>

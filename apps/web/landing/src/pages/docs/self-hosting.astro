@@ -87,11 +87,20 @@ bun run deploy`}</pre>
 
   <h2>7. Point the CLI at your gateway</h2>
   <p>
-    Set <code>EXEORA_GATEWAY_URL</code> to your base URL when running the CLI, or configure the
-    stored gateway after login. Without that, the published CLI talks to{" "}
-    <code>https://exeora.dev</code>.
+    The published CLI talks to <code>https://exeora.dev</code> until you tell it otherwise. Tell it once, and the choice is stored: every later command talks to your gateway with no flag and no variable.
   </p>
-  <pre>{`EXEORA_GATEWAY_URL=https://your.example.com npx @exeora/cli connect`}</pre>
+  <pre>{`npx @exeora/cli gateway use https://your.example.com
+npx @exeora/cli connect`}</pre>
+  <p>
+    Or in one step, which is the same thing followed immediately by <code>connect</code>.
+  </p>
+  <pre>{`npx @exeora/cli connect --gateway https://your.example.com`}</pre>
+  <p>
+    <code>exeora gateway</code> prints the active one and <code>exeora gateway reset</code> goes back to the hosted one. One gateway is active at a time: switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI says what it is about to forget and asks first.
+  </p>
+  <p>
+    <code>EXEORA_GATEWAY_URL</code> still works and outranks the stored value, which makes it the right tool for one shell or one command rather than for living on a self-hosted gateway.
+  </p>
 
   <h2>Local development</h2>
   <p>

@@ -34,6 +34,7 @@ exeora connect
 |---|---|
 | `connect [path]` | Sign in, register and serve, skipping whatever is already done |
 | `login` / `logout` | Sign in through the browser, or forget the session on this machine |
+| `gateway` / `gateway use <url>` / `gateway reset` | Show or change which Exeora this machine talks to |
 | `device register` / `device list` | Register this machine by hand, or list your machines |
 | `project add [path]` | Register a directory without connecting |
 | `project list` / `project remove <slug>` | Manage this machine's projects |
@@ -83,6 +84,21 @@ A process started with `start_command` dies when this CLI disconnects, so nothin
 
 The refresh token goes to the OS keychain. Machines with no secret service, which is most Linux servers and CI containers, get a `0600` file under `$XDG_CONFIG_HOME/exeora/` instead, and the CLI says so when it happens. Everything else (gateway, device, projects) is plain JSON; `exeora status` prints the path.
 
-`EXEORA_GATEWAY_URL` points the CLI at a different gateway, which is only useful when working on Exeora itself. It wins over the stored value without overwriting it.
+`EXEORA_GATEWAY_URL` points the CLI at a different gateway for one shell, without overwriting the stored value it outranks.
+
+## Your own gateway
+
+Exeora is open source and self-hostable, so `https://exeora.dev` is a default rather than an address. Point this machine at your own deployment once and the choice is stored, so every later command follows it with no flag and no variable:
+
+```bash
+exeora gateway use https://your.example.com
+exeora connect
+```
+
+`exeora connect --gateway https://your.example.com` does both in one go. `exeora gateway` prints the active one and where it came from, and `exeora gateway reset` goes back to the hosted one.
+
+One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI lists what it is about to forget and asks before it does, and it checks that a gateway actually answers at the address first, so a typo leaves a working setup exactly as it was.
+
+Deploying a gateway of your own: [SELF-HOSTING.md](https://github.com/leynier/exeora/blob/main/docs/SELF-HOSTING.md).
 
 AGPL-3.0-only. Full story and monorepo: <https://github.com/leynier/exeora>. Site: <https://exeora.dev>
