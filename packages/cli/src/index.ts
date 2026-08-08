@@ -498,7 +498,7 @@ program
         // Filtering happens here rather than on the server, which returns the
         // newest rows for the whole account: a narrow filter over a wide window
         // is the useful direction, and it is one request either way.
-        const [{ calls, interactive }, remote] = await Promise.all([
+        const [calls, remote] = await Promise.all([
           gateway.listToolCalls(limit),
           gateway.listProjects(),
         ]);
@@ -524,13 +524,6 @@ program
         }
 
         if (rows.length === 0) {
-          if (!interactive) {
-            p.log.info(
-              "This gateway stores tool calls as an archive rather than a searchable log. " +
-                "Daily usage is still available in the dashboard.",
-            );
-            return;
-          }
           p.log.info(
             calls.length === 0
               ? "No tool calls yet. They appear here as soon as an agent makes one."

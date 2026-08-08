@@ -233,8 +233,6 @@ export interface ToolCallFilters {
 export interface ToolCallPage {
   items: ToolCall[];
   cursor: string | null;
-  /** False when calls are retained as an archive rather than queried interactively. */
-  interactive?: boolean;
 }
 
 /**

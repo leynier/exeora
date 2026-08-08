@@ -237,12 +237,12 @@ export const activeProjects = sqliteTable(
 /**
  * Daily rollup of tool calls per account.
  *
- * Survives the audit-log prune: the row-level trail is retention-limited, but
- * "how much did this account use last month" has to outlive that. Written by
- * the nightly cron from `tool_calls`, never on the request path.
+ * Survives the archive's retention: the row-level trail is retention-limited,
+ * but "how much did this account use last month" has to outlive that. Written by
+ * the nightly cron from the Iceberg archive, never on the request path.
  *
  * `day` is a UTC calendar day as `YYYY-MM-DD`. Counting happens in the cron
- * rather than on every call so the hot path stays one insert into `tool_calls`.
+ * rather than on every call, so the request path writes no D1 row at all.
  */
 export const usageDaily = sqliteTable(
   "usage_daily",
@@ -268,45 +268,13 @@ export const usageRollupState = sqliteTable("usage_rollup_state", {
     .default(sql`(unixepoch() * 1000)`),
 });
 
-/** Audit trail shown in the dashboard. Never stores tool arguments or output. */
-export const toolCalls = sqliteTable(
-  "tool_calls",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    tool: text("tool").notNull(),
-    status: text("status", { enum: ["ok", "error"] }).notNull(),
-    durationMs: integer("duration_ms").notNull(),
-    errorCode: text("error_code"),
-    /** OAuth client that made the call, so a user can tell Claude from ChatGPT. */
-    clientId: text("client_id"),
-    /**
-     * That client's name at the time of the call, denormalised on purpose: the
-     * activity log spans every project, and this keeps it readable with one
-     * query and no join, even after the client has been removed.
-     */
-    clientName: text("client_name"),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index("tool_calls_user_created").on(table.userId, table.createdAt),
-    index("tool_calls_project_created").on(table.projectId, table.createdAt),
-  ],
-);
-
 /**
  * Rows the archive still has to forget.
  *
- * In pipeline mode the audit trail lives in an append-only Iceberg table that
- * the Worker cannot delete from: R2 SQL is read-only, so a row only goes when a
- * maintenance job runs a transaction through the catalog. Deletion therefore
- * stops being one statement and becomes an intent recorded here and drained
- * later, which is the asynchronous deletion `AUDIT-ARCHITECTURE.md` warns about.
+ * The audit trail lives in an append-only Iceberg table that the Worker cannot
+ * delete from: R2 SQL is read-only, so a row only goes when a maintenance job
+ * commits a transaction through the catalog. Deletion is therefore not one
+ * statement but an intent recorded here and drained later.
  *
  * Deliberately no foreign key to `users`. `deleteAccount` removes the user row
  * and the cascade would take this row with it, erasing the very instruction to
@@ -343,7 +311,6 @@ export type Project = typeof projects.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;
 export type ClientEndpoint = ProjectClient["endpoint"];
 export type ActiveProject = typeof activeProjects.$inferSelect;
-export type ToolCall = typeof toolCalls.$inferSelect;
 export type UsageDaily = typeof usageDaily.$inferSelect;
 export type AuditDeletion = typeof auditDeletions.$inferSelect;
 export type AuditDeletionScope = AuditDeletion["scope"];

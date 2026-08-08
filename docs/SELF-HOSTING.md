@@ -116,6 +116,8 @@ One gateway is active at a time. Switching forgets the machine registration, the
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Optional high-volume audit storage
+## Audit storage
 
-D1 is the default and is appropriate for ordinary self-hosted installations. At volumes where one indexed D1 row per tool call is no longer economical, use the staged Pipelines/Iceberg path in [`apps/gateway/pipelines/README.md`](../apps/gateway/pipelines/README.md). Its different Activity and deletion guarantees are documented in [`AUDIT-ARCHITECTURE.md`](AUDIT-ARCHITECTURE.md); do not enable pipeline-only mode until every acceptance gate there passes.
+Required, not optional: the gateway records every tool call to a Cloudflare Pipelines stream with an Iceberg sink in R2, and keeps no per-call row in D1. Without it, tool calls still run but nothing is recorded and `usage_daily` stays empty. Setup is in [`apps/gateway/pipelines/README.md`](../apps/gateway/pipelines/README.md), and what the contract does and does not promise is in [`AUDIT-ARCHITECTURE.md`](AUDIT-ARCHITECTURE.md).
+
+Erasing an account from that archive needs a job that cannot run inside a Worker, because R2 SQL cannot delete. It ships as a GitHub Actions workflow, so a self-hosted deployment needs this repository forked with its own secrets, or account deletion will leave audit rows behind.

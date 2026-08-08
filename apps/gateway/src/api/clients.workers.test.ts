@@ -162,45 +162,6 @@ async function seed({ revoked }: { revoked: boolean }) {
       revokedAt: revoked ? new Date() : null,
     })
     .run();
-
-  await database
-    .insert(schema.toolCalls)
-    .values([
-      // The one that should go.
-      {
-        id: "call_target",
-        userId: USER,
-        projectId: "prj_one",
-        tool: "read_file",
-        status: "ok",
-        durationMs: 12,
-        clientId: "client_claude",
-        clientName: "Claude",
-      },
-      // Same project, a different client.
-      {
-        id: "call_other_client",
-        userId: USER,
-        projectId: "prj_one",
-        tool: "grep",
-        status: "ok",
-        durationMs: 8,
-        clientId: "client_chatgpt",
-        clientName: "ChatGPT",
-      },
-      // Same client, a different project.
-      {
-        id: "call_other_project",
-        userId: USER,
-        projectId: "prj_two",
-        tool: "list_files",
-        status: "ok",
-        durationMs: 4,
-        clientId: "client_claude",
-        clientName: "Claude",
-      },
-    ])
-    .run();
 }
 
 /** Authorizes the same client against the second project too. */
@@ -219,15 +180,12 @@ async function alsoOnSecondProject(clientId = "client_claude") {
 }
 
 const surviving = async () => {
-  const [clients, calls] = await Promise.all([
-    db(env)
-      .select()
-      .from(schema.projectClients)
-      .where(eq(schema.projectClients.userId, USER))
-      .all(),
-    db(env).select().from(schema.toolCalls).where(eq(schema.toolCalls.userId, USER)).all(),
-  ]);
-  return { clients: clients.map((row) => row.id), calls: calls.map((row) => row.id).sort() };
+  const clients = await db(env)
+    .select()
+    .from(schema.projectClients)
+    .where(eq(schema.projectClients.userId, USER))
+    .all();
+  return { clients: clients.map((row) => row.id) };
 };
 
 describe("listing", () => {
@@ -328,21 +286,6 @@ describe("deleting permanently", () => {
   describe("once it is revoked", () => {
     beforeEach(async () => {
       await seed({ revoked: true });
-    });
-
-    it("takes this project's calls by that client, and leaves the rest", async () => {
-      const { bindings } = provider([]);
-
-      const response = await call("/api/clients/pcl_one/permanently", {
-        method: "DELETE",
-        bindings,
-      });
-
-      expect(response.status).toBe(200);
-      expect(await surviving()).toEqual({
-        clients: [],
-        calls: ["call_other_client", "call_other_project"],
-      });
     });
 
     it("unregisters the application once nothing of the user's points at it", async () => {
@@ -463,23 +406,6 @@ describe("deleting permanently", () => {
     await call("/api/clients/pcl_one/permanently", { method: "DELETE", bindings });
 
     expect(recorded.deleted).toEqual([]);
-  });
-});
-
-describe("the audit trail", () => {
-  it("is scoped to the pair, not to the client across every project", async () => {
-    await seed({ revoked: true });
-    const { bindings } = provider([]);
-
-    await call("/api/clients/pcl_one/permanently", { method: "DELETE", bindings });
-
-    const elsewhere = await db(env)
-      .select()
-      .from(schema.toolCalls)
-      .where(and(eq(schema.toolCalls.clientId, "client_claude"), eq(schema.toolCalls.userId, USER)))
-      .all();
-
-    expect(elsewhere.map((row) => row.projectId)).toEqual(["prj_two"]);
   });
 });
 
@@ -706,27 +632,6 @@ describe("clients on the account URL", () => {
     await call("/api/clients/pcl_acct_1", { method: "DELETE", bindings });
 
     expect(await activeShownFor("client_claude")).toBeNull();
-  });
-
-  it("keeps the audit trail while the client still reaches the project another way", async () => {
-    await seedAccount(["prj_one"]);
-
-    await db(env)
-      .update(schema.projectClients)
-      .set({ revokedAt: new Date() })
-      .where(eq(schema.projectClients.id, "pcl_acct_0"))
-      .run();
-
-    const { bindings } = provider([]);
-    await call("/api/clients/pcl_acct_0/permanently", { method: "DELETE", bindings });
-
-    const calls = await db(env)
-      .select({ id: schema.toolCalls.id })
-      .from(schema.toolCalls)
-      .where(eq(schema.toolCalls.id, "call_target"))
-      .get();
-
-    expect(calls).toBeDefined();
   });
 
   it("points a client at a project it reaches, and refuses one it does not", async () => {

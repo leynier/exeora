@@ -65,28 +65,15 @@ async function seed({ revoked }: { revoked: boolean }) {
       localPath: "/work/api",
     })
     .run();
-
-  await database
-    .insert(schema.toolCalls)
-    .values({
-      id: "call_test",
-      userId: USER,
-      projectId: "prj_test",
-      tool: "read_file",
-      status: "ok",
-      durationMs: 12,
-    })
-    .run();
 }
 
 async function counts() {
   const database = db(env);
-  const [devices, projects, calls] = await Promise.all([
+  const [devices, projects] = await Promise.all([
     database.select().from(schema.devices).where(eq(schema.devices.id, "dev_test")).all(),
     database.select().from(schema.projects).where(eq(schema.projects.id, "prj_test")).all(),
-    database.select().from(schema.toolCalls).where(eq(schema.toolCalls.id, "call_test")).all(),
   ]);
-  return { devices: devices.length, projects: projects.length, calls: calls.length };
+  return { devices: devices.length, projects: projects.length };
 }
 
 describe("deleting a machine permanently", () => {
@@ -100,7 +87,7 @@ describe("deleting a machine permanently", () => {
     // range of the button it replaces.
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "not_revoked" });
-    expect(await counts()).toEqual({ devices: 1, projects: 1, calls: 1 });
+    expect(await counts()).toEqual({ devices: 1, projects: 1 });
   });
 
   describe("once it is revoked", () => {
@@ -109,12 +96,12 @@ describe("deleting a machine permanently", () => {
     });
 
     it("takes the machine, its projects and their audit trail", async () => {
-      expect(await counts()).toEqual({ devices: 1, projects: 1, calls: 1 });
+      expect(await counts()).toEqual({ devices: 1, projects: 1 });
 
       const response = await call("/api/devices/dev_test/permanently", { method: "DELETE" });
 
       expect(response.status).toBe(200);
-      expect(await counts()).toEqual({ devices: 0, projects: 0, calls: 0 });
+      expect(await counts()).toEqual({ devices: 0, projects: 0 });
     });
 
     it("does not let one account delete another's machine", async () => {
@@ -124,7 +111,7 @@ describe("deleting a machine permanently", () => {
       });
 
       expect(response.status).toBe(404);
-      expect(await counts()).toEqual({ devices: 1, projects: 1, calls: 1 });
+      expect(await counts()).toEqual({ devices: 1, projects: 1 });
     });
 
     it("404s on a machine that does not exist", async () => {
@@ -221,7 +208,7 @@ describe("revoking", () => {
     const response = await call("/api/devices/dev_test", { method: "DELETE" });
 
     expect(response.status).toBe(200);
-    expect(await counts()).toEqual({ devices: 1, projects: 1, calls: 1 });
+    expect(await counts()).toEqual({ devices: 1, projects: 1 });
 
     const device = await db(env)
       .select({ revokedAt: schema.devices.revokedAt })

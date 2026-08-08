@@ -29,8 +29,7 @@ import {
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { describeCall } from "./approval.js";
-import { type AuditWriteMode, auditEvent, auditWriteMode, writeAuditEvent } from "./audit.js";
-import { observeD1 } from "./cost-metrics.js";
+import { auditEvent, writeAuditEvent } from "./audit.js";
 import { newId } from "./ids.js";
 import {
   createProjectMcpHandler,
@@ -719,41 +718,9 @@ async function record(
   const { caller } = entry;
   const id = newId("call");
   const durationMs = Date.now() - entry.startedAt;
-  const writes: Promise<unknown>[] = [];
-
-  // Resolving the mode is itself fallible: a `dual`/`pipeline` deployment with
-  // no stream bound throws here on purpose, and a configuration mistake must
-  // still not be the reason a tool call fails or the reason its real error is
-  // replaced by this one. Loud in the logs, invisible to the caller.
-  let mode: AuditWriteMode | null = null;
-  try {
-    mode = auditWriteMode(env);
-  } catch (error) {
-    console.error("audit write mode is misconfigured; no audit row was written", error);
-  }
-
-  if (mode && mode !== "pipeline") {
-    writes.push(
-      db(env)
-        .insert(schema.toolCalls)
-        .values({
-          id,
-          userId: entry.userId,
-          projectId: entry.projectId,
-          tool: entry.tool,
-          status: entry.status,
-          durationMs,
-          errorCode: entry.errorCode ?? null,
-          clientId: caller.clientId ?? null,
-          clientName: caller.clientName ?? caller.mcp?.name ?? null,
-        })
-        .run()
-        .then((result) => observeD1(id, "audit.insert", result.meta)),
-    );
-  }
-
-  if (mode && mode !== "d1")
-    writes.push(writeAuditEvent(env, auditEvent(id, { ...entry, durationMs })));
+  const writes: Promise<unknown>[] = [
+    writeAuditEvent(env, auditEvent(id, { ...entry, durationMs })),
+  ];
 
   if (caller.clientId) {
     writes.push(
@@ -771,9 +738,9 @@ async function record(
   }
 
   // Auditing and last-used bookkeeping must never be why a tool call fails, but
-  // a failure that leaves no trace is worse than the failure: in `pipeline` mode
-  // a rejected stream write is the whole audit row, and the sampled cost metric
-  // only sees one event in a thousand. Loud in the logs, invisible to the caller.
+  // a failure that leaves no trace is worse than the failure: the stream write
+  // is the whole audit row, and the sampled cost metric only sees one event in
+  // a thousand. Loud in the logs, invisible to the caller.
   for (const result of await Promise.allSettled(writes)) {
     if (result.status === "rejected") {
       console.error("audit or last-used bookkeeping failed", result.reason);

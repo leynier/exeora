@@ -1,24 +1,8 @@
 import { CommandPolicy } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import {
-  and,
-  count,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  lt,
-  max,
-  notInArray,
-  or,
-  type SQL,
-  sql,
-  sum,
-} from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { auditWriteMode } from "../audit.js";
 import { enqueueAuditDeletion, projectIdsOfDevice } from "../audit-deletions.js";
 import {
   parsePolicy,
@@ -31,7 +15,7 @@ import "../env.js";
 import { newId } from "../ids.js";
 import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
 import { ownedProjectIds } from "../oauth/target.js";
-import { isPlanId, limitsFor, PLAN_IDS, type PlanId, retentionTiers } from "../plans.js";
+import { isPlanId, limitsFor, type PlanId } from "../plans.js";
 import { deviceOnline, isDeviceOnline, presenceCutoff } from "../presence.js";
 import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { rollupUsageDailyFromWarehouse } from "../warehouse-usage.js";
@@ -461,36 +445,10 @@ api.delete("/api/clients/:id/permanently", async (c) => {
   if (!client) return c.json({ error: "not_found" }, 404);
   if (client.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
 
-  // The same client can reach the same project through both URLs, and the audit
-  // log records the call rather than the door it came through. Deleting the
-  // history while the other way in still exists would erase a record its own
-  // row is still offering to show, so it waits until this is the last one.
-  const sibling = await db(c.env)
-    .select({ id: schema.projectClients.id })
-    .from(schema.projectClients)
-    .where(
-      and(
-        eq(schema.projectClients.userId, userId),
-        eq(schema.projectClients.projectId, client.projectId),
-        eq(schema.projectClients.clientId, client.clientId),
-        eq(schema.projectClients.endpoint, client.endpoint === "project" ? "account" : "project"),
-      ),
-    )
-    .get();
-
-  if (!sibling) {
-    await db(c.env)
-      .delete(schema.toolCalls)
-      .where(
-        and(
-          eq(schema.toolCalls.userId, userId),
-          eq(schema.toolCalls.projectId, client.projectId),
-          eq(schema.toolCalls.clientId, client.clientId),
-        ),
-      )
-      .run();
-  }
-
+  // The calls this client made stay in the archive. Deleting a client used to
+  // delete them too, back when they were D1 rows; the deletion queue erases by
+  // account or by project, and a client is neither. What goes here is the
+  // record of who the client was, not the record of what happened.
   await db(c.env)
     .delete(schema.projectClients)
     .where(eq(schema.projectClients.id, client.id))
@@ -793,72 +751,18 @@ api.get("/api/tool-calls", async (c) => {
   const clientId = c.req.query("clientId");
   const narrowStatus = status === "ok" || status === "error" ? status : undefined;
 
-  // In pipeline mode D1 holds no rows to page through, so the same question is
-  // put to the archive. The answer has the same shape and the same cursor; what
-  // differs is that a call becomes visible when the sink rolls its file rather
-  // than the instant it is made.
-  if (auditWriteMode(c.env) === "pipeline") {
-    const page = await queryWarehouseCalls(c.env, {
-      userId,
-      projectId,
-      status: narrowStatus,
-      clientId,
-      cursor,
-      pageSize: CALLS_PAGE_SIZE,
-    });
-
-    return c.json({
-      items: page.items,
-      cursor: page.last ? encodeCallsCursor(page.last.createdAt, page.last.id) : null,
-      interactive: true,
-    });
-  }
-
-  const filters = [eq(schema.toolCalls.userId, userId)];
-
-  if (projectId) filters.push(eq(schema.toolCalls.projectId, projectId));
-  if (narrowStatus) filters.push(eq(schema.toolCalls.status, narrowStatus));
-  if (clientId) filters.push(eq(schema.toolCalls.clientId, clientId));
-
-  if (cursor) {
-    filters.push(
-      or(
-        lt(schema.toolCalls.createdAt, new Date(cursor.createdAt)),
-        and(
-          eq(schema.toolCalls.createdAt, new Date(cursor.createdAt)),
-          lt(schema.toolCalls.id, cursor.id),
-        ),
-      ) as SQL,
-    );
-  }
-
-  // One more than the page, so whether there is a next page is known without a
-  // second count query. The extra row is dropped before answering.
-  const rows = await db(c.env)
-    .select()
-    .from(schema.toolCalls)
-    .where(and(...filters))
-    .orderBy(desc(schema.toolCalls.createdAt), desc(schema.toolCalls.id))
-    .limit(CALLS_PAGE_SIZE + 1)
-    .all();
-
-  const page = rows.slice(0, CALLS_PAGE_SIZE);
-  const last = rows.length > CALLS_PAGE_SIZE ? page.at(-1) : undefined;
+  const page = await queryWarehouseCalls(c.env, {
+    userId,
+    projectId,
+    status: narrowStatus,
+    clientId,
+    cursor,
+    pageSize: CALLS_PAGE_SIZE,
+  });
 
   return c.json({
-    items: page.map((call) => ({
-      id: call.id,
-      projectId: call.projectId,
-      tool: call.tool,
-      status: call.status,
-      durationMs: call.durationMs,
-      errorCode: call.errorCode,
-      clientId: call.clientId,
-      clientName: call.clientName,
-      createdAt: call.createdAt.getTime(),
-    })),
-    cursor: last ? encodeCallsCursor(last.createdAt.getTime(), last.id) : null,
-    interactive: true,
+    items: page.items,
+    cursor: page.last ? encodeCallsCursor(page.last.createdAt, page.last.id) : null,
   });
 });
 
@@ -948,150 +852,10 @@ api.post(
   },
 );
 
-/**
- * Rows deleted per statement, and statements per run.
- *
- * Bounded on both axes because a first run over a long backlog would otherwise
- * be one enormous delete. Anything left over is picked up by tomorrow's run,
- * which is fine: this is a retention policy, not an emergency.
- */
-const PRUNE_BATCH = 1_000;
-const PRUNE_MAX_BATCHES = 20;
-
-/**
- * Drops audit rows past each plan's retention window.
- *
- * Walked per tier rather than with one global cutoff, so a Pro account keeps
- * a year of history while Free keeps ninety days. Unknown plan strings are
- * treated as free here, matching `limitsFor`: a hand-edited typo must not
- * leave an account's audit trail unpruned forever. Called from the scheduled
- * handler rather than from a request. Nothing else bounds this table: every
- * tool call writes one row, and an agent working through a repository writes
- * hundreds a minute.
- */
-export async function pruneToolCalls(env: Pick<Env, "DB">): Promise<number> {
-  const database = db(env);
-  let deleted = 0;
-
-  for (const tier of retentionTiers()) {
-    const cutoff = new Date(Date.now() - tier.retentionDays * 24 * 60 * 60 * 1000);
-    // Free is the default bucket: anyone not on a recognised longer plan.
-    const onTier =
-      tier.plan === "free"
-        ? or(eq(schema.users.plan, "free"), notInArray(schema.users.plan, [...PLAN_IDS]))
-        : eq(schema.users.plan, tier.plan);
-
-    for (let batch = 0; batch < PRUNE_MAX_BATCHES; batch += 1) {
-      // A subquery with its own LIMIT, because SQLite only supports
-      // `DELETE ... LIMIT` when it is compiled with an option D1 does not enable.
-      // The plan join is the tier boundary: free and pro cut off on different days.
-      const doomed = database
-        .select({ id: schema.toolCalls.id })
-        .from(schema.toolCalls)
-        .innerJoin(schema.users, eq(schema.toolCalls.userId, schema.users.id))
-        .where(and(onTier, lt(schema.toolCalls.createdAt, cutoff)))
-        .limit(PRUNE_BATCH);
-
-      const result = await database
-        .delete(schema.toolCalls)
-        .where(inArray(schema.toolCalls.id, doomed))
-        .run();
-
-      const n = result.meta.changes ?? 0;
-      deleted += n;
-      if (n < PRUNE_BATCH) break;
-    }
-  }
-
-  return deleted;
-}
-
-/**
- * Folds yesterday's (and any earlier unrolled) tool calls into `usage_daily`.
- *
- * Runs before the prune so the rows it counts are still there. Monotonic on
- * conflict: the stored total only rises. That matters when someone deletes a
- * project or machine and cascades part of a day's audit rows — the rollup is
- * meant to outlive the trail, so a later recount of what remains must not
- * quietly shrink last month's usage.
- *
- * Days the prune has already cleared drop out of the source query and their
- * rollup row is left alone. Re-running the same night with unchanged source
- * rows is a no-op on the numbers.
- */
-export async function rollupUsageDaily(env: Pick<Env, "DB">): Promise<number> {
-  const database = db(env);
-  const today = utcDay(new Date());
-
-  // Everything strictly before today that is still in the audit log. Once the
-  // prune removes a day, this query stops seeing it and the rollup row stands.
-  const groups = await database
-    .select({
-      userId: schema.toolCalls.userId,
-      day: sql<string>`strftime('%Y-%m-%d', ${schema.toolCalls.createdAt} / 1000, 'unixepoch')`.as(
-        "day",
-      ),
-      n: count(),
-      errors:
-        sql<number>`sum(case when ${schema.toolCalls.status} = 'error' then 1 else 0 end)`.mapWith(
-          Number,
-        ),
-      lastActivityAt: max(schema.toolCalls.createdAt),
-    })
-    .from(schema.toolCalls)
-    .where(
-      lt(
-        schema.toolCalls.createdAt,
-        // Midnight UTC of today, as epoch ms.
-        new Date(`${today}T00:00:00.000Z`),
-      ),
-    )
-    .groupBy(
-      schema.toolCalls.userId,
-      sql`strftime('%Y-%m-%d', ${schema.toolCalls.createdAt} / 1000, 'unixepoch')`,
-    )
-    .all();
-
-  let written = 0;
-
-  for (const group of groups) {
-    await database
-      .insert(schema.usageDaily)
-      .values({
-        userId: group.userId,
-        day: group.day,
-        toolCalls: group.n,
-        errors: group.errors,
-        lastActivityAt: group.lastActivityAt,
-      })
-      .onConflictDoUpdate({
-        target: [schema.usageDaily.userId, schema.usageDaily.day],
-        set: {
-          toolCalls: sql`max(${schema.usageDaily.toolCalls}, excluded.tool_calls)`,
-          errors: sql`max(${schema.usageDaily.errors}, excluded.errors)`,
-          lastActivityAt: sql`max(coalesce(${schema.usageDaily.lastActivityAt}, 0), excluded.last_activity_at)`,
-        },
-      })
-      .run();
-    written += 1;
-  }
-
-  return written;
-}
-
-/**
- * Rollup then prune for the nightly cron.
- *
- * Prune always runs: a rollup failure must not leave `tool_calls` unbounded.
- * Dependencies are injectable so a test can fail the rollup without stubbing
- * the module graph.
- */
 type NightlyEnv = Pick<Env, "DB"> &
   Partial<
     Pick<
       Env,
-      | "AUDIT_WRITE_MODE"
-      | "AUDIT_STREAM"
       | "CLOUDFLARE_ACCOUNT_ID"
       | "AUDIT_R2_BUCKET"
       | "AUDIT_R2_WAREHOUSE"
@@ -1103,26 +867,17 @@ type NightlyEnv = Pick<Env, "DB"> &
 
 export async function runNightlyHousekeeping(
   env: NightlyEnv,
-  deps: {
-    rollup?: (env: NightlyEnv) => Promise<unknown>;
-    prune?: (env: Pick<Env, "DB">) => Promise<unknown>;
-  } = {},
+  deps: { rollup?: (env: NightlyEnv) => Promise<unknown> } = {},
 ): Promise<void> {
-  const prune = deps.prune ?? pruneToolCalls;
+  const rollup = deps.rollup ?? rollupUsageDailyFromWarehouse;
 
   try {
-    // Inside the try: choosing the producer reads `AUDIT_WRITE_MODE`, which
-    // throws when the mode and the bindings disagree. A misconfiguration is a
-    // rollup failure like any other, not a reason to leave `tool_calls`
-    // unbounded.
-    const rollup =
-      deps.rollup ??
-      (auditWriteMode(env) === "pipeline" ? rollupUsageDailyFromWarehouse : rollupUsageDaily);
     await rollup(env);
   } catch (error) {
-    console.error("usage rollup failed; continuing to prune", error);
+    // Logged rather than thrown: nothing downstream of this depends on it, and
+    // the checkpoint means tomorrow's run picks up the day that failed.
+    console.error("usage rollup failed", error);
   }
-  await prune(env);
 }
 
 /** Canonical plan id, defaulting unknown or missing values to free. */
@@ -1141,7 +896,7 @@ async function planOf(env: Pick<Env, "DB">, userId: string): Promise<PlanId> {
 }
 
 /** UTC calendar day as `YYYY-MM-DD`. */
-function utcDay(date: Date): string {
+function _utcDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 

@@ -63,7 +63,6 @@ export interface ToolCallView {
 export interface ToolCallsPage {
   items: ToolCallView[];
   cursor: string | null;
-  interactive?: boolean;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -146,26 +145,18 @@ export const gateway = {
    * Newest first. The gateway pages the audit log with a cursor rather than
    * taking a limit, so "the newest N" means walking pages until N rows have
    * accumulated or the log runs out.
-   *
-   * `interactive` is false on a deployment that keeps calls as an archive
-   * instead of a queryable log. An empty answer means something different
-   * there, and saying "no tool calls yet" would be a lie.
    */
-  listToolCalls: async (
-    limit: number,
-  ): Promise<{ calls: ToolCallView[]; interactive: boolean }> => {
+  listToolCalls: async (limit: number): Promise<ToolCallView[]> => {
     const calls: ToolCallView[] = [];
-    let interactive = true;
     let cursor: string | null = null;
     do {
       const query: string = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
       const page: ToolCallsPage = await request<ToolCallsPage>(`/api/tool-calls${query}`);
       calls.push(...page.items);
-      interactive = page.interactive !== false;
       // An empty page means the log is exhausted, cursor or not: following it
       // further would re-ask forever.
       cursor = page.items.length === 0 ? null : page.cursor;
     } while (cursor !== null && calls.length < limit);
-    return { calls: calls.slice(0, limit), interactive };
+    return calls.slice(0, limit);
   },
 };

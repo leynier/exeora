@@ -18,28 +18,13 @@ export interface AuditEvent extends Record<string, unknown> {
   created_at: string;
 }
 
-export type AuditWriteMode = "d1" | "dual" | "pipeline";
-
 /**
  * The binding is optional here even though the generated `Env` makes it
- * required. Those types describe this repository's `wrangler.jsonc`; this
- * function's whole job is the deployment where the binding is absent, which
- * is any self-hosted gateway that never provisioned Pipelines.
+ * required. Those types describe this repository's `wrangler.jsonc`; a
+ * self-hosted gateway that never provisioned Pipelines has no such binding,
+ * and this is where that shows up.
  */
-type AuditEnv = { AUDIT_WRITE_MODE?: AuditWriteMode; AUDIT_STREAM?: Env["AUDIT_STREAM"] };
-
-export function auditWriteMode(env: AuditEnv): AuditWriteMode {
-  const requested =
-    env.AUDIT_WRITE_MODE === "dual" || env.AUDIT_WRITE_MODE === "pipeline"
-      ? env.AUDIT_WRITE_MODE
-      : "d1";
-  // Mis-provisioned dual/pipeline must not silently run as D1 (false confidence)
-  // or as pipeline without a stream (skipped D1 + failed sink = lost audit).
-  if (requested !== "d1" && !env.AUDIT_STREAM) {
-    throw new Error(`AUDIT_WRITE_MODE=${requested} requires the AUDIT_STREAM binding`);
-  }
-  return requested;
-}
+type AuditEnv = { AUDIT_STREAM?: Env["AUDIT_STREAM"] };
 
 export function auditEvent(
   id: string,

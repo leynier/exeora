@@ -1,6 +1,8 @@
-# Audit Pipelines prototype
+# Audit archive
 
-The scalable audit path is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. Iceberg is intentional: plain Parquet is cheaper to maintain, but cannot provide the exact daily usage rollup or selective retention checks required before cutting D1 over.
+The audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. There is no second contract: D1 holds no per-call row, so this has to be provisioned for the gateway to record anything at all.
+
+Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity and cannot be erased from. The reasoning is in [`AUDIT-ARCHITECTURE.md`](../../../docs/AUDIT-ARCHITECTURE.md).
 
 ## Provision
 
@@ -18,16 +20,16 @@ Answer the wizard:
 | --- | --- | --- |
 | Enable HTTP endpoint for sending data? | **no** | The gateway writes through the Worker binding. An HTTP endpoint is a second door into the audit table, and left unauthenticated it lets anyone forge tool-call events against any account, which then inflate `usage_daily` and the plan limits read from it. |
 | Schema | **Load from file** → `apps/gateway/pipelines/audit.schema.json` | Must match `AuditEvent` exactly; it is what R2 SQL later queries. |
-| Transform | `SELECT * FROM stream` | |
+| Transform | `SELECT * FROM stream` | The gateway already emits the table's shape. A transform would be a second place the schema is defined. |
 | Destination type | **Data Catalog (Iceberg)** | A plain R2 bucket gives Parquet with no selective row deletion and no R2 SQL, which loses both account erasure and the exact rollup. |
 | R2 bucket name | `exeora-audit` | Hyphens here, unlike the pipeline name: R2 buckets reject underscores. |
 | Namespace / table | `default` / `tool_calls` | Underscores here, unlike the bucket: `AUDIT_R2_TABLE` is validated as `namespace.table` against `[a-zA-Z_][\w]*`. |
 
 Three names, three different punctuation rules. `exeora_audit` for the pipeline, `exeora-audit` for the bucket, `tool_calls` for the table.
 
-Merge the emitted stream id using `pipelines/wrangler.fragment.jsonc`, run `bun run types`, then set `AUDIT_WRITE_MODE` to `dual`. Do not set it directly to `pipeline`: dual mode is the validation period.
+Merge the emitted stream id using `pipelines/wrangler.fragment.jsonc` and run `bun run types`.
 
-Then turn on the two maintenance operations. Both are managed features rather than jobs to write, and gate 5 assumes compaction is running:
+Then turn on the two maintenance operations. Both are managed features rather than jobs to write:
 
 ```bash
 wrangler r2 bucket catalog compaction enable <bucket> --target-size 256
@@ -54,7 +56,7 @@ The sink's token and the maintenance token carry the same permissions and could 
 
 These cannot be scoped to `exeora-audit`. R2 Data Catalog requires an Admin-level token, and only the object-scoped levels take a bucket list, so all three reach every R2 bucket in the account. Worth knowing before deciding what else lives in that account.
 
-The nightly exact rollup also requires these Worker values/secrets:
+## Worker configuration
 
 ```text
 CLOUDFLARE_ACCOUNT_ID
@@ -66,11 +68,9 @@ AUDIT_R2_SQL_TOKEN         (secret, the Admin Read only token)
 AUDIT_MAINTENANCE_SECRET   (secret, shared with the deletion job)
 ```
 
-Set `AUDIT_WAREHOUSE_START_DAY` to the day `dual` mode is switched on. It is the first UTC day the table can contain, and dating it earlier only makes the rollup query empty days every night.
+Set `AUDIT_WAREHOUSE_START_DAY` to the day the stream starts receiving events. It is the first UTC day the table can contain, and dating it earlier only makes the rollup query empty days every night.
 
-`AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret for the deletion job.
-
-`AUDIT_MAINTENANCE_SECRET` is what the deletion job authenticates with. While it is unset the `/internal/*` routes answer 404, so a `d1`-mode deployment does not expose them at all.
+`AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret. It is what the deletion job authenticates with, and while it is unset the `/internal/*` routes answer 404 rather than advertising themselves.
 
 ## Deleting from the archive
 
@@ -86,15 +86,10 @@ It lives outside Cloudflare, which is the cost of that choice: a self-hosted gat
 
 It runs at 05:30 UTC, after the gateway's own cron. The order matters: pruning a day before the rollup has read it would undercount that day's usage, and `usage_daily` is what plan limits read.
 
-## Acceptance gates
+Two things it learned the hard way, both recorded in its comments: Cloudflare's WAF answers 403 to the default `Python-urllib` user agent before the request reaches the Worker, and `created_at` is a zone-free Iceberg `timestamp`, so a literal carrying an offset will not bind.
 
-Keep dual mode until all of these have been measured from production-shaped traffic:
+## After a change
 
-1. Accepted stream events equal D1 inserts by stable event `id`; Pipelines user-error metrics show no schema drops.
-2. A maximum-size batch stays below 5 MB/request and sustained ingress stays below 5 MB/s/stream.
-3. Sink availability latency and the three-day late-event replay meet the next-day usage contract.
-4. Daily `COUNT(*)` / error totals from R2 SQL match D1 totals for at least seven days (event ids are unique; avoid budget-gated `COUNT(DISTINCT)`).
-5. Query metrics (`files_scanned`, `bytes_scanned`, R2 requests) fit the operating budget after compaction.
-6. Expired and erased rows demonstrably leave the table. Orphan files are covered by managed snapshot expiration since 2026-04-22; what still has to be shown is that the deletion job drains `audit_deletions` and that a deleted account's rows stop appearing in R2 SQL results.
+Compaction and snapshot expiration hold service credentials of their own, so rotating the catalog token silently stops them. Re-run both `enable` commands with the new token.
 
-After the gates pass, `AUDIT_WRITE_MODE=pipeline` stops D1 `tool_calls` writes. The Activity API then explicitly reports that interactive history is unavailable; `usage_daily` remains exact and idempotent.
+Worth measuring as volume grows, because it decides what Activity costs: `EXPLAIN` on an Activity-shaped query reports `files_scanned` and `bytes_scanned`. How well one account's query prunes depends on how the sink lays rows out across files, which the schema does not fix.

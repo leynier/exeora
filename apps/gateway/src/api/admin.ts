@@ -1,8 +1,8 @@
-import { and, count, desc, eq, gt, gte, isNull, max, sql, sum } from "drizzle-orm";
+import { count, desc, eq, gte, isNull, max, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
-import { auditWriteMode } from "../audit.js";
 import { db, schema } from "../db/client.js";
 import { deviceOnline, deviceOnlineSql, isDeviceOnline, presenceCutoff } from "../presence.js";
+import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { deleteAccount, revokeClient, revokeDevice } from "./ops.js";
 
 /**
@@ -44,7 +44,6 @@ admin.use("/api/admin/*", async (c, next) => {
 
 admin.get("/api/admin/overview", async (c) => {
   const database = db(c.env);
-  const pipeline = auditWriteMode(c.env) === "pipeline";
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const yesterdayUtc = dayAgo.toISOString().slice(0, 10);
@@ -70,45 +69,25 @@ admin.get("/api/admin/overview", async (c) => {
       .from(schema.projectClients)
       .where(isNull(schema.projectClients.revokedAt))
       .get(),
-    pipeline
-      ? database
-          .select({ n: sum(schema.usageDaily.toolCalls) })
-          .from(schema.usageDaily)
-          .get()
-      : database.select({ n: count() }).from(schema.toolCalls).get(),
-    pipeline
-      ? database
-          .select({ n: sum(schema.usageDaily.toolCalls) })
-          .from(schema.usageDaily)
-          .where(eq(schema.usageDaily.day, yesterdayUtc))
-          .get()
-      : database
-          .select({ n: count() })
-          .from(schema.toolCalls)
-          .where(gt(schema.toolCalls.createdAt, dayAgo))
-          .get(),
-    pipeline
-      ? database
-          .select({ n: sum(schema.usageDaily.toolCalls) })
-          .from(schema.usageDaily)
-          .where(gte(schema.usageDaily.day, weekAgoUtc))
-          .get()
-      : database
-          .select({ n: count() })
-          .from(schema.toolCalls)
-          .where(gt(schema.toolCalls.createdAt, weekAgo))
-          .get(),
-    pipeline
-      ? database
-          .select({ n: sum(schema.usageDaily.errors) })
-          .from(schema.usageDaily)
-          .where(gte(schema.usageDaily.day, weekAgoUtc))
-          .get()
-      : database
-          .select({ n: count() })
-          .from(schema.toolCalls)
-          .where(and(gt(schema.toolCalls.createdAt, weekAgo), eq(schema.toolCalls.status, "error")))
-          .get(),
+    database
+      .select({ n: sum(schema.usageDaily.toolCalls) })
+      .from(schema.usageDaily)
+      .get(),
+    database
+      .select({ n: sum(schema.usageDaily.toolCalls) })
+      .from(schema.usageDaily)
+      .where(eq(schema.usageDaily.day, yesterdayUtc))
+      .get(),
+    database
+      .select({ n: sum(schema.usageDaily.toolCalls) })
+      .from(schema.usageDaily)
+      .where(gte(schema.usageDaily.day, weekAgoUtc))
+      .get(),
+    database
+      .select({ n: sum(schema.usageDaily.errors) })
+      .from(schema.usageDaily)
+      .where(gte(schema.usageDaily.day, weekAgoUtc))
+      .get(),
   ]);
 
   const calls7d = Number(weekRow?.n ?? 0);
@@ -124,7 +103,9 @@ admin.get("/api/admin/overview", async (c) => {
     toolCalls24h: Number(dayRow?.n ?? 0),
     toolCalls7d: calls7d,
     errorRate7d: calls7d === 0 ? 0 : errors7d / calls7d,
-    usageWindow: pipeline ? "complete_utc_days" : "rolling",
+    // Complete UTC days, not a rolling window: these come from `usage_daily`,
+    // which the nightly rollup rebuilds a day at a time out of the archive.
+    usageWindow: "complete_utc_days",
   });
 });
 
@@ -134,7 +115,6 @@ admin.get("/api/admin/overview", async (c) => {
 
 admin.get("/api/admin/users", async (c) => {
   const database = db(c.env);
-  const pipeline = auditWriteMode(c.env) === "pipeline";
   const outerUserId = sql.raw('"users"."id"');
 
   // One query with correlated subselects rather than N+1: the panel is small
@@ -162,17 +142,13 @@ admin.get("/api/admin/users", async (c) => {
         sql<number>`(select count(*) from ${schema.projectClients} where ${schema.projectClients.userId} = ${outerUserId} and ${schema.projectClients.revokedAt} is null)`.mapWith(
           Number,
         ),
-      toolCalls: (pipeline
-        ? sql<number>`(select coalesce(sum(${schema.usageDaily.toolCalls}), 0) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`
-        : sql<number>`(select count(*) from ${schema.toolCalls} where ${schema.toolCalls.userId} = ${outerUserId})`
-      ).mapWith(Number),
-      lastActivityAt: pipeline
-        ? sql<
-            number | null
-          >`(select max(${schema.usageDaily.lastActivityAt}) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`
-        : sql<
-            number | null
-          >`(select max(${schema.toolCalls.createdAt}) from ${schema.toolCalls} where ${schema.toolCalls.userId} = ${outerUserId})`,
+      toolCalls:
+        sql<number>`(select coalesce(sum(${schema.usageDaily.toolCalls}), 0) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`.mapWith(
+          Number,
+        ),
+      lastActivityAt: sql<
+        number | null
+      >`(select max(${schema.usageDaily.lastActivityAt}) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`,
     })
     .from(schema.users)
     .orderBy(desc(schema.users.createdAt))
@@ -198,7 +174,6 @@ admin.get("/api/admin/users", async (c) => {
 admin.get("/api/admin/users/:id", async (c) => {
   const database = db(c.env);
   const userId = c.req.param("id");
-  const pipeline = auditWriteMode(c.env) === "pipeline";
   const cutoff = presenceCutoff();
 
   const user = await database
@@ -234,37 +209,23 @@ admin.get("/api/admin/users/:id", async (c) => {
       .where(eq(schema.projectClients.userId, userId))
       .orderBy(desc(schema.projectClients.authorizedAt))
       .all(),
-    pipeline
-      ? database
-          .select({ n: sum(schema.usageDaily.toolCalls) })
-          .from(schema.usageDaily)
-          .where(eq(schema.usageDaily.userId, userId))
-          .get()
-      : database
-          .select({ n: count() })
-          .from(schema.toolCalls)
-          .where(eq(schema.toolCalls.userId, userId))
-          .get(),
-    pipeline
-      ? Promise.resolve([])
-      : database
-          .select()
-          .from(schema.toolCalls)
-          .where(eq(schema.toolCalls.userId, userId))
-          .orderBy(desc(schema.toolCalls.createdAt))
-          .limit(20)
-          .all(),
-    pipeline
-      ? database
-          .select({ at: max(schema.usageDaily.lastActivityAt) })
-          .from(schema.usageDaily)
-          .where(eq(schema.usageDaily.userId, userId))
-          .get()
-      : database
-          .select({ at: max(schema.toolCalls.createdAt) })
-          .from(schema.toolCalls)
-          .where(eq(schema.toolCalls.userId, userId))
-          .get(),
+    database
+      .select({ n: sum(schema.usageDaily.toolCalls) })
+      .from(schema.usageDaily)
+      .where(eq(schema.usageDaily.userId, userId))
+      .get(),
+    // From the archive, the only place individual calls exist now. Failure is
+    // swallowed on purpose: the rest of this page is D1 and still useful, and
+    // an admin looking at an account should not be shown nothing because one
+    // R2 SQL query timed out.
+    queryWarehouseCalls(c.env, { userId, pageSize: 20 })
+      .then((page) => page.items)
+      .catch(() => []),
+    database
+      .select({ at: max(schema.usageDaily.lastActivityAt) })
+      .from(schema.usageDaily)
+      .where(eq(schema.usageDaily.userId, userId))
+      .get(),
   ]);
 
   const devicesOnline = devices.filter((device) => isDeviceOnline(device, cutoff)).length;
@@ -314,17 +275,7 @@ admin.get("/api/admin/users/:id", async (c) => {
       lastUsedAt: client.lastUsedAt?.getTime() ?? null,
       revokedAt: client.revokedAt?.getTime() ?? null,
     })),
-    recentCalls: recentCalls.map((call) => ({
-      id: call.id,
-      projectId: call.projectId,
-      tool: call.tool,
-      status: call.status,
-      durationMs: call.durationMs,
-      errorCode: call.errorCode,
-      clientId: call.clientId,
-      clientName: call.clientName,
-      createdAt: call.createdAt.getTime(),
-    })),
+    recentCalls,
   });
 });
 

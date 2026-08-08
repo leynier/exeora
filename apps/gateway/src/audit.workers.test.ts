@@ -1,23 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { auditEvent, auditWriteMode, writeAuditEvent } from "./audit.js";
+import { auditEvent, writeAuditEvent } from "./audit.js";
 
 describe("audit pipeline event", () => {
-  it("uses D1 unless a migration mode was explicitly selected", () => {
-    expect(auditWriteMode({})).toBe("d1");
-    const stream = { send: async () => undefined };
-    expect(auditWriteMode({ AUDIT_WRITE_MODE: "dual", AUDIT_STREAM: stream })).toBe("dual");
-    expect(auditWriteMode({ AUDIT_WRITE_MODE: "pipeline", AUDIT_STREAM: stream })).toBe("pipeline");
-  });
-
-  it("rejects dual/pipeline when AUDIT_STREAM is missing", () => {
-    expect(() => auditWriteMode({ AUDIT_WRITE_MODE: "pipeline" })).toThrow(
-      "AUDIT_WRITE_MODE=pipeline requires the AUDIT_STREAM binding",
-    );
-    expect(() => auditWriteMode({ AUDIT_WRITE_MODE: "dual" })).toThrow(
-      "AUDIT_WRITE_MODE=dual requires the AUDIT_STREAM binding",
-    );
-  });
-
   it("emits the versioned, argument-free warehouse schema", () => {
     const event = auditEvent("call_1", {
       userId: "usr_1",

@@ -156,32 +156,6 @@ async function seed() {
       },
     ])
     .run();
-
-  await database
-    .insert(schema.toolCalls)
-    .values([
-      {
-        id: "call_mine",
-        userId: USER,
-        projectId: "prj_mine",
-        tool: "read_file",
-        status: "ok",
-        durationMs: 3,
-        clientId: "client_claude",
-        clientName: "Claude",
-      },
-      {
-        id: "call_theirs",
-        userId: OTHER,
-        projectId: "prj_theirs",
-        tool: "grep",
-        status: "ok",
-        durationMs: 4,
-        clientId: "client_shared",
-        clientName: "Cursor",
-      },
-    ])
-    .run();
 }
 
 async function surviving() {
@@ -192,7 +166,6 @@ async function surviving() {
     devices: (await database.select().from(schema.devices).all()).map((row) => row.id),
     projects: (await database.select().from(schema.projects).all()).map((row) => row.id),
     clients: (await database.select().from(schema.projectClients).all()).map((row) => row.id),
-    calls: (await database.select().from(schema.toolCalls).all()).map((row) => row.id),
   };
 }
 
@@ -210,7 +183,6 @@ describe("deleting an account", () => {
     expect(left.devices).toEqual(["dev_theirs"]);
     expect(left.projects).toEqual(["prj_theirs"]);
     expect(left.clients).toEqual(["pcl_shared"]);
-    expect(left.calls).toEqual(["call_theirs"]);
   });
 
   it("revokes every grant the account held, whichever client it was for", async () => {

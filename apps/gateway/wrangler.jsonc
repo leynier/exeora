@@ -9,9 +9,10 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
 
-  // Nightly housekeeping: prunes the audit log past its retention window and
+  // Nightly housekeeping: rebuilds `usage_daily` from the audit archive and
   // lets the OAuth provider drop grants and tokens that have expired. Neither
-  // has anything to do with a request, and both grow without bound otherwise.
+  // has anything to do with a request. Retention on the archive itself belongs
+  // to the maintenance job, which cannot run here.
   "triggers": { "crons": ["17 4 * * *"] },
 
   "durable_objects": {
@@ -101,18 +102,11 @@
     // The first UTC day the Iceberg table can contain, which is the day dual
     // mode was switched on. Dating it earlier only makes the rollup query
     // empty days every night for nothing.
-    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08",
-
-    // The cutover. `tool_calls` stops being written on the request path and the
-    // Iceberg table becomes the only copy, so Activity reads it through R2 SQL
-    // and `usage_daily` is rebuilt from it nightly. A call becomes visible when
-    // the sink rolls its file rather than the instant it is made.
-    "AUDIT_WRITE_MODE": "pipeline"
+    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08"
   },
 
-  // The audit stream. `AUDIT_WRITE_MODE` decides whether anything is sent to
-  // it: unset means `d1` and the binding sits idle, which is why the binding
-  // can land here before the cutover rather than with it.
+  // The audit stream. Every tool call is sent here and nowhere else: D1 holds
+  // no per-call row, only the daily rollup the cron above rebuilds from it.
   "pipelines": [
     {
       "binding": "AUDIT_STREAM",

@@ -18,19 +18,17 @@ const USER = "usr_admin_subject";
 const USER_EMAIL = "subject@example.com";
 const OTHER = "usr_admin_other";
 
-/**
- * Pinned to `d1`: the counts below are seeded as `tool_calls` rows, and that is
- * the branch reading them. In `pipeline` mode the panel sums `usage_daily` and
- * shows no recent calls, which is a different set of assertions than these.
- */
-const d1Env = { ...env, AUDIT_WRITE_MODE: "d1" } as unknown as Env;
-
 function call(path: string, options: { method?: string; userId?: string } = {}) {
   const request = new Request(`https://exeora.dev${path}`, { method: options.method ?? "GET" });
   const ctx = createExecutionContext();
   (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? ADMIN };
 
-  return api.fetch(request, d1Env, ctx);
+  return api.fetch(request, env, ctx);
+}
+
+/** Today as a UTC day, which is how `usage_daily` is keyed. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 async function seed() {
@@ -124,34 +122,13 @@ async function seed() {
     })
     .run();
 
+  // `usage_daily`, because that is what the panel reads now: the per-call table
+  // is gone and the archive is not something a test can seed.
   await database
-    .insert(schema.toolCalls)
+    .insert(schema.usageDaily)
     .values([
-      {
-        id: "tc_subject_ok",
-        userId: USER,
-        projectId: "prj_subject",
-        tool: "read_file",
-        status: "ok",
-        durationMs: 12,
-      },
-      {
-        id: "tc_subject_err",
-        userId: USER,
-        projectId: "prj_subject",
-        tool: "run_command",
-        status: "error",
-        durationMs: 40,
-        errorCode: "denied",
-      },
-      {
-        id: "tc_other",
-        userId: OTHER,
-        projectId: "prj_other",
-        tool: "list_files",
-        status: "ok",
-        durationMs: 5,
-      },
+      { userId: USER, day: today(), toolCalls: 2, errors: 1, lastActivityAt: new Date() },
+      { userId: OTHER, day: today(), toolCalls: 1, errors: 0, lastActivityAt: new Date() },
     ])
     .run();
 }
@@ -235,7 +212,7 @@ describe("admin reads", () => {
     expect(overview.toolCalls).toBeGreaterThanOrEqual(3);
   });
 
-  it("returns a user detail with machines, projects and recent calls", async () => {
+  it("returns a user detail with machines, projects and clients", async () => {
     const response = await call(`/api/admin/users/${USER}`);
     expect(response.status).toBe(200);
 
@@ -264,7 +241,11 @@ describe("admin reads", () => {
     );
     expect(detail.projectList.map((row) => row.id)).toEqual(["prj_subject"]);
     expect(detail.clientList.map((row) => row.id)).toEqual(["pcl_subject"]);
-    expect(detail.recentCalls).toHaveLength(2);
+    // Recent calls come from the archive, which no test can seed and which the
+    // pool's blocked outbound makes unreachable. Empty rather than a failed
+    // page is the behaviour that matters: the rest of this view is D1 and an
+    // admin should still see it when one R2 SQL query does not answer.
+    expect(detail.recentCalls).toEqual([]);
   });
 });
 
@@ -330,13 +311,6 @@ describe("admin actions", () => {
       .where(eq(schema.projects.userId, USER))
       .all();
     expect(projects).toEqual([]);
-
-    const calls = await db(env)
-      .select({ id: schema.toolCalls.id })
-      .from(schema.toolCalls)
-      .where(eq(schema.toolCalls.userId, USER))
-      .all();
-    expect(calls).toEqual([]);
 
     // Neighbour untouched.
     const other = await db(env)

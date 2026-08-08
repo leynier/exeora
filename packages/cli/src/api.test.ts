@@ -47,7 +47,7 @@ describe("listToolCalls", () => {
   it("returns a single page without asking for another", async () => {
     const urls = stubFetch([{ items: [call("a"), call("b")], cursor: null }]);
 
-    const { calls } = await gateway.listToolCalls(30);
+    const calls = await gateway.listToolCalls(30);
 
     expect(calls.map((c) => c.id)).toEqual(["a", "b"]);
     expect(urls).toEqual(["https://gateway.test/api/tool-calls"]);
@@ -72,7 +72,7 @@ describe("listToolCalls", () => {
       { items: [call("c"), call("d")], cursor: "cursor-2" },
     ]);
 
-    const { calls } = await gateway.listToolCalls(3);
+    const calls = await gateway.listToolCalls(3);
 
     expect(calls.map((c) => c.id)).toEqual(["a", "b", "c"]);
     expect(urls[1]).toBe("https://gateway.test/api/tool-calls?cursor=cursor-1");
@@ -84,7 +84,7 @@ describe("listToolCalls", () => {
       { items: [call("b")], cursor: null },
     ]);
 
-    const { calls } = await gateway.listToolCalls(50);
+    const calls = await gateway.listToolCalls(50);
 
     expect(calls.map((c) => c.id)).toEqual(["a", "b"]);
   });
@@ -92,7 +92,7 @@ describe("listToolCalls", () => {
   it("stops on an empty page rather than chasing its cursor forever", async () => {
     const urls = stubFetch([{ items: [], cursor: "cursor-1" }]);
 
-    const { calls } = await gateway.listToolCalls(50);
+    const calls = await gateway.listToolCalls(50);
 
     expect(calls).toEqual([]);
     expect(urls).toHaveLength(1);
