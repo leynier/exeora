@@ -173,6 +173,12 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, tests and CLI releases
 
 Issues and pull requests are welcome. For vulnerabilities, email **hello@exeora.dev** - do not open a public issue.
 
+## Contributors
+
+Thanks to everyone who contributes to Exeora through code, documentation, issues, reviews, and ideas.
+
+See the full list of [contributors](https://github.com/leynier/exeora/graphs/contributors).
+
 ## License
 
 [AGPL-3.0-only](./LICENSE).
