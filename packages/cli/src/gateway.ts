@@ -2,7 +2,15 @@ import * as p from "@clack/prompts";
 import { discoverClient } from "./auth/client.js";
 import { clearCredentials, loadCredentials } from "./auth/store.js";
 import { forgetAccessToken } from "./auth/tokens.js";
-import { config, forgetLocalState, gatewayUrl, projects, setGatewayUrl } from "./config.js";
+import {
+  config,
+  forgetLocalState,
+  gatewaySource,
+  gatewayUrl,
+  projects,
+  setGatewayUrl,
+} from "./config.js";
+import { asJson, emit } from "./output.js";
 
 /**
  * Choosing which Exeora to talk to.
@@ -153,4 +161,89 @@ export async function switchGateway(options: {
   setGatewayUrl(target);
 
   return { kind: "switched", target, lost };
+}
+
+/**
+ * Applies a `--gateway` flag, or does nothing when there was none.
+ *
+ * Returns whether the command may carry on, which is a no exactly when the
+ * switch was offered and turned down. The flag persists the choice rather than
+ * applying it for one run: the one-run version already exists as
+ * `EXEORA_GATEWAY_URL`, and it was the missing persistent one that made a
+ * self-hosted gateway awkward to live with.
+ */
+export async function useGateway(options: {
+  gateway?: string | undefined;
+  yes?: boolean | undefined;
+}): Promise<boolean> {
+  if (!options.gateway) return true;
+
+  const target = normalizeGateway(options.gateway);
+  const override = process.env.EXEORA_GATEWAY_URL;
+
+  // Two contradictory instructions in one invocation. Storing the flag and then
+  // quietly serving the variable's gateway instead would do neither.
+  if (override && originOf(override) !== target) {
+    throw new Error(
+      `--gateway says ${target}, but EXEORA_GATEWAY_URL says ${override} and the variable wins. ` +
+        "Unset it, or drop the flag.",
+    );
+  }
+
+  return await changeGateway(options.gateway, { yes: options.yes });
+}
+
+/** Switches, reports it, and says whether the caller may continue. */
+export async function changeGateway(
+  url: string,
+  options: { yes?: boolean | undefined; force?: boolean | undefined; nextStep?: string },
+): Promise<boolean> {
+  const outcome = await switchGateway({
+    input: url,
+    yes: options.yes,
+    force: options.force,
+    json: asJson(),
+  });
+
+  if (asJson()) {
+    emit({ gateway: outcome.target, source: gatewaySource(), outcome: outcome.kind });
+    return outcome.kind !== "declined";
+  }
+
+  if (outcome.kind === "unchanged") p.log.info(`Already using ${outcome.target}.`);
+  else if (outcome.kind === "declined") p.log.info("Left the gateway as it was.");
+  else {
+    p.log.success(`Now using ${outcome.target}.`);
+    if (options.nextStep) p.log.info(options.nextStep);
+
+    // The change is on disk either way, but this shell will not act on it.
+    if (gatewaySource() === "env") {
+      p.log.warn(
+        `EXEORA_GATEWAY_URL is set to ${process.env.EXEORA_GATEWAY_URL} here and wins over the ` +
+          "stored value, so nothing changes until it is unset.",
+      );
+    }
+  }
+
+  return outcome.kind !== "declined";
+}
+
+/**
+ * The origin of a string that ought to be a gateway, or the string itself.
+ *
+ * Only used to compare two configured values. A malformed `EXEORA_GATEWAY_URL`
+ * is a problem on its own and will be reported by whatever tries to use it;
+ * failing here would blame the flag for it.
+ */
+export function originOf(value: string): string {
+  try {
+    return normalizeGateway(value);
+  } catch {
+    return value;
+  }
+}
+
+export function describeSource(source: ReturnType<typeof gatewaySource>): string {
+  if (source === "env") return "from EXEORA_GATEWAY_URL";
+  return source === "default" ? "default" : "configured";
 }

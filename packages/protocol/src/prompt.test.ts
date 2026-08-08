@@ -6,7 +6,8 @@ import {
   MAX_READ_BYTES,
 } from "./limits.js";
 import { AGENT_PROMPT_NAME, AGENT_PROMPT_TOOL, agentPrompt, serverInstructions } from "./prompt.js";
-import { ACCOUNT_TOOL_NAMES, TOOL_NAMES } from "./tools.js";
+import { TOOL_NAMES } from "./tools.js";
+import { ACCOUNT_TOOL_NAMES } from "./tools-account.js";
 
 /**
  * The prompt as five surfaces publish it.

@@ -1,0 +1,156 @@
+import { CommandPolicy } from "@exeora/protocol";
+import { zValidator } from "@hono/zod-validator";
+import { and, eq, sql } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
+import { enqueueAuditDeletion } from "../audit-deletions.js";
+import { parsePolicy } from "../clients.js";
+import { db, schema } from "../db/client.js";
+import "../env.js";
+import { newId } from "../ids.js";
+import { limitsFor } from "../plans.js";
+import { planOf } from "./plan.js";
+import type { ApiEnv } from "./router.js";
+
+/**
+ * The directories a machine serves, one row each, and the command policy that
+ * applies inside them.
+ */
+
+export const projects = new Hono<ApiEnv>();
+
+const projectInput = z.object({
+  deviceId: z.string().min(1),
+  name: z.string().min(1).max(100),
+  slug: z
+    .string()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z0-9][a-z0-9-]*$/, "Use lowercase letters, digits and hyphens."),
+  localPath: z.string().min(1).max(1000),
+});
+
+projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
+  const body = c.req.valid("json");
+  const userId = c.get("userId");
+
+  // Checked rather than trusted: the device id arrives from the client.
+  const device = await db(c.env)
+    .select({ id: schema.devices.id })
+    .from(schema.devices)
+    .where(and(eq(schema.devices.id, body.deviceId), eq(schema.devices.userId, userId)))
+    .get();
+  if (!device) return c.json({ error: "unknown_device" }, 400);
+
+  const existing = await db(c.env)
+    .select({ id: schema.projects.id })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.userId, userId), eq(schema.projects.slug, body.slug)))
+    .get();
+
+  const id = existing?.id ?? newId("prj");
+
+  if (existing) {
+    // Re-registering an existing slug does not consume a new slot.
+    await db(c.env)
+      .update(schema.projects)
+      .set({ deviceId: body.deviceId, name: body.name, localPath: body.localPath })
+      .where(eq(schema.projects.id, id))
+      .run();
+  } else {
+    const plan = await planOf(c.env, userId);
+    const limits = limitsFor(plan);
+
+    // Same atomic pattern as devices: the cap lives in the INSERT, not in a
+    // prior SELECT that a second request could race.
+    if (limits.maxProjects !== null) {
+      const result = await db(c.env).run(
+        sql`
+            INSERT INTO projects (id, user_id, device_id, name, slug, local_path)
+            SELECT ${id}, ${userId}, ${body.deviceId}, ${body.name}, ${body.slug}, ${body.localPath}
+            WHERE (
+              SELECT COUNT(*) FROM projects WHERE user_id = ${userId}
+            ) < ${limits.maxProjects}
+          `,
+      );
+
+      if ((result.meta.changes ?? 0) === 0) {
+        return c.json(
+          { error: "plan_limit", limit: "projects", max: limits.maxProjects, plan },
+          403,
+        );
+      }
+    } else {
+      await db(c.env)
+        .insert(schema.projects)
+        .values({ id, userId, ...body })
+        .run();
+    }
+  }
+
+  return c.json({ id, slug: body.slug, name: body.name }, existing ? 200 : 201);
+});
+
+projects.get("/api/projects", async (c) => {
+  const rows = await db(c.env)
+    .select()
+    .from(schema.projects)
+    .where(eq(schema.projects.userId, c.get("userId")))
+    .all();
+
+  return c.json(
+    rows.map((project) => ({
+      id: project.id,
+      slug: project.slug,
+      name: project.name,
+      deviceId: project.deviceId,
+      localPath: project.localPath,
+      mcpUrl: new URL(`/p/${project.id}/mcp`, c.env.EXEORA_BASE_URL).toString(),
+      policy: parsePolicy(project.commandPolicy),
+      createdAt: project.createdAt.getTime(),
+    })),
+  );
+});
+
+/**
+ * Sets what an agent may do in this project.
+ *
+ * Validated against the shared schema rather than a copy, so a policy the
+ * dashboard can save is one the executor will understand. Stored as JSON in one
+ * column because it is read and written whole and never queried by its parts.
+ */
+projects.put("/api/projects/:id/policy", zValidator("json", CommandPolicy), async (c) => {
+  const policy = c.req.valid("json");
+
+  const result = await db(c.env)
+    .update(schema.projects)
+    .set({ commandPolicy: JSON.stringify(policy) })
+    .where(
+      and(eq(schema.projects.id, c.req.param("id")), eq(schema.projects.userId, c.get("userId"))),
+    )
+    .run();
+
+  if (result.meta.changes === 0) return c.json({ error: "not_found" }, 404);
+
+  // No cache to clear and no socket to notify: the policy travels with the next
+  // tool call, so this takes effect on the very next one.
+  return c.json(policy);
+});
+
+projects.delete("/api/projects/:id", async (c) => {
+  const projectId = c.req.param("id");
+
+  const result = await db(c.env)
+    .delete(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, c.get("userId"))))
+    .run();
+
+  if (result.meta.changes === 0) return c.json({ error: "not_found" }, 404);
+
+  // After the delete rather than before, unlike the other two: the `changes`
+  // count is what proves the project was this caller's, and enqueueing first
+  // would let anyone schedule the erasure of a project id they do not own.
+  await enqueueAuditDeletion(c.env, "project", [projectId]);
+
+  return c.json({ ok: true });
+});

@@ -1,14 +1,12 @@
 import { env } from "cloudflare:test";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
+import { activeProjectChoice, resolveTarget, setActiveProjectId } from "./client-targets.js";
 import {
-  activeProjectChoice,
   isMetadataDocumentClient,
   parsePolicy,
   rememberAuthorization,
   rememberMcpClient,
-  resolveTarget,
-  setActiveProjectId,
   touchClient,
 } from "./clients.js";
 import { db, schema } from "./db/client.js";

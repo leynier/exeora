@@ -7,7 +7,8 @@ import {
   type ToolName,
 } from "@exeora/protocol";
 import { observeRelayTermination } from "./cost-metrics.js";
-import type { ApprovalOutcome, DeviceRelay } from "./relay-do.js";
+import type { DeviceRelay } from "./relay-do.js";
+import type { ApprovalOutcome } from "./relay-do-callers.js";
 import { type CallerRequest, decodeCallerResponse } from "./relay-internal.js";
 
 type RelayStub = DurableObjectStub<DeviceRelay>;

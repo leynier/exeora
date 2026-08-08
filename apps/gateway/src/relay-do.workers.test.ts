@@ -1,13 +1,10 @@
 import { env } from "cloudflare:test";
 import {
-  type ApprovalRequestMessage,
   BASELINE_CAPABILITIES,
-  decodeRelayMessage,
   type ExecutorCapabilities,
   encodeMessage,
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
-  MAX_APPROVAL_PROMPT_LENGTH,
   MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
   RELAY_TIMEOUT_MS,
@@ -16,176 +13,23 @@ import {
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, schema } from "./db/client.js";
-import { callRelayTool, requestRelayApproval } from "./relay-client.js";
+import { callRelayTool } from "./relay-client.js";
+import {
+  attachFakeExecutor,
+  currentDeviceId,
+  dial,
+  dialCaller,
+  failureOf,
+  freshRelay,
+  relay,
+} from "./relay-do-fixtures.js";
 
 /**
  * The relay under workerd, so hibernation, WebSocketPair and D1 behave as they
  * will in production.
  */
 
-/**
- * A fresh Durable Object per test. Reusing one leaks sockets between tests:
- * a socket closed in `beforeEach` is still listed by getWebSockets() for a
- * moment, so the next test starts "online" and sends into a dead socket.
- *
- * The device id is fresh for the same reason, one step further out: presence
- * writes go to a `devices` row keyed by that id, and a close handler from the
- * previous test can still be in flight when this one reads the row.
- */
-let relayName: string;
-let deviceId: string;
-
-function relay() {
-  return env.DEVICE_RELAY.getByName(relayName);
-}
-
-/**
- * Awaits an RPC call that is expected to fail and returns the error.
- *
- * Not `expect(promise).rejects`: a Durable Object stub returns a pipelining
- * proxy rather than a plain promise, and asserting on it directly leaves an
- * internal promise unobserved, which vitest then reports as an unhandled
- * rejection even though the test passed.
- */
-async function failureOf(call: () => Promise<unknown>): Promise<{ code?: string }> {
-  try {
-    await call();
-  } catch (error) {
-    return error as { code?: string };
-  }
-  throw new Error("expected the call to fail, but it resolved");
-}
-
-/** Opens the executor socket the way the Worker does: over fetch, not RPC. */
-async function dial() {
-  const response = await relay().fetch(
-    new Request(`https://relay/connect?deviceId=${deviceId}`, {
-      headers: { Upgrade: "websocket" },
-    }),
-  );
-  const socket = response.webSocket;
-  if (!socket) throw new Error("the relay did not return a socket");
-  socket.accept();
-  return socket;
-}
-
-async function dialCaller(kind: "tool" | "approval", id: string) {
-  const response = await relay().fetch(
-    new Request(`https://relay/caller/${kind}?id=${id}`, {
-      headers: { Upgrade: "websocket" },
-    }),
-  );
-  const socket = response.webSocket;
-  if (!socket) throw new Error("the relay did not return a caller socket");
-  socket.accept();
-  return socket;
-}
-
-/**
- * Stands in for the CLI: dials the object, answers `tool.call` with whatever
- * the test tells it to.
- */
-async function attachFakeExecutor(
-  options: {
-    respond?: (call: {
-      requestId: string;
-      tool: string;
-      args: unknown;
-    }) => ToolResultMessage["result"];
-    silent?: boolean;
-    /** Omitted stands for a CLI built before capabilities existed. */
-    capabilities?: ExecutorCapabilities;
-    /** Omitted leaves an `approval.request` unanswered, like an empty chair. */
-    answerApproval?: boolean;
-  } = {},
-) {
-  const socket = await dial();
-
-  const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
-  /** Request ids the relay asked us to stop working on. */
-  const cancelled: string[] = [];
-  /** Questions the relay put to this terminal. */
-  const asked: ApprovalRequestMessage[] = [];
-  /** Questions the relay said were over, answered elsewhere or expired. */
-  const resolved: string[] = [];
-  /** Resolves with the relay's answer to `hello`, for the tests that read it. */
-  let acknowledge: (ack: { latestCliVersion?: string | undefined }) => void;
-  const ack = new Promise<{ latestCliVersion?: string | undefined }>((resolve) => {
-    acknowledge = resolve;
-  });
-
-  socket.addEventListener("message", (event: MessageEvent) => {
-    const message = decodeRelayMessage(String(event.data));
-
-    if (message?.type === "hello.ack") {
-      acknowledge(message);
-      return;
-    }
-
-    if (message?.type === "approval.request") {
-      asked.push(message);
-      const answer = options.answerApproval;
-      if (answer !== undefined) {
-        socket.send(encodeMessage({ type: "approval.answer", id: message.id, approved: answer }));
-      }
-      return;
-    }
-
-    if (message?.type === "approval.resolved") {
-      resolved.push(message.id);
-      return;
-    }
-
-    if (message?.type === "cancel") {
-      cancelled.push(message.requestId);
-      return;
-    }
-
-    if (message?.type !== "tool.call") return;
-
-    const call = { requestId: message.requestId, tool: message.tool, args: message.arguments };
-    seen.push(call);
-    if (options.silent) return;
-
-    socket.send(
-      encodeMessage({
-        type: "tool.result",
-        requestId: message.requestId,
-        durationMs: 1,
-        result: options.respond?.(call) ?? { ok: true, value: { echoed: call.args } },
-      }),
-    );
-  });
-
-  socket.send(
-    encodeMessage({
-      type: "hello",
-      protocolVersion: PROTOCOL_VERSION,
-      deviceId,
-      cliVersion: "0.1.0",
-      platform: "linux",
-      projects: [{ id: "prj_test", slug: "test" }],
-      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
-    }),
-  );
-
-  return { socket, seen, cancelled, asked, resolved, ack };
-}
-
-/** A machine with a terminal someone could be asked at. */
-const CAN_PROMPT: ExecutorCapabilities = { prompt: true, tools: [...BASELINE_CAPABILITIES.tools] };
-
-const question = {
-  id: "apr_1",
-  projectId: "prj_test",
-  tool: "run_command" as const,
-  prompt: "Run `npm test`?",
-};
-
-beforeEach(() => {
-  deviceId = `dev_${crypto.randomUUID()}`;
-  relayName = `usr_test:${deviceId}`;
-});
+beforeEach(freshRelay);
 
 describe("presence", () => {
   it("reports offline with no executor attached", async () => {
@@ -244,7 +88,7 @@ describe("presence checkpoint", () => {
     await database
       .insert(schema.devices)
       .values({
-        id: deviceId,
+        id: currentDeviceId(),
         userId: "usr_test",
         name: "laptop",
         platform: "linux",
@@ -258,7 +102,7 @@ describe("presence checkpoint", () => {
     const row = await db(env)
       .select()
       .from(schema.devices)
-      .where(eq(schema.devices.id, deviceId))
+      .where(eq(schema.devices.id, currentDeviceId()))
       .get();
     if (!row) throw new Error("the seeded device is gone");
     return row;
@@ -551,7 +395,7 @@ describe("protocol version", () => {
       encodeMessage({
         type: "hello",
         protocolVersion: PROTOCOL_VERSION + 1,
-        deviceId,
+        deviceId: currentDeviceId(),
         cliVersion: "99.0.0",
         platform: "linux",
         projects: [],
@@ -572,7 +416,7 @@ describe("protocol version", () => {
       encodeMessage({
         type: "hello",
         protocolVersion: MIN_SUPPORTED_PROTOCOL_VERSION,
-        deviceId,
+        deviceId: currentDeviceId(),
         cliVersion: "0.1.0",
         platform: "linux",
         projects: [],
@@ -581,130 +425,6 @@ describe("protocol version", () => {
 
     await vi.waitFor(async () => expect(await relay().isOnline()).toBe(true));
     socket.close(1000, "done");
-  });
-});
-
-describe("approval", () => {
-  it("refuses a prompt that cannot be shown in full", async () => {
-    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
-
-    const error = await failureOf(() =>
-      requestRelayApproval(relay(), {
-        ...question,
-        prompt: "x".repeat(MAX_APPROVAL_PROMPT_LENGTH + 1),
-      }),
-    );
-
-    expect(error.code).toBe("FORBIDDEN");
-    expect(executor.asked).toEqual([]);
-    executor.socket.close(1000, "done");
-  });
-
-  it("asks the terminal and returns what it said", async () => {
-    const executor = await attachFakeExecutor({
-      capabilities: CAN_PROMPT,
-      answerApproval: true,
-    });
-
-    expect(await requestRelayApproval(relay(), question)).toBe("approved");
-    expect(executor.asked[0]?.prompt).toBe("Run `npm test`?");
-    executor.socket.close(1000, "done");
-  });
-
-  it("carries a no back as a decision, not as a failure", async () => {
-    const executor = await attachFakeExecutor({
-      capabilities: CAN_PROMPT,
-      answerApproval: false,
-    });
-
-    expect(await requestRelayApproval(relay(), question)).toBe("declined");
-    executor.socket.close(1000, "done");
-  });
-
-  it("does not ask a machine with nobody at it", async () => {
-    // No `capabilities.prompt`: under systemd, or in a detached pane. Sending
-    // the question anyway would spend the whole ninety seconds waiting on a
-    // terminal nobody is looking at, when the dashboard could answer at once.
-    const executor = await attachFakeExecutor({ answerApproval: true });
-
-    const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
-
-    expect(executor.asked).toEqual([]);
-
-    // Still answerable, which is the point: this is the headless case.
-    expect(await relay().answerApproval(question.id, true)).toBe(true);
-    expect(await pending).toBe("approved");
-    executor.socket.close(1000, "done");
-  });
-
-  it("lets the dashboard answer, and tells the terminal the question is over", async () => {
-    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
-
-    const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
-
-    await relay().answerApproval(question.id, true);
-
-    expect(await pending).toBe("approved");
-    // Without this the prompt would sit on the terminal, and typing into it
-    // would do nothing, which is worse than never having shown it.
-    await vi.waitFor(() => expect(executor.resolved).toEqual([question.id]));
-    executor.socket.close(1000, "done");
-  });
-
-  it("gives the first answer the decision and the second nothing", async () => {
-    const executor = await attachFakeExecutor({
-      capabilities: CAN_PROMPT,
-      answerApproval: true,
-    });
-
-    expect(await requestRelayApproval(relay(), question)).toBe("approved");
-    // The terminal already settled it. A dashboard click landing now finds
-    // nothing, which is what the 409 in the API is built on.
-    expect(await relay().answerApproval(question.id, false)).toBe(false);
-    executor.socket.close(1000, "done");
-  });
-
-  it("lists what is waiting, so the dashboard has something to show", async () => {
-    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
-
-    const pending = requestRelayApproval(relay(), { ...question, clientName: "ChatGPT" });
-    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
-
-    const [waiting] = await relay().listApprovals();
-    expect(waiting).toMatchObject({
-      id: question.id,
-      projectId: "prj_test",
-      tool: "run_command",
-      prompt: "Run `npm test`?",
-      clientName: "ChatGPT",
-    });
-
-    await relay().answerApproval(question.id, false);
-    expect(await pending).toBe("declined");
-    executor.socket.close(1000, "done");
-  });
-
-  it("refuses to ask when no machine is connected", async () => {
-    // Nothing to confirm: the call would fail either way, and the one thing
-    // this spends is a person's attention.
-    const error = await failureOf(() => requestRelayApproval(relay(), question));
-    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
-  });
-
-  it("ends a question when the machine goes away", async () => {
-    const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
-
-    const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
-
-    executor.socket.close(1000, "gone");
-
-    // Not left to time out: the call it guards cannot run now regardless, so
-    // waiting the full ninety seconds would only delay saying so.
-    expect(await pending).toBe("unanswered");
-    expect(await relay().listApprovals()).toEqual([]);
   });
 });
 

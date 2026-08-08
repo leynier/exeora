@@ -1,0 +1,95 @@
+import { TOOL_NAMES, type ToolName } from "@exeora/protocol";
+import { and, eq } from "drizzle-orm";
+import { relayName } from "./api/ops.js";
+import { accountProjects, activeProjectChoice } from "./client-targets.js";
+import { db, schema } from "./db/client.js";
+import "./env.js";
+
+/**
+ * Which tools an endpoint offers, asked only for `tools/list` so that a tool
+ * call pays neither the lookup nor the round trip to the device.
+ *
+ * Both functions answer undefined for "offer every tool", and the reason that
+ * is the right default rather than an empty list is written above each.
+ */
+
+/**
+ * The tools the machine serving this project can actually run.
+ *
+ * Undefined means "offer every tool", and it is the answer to three different
+ * situations on purpose: an unresolvable project, a machine that is offline,
+ * and a machine too old to have said. None of them is a reason to publish a
+ * shorter list. A call that reaches an offline machine already fails with
+ * `LOCAL_EXECUTOR_OFFLINE`, which is the true answer; an endpoint that
+ * advertised nothing while a laptop slept would look broken instead.
+ */
+export async function advertisedTools(
+  env: Env,
+  userId: string | undefined,
+  projectId: string,
+): Promise<ReadonlySet<ToolName> | undefined> {
+  if (!userId) return undefined;
+
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+
+  if (!project) return undefined;
+
+  const capabilities = await env.DEVICE_RELAY.getByName(
+    relayName(userId, project.deviceId),
+  ).capabilities();
+
+  if (!capabilities) return undefined;
+
+  // Intersected with what this gateway knows, because the executor may be the
+  // newer of the two: a tool this build has no schema for is a name and nothing
+  // it could register.
+  const announced = new Set<string>(capabilities.tools);
+  return new Set(TOOL_NAMES.filter((name) => announced.has(name)));
+}
+
+/**
+ * The same question on the account endpoint, asked of whichever project the
+ * connection is currently pointed at.
+ *
+ * Undefined, meaning "offer every tool", whenever there is nothing to narrow
+ * by: no project selected, or several to choose from and none chosen. That is
+ * the right answer rather than an empty list, because the three management
+ * tools are always registered and a connection whose whole purpose is to be
+ * pointed somewhere should not look empty before it has been.
+ *
+ * Switching the active project can change this answer, and nothing tells the
+ * client so: the endpoint is stateless and there is no session to notify. A
+ * client that never lists again keeps offering a tool the current project's
+ * machine cannot run, and that call fails with `LOCAL_EXECUTOR_OFFLINE` or
+ * `UNKNOWN_TOOL`, which is the same thing it would have said anyway.
+ */
+export async function advertisedAccountTools(
+  env: Env,
+  userId: string | undefined,
+  clientId: string | undefined,
+): Promise<ReadonlySet<ToolName> | undefined> {
+  if (!userId || !clientId) return undefined;
+
+  const [reachable, choice] = await Promise.all([
+    accountProjects(env, { userId, clientId }),
+    activeProjectChoice(env, { userId, clientId }),
+  ]);
+
+  // The dispatcher's rule, not a second reading of it: the fallback to the only
+  // project belongs to a connection that never chose. A choice that no longer
+  // stands is refused there rather than replaced, so narrowing by whatever is
+  // left would publish a toolset for a project no call will reach.
+  const chosen = choice
+    ? choice.reachable
+      ? reachable.find((project) => project.id === choice.projectId)
+      : undefined
+    : reachable.length === 1
+      ? reachable[0]
+      : undefined;
+
+  return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
+}

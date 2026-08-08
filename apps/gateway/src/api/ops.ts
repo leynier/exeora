@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { enqueueAuditDeletion } from "../audit-deletions.js";
-import { isMetadataDocumentClient, setActiveProjectId, stillAuthorized } from "../clients.js";
+import { setActiveProjectId } from "../client-targets.js";
+import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
 

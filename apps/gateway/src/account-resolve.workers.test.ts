@@ -2,7 +2,8 @@ import { env } from "cloudflare:test";
 import { ExeoraError } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { rememberAuthorization, setActiveProjectId } from "./clients.js";
+import { setActiveProjectId } from "./client-targets.js";
+import { rememberAuthorization } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import { resolveAccountProject } from "./index.js";
 
