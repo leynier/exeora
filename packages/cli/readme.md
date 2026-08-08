@@ -99,6 +99,6 @@ exeora connect
 
 One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI lists what it is about to forget and asks before it does, and it checks that a gateway actually answers at the address first, so a typo leaves a working setup exactly as it was.
 
-Deploying a gateway of your own: [SELF-HOSTING.md](https://github.com/leynier/exeora/blob/main/docs/SELF-HOSTING.md).
+Deploying a gateway of your own: [self-hosting.md](https://github.com/leynier/exeora/blob/main/docs/self-hosting.md).
 
 AGPL-3.0-only. Full story and monorepo: <https://github.com/leynier/exeora>. Site: <https://exeora.dev>

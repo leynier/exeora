@@ -12,8 +12,8 @@ import { retentionTiers } from "./plans.js";
  * The archive cannot be: the Iceberg table is append-only from the gateway's
  * side, R2 SQL is read-only, and a row only goes when a maintenance job commits
  * a transaction through the catalog. So the gateway records the intent and a
- * job drains it, which is the whole reason `AUDIT-ARCHITECTURE.md` calls
- * pipeline-mode deletion asynchronous.
+ * job drains it, which is the whole reason `docs/audit-architecture.md` calls
+ * deletion from the archive asynchronous.
  *
  * Ordering is the part that matters. Every enqueue here has to happen *before*
  * the D1 delete it accompanies, because after it there is nothing left to read:
@@ -65,9 +65,11 @@ export async function enqueueAuditDeletion(
  * and *those* are the small set: paying accounts are a fraction of all accounts,
  * so naming them scales where naming free accounts would not.
  *
- * The plan is read now rather than stamped onto each event, which also keeps
- * this matching `pruneToolCalls`: both answer "what is this account's retention
- * today", not "what was it when the call happened".
+ * The plan is read now rather than stamped onto each event, which is also the
+ * cheaper of the two: the account's plan is not read anywhere on the tool-call
+ * path, so denormalising it would put a D1 row read back on every call. It
+ * answers "what is this account's retention today" rather than "what was it
+ * when the call happened", and today is the question the product asks.
  */
 export async function retentionPolicy(env: Pick<Env, "DB">): Promise<{
   shortestDays: number;

@@ -2,7 +2,7 @@
 
 R2 SQL is read-only, so a row leaves the Iceberg table only when a transaction
 commits through the catalog. The gateway therefore records an intent and this
-job carries it out, which is the asynchronous deletion `AUDIT-ARCHITECTURE.md`
+job carries it out, which is the asynchronous deletion `docs/audit-architecture.md`
 describes.
 
 Two jobs in one run, in this order:

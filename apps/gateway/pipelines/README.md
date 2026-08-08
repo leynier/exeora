@@ -2,7 +2,7 @@
 
 The audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. There is no second contract: D1 holds no per-call row, so this has to be provisioned for the gateway to record anything at all.
 
-Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity and cannot be erased from. The reasoning is in [`AUDIT-ARCHITECTURE.md`](../../../docs/AUDIT-ARCHITECTURE.md).
+Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity and cannot be erased from. The reasoning is in [`audit-architecture.md`](../../../docs/audit-architecture.md).
 
 ## Provision
 

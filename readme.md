@@ -153,7 +153,7 @@ claude mcp add --transport http exeora <the URL>
 | The agent prompt | [exeora.dev/docs/agent-prompt](https://exeora.dev/docs/agent-prompt/) |
 | What a project allows | [exeora.dev/docs/policy](https://exeora.dev/docs/policy/) |
 | Security model | [exeora.dev/docs/security](https://exeora.dev/docs/security/) |
-| Self-hosting | [docs/SELF-HOSTING.md](./docs/SELF-HOSTING.md) · [site guide](https://exeora.dev/docs/self-hosting/) |
+| Self-hosting | [docs/self-hosting.md](./docs/self-hosting.md) · [site guide](https://exeora.dev/docs/self-hosting/) |
 | Developing this repo | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | Security reports | [SECURITY.md](./SECURITY.md) |
 
