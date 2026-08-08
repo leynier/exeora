@@ -11,7 +11,7 @@ import {
   type ToolResultMessage,
 } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "./db/client.js";
 import { callRelayTool } from "./relay-client.js";
 import {
@@ -19,6 +19,7 @@ import {
   currentDeviceId,
   dial,
   dialCaller,
+  eventually,
   failureOf,
   freshRelay,
   relay,
@@ -129,7 +130,7 @@ describe("presence checkpoint", () => {
 
     executor.socket.close(1000, "done");
 
-    await vi.waitFor(async () => expect((await deviceRow()).disconnectedAt).not.toBeNull());
+    await eventually(async () => expect((await deviceRow()).disconnectedAt).not.toBeNull());
   });
 
   it("leaves a reconnected machine alone when the old socket's close lands late", async () => {
@@ -144,13 +145,13 @@ describe("presence checkpoint", () => {
 
     // The close forces a `last_seen_at` write either way, so waiting on that is
     // waiting for the handler to have run, not for a timeout to expire.
-    await vi.waitFor(async () =>
+    await eventually(async () =>
       expect((await deviceRow()).lastSeenAt?.getTime()).toBeGreaterThan(LONG_AGO.getTime()),
     );
     expect((await deviceRow()).disconnectedAt).toBeNull();
 
     second.close(1000, "done");
-    await vi.waitFor(async () => expect((await deviceRow()).disconnectedAt).not.toBeNull());
+    await eventually(async () => expect((await deviceRow()).disconnectedAt).not.toBeNull());
   });
 });
 
@@ -231,7 +232,7 @@ describe("callTool", () => {
       }),
     );
 
-    await vi.waitFor(() => expect(executor.seen).toHaveLength(1));
+    await eventually(() => expect(executor.seen).toHaveLength(1));
     executor.socket.close(1000, "done");
   });
 
@@ -313,7 +314,7 @@ describe("disconnection", () => {
         args: {},
       }),
     );
-    await vi.waitFor(() => expect(executor.seen).toHaveLength(1));
+    await eventually(() => expect(executor.seen).toHaveLength(1));
 
     executor.socket.close(1000, "gone");
     expect((await pending).code).toBe("LOCAL_EXECUTOR_OFFLINE");
@@ -334,14 +335,14 @@ describe("cancellation", () => {
         signal: controller.signal,
       }),
     );
-    await vi.waitFor(() => expect(executor.seen).toHaveLength(1));
+    await eventually(() => expect(executor.seen).toHaveLength(1));
 
     controller.abort();
 
     expect((await pending).code).toBe("CANCELLED");
     // The half that actually stops the work. Rejecting the caller alone would
     // leave `sleep 300` running on the machine for its full timeout.
-    await vi.waitFor(() => expect(executor.cancelled).toEqual(["req_cancel"]));
+    await eventually(() => expect(executor.cancelled).toEqual(["req_cancel"]));
 
     executor.socket.close(1000, "done");
   });
@@ -423,7 +424,7 @@ describe("protocol version", () => {
       }),
     );
 
-    await vi.waitFor(async () => expect(await relay().isOnline()).toBe(true));
+    await eventually(async () => expect(await relay().isOnline()).toBe(true));
     socket.close(1000, "done");
   });
 });
@@ -438,7 +439,7 @@ describe("capabilities", () => {
   it("reads an executor that announced nothing as the six original tools", async () => {
     const executor = await attachFakeExecutor();
 
-    await vi.waitFor(async () =>
+    await eventually(async () =>
       expect(await relay().capabilities()).toEqual(BASELINE_CAPABILITIES),
     );
     executor.socket.close(1000, "done");
@@ -451,7 +452,7 @@ describe("capabilities", () => {
     };
     const executor = await attachFakeExecutor({ capabilities: announced });
 
-    await vi.waitFor(async () => expect(await relay().capabilities()).toEqual(announced));
+    await eventually(async () => expect(await relay().capabilities()).toEqual(announced));
     executor.socket.close(1000, "done");
   });
 

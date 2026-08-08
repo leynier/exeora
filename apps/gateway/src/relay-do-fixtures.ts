@@ -8,6 +8,7 @@ import {
   PROTOCOL_VERSION,
   type ToolResultMessage,
 } from "@exeora/protocol";
+import { vi } from "vitest";
 
 /**
  * The world the relay suites run in: one Durable Object, one device id, and a
@@ -41,6 +42,20 @@ export function freshRelay(): void {
 /** The device id the current test is working with, for the rows that name it. */
 export function currentDeviceId(): string {
   return deviceId;
+}
+
+/**
+ * `vi.waitFor` with a budget sized for a Durable Object rather than a promise.
+ *
+ * Everything these suites wait on is at least one round trip into workerd, and
+ * they run alongside forty other files competing for the same machine. The
+ * one-second default is a race against that contention rather than against the
+ * behaviour under test, and it is one the machine can lose while the code is
+ * perfectly correct. Ten seconds is still far below the test timeout, so a
+ * genuine hang fails as a hang rather than as a slow pass.
+ */
+export function eventually(assertion: () => unknown): Promise<void> {
+  return vi.waitFor(assertion, { timeout: 10_000, interval: 50 }) as Promise<void>;
 }
 
 export function relay() {

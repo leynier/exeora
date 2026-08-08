@@ -1,9 +1,10 @@
 import { MAX_APPROVAL_PROMPT_LENGTH } from "@exeora/protocol";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { requestRelayApproval } from "./relay-client.js";
 import {
   attachFakeExecutor,
   CAN_PROMPT,
+  eventually,
   failureOf,
   freshRelay,
   question,
@@ -61,7 +62,7 @@ describe("approval", () => {
     const executor = await attachFakeExecutor({ answerApproval: true });
 
     const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
+    await eventually(async () => expect(await relay().listApprovals()).toHaveLength(1));
 
     expect(executor.asked).toEqual([]);
 
@@ -75,14 +76,14 @@ describe("approval", () => {
     const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
 
     const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
+    await eventually(() => expect(executor.asked).toHaveLength(1));
 
     await relay().answerApproval(question.id, true);
 
     expect(await pending).toBe("approved");
     // Without this the prompt would sit on the terminal, and typing into it
     // would do nothing, which is worse than never having shown it.
-    await vi.waitFor(() => expect(executor.resolved).toEqual([question.id]));
+    await eventually(() => expect(executor.resolved).toEqual([question.id]));
     executor.socket.close(1000, "done");
   });
 
@@ -103,7 +104,7 @@ describe("approval", () => {
     const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
 
     const pending = requestRelayApproval(relay(), { ...question, clientName: "ChatGPT" });
-    await vi.waitFor(async () => expect(await relay().listApprovals()).toHaveLength(1));
+    await eventually(async () => expect(await relay().listApprovals()).toHaveLength(1));
 
     const [waiting] = await relay().listApprovals();
     expect(waiting).toMatchObject({
@@ -130,7 +131,7 @@ describe("approval", () => {
     const executor = await attachFakeExecutor({ capabilities: CAN_PROMPT });
 
     const pending = requestRelayApproval(relay(), question);
-    await vi.waitFor(() => expect(executor.asked).toHaveLength(1));
+    await eventually(() => expect(executor.asked).toHaveLength(1));
 
     executor.socket.close(1000, "gone");
 
