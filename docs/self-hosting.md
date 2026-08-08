@@ -118,6 +118,6 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Audit storage
 
-Required, not optional: the gateway records every tool call to a Cloudflare Pipelines stream with an Iceberg sink in R2, and keeps no per-call row in D1. Without it, tool calls still run but nothing is recorded and `usage_daily` stays empty. Setup is in [`apps/gateway/pipelines/README.md`](../apps/gateway/pipelines/README.md), and what the contract does and does not promise is in [`audit-architecture.md`](audit-architecture.md).
+Required, not optional: the gateway records every tool call to a Cloudflare Pipelines stream with an Iceberg sink in R2, and keeps no per-call row in D1. Without it, tool calls still run but nothing is recorded and `usage_daily` stays empty. Setup is in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md), and what the contract does and does not promise is in [`audit-architecture.md`](audit-architecture.md).
 
 Erasing an account from that archive needs a job that cannot run inside a Worker, because R2 SQL cannot delete. It ships as a GitHub Actions workflow, so a self-hosted deployment needs this repository forked with its own secrets, or account deletion will leave audit rows behind.

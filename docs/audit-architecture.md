@@ -27,4 +27,4 @@ Orphan files and old snapshots are handled by managed snapshot expiration, which
 
 Plain Parquet is the lowest-maintenance archive, but it cannot support exact reprocessing, selective deletion or R2 SQL. Iceberg costs more to query and needs compaction, but it is the only Pipelines sink that can both answer Activity and be erased from.
 
-Provisioning, tokens and the maintenance job live in [`apps/gateway/pipelines/README.md`](../apps/gateway/pipelines/README.md).
+Provisioning, tokens and the maintenance job live in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md).
