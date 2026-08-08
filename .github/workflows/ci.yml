@@ -13,6 +13,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Checking out the code is all this workflow asks of the token. Callers grant no
+# more than this, so a reusable-workflow call cannot widen it either.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest

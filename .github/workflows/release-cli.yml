@@ -11,6 +11,11 @@ concurrency:
   group: release-cli
   cancel-in-progress: false
 
+# The default for every job here, including the `check` call into ci.yml. The
+# two jobs that need more than reading say so themselves.
+permissions:
+  contents: read
+
 jobs:
   check:
     uses: ./.github/workflows/ci.yml
