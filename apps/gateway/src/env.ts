@@ -8,7 +8,6 @@
  */
 
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-import type { AuditWriteMode } from "./audit.js";
 
 declare global {
   interface Env {
@@ -28,8 +27,6 @@ declare global {
      */
     REQUEST_STATE_SECRET: string;
 
-    /** Optional during the D1-to-Pipelines migration; `d1` remains the safe default. */
-    AUDIT_WRITE_MODE?: AuditWriteMode;
     /**
      * Read-only R2 SQL credential for the nightly rollup and Activity.
      *
