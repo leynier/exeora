@@ -1,4 +1,5 @@
 import { DangerZone } from "../components/DangerZone.js";
+import { SupportCard } from "../components/SupportCard.js";
 import { Card, Divided, PageHeader, Row, SkeletonRows } from "../components/ui.js";
 import { useMe } from "../queries.js";
 
@@ -52,6 +53,8 @@ export function Settings() {
           </Divided>
         )}
       </Card>
+
+      <SupportCard className="mb-6" />
 
       <DangerZone />
     </>
