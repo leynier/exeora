@@ -1,6 +1,11 @@
 ---
 import Section from "./Section.astro";
 
+/**
+ * The six questions that close the main objections. Longer inventory of edge
+ * cases belongs in docs, not on the landing path.
+ */
+
 const questions = [
   {
     q: "Can you see my code?",
@@ -19,20 +24,8 @@ const questions = [
     a: "If the machine can make outbound HTTPS requests, yes. The CLI opens the connection outward and keeps it, so there is no inbound rule to request, no port to forward and no VPN to join.",
   },
   {
-    q: "What does the audit log actually contain?",
-    a: "One row per tool call: which project, which tool, whether it succeeded, the error code when it did not, how long it took, and which OAuth client asked, so you can tell Claude apart from ChatGPT. Arguments and output are never written.",
-  },
-  {
     q: "How do I revoke access?",
     a: "Revoke the machine from the dashboard. That closes its live socket at once and stops it serving anything, rather than waiting for a token to expire. Removing a project takes its MCP URL out of service the same way.",
-  },
-  {
-    q: "Can I connect more than one machine?",
-    a: "Yes. Each machine registers separately and each project belongs to one machine, so a laptop, a build server and a Raspberry Pi can serve different projects under the same account at the same time.",
-  },
-  {
-    q: "Which clients does it work with?",
-    a: "Any client that speaks MCP over Streamable HTTP with OAuth 2.1. That covers Claude, ChatGPT, Cursor, VS Code, Copilot, Devin, Antigravity, Amp, Zed, Grok, Perplexity, OpenCode and others today. Dynamic client registration and CIMD are both supported, so a client that insists on either will work.",
   },
   {
     q: "Is Exeora open source?",

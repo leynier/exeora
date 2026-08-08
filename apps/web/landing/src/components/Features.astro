@@ -2,77 +2,48 @@
 import Section from "./Section.astro";
 
 /**
- * What the system actually guarantees, one card per guarantee. Each line is
- * something the code does today, not a roadmap item.
+ * What the system actually guarantees, one card per guarantee. Six pillars
+ * rather than a full inventory: the rest lives in docs. Each line is something
+ * the code does today, not a roadmap item.
  */
 
 const features = [
   {
-    title: "No inbound port",
-    body: "Nothing listens on the machine serving a project. The CLI opens the connection and holds it, so there is nothing to expose and nothing to forward",
+    title: "No inbound path",
+    body: "Nothing listens on the machine. The CLI opens an outbound connection and holds it, so home routers, corporate proxies and cloud VMs with no public address all work unconfigured",
     icon: "M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6l7-3z",
   },
   {
-    title: "Behind NAT and firewalls",
-    body: "Outbound HTTPS is the only requirement. Home routers, corporate proxies and cloud VMs with no public address all work unconfigured",
-    icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18",
-  },
-  {
-    title: "A token per endpoint",
-    body: "Every URL is its own OAuth resource, so a token minted for one is refused at another, and ownership is checked in the database too. A project's URL reaches one project; the account URL reaches the ones you ticked",
-    icon: "M14 8a4 4 0 1 0-3.6 4L4 18.4V21h3v-2h2v-2h1.6L14 13.6A4 4 0 0 0 14 8z",
-  },
-  {
-    title: "Nothing is queued",
-    body: "With no executor connected a call fails at once. Every call also carries an absolute deadline the executor rechecks on arrival, so a command from hours ago never runs when a sleeping laptop or a paused VM comes back",
-    icon: "M13 3L5 14h6l-2 7 8-11h-6l2-7z",
-  },
-  {
-    title: "Paths stay in the project",
-    body: "Every path is resolved through realpath before anything touches disk. A `..` or a symlink pointing outward is rejected rather than followed",
+    title: "Your code never leaves",
+    body: "Exeora routes tool calls; it does not store the repository. Files are read, searched and edited where they already are, and only the result of a call crosses the wire",
     icon: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z",
   },
   {
-    title: "Modes and command rules",
-    body: "A project can be read only, limited to the commands you name, or open with a deny list. Whenever a list is in force, shell metacharacters are refused unless the project turns shell on",
+    title: "Blast radius you choose",
+    body: "Every URL is its own OAuth resource, so a token for one project is refused at another. Paths are resolved through realpath before anything touches disk - `..` and outward symlinks are rejected",
+    icon: "M14 8a4 4 0 1 0-3.6 4L4 18.4V21h3v-2h2v-2h1.6L14 13.6A4 4 0 0 0 14 8z",
+  },
+  {
+    title: "Policy you can tighten",
+    body: "Read only, allow list, deny list, per-tool restrictions, and optional approval before edits and commands. Shell metacharacters are refused whenever a list is in force",
     icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4",
   },
   {
-    title: "Confirm before it runs",
-    body: "Turning approve on asks a person before anything that edits, writes or runs. MCP 2026-07-28 clients are asked in the conversation; everyone else is asked on the terminal and in the dashboard at once",
-    icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
-  },
-  {
-    title: "An audit log you can show someone",
-    body: "Which tool ran, how it ended, how long it took, and which client asked for it. Never the arguments, never the output",
+    title: "Audit without leaking",
+    body: "Which tool ran, how it ended, how long it took, and which client asked. Never the arguments, never the output - a log you can show someone",
     icon: "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01",
   },
   {
     title: "Revoke and it stops",
-    body: "Revoking a machine closes its live socket immediately. It stops serving that instant, not whenever a token happens to expire",
+    body: "Closing a machine kills the live socket that instant, not when a token expires. The whole stack is open source under AGPL-3.0 - audit it, fork it, contribute",
     icon: "M12 3v9M7.5 6.5a8 8 0 1 0 9 0",
-  },
-  {
-    title: "Idle costs nothing",
-    body: "The relay uses the WebSocket hibernation API, so a machine that stays connected all day is not billed as compute all day",
-    icon: "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z",
-  },
-  {
-    title: "Bring your own client",
-    body: "Streamable HTTP with OAuth 2.1, PKCE, dynamic client registration and RFC 9728 metadata. No plugin to install, no fork, no lock-in",
-    icon: "M9 3v6M15 3v6M6 9h12v3a6 6 0 0 1-12 0V9zM12 18v3",
-  },
-  {
-    title: "Open source, end to end",
-    body: "CLI, gateway, dashboard and docs are public under AGPL-3.0. Audit the path confinement, the OAuth flow and the relay yourself - or open a PR when something should be better",
-    icon: "M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22",
   },
 ];
 ---
 
 <Section
   id="features"
-  eyebrow="Features"
+  eyebrow="Guarantees"
   title="Built so the dangerous parts are small"
   subtitle="One outbound connection, one resource per project, rules you can tighten, and a log that records what happened without recording what was in it"
   wide
@@ -104,4 +75,14 @@ const features = [
       ))
     }
   </div>
+
+  <p
+    class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-10 text-center"
+    style="animation-delay: 420ms"
+  >
+    Ten tools, one project directory -{" "}
+    <a href="/docs/tools/" class="text-foreground underline-offset-2 hover:underline">
+      full tool reference
+    </a>
+  </p>
 </Section>
