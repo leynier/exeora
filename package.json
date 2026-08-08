@@ -12,8 +12,10 @@
   "scripts": {
     "check": "biome check .",
     "check:fix": "biome check --write .",
+    "check:file-length": "bun run scripts/check-file-length.ts",
     "typecheck": "tsc --build && tsc -p apps/web/dashboard/tsconfig.json",
     "test": "vitest run",
+    "ci": "bun run check && bun run check:file-length && bun run typecheck && bun run --cwd apps/web build && bun run --cwd packages/cli build && bun run test",
     "brand": "bun run scripts/brand-assets.ts",
     "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
     "deploy": "bun run --cwd apps/web build && bun run --cwd apps/gateway deploy",
