@@ -12,6 +12,11 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# Cloudflare is reached with its own API token, not the GITHUB_TOKEN, so
+# checking out the code is the only thing the latter is needed for.
+permissions:
+  contents: read
+
 jobs:
   check:
     uses: ./.github/workflows/ci.yml

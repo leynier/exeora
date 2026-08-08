@@ -479,7 +479,7 @@ function globToRegExp(glob: string): RegExp {
     }
 
     // Everything else is literal, including regex metacharacters.
-    pattern += char === undefined ? "" : char.replace(/[.+^${}()|[\]\\]/, "\\$&");
+    pattern += char === undefined ? "" : char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   }
 
   return new RegExp(`^${pattern}$`);
