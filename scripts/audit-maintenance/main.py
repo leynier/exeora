@@ -65,6 +65,10 @@ def gateway_request(settings: Settings, path: str, body: dict | None = None) -> 
         headers={
             "authorization": f"Bearer {settings.secret}",
             "content-type": "application/json",
+            # Named, and not left to urllib. Cloudflare's WAF answers 403 to the
+            # default `Python-urllib/x.y` before the request reaches the Worker,
+            # which reads as an auth failure and is not one.
+            "user-agent": "exeora-audit-maintenance",
         },
         data=None if body is None else json.dumps(body).encode(),
     )
