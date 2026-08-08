@@ -4,7 +4,10 @@ import {
   ExeoraError,
   encodeMessage,
   HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_REQUEST,
+  HEARTBEAT_TIMEOUT_MS,
   isToolName,
+  PRESENCE_SIGNAL_INTERVAL_MS,
   PROTOCOL_VERSION,
   policyAllows,
   TOOL_NAMES,
@@ -66,6 +69,9 @@ export interface Connection {
 export function connect(deviceId: string, events: ConnectionEvents = {}): Connection {
   let socket: WebSocket | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let lastHeartbeatAckAt = 0;
+  let lastPresenceAt = 0;
+  let heartbeatMode: "legacy" | "auto" = "legacy";
   let retryDelayMs = 1_000;
   let stopped = false;
   let resolveClosed: () => void;
@@ -153,6 +159,9 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
 
     next.addEventListener("open", () => {
       retryDelayMs = 1_000;
+      heartbeatMode = "legacy";
+      lastHeartbeatAckAt = Date.now();
+      lastPresenceAt = Date.now();
       next.send(
         encodeMessage({
           type: "hello",
@@ -166,14 +175,38 @@ export function connect(deviceId: string, events: ConnectionEvents = {}): Connec
       );
       heartbeat = setInterval(() => {
         if (next.readyState === next.OPEN) {
-          next.send(encodeMessage({ type: "heartbeat", at: Date.now() }));
+          const now = Date.now();
+          if (heartbeatMode === "auto" && now - lastHeartbeatAckAt > HEARTBEAT_TIMEOUT_MS) {
+            next.close(4000, "heartbeat timeout");
+            return;
+          }
+
+          next.send(
+            heartbeatMode === "auto"
+              ? HEARTBEAT_REQUEST
+              : encodeMessage({ type: "heartbeat", at: now }),
+          );
+          if (heartbeatMode === "auto" && now - lastPresenceAt >= PRESENCE_SIGNAL_INTERVAL_MS) {
+            next.send(encodeMessage({ type: "presence", at: now }));
+            lastPresenceAt = now;
+          }
         }
       }, HEARTBEAT_INTERVAL_MS);
       events.onOpen?.();
     });
 
     next.addEventListener("message", (event) => {
-      void handleMessage(next, String(event.data), events, { inFlight, asking });
+      void handleMessage(next, String(event.data), events, {
+        inFlight,
+        asking,
+        onHeartbeat: () => {
+          lastHeartbeatAckAt = Date.now();
+        },
+        onHeartbeatMode: (mode) => {
+          heartbeatMode = mode;
+          lastHeartbeatAckAt = Date.now();
+        },
+      });
     });
 
     next.addEventListener("close", (event) => {
@@ -214,6 +247,10 @@ interface Live {
   inFlight: Map<string, AbortController>;
   /** Questions on screen, so `approval.resolved` can take one down. */
   asking: Map<string, AbortController>;
+  /** The relay edge answered without waking the Durable Object. */
+  onHeartbeat: () => void;
+  /** Negotiated from hello.ack so older gateways keep dynamic heartbeats. */
+  onHeartbeatMode: (mode: "legacy" | "auto") => void;
 }
 
 async function handleMessage(
@@ -228,7 +265,12 @@ async function handleMessage(
   const { inFlight, asking } = live;
 
   switch (message.type) {
+    case "heartbeat.ack":
+      live.onHeartbeat();
+      return;
+
     case "hello.ack": {
+      live.onHeartbeatMode(message.heartbeatMode ?? "legacy");
       // Said once per connection rather than once per reconnect storm would be
       // better, but a reconnect only re-prints this when the gateway is up,
       // which is exactly when it is worth reading.

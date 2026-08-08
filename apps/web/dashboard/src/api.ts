@@ -5,6 +5,7 @@ export interface Device {
   name: string;
   platform: string;
   cliVersion: string | null;
+  online: boolean;
   lastSeenAt: number | null;
   revokedAt: number | null;
   createdAt: number;
@@ -140,6 +141,7 @@ export interface AdminOverview {
   toolCalls7d: number;
   /** 0–1 fraction of tool calls in the last 7 days that failed. */
   errorRate7d: number;
+  usageWindow: "rolling" | "complete_utc_days";
 }
 
 /** One row of the admin user list. */
@@ -231,6 +233,8 @@ export interface ToolCallFilters {
 export interface ToolCallPage {
   items: ToolCall[];
   cursor: string | null;
+  /** False when calls are retained as an archive rather than queried interactively. */
+  interactive?: boolean;
 }
 
 /**
@@ -349,13 +353,9 @@ export const api = {
     request<{ ok: true }>(`/api/admin/users/${userId}`, { method: "DELETE" }),
 };
 
-/** A device is online if it checked in within the heartbeat timeout. */
+/** The gateway's answer, from a connection and a disconnection it recorded. */
 export function isOnline(device: Device): boolean {
-  return (
-    device.revokedAt === null &&
-    device.lastSeenAt !== null &&
-    Date.now() - device.lastSeenAt < 90_000
-  );
+  return device.revokedAt === null && device.online;
 }
 
 export function relativeTime(timestamp: number | null): string {

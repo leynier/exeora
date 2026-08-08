@@ -1,0 +1,16 @@
+{
+  "fields": [
+    { "name": "schema_version", "type": "int32", "required": true },
+    { "name": "id", "type": "string", "required": true },
+    { "name": "user_id", "type": "string", "required": true },
+    { "name": "project_id", "type": "string", "required": true },
+    { "name": "tool", "type": "string", "required": true },
+    { "name": "status", "type": "string", "required": true },
+    { "name": "duration_ms", "type": "int64", "required": true },
+    { "name": "error_code", "type": "string", "required": false },
+    { "name": "client_id", "type": "string", "required": false },
+    { "name": "client_name", "type": "string", "required": false },
+    { "name": "endpoint", "type": "string", "required": true },
+    { "name": "created_at", "type": "timestamp", "required": true }
+  ]
+}

@@ -20,6 +20,7 @@ const device = (over: Partial<DeviceView> = {}): DeviceView => ({
   name: "minipc",
   platform: "linux",
   cliVersion: "0.2.0",
+  online: false,
   lastSeenAt: null,
   revokedAt: null,
   ...over,

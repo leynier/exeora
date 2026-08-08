@@ -1,0 +1,11 @@
+{
+  // Merge this array into ../wrangler.jsonc after `pipelines setup` returns
+  // the real stream id. Keeping a placeholder out of the deployable config
+  // prevents a normal D1 deployment from pointing at a nonexistent resource.
+  "pipelines": [
+    {
+      "binding": "AUDIT_STREAM",
+      "stream": "<STREAM_ID>"
+    }
+  ]
+}

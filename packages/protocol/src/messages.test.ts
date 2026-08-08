@@ -21,6 +21,8 @@ describe("executor → relay framing", () => {
       projects: [{ id: "prj_1", slug: "exeora" }],
     },
     { type: "heartbeat", at: 1_754_400_000_000 },
+    { type: "heartbeat" },
+    { type: "presence", at: 1_754_400_000_000 },
     {
       type: "tool.result",
       requestId: "req_1",
@@ -43,6 +45,7 @@ describe("executor → relay framing", () => {
 describe("relay → executor framing", () => {
   const cases: RelayMessage[] = [
     { type: "hello.ack", serverTime: 1_754_400_000_000, heartbeatIntervalMs: 30_000 },
+    { type: "heartbeat.ack" },
     {
       type: "tool.call",
       requestId: "req_1",

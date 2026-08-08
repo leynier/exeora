@@ -7,12 +7,13 @@ import * as p from "@clack/prompts";
 import {
   agentPrompt,
   type CommandPolicy,
+  HEARTBEAT_TIMEOUT_MS,
   type LocalCommandPolicy,
   narrowPolicy,
   POLICY_MODES,
 } from "@exeora/protocol";
 import { Command } from "commander";
-import { gateway, type ToolCallView } from "./api.js";
+import { type DeviceView, gateway, type ToolCallView } from "./api.js";
 import { login } from "./auth/login.js";
 import { clearCredentials, usingFileFallback } from "./auth/store.js";
 import { cacheAccessToken, forgetAccessToken, NotSignedInError } from "./auth/tokens.js";
@@ -204,7 +205,7 @@ device
         return emit(
           devices.map((entry) => ({
             ...entry,
-            online: online(entry.lastSeenAt),
+            online: isOnline(entry),
             thisMachine: entry.id === config.get("deviceId"),
           })),
         );
@@ -213,11 +214,7 @@ device
       if (devices.length === 0) return p.log.info("No devices registered yet.");
 
       for (const entry of devices) {
-        const status = entry.revokedAt
-          ? "revoked"
-          : online(entry.lastSeenAt)
-            ? "online"
-            : "offline";
+        const status = entry.revokedAt ? "revoked" : isOnline(entry) ? "online" : "offline";
         const thisOne = entry.id === config.get("deviceId") ? "  (this machine)" : "";
         p.log.message(`${pad(entry.name, 20)} ${pad(status, 9)} ${entry.platform}${thisOne}`);
       }
@@ -501,7 +498,7 @@ program
         // Filtering happens here rather than on the server, which returns the
         // newest rows for the whole account: a narrow filter over a wide window
         // is the useful direction, and it is one request either way.
-        const [calls, remote] = await Promise.all([
+        const [{ calls, interactive }, remote] = await Promise.all([
           gateway.listToolCalls(limit),
           gateway.listProjects(),
         ]);
@@ -527,6 +524,13 @@ program
         }
 
         if (rows.length === 0) {
+          if (!interactive) {
+            p.log.info(
+              "This gateway stores tool calls as an archive rather than a searchable log. " +
+                "Daily usage is still available in the dashboard.",
+            );
+            return;
+          }
           p.log.info(
             calls.length === 0
               ? "No tool calls yet. They appear here as soon as an agent makes one."
@@ -895,8 +899,24 @@ function guard<A extends unknown[]>(action: (...args: A) => Promise<void>) {
   };
 }
 
-function online(lastSeenAt: number | null): boolean {
-  return lastSeenAt !== null && Date.now() - lastSeenAt < 90_000;
+/**
+ * Whether a machine is connected right now.
+ *
+ * The gateway sends the answer, having recorded both the connection and the
+ * disconnection. The `lastSeenAt` fallback is for a self-hosted gateway that
+ * predates the field: without it a new CLI would report every machine offline
+ * against an older deployment, and there it is the only signal available.
+ *
+ * The fallback keeps the old window rather than `PRESENCE_TIMEOUT_MS`. That
+ * wider window is sized for a checkpoint written every fifteen minutes; a
+ * gateway without the `online` field writes `lastSeenAt` on every heartbeat, so
+ * reading it through the wide window would call a machine that has been off for
+ * twenty minutes online.
+ */
+function isOnline(device: DeviceView): boolean {
+  if (device.revokedAt !== null) return false;
+  if (typeof device.online === "boolean") return device.online;
+  return device.lastSeenAt !== null && Date.now() - device.lastSeenAt < HEARTBEAT_TIMEOUT_MS;
 }
 
 function pad(value: string, width: number): string {

@@ -1,0 +1,1 @@
+ALTER TABLE `devices` ADD `disconnected_at` integer;

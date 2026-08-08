@@ -135,6 +135,83 @@ describe("deleting a machine permanently", () => {
   });
 });
 
+/**
+ * Presence on the list, which is read from D1 rather than asked of each relay.
+ *
+ * The case that matters is the second one: `lastSeenAt` is a checkpoint written
+ * every fifteen minutes and read through a window wider than that, so on its
+ * own it cannot tell a machine that left from one that is between writes. The
+ * relay records the close, and this is where that recording is believed.
+ */
+describe("listing machines", () => {
+  const RECENTLY = new Date(Date.now() - 60_000);
+
+  async function list() {
+    const response = await call("/api/devices");
+    expect(response.status).toBe(200);
+    const items = (await response.json()) as Array<{ id: string; online: boolean }>;
+    return Object.fromEntries(items.map((item) => [item.id, item.online]));
+  }
+
+  beforeEach(async () => {
+    await seed({ revoked: false });
+
+    await db(env)
+      .insert(schema.devices)
+      .values([
+        {
+          id: "dev_connected",
+          userId: USER,
+          name: "laptop",
+          platform: "darwin",
+          lastSeenAt: RECENTLY,
+        },
+        {
+          id: "dev_left",
+          userId: USER,
+          name: "desktop",
+          platform: "linux",
+          lastSeenAt: RECENTLY,
+          disconnectedAt: RECENTLY,
+        },
+        {
+          id: "dev_stale",
+          userId: USER,
+          name: "old-box",
+          platform: "linux",
+          lastSeenAt: new Date(Date.now() - 60 * 60_000),
+        },
+        {
+          id: "dev_revoked",
+          userId: USER,
+          name: "sold",
+          platform: "win32",
+          lastSeenAt: RECENTLY,
+          revokedAt: new Date(),
+        },
+      ])
+      .run();
+  });
+
+  it("reports a machine whose socket is open as online", async () => {
+    expect((await list()).dev_connected).toBe(true);
+  });
+
+  it("reports a machine that disconnected as offline at once", async () => {
+    // Seen a minute ago, so the checkpoint window still covers it. Only the
+    // recorded close says it has gone.
+    expect((await list()).dev_left).toBe(false);
+  });
+
+  it("reports a machine nobody saw leave as offline once the window passes", async () => {
+    expect((await list()).dev_stale).toBe(false);
+  });
+
+  it("never reports a revoked machine as online", async () => {
+    expect((await list()).dev_revoked).toBe(false);
+  });
+});
+
 describe("revoking", () => {
   beforeEach(async () => {
     await seed({ revoked: false });

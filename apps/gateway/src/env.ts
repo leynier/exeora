@@ -6,7 +6,10 @@
  * are merged into the generated interface here. Set them with
  * `wrangler secret put <NAME>` in production and in `.dev.vars` locally.
  */
+
+import type { Pipeline } from "cloudflare:pipelines";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+import type { AuditEvent, AuditWriteMode } from "./audit.js";
 
 declare global {
   interface Env {
@@ -25,6 +28,18 @@ declare global {
      * least 32 bytes, or the codec refuses to start.
      */
     REQUEST_STATE_SECRET: string;
+
+    /** Optional during the D1-to-Pipelines migration; `d1` remains the safe default. */
+    AUDIT_WRITE_MODE?: AuditWriteMode;
+    AUDIT_STREAM?: Pipeline<AuditEvent>;
+    /** R2 SQL credentials used only by the nightly external rollup prototype. */
+    CLOUDFLARE_ACCOUNT_ID?: string;
+    AUDIT_R2_BUCKET?: string;
+    AUDIT_R2_WAREHOUSE?: string;
+    AUDIT_R2_SQL_TOKEN?: string;
+    AUDIT_R2_TABLE?: string;
+    /** First UTC day present in the Iceberg table, YYYY-MM-DD. */
+    AUDIT_WAREHOUSE_START_DAY?: string;
 
     /**
      * Optional comma-separated emails that become administrators on first

@@ -79,6 +79,19 @@ export const devices = sqliteTable(
     cliVersion: text("cli_version"),
     /** Updated on connect, heartbeat and disconnect. Drives the online badge. */
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+    /**
+     * When the relay last saw this machine's socket close, and null while it
+     * believes one is open.
+     *
+     * `lastSeenAt` alone cannot answer presence: it is checkpointed every
+     * `PRESENCE_CHECKPOINT_INTERVAL_MS`, so the window that reads it has to be
+     * wider than that interval, and a machine that disconnected cleanly would
+     * keep reading online until the window passed. A close is a fact the relay
+     * knows immediately, so it is recorded rather than inferred. The window
+     * still covers the disconnects nobody witnessed: a crash, a dropped
+     * network, an evicted Durable Object.
+     */
+    disconnectedAt: integer("disconnected_at", { mode: "timestamp_ms" }),
     /** Set when revoked from the dashboard; the relay refuses the socket after. */
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
@@ -239,10 +252,21 @@ export const usageDaily = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     day: text("day").notNull(),
     toolCalls: integer("tool_calls").notNull().default(0),
+    errors: integer("errors").notNull().default(0),
+    lastActivityAt: integer("last_activity_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.day] })],
 );
+
+/** Durable checkpoint for replaying late warehouse events idempotently. */
+export const usageRollupState = sqliteTable("usage_rollup_state", {
+  source: text("source").primaryKey(),
+  lastCompleteDay: text("last_complete_day").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
 
 /** Audit trail shown in the dashboard. Never stores tool arguments or output. */
 export const toolCalls = sqliteTable(

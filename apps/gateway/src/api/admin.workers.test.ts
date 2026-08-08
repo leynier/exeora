@@ -61,7 +61,17 @@ async function seed() {
         userId: USER,
         name: "old-box",
         platform: "darwin",
-        lastSeenAt: new Date(Date.now() - 10 * 60_000),
+        lastSeenAt: new Date(Date.now() - 30 * 60_000),
+      },
+      {
+        // Inside the checkpoint window, but the relay watched it go. The panel
+        // has to believe the close rather than the window.
+        id: "dev_subject_left",
+        userId: USER,
+        name: "desktop",
+        platform: "linux",
+        lastSeenAt: new Date(),
+        disconnectedAt: new Date(),
       },
       {
         id: "dev_other",
@@ -186,7 +196,7 @@ describe("admin reads", () => {
 
     const subject = users.find((row) => row.id === USER);
     expect(subject).toMatchObject({
-      devices: 2,
+      devices: 3,
       devicesOnline: 1,
       projects: 1,
       clients: 1,
@@ -224,7 +234,8 @@ describe("admin reads", () => {
 
     const detail = (await response.json()) as {
       email: string;
-      machineList: Array<{ id: string }>;
+      devicesOnline: number;
+      machineList: Array<{ id: string; online: boolean }>;
       projectList: Array<{ id: string }>;
       clientList: Array<{ id: string }>;
       recentCalls: Array<{ id: string }>;
@@ -232,9 +243,18 @@ describe("admin reads", () => {
 
     expect(detail.email).toBe(USER_EMAIL);
     expect(detail.machineList.map((row) => row.id).sort()).toEqual([
+      "dev_subject_left",
       "dev_subject_offline",
       "dev_subject_online",
     ]);
+    expect(detail.devicesOnline).toBe(1);
+    expect(Object.fromEntries(detail.machineList.map((row) => [row.id, row.online]))).toMatchObject(
+      {
+        dev_subject_online: true,
+        dev_subject_left: false,
+        dev_subject_offline: false,
+      },
+    );
     expect(detail.projectList.map((row) => row.id)).toEqual(["prj_subject"]);
     expect(detail.clientList.map((row) => row.id)).toEqual(["pcl_subject"]);
     expect(detail.recentCalls).toHaveLength(2);

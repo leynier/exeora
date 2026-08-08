@@ -53,7 +53,7 @@ export const ExecutorCapabilities = z.object({
    * over that would reintroduce exactly the brittleness the version range
    * removes. Unknown names are ignored by whoever reads this.
    */
-  tools: z.array(z.string()),
+  tools: z.array(z.string().max(64)).max(64),
 });
 
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
@@ -96,8 +96,22 @@ export const HelloMessage = z.object({
   capabilities: ExecutorCapabilities.optional(),
 });
 
+/**
+ * Fixed heartbeat frames can be answered by `setWebSocketAutoResponse`
+ * without waking the Durable Object. Keep these byte-for-byte stable.
+ */
+export const HEARTBEAT_REQUEST = '{"type":"heartbeat"}';
+export const HEARTBEAT_RESPONSE = '{"type":"heartbeat.ack"}';
+
 export const HeartbeatMessage = z.object({
   type: z.literal("heartbeat"),
+  /** Accepted for CLIs predating the fixed auto-response frame. */
+  at: z.number().int().optional(),
+});
+
+/** Slow, persisted presence checkpoint; connectivity does not depend on it. */
+export const PresenceMessage = z.object({
+  type: z.literal("presence"),
   at: z.number().int(),
 });
 
@@ -126,12 +140,14 @@ export const ApprovalAnswerMessage = z.object({
 export const ExecutorMessage = z.discriminatedUnion("type", [
   HelloMessage,
   HeartbeatMessage,
+  PresenceMessage,
   ToolResultMessage,
   ApprovalAnswerMessage,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessage>;
 export type HeartbeatMessage = z.infer<typeof HeartbeatMessage>;
+export type PresenceMessage = z.infer<typeof PresenceMessage>;
 export type ToolResultMessage = z.infer<typeof ToolResultMessage>;
 export type ApprovalAnswerMessage = z.infer<typeof ApprovalAnswerMessage>;
 export type ExecutorMessage = z.infer<typeof ExecutorMessage>;
@@ -155,6 +171,12 @@ export const HelloAckMessage = z.object({
    * none, and because the value is configuration that may simply be unset.
    */
   latestCliVersion: z.string().optional(),
+  /** Present only when fixed heartbeat frames are handled at the edge. */
+  heartbeatMode: z.literal("auto").optional(),
+});
+
+export const HeartbeatAckMessage = z.object({
+  type: z.literal("heartbeat.ack"),
 });
 
 export const ToolCallMessage = z.object({
@@ -253,6 +275,7 @@ export const ApprovalResolvedMessage = z.object({
 
 export const RelayMessage = z.discriminatedUnion("type", [
   HelloAckMessage,
+  HeartbeatAckMessage,
   ToolCallMessage,
   CancelMessage,
   ShutdownMessage,
@@ -261,6 +284,7 @@ export const RelayMessage = z.discriminatedUnion("type", [
 ]);
 
 export type HelloAckMessage = z.infer<typeof HelloAckMessage>;
+export type HeartbeatAckMessage = z.infer<typeof HeartbeatAckMessage>;
 export type ToolCallMessage = z.infer<typeof ToolCallMessage>;
 export type CancelMessage = z.infer<typeof CancelMessage>;
 export type ShutdownMessage = z.infer<typeof ShutdownMessage>;

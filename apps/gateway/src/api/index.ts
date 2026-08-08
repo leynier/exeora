@@ -1,15 +1,15 @@
-import { CommandPolicy, HEARTBEAT_TIMEOUT_MS } from "@exeora/protocol";
+import { CommandPolicy } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
 import {
   and,
   count,
   desc,
   eq,
-  gt,
   gte,
   inArray,
   isNull,
   lt,
+  max,
   notInArray,
   or,
   type SQL,
@@ -18,6 +18,7 @@ import {
 } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { auditWriteMode } from "../audit.js";
 import {
   parsePolicy,
   rememberAuthorization,
@@ -30,6 +31,8 @@ import { newId } from "../ids.js";
 import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
 import { ownedProjectIds } from "../oauth/target.js";
 import { isPlanId, limitsFor, PLAN_IDS, type PlanId, retentionTiers } from "../plans.js";
+import { deviceOnline, isDeviceOnline, presenceCutoff } from "../presence.js";
+import { rollupUsageDailyFromWarehouse } from "../warehouse-usage.js";
 import { admin } from "./admin.js";
 import {
   deleteAccount,
@@ -190,6 +193,16 @@ api.post("/api/devices", zValidator("json", deviceInput), async (c) => {
   return c.json({ id, name: body.name, platform: body.platform }, 201);
 });
 
+/**
+ * Presence here is read from D1 rather than asked of each relay.
+ *
+ * Asking is the exact answer, but it is one Durable Object round trip per
+ * machine on a route the dashboard polls and `exeora device list` also calls,
+ * including for machines that have never dialled in and whose object holds no
+ * state at all. The relay now records a close as it happens, so the column is
+ * exact for every departure anybody witnessed and only lags on the ones nobody
+ * did. See `presence.ts`.
+ */
 api.get("/api/devices", async (c) => {
   const rows = await db(c.env)
     .select()
@@ -197,7 +210,8 @@ api.get("/api/devices", async (c) => {
     .where(eq(schema.devices.userId, c.get("userId")))
     .all();
 
-  return c.json(rows.map(toDeviceView));
+  const cutoff = presenceCutoff();
+  return c.json(rows.map((device) => toDeviceView(device, isDeviceOnline(device, cutoff))));
 });
 
 /**
@@ -758,6 +772,10 @@ const CALLS_PAGE_SIZE = 50;
  * index orders by the timestamp alone.
  */
 api.get("/api/tool-calls", async (c) => {
+  if (auditWriteMode(c.env) === "pipeline") {
+    return c.json({ items: [], cursor: null, interactive: false });
+  }
+
   const userId = c.get("userId");
   const cursor = parseCallsCursor(c.req.query("cursor"));
 
@@ -810,6 +828,7 @@ api.get("/api/tool-calls", async (c) => {
       createdAt: call.createdAt.getTime(),
     })),
     cursor: last ? encodeCallsCursor(last.createdAt.getTime(), last.id) : null,
+    interactive: true,
   });
 });
 
@@ -828,18 +847,10 @@ api.get("/api/tool-calls", async (c) => {
 api.get("/api/approvals", async (c) => {
   const userId = c.get("userId");
 
-  const seenSince = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
-
   const devices = await db(c.env)
     .select({ id: schema.devices.id, name: schema.devices.name })
     .from(schema.devices)
-    .where(
-      and(
-        eq(schema.devices.userId, userId),
-        isNull(schema.devices.revokedAt),
-        gt(schema.devices.lastSeenAt, seenSince),
-      ),
-    )
+    .where(and(eq(schema.devices.userId, userId), deviceOnline()))
     .all();
 
   const perDevice = await Promise.all(
@@ -991,6 +1002,11 @@ export async function rollupUsageDaily(env: Pick<Env, "DB">): Promise<number> {
         "day",
       ),
       n: count(),
+      errors:
+        sql<number>`sum(case when ${schema.toolCalls.status} = 'error' then 1 else 0 end)`.mapWith(
+          Number,
+        ),
+      lastActivityAt: max(schema.toolCalls.createdAt),
     })
     .from(schema.toolCalls)
     .where(
@@ -1015,11 +1031,15 @@ export async function rollupUsageDaily(env: Pick<Env, "DB">): Promise<number> {
         userId: group.userId,
         day: group.day,
         toolCalls: group.n,
+        errors: group.errors,
+        lastActivityAt: group.lastActivityAt,
       })
       .onConflictDoUpdate({
         target: [schema.usageDaily.userId, schema.usageDaily.day],
         set: {
           toolCalls: sql`max(${schema.usageDaily.toolCalls}, excluded.tool_calls)`,
+          errors: sql`max(${schema.usageDaily.errors}, excluded.errors)`,
+          lastActivityAt: sql`max(coalesce(${schema.usageDaily.lastActivityAt}, 0), excluded.last_activity_at)`,
         },
       })
       .run();
@@ -1036,17 +1056,38 @@ export async function rollupUsageDaily(env: Pick<Env, "DB">): Promise<number> {
  * Dependencies are injectable so a test can fail the rollup without stubbing
  * the module graph.
  */
+type NightlyEnv = Pick<Env, "DB"> &
+  Partial<
+    Pick<
+      Env,
+      | "AUDIT_WRITE_MODE"
+      | "AUDIT_STREAM"
+      | "CLOUDFLARE_ACCOUNT_ID"
+      | "AUDIT_R2_BUCKET"
+      | "AUDIT_R2_WAREHOUSE"
+      | "AUDIT_R2_SQL_TOKEN"
+      | "AUDIT_R2_TABLE"
+      | "AUDIT_WAREHOUSE_START_DAY"
+    >
+  >;
+
 export async function runNightlyHousekeeping(
-  env: Pick<Env, "DB">,
+  env: NightlyEnv,
   deps: {
-    rollup?: (env: Pick<Env, "DB">) => Promise<unknown>;
+    rollup?: (env: NightlyEnv) => Promise<unknown>;
     prune?: (env: Pick<Env, "DB">) => Promise<unknown>;
   } = {},
 ): Promise<void> {
-  const rollup = deps.rollup ?? rollupUsageDaily;
   const prune = deps.prune ?? pruneToolCalls;
 
   try {
+    // Inside the try: choosing the producer reads `AUDIT_WRITE_MODE`, which
+    // throws when the mode and the bindings disagree. A misconfiguration is a
+    // rollup failure like any other, not a reason to leave `tool_calls`
+    // unbounded.
+    const rollup =
+      deps.rollup ??
+      (auditWriteMode(env) === "pipeline" ? rollupUsageDailyFromWarehouse : rollupUsageDaily);
     await rollup(env);
   } catch (error) {
     console.error("usage rollup failed; continuing to prune", error);
@@ -1110,12 +1151,13 @@ export { relayName } from "./ops.js";
 // after the shared auth middleware has already bound the caller.
 api.route("/", admin);
 
-function toDeviceView(device: typeof schema.devices.$inferSelect) {
+function toDeviceView(device: typeof schema.devices.$inferSelect, online = false) {
   return {
     id: device.id,
     name: device.name,
     platform: device.platform,
     cliVersion: device.cliVersion,
+    online,
     lastSeenAt: device.lastSeenAt?.getTime() ?? null,
     revokedAt: device.revokedAt?.getTime() ?? null,
     createdAt: device.createdAt.getTime(),

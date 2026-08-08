@@ -1,14 +1,11 @@
-import {
-  CLOSED_POLICY,
-  CommandPolicy,
-  DEFAULT_POLICY,
-  HEARTBEAT_TIMEOUT_MS,
-} from "@exeora/protocol";
-import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { CLOSED_POLICY, CommandPolicy, DEFAULT_POLICY } from "@exeora/protocol";
+import { and, eq, isNull, lt, notInArray, or, type SQL, sql } from "drizzle-orm";
+import { observeD1 } from "./cost-metrics.js";
 import { db, schema } from "./db/client.js";
 import type { ClientEndpoint } from "./db/schema.js";
 import "./env.js";
 import { newId } from "./ids.js";
+import { isDeviceOnline, presenceCutoff } from "./presence.js";
 
 /**
  * Bookkeeping for the MCP clients authorized against a project.
@@ -37,6 +34,9 @@ export interface McpClientInfo {
   name?: string;
   version?: string;
 }
+
+/** Dashboard presence is intentionally approximate, not a write per call. */
+export const CLIENT_TOUCH_INTERVAL_MS = 15 * 60_000;
 
 /**
  * Records that a client was just authorized against a project.
@@ -163,15 +163,7 @@ export async function touchClient(
   entry: { userId: string; projectId: string; clientId: string; endpoint?: ClientEndpoint },
   info: McpClientInfo | undefined,
 ): Promise<void> {
-  await db(env)
-    .update(schema.projectClients)
-    .set({
-      lastUsedAt: new Date(),
-      ...(info?.name ? { mcpName: info.name } : {}),
-      ...(info?.version ? { mcpVersion: info.version } : {}),
-    })
-    .where(scope(entry))
-    .run();
+  await touchRows(env, scope(entry), info);
 }
 
 /**
@@ -187,15 +179,55 @@ export async function touchAccountClient(
   entry: { userId: string; clientId: string },
   info: McpClientInfo | undefined,
 ): Promise<void> {
-  await db(env)
+  await touchRows(env, accountScope(entry), info);
+}
+
+/**
+ * The one debounced write both endpoints share.
+ *
+ * The row is only rewritten when the timestamp has actually gone stale or the
+ * client renamed itself, so an account making thousands of calls an hour costs
+ * a handful of writes rather than one per call.
+ */
+async function touchRows(
+  env: Pick<Env, "DB">,
+  rows: SQL | undefined,
+  info: McpClientInfo | undefined,
+): Promise<void> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - CLIENT_TOUCH_INTERVAL_MS);
+  const result = await db(env)
     .update(schema.projectClients)
     .set({
-      lastUsedAt: new Date(),
+      // Identity changes must not look like fresh usage.
+      lastUsedAt: sql`case
+        when ${schema.projectClients.lastUsedAt} is null
+          or ${schema.projectClients.lastUsedAt} < ${cutoff.getTime()}
+        then ${now.getTime()}
+        else ${schema.projectClients.lastUsedAt}
+      end`,
       ...(info?.name ? { mcpName: info.name } : {}),
       ...(info?.version ? { mcpVersion: info.version } : {}),
     })
-    .where(accountScope(entry))
+    .where(
+      and(
+        rows,
+        or(
+          isNull(schema.projectClients.lastUsedAt),
+          lt(schema.projectClients.lastUsedAt, cutoff),
+          ...(info?.name ? [sql`${schema.projectClients.mcpName} IS NOT ${info.name}`] : []),
+          ...(info?.version
+            ? [sql`${schema.projectClients.mcpVersion} IS NOT ${info.version}`]
+            : []),
+        ),
+      ),
+    )
     .run();
+  // One independent draw per call, not one per debounce bucket. A key that is
+  // constant for fifteen minutes makes the sample all-or-nothing, so an unlucky
+  // bucket emits a log line for every call inside it, which is the cost this
+  // telemetry exists to avoid.
+  observeD1(crypto.randomUUID(), "client.touch", result.meta);
 }
 
 /**
@@ -322,7 +354,7 @@ export interface AccountProject {
 /**
  * Every project this client reaches through the account URL.
  *
- * `online` comes from the device's own heartbeat column rather than from asking
+ * `online` comes from the device's own presence columns rather than from asking
  * each relay, which would be one Durable Object round trip per project to
  * answer a question the database already knows. `localPath` is deliberately not
  * selected: the gateway never sends a machine's own paths to a tool, and
@@ -332,7 +364,7 @@ export async function accountProjects(
   env: Pick<Env, "DB">,
   entry: { userId: string; clientId: string },
 ): Promise<AccountProject[]> {
-  const seenSince = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
+  const cutoff = presenceCutoff();
 
   const rows = await db(env)
     .select({
@@ -341,7 +373,8 @@ export async function accountProjects(
       name: schema.projects.name,
       machine: schema.devices.name,
       lastSeenAt: schema.devices.lastSeenAt,
-      deviceRevokedAt: schema.devices.revokedAt,
+      disconnectedAt: schema.devices.disconnectedAt,
+      revokedAt: schema.devices.revokedAt,
     })
     .from(schema.projectClients)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.projectClients.projectId))
@@ -362,10 +395,7 @@ export async function accountProjects(
     slug: row.slug,
     name: row.name,
     machine: row.machine,
-    online:
-      row.deviceRevokedAt === null &&
-      row.lastSeenAt !== null &&
-      row.lastSeenAt.getTime() > seenSince.getTime(),
+    online: isDeviceOnline(row, cutoff),
   }));
 }
 

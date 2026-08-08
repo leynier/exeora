@@ -28,6 +28,8 @@ import {
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { describeCall } from "./approval.js";
+import { type AuditWriteMode, auditEvent, auditWriteMode, writeAuditEvent } from "./audit.js";
+import { observeD1 } from "./cost-metrics.js";
 import { newId } from "./ids.js";
 import {
   createProjectMcpHandler,
@@ -55,6 +57,7 @@ import {
   tooManyRequests,
   withinLimit,
 } from "./rate-limit.js";
+import { callRelayTool, requestRelayApproval } from "./relay-client.js";
 
 export { DeviceRelay } from "./relay-do.js";
 
@@ -541,7 +544,7 @@ async function dispatchToDevice(
     // Everyone else is asked out of band. This used to refuse outright, which
     // made the setting decorative for exactly the clients most people use:
     // claude.ai and ChatGPT still speak the 2025 protocol today.
-    const outcome = await relay.requestApproval({
+    const outcome = await requestRelayApproval(relay, {
       id: newId("apr"),
       projectId,
       tool,
@@ -574,14 +577,8 @@ async function dispatchToDevice(
     }
   }
 
-  // Registered before the call rather than after it: awaiting `callTool` first
-  // would leave the window where the client hangs up unwatched, which is
-  // precisely the window a long `run_command` spends.
-  const cancel = () => void relay.cancelTool(requestId).catch(() => undefined);
-  signal?.addEventListener("abort", cancel, { once: true });
-
   try {
-    const value = await relay.callTool({
+    const value = await callRelayTool(relay, {
       requestId,
       projectId,
       tool,
@@ -590,6 +587,7 @@ async function dispatchToDevice(
       // Sent even though it was just enforced, because the executor narrows it
       // with the project's own `exeora.toml` before running anything.
       policy: project.policy,
+      signal,
     });
     await record(env, { userId, projectId, tool, caller, startedAt, status: "ok", endpoint });
     return { kind: "value", value };
@@ -605,8 +603,6 @@ async function dispatchToDevice(
       endpoint,
     });
     throw error;
-  } finally {
-    signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -720,25 +716,47 @@ async function record(
   },
 ): Promise<void> {
   const { caller } = entry;
+  const id = newId("call");
+  const durationMs = Date.now() - entry.startedAt;
+  const writes: Promise<unknown>[] = [];
 
+  // Resolving the mode is itself fallible: a `dual`/`pipeline` deployment with
+  // no stream bound throws here on purpose, and a configuration mistake must
+  // still not be the reason a tool call fails or the reason its real error is
+  // replaced by this one. Loud in the logs, invisible to the caller.
+  let mode: AuditWriteMode | null = null;
   try {
-    await db(env)
-      .insert(schema.toolCalls)
-      .values({
-        id: newId("call"),
-        userId: entry.userId,
-        projectId: entry.projectId,
-        tool: entry.tool,
-        status: entry.status,
-        durationMs: Date.now() - entry.startedAt,
-        errorCode: entry.errorCode ?? null,
-        clientId: caller.clientId ?? null,
-        clientName: caller.clientName ?? caller.mcp?.name ?? null,
-      })
-      .run();
+    mode = auditWriteMode(env);
+  } catch (error) {
+    console.error("audit write mode is misconfigured; no audit row was written", error);
+  }
 
-    if (caller.clientId) {
-      await touchClient(
+  if (mode && mode !== "pipeline") {
+    writes.push(
+      db(env)
+        .insert(schema.toolCalls)
+        .values({
+          id,
+          userId: entry.userId,
+          projectId: entry.projectId,
+          tool: entry.tool,
+          status: entry.status,
+          durationMs,
+          errorCode: entry.errorCode ?? null,
+          clientId: caller.clientId ?? null,
+          clientName: caller.clientName ?? caller.mcp?.name ?? null,
+        })
+        .run()
+        .then((result) => observeD1(id, "audit.insert", result.meta)),
+    );
+  }
+
+  if (mode && mode !== "d1")
+    writes.push(writeAuditEvent(env, auditEvent(id, { ...entry, durationMs })));
+
+  if (caller.clientId) {
+    writes.push(
+      touchClient(
         env,
         {
           userId: entry.userId,
@@ -747,10 +765,18 @@ async function record(
           endpoint: entry.endpoint ?? "project",
         },
         caller.mcp,
-      );
+      ),
+    );
+  }
+
+  // Auditing and last-used bookkeeping must never be why a tool call fails, but
+  // a failure that leaves no trace is worse than the failure: in `pipeline` mode
+  // a rejected stream write is the whole audit row, and the sampled cost metric
+  // only sees one event in a thousand. Loud in the logs, invisible to the caller.
+  for (const result of await Promise.allSettled(writes)) {
+    if (result.status === "rejected") {
+      console.error("audit or last-used bookkeeping failed", result.reason);
     }
-  } catch {
-    // Auditing must never be the reason a tool call fails.
   }
 }
 

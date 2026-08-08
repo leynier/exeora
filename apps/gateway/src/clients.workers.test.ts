@@ -248,6 +248,56 @@ describe("remembering a client", () => {
     expect(after).toMatchObject({ mcpName: "claude-code", mcpVersion: "2.1.0" });
     expect(after?.lastUsedAt).not.toBeNull();
   });
+
+  it("does not rewrite a fresh last-used timestamp", async () => {
+    await rememberAuthorization(env, {
+      userId: USER,
+      projectId: "prj_u",
+      clientId: CLIENT,
+      clientName: "Claude",
+      clientUri: undefined,
+    });
+    const recent = new Date(Date.now() - 1_000);
+    await db(env)
+      .update(schema.projectClients)
+      .set({ lastUsedAt: recent })
+      .where(eq(schema.projectClients.clientId, CLIENT))
+      .run();
+
+    await touchClient(env, { userId: USER, projectId: "prj_u", clientId: CLIENT }, undefined);
+
+    expect((await row())?.lastUsedAt?.getTime()).toBe(recent.getTime());
+  });
+
+  it("learns changed MCP identity even inside the debounce window", async () => {
+    await rememberAuthorization(env, {
+      userId: USER,
+      projectId: "prj_u",
+      clientId: CLIENT,
+      clientName: "Claude",
+      clientUri: undefined,
+    });
+    const recent = new Date(Date.now() - 1_000);
+    await db(env)
+      .update(schema.projectClients)
+      .set({
+        lastUsedAt: recent,
+        mcpName: "claude-code",
+        mcpVersion: "2.1.0",
+      })
+      .where(eq(schema.projectClients.clientId, CLIENT))
+      .run();
+
+    await touchClient(
+      env,
+      { userId: USER, projectId: "prj_u", clientId: CLIENT },
+      { name: "claude-code", version: "2.2.0" },
+    );
+
+    const after = await row();
+    expect(after).toMatchObject({ mcpName: "claude-code", mcpVersion: "2.2.0" });
+    expect(after?.lastUsedAt?.getTime()).toBe(recent.getTime());
+  });
 });
 
 describe("reading a stored policy", () => {

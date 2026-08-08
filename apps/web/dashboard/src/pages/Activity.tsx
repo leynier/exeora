@@ -51,6 +51,7 @@ export function Activity() {
 
   const calls = useToolCallPages(filters);
   const rows = useMemo(() => (calls.data?.pages ?? []).flatMap((page) => page.items), [calls.data]);
+  const interactive = calls.data?.pages[0]?.interactive !== false;
 
   const projectOptions = useMemo(
     () => [
@@ -136,10 +137,20 @@ export function Activity() {
         {calls.isLoading ? (
           <SkeletonRows count={5} />
         ) : rows.length === 0 ? (
-          <EmptyState title={filtering ? "Nothing matches those filters" : "Nothing yet"}>
-            {filtering
-              ? "Widen them to see more. This searched the whole log, not just the page on screen."
-              : "Tool calls appear here as soon as an agent makes one."}
+          <EmptyState
+            title={
+              interactive
+                ? filtering
+                  ? "Nothing matches those filters"
+                  : "Nothing yet"
+                : "Activity is stored as an archive"
+            }
+          >
+            {interactive
+              ? filtering
+                ? "Widen them to see more. This searched the whole log, not just the page on screen."
+                : "Tool calls appear here as soon as an agent makes one."
+              : "This deployment chose lower storage cost over interactive call-by-call search. Daily usage remains available."}
           </EmptyState>
         ) : (
           <Divided>

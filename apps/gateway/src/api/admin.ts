@@ -1,7 +1,8 @@
-import { HEARTBEAT_TIMEOUT_MS } from "@exeora/protocol";
-import { and, count, desc, eq, gt, isNull, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, max, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
+import { auditWriteMode } from "../audit.js";
 import { db, schema } from "../db/client.js";
+import { deviceOnline, deviceOnlineSql, isDeviceOnline, presenceCutoff } from "../presence.js";
 import { deleteAccount, revokeClient, revokeDevice } from "./ops.js";
 
 /**
@@ -43,9 +44,11 @@ admin.use("/api/admin/*", async (c, next) => {
 
 admin.get("/api/admin/overview", async (c) => {
   const database = db(c.env);
-  const seenSince = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
+  const pipeline = auditWriteMode(c.env) === "pipeline";
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const yesterdayUtc = dayAgo.toISOString().slice(0, 10);
+  const weekAgoUtc = weekAgo.toISOString().slice(0, 10);
 
   const [
     usersRow,
@@ -60,37 +63,56 @@ admin.get("/api/admin/overview", async (c) => {
   ] = await Promise.all([
     database.select({ n: count() }).from(schema.users).get(),
     database.select({ n: count() }).from(schema.devices).get(),
-    database
-      .select({ n: count() })
-      .from(schema.devices)
-      .where(and(isNull(schema.devices.revokedAt), gt(schema.devices.lastSeenAt, seenSince)))
-      .get(),
+    database.select({ n: count() }).from(schema.devices).where(deviceOnline()).get(),
     database.select({ n: count() }).from(schema.projects).get(),
     database
       .select({ n: count() })
       .from(schema.projectClients)
       .where(isNull(schema.projectClients.revokedAt))
       .get(),
-    database.select({ n: count() }).from(schema.toolCalls).get(),
-    database
-      .select({ n: count() })
-      .from(schema.toolCalls)
-      .where(gt(schema.toolCalls.createdAt, dayAgo))
-      .get(),
-    database
-      .select({ n: count() })
-      .from(schema.toolCalls)
-      .where(gt(schema.toolCalls.createdAt, weekAgo))
-      .get(),
-    database
-      .select({ n: count() })
-      .from(schema.toolCalls)
-      .where(and(gt(schema.toolCalls.createdAt, weekAgo), eq(schema.toolCalls.status, "error")))
-      .get(),
+    pipeline
+      ? database
+          .select({ n: sum(schema.usageDaily.toolCalls) })
+          .from(schema.usageDaily)
+          .get()
+      : database.select({ n: count() }).from(schema.toolCalls).get(),
+    pipeline
+      ? database
+          .select({ n: sum(schema.usageDaily.toolCalls) })
+          .from(schema.usageDaily)
+          .where(eq(schema.usageDaily.day, yesterdayUtc))
+          .get()
+      : database
+          .select({ n: count() })
+          .from(schema.toolCalls)
+          .where(gt(schema.toolCalls.createdAt, dayAgo))
+          .get(),
+    pipeline
+      ? database
+          .select({ n: sum(schema.usageDaily.toolCalls) })
+          .from(schema.usageDaily)
+          .where(gte(schema.usageDaily.day, weekAgoUtc))
+          .get()
+      : database
+          .select({ n: count() })
+          .from(schema.toolCalls)
+          .where(gt(schema.toolCalls.createdAt, weekAgo))
+          .get(),
+    pipeline
+      ? database
+          .select({ n: sum(schema.usageDaily.errors) })
+          .from(schema.usageDaily)
+          .where(gte(schema.usageDaily.day, weekAgoUtc))
+          .get()
+      : database
+          .select({ n: count() })
+          .from(schema.toolCalls)
+          .where(and(gt(schema.toolCalls.createdAt, weekAgo), eq(schema.toolCalls.status, "error")))
+          .get(),
   ]);
 
-  const calls7d = weekRow?.n ?? 0;
-  const errors7d = weekErrorRow?.n ?? 0;
+  const calls7d = Number(weekRow?.n ?? 0);
+  const errors7d = Number(weekErrorRow?.n ?? 0);
 
   return c.json({
     users: usersRow?.n ?? 0,
@@ -98,10 +120,11 @@ admin.get("/api/admin/overview", async (c) => {
     devicesOnline: onlineRow?.n ?? 0,
     projects: projectsRow?.n ?? 0,
     clients: clientsRow?.n ?? 0,
-    toolCalls: callsRow?.n ?? 0,
-    toolCalls24h: dayRow?.n ?? 0,
+    toolCalls: Number(callsRow?.n ?? 0),
+    toolCalls24h: Number(dayRow?.n ?? 0),
     toolCalls7d: calls7d,
     errorRate7d: calls7d === 0 ? 0 : errors7d / calls7d,
+    usageWindow: pipeline ? "complete_utc_days" : "rolling",
   });
 });
 
@@ -111,7 +134,8 @@ admin.get("/api/admin/overview", async (c) => {
 
 admin.get("/api/admin/users", async (c) => {
   const database = db(c.env);
-  const seenSinceMs = Date.now() - HEARTBEAT_TIMEOUT_MS;
+  const pipeline = auditWriteMode(c.env) === "pipeline";
+  const outerUserId = sql.raw('"users"."id"');
 
   // One query with correlated subselects rather than N+1: the panel is small
   // and the counts are what make the list useful at a glance.
@@ -123,30 +147,34 @@ admin.get("/api/admin/users", async (c) => {
       avatarUrl: schema.users.avatarUrl,
       createdAt: schema.users.createdAt,
       devices:
-        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${schema.users.id})`.mapWith(
+        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${outerUserId})`.mapWith(
           Number,
         ),
       devicesOnline:
-        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${schema.users.id} and ${schema.devices.revokedAt} is null and ${schema.devices.lastSeenAt} > ${seenSinceMs})`.mapWith(
+        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${outerUserId} and ${deviceOnlineSql()})`.mapWith(
           Number,
         ),
       projects:
-        sql<number>`(select count(*) from ${schema.projects} where ${schema.projects.userId} = ${schema.users.id})`.mapWith(
+        sql<number>`(select count(*) from ${schema.projects} where ${schema.projects.userId} = ${outerUserId})`.mapWith(
           Number,
         ),
       clients:
-        sql<number>`(select count(*) from ${schema.projectClients} where ${schema.projectClients.userId} = ${schema.users.id} and ${schema.projectClients.revokedAt} is null)`.mapWith(
+        sql<number>`(select count(*) from ${schema.projectClients} where ${schema.projectClients.userId} = ${outerUserId} and ${schema.projectClients.revokedAt} is null)`.mapWith(
           Number,
         ),
-      toolCalls:
-        sql<number>`(select count(*) from ${schema.toolCalls} where ${schema.toolCalls.userId} = ${schema.users.id})`.mapWith(
-          Number,
-        ),
-      lastActivityAt: max(schema.toolCalls.createdAt),
+      toolCalls: (pipeline
+        ? sql<number>`(select coalesce(sum(${schema.usageDaily.toolCalls}), 0) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`
+        : sql<number>`(select count(*) from ${schema.toolCalls} where ${schema.toolCalls.userId} = ${outerUserId})`
+      ).mapWith(Number),
+      lastActivityAt: pipeline
+        ? sql<
+            number | null
+          >`(select max(${schema.usageDaily.lastActivityAt}) from ${schema.usageDaily} where ${schema.usageDaily.userId} = ${outerUserId})`
+        : sql<
+            number | null
+          >`(select max(${schema.toolCalls.createdAt}) from ${schema.toolCalls} where ${schema.toolCalls.userId} = ${outerUserId})`,
     })
     .from(schema.users)
-    .leftJoin(schema.toolCalls, eq(schema.toolCalls.userId, schema.users.id))
-    .groupBy(schema.users.id)
     .orderBy(desc(schema.users.createdAt))
     .all();
 
@@ -162,7 +190,7 @@ admin.get("/api/admin/users", async (c) => {
       projects: row.projects,
       clients: row.clients,
       toolCalls: row.toolCalls,
-      lastActivityAt: row.lastActivityAt?.getTime() ?? null,
+      lastActivityAt: row.lastActivityAt ?? null,
     })),
   );
 });
@@ -170,7 +198,8 @@ admin.get("/api/admin/users", async (c) => {
 admin.get("/api/admin/users/:id", async (c) => {
   const database = db(c.env);
   const userId = c.req.param("id");
-  const seenSince = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS);
+  const pipeline = auditWriteMode(c.env) === "pipeline";
+  const cutoff = presenceCutoff();
 
   const user = await database
     .select({
@@ -205,31 +234,40 @@ admin.get("/api/admin/users/:id", async (c) => {
       .where(eq(schema.projectClients.userId, userId))
       .orderBy(desc(schema.projectClients.authorizedAt))
       .all(),
-    database
-      .select({ n: count() })
-      .from(schema.toolCalls)
-      .where(eq(schema.toolCalls.userId, userId))
-      .get(),
-    database
-      .select()
-      .from(schema.toolCalls)
-      .where(eq(schema.toolCalls.userId, userId))
-      .orderBy(desc(schema.toolCalls.createdAt))
-      .limit(20)
-      .all(),
-    database
-      .select({ at: max(schema.toolCalls.createdAt) })
-      .from(schema.toolCalls)
-      .where(eq(schema.toolCalls.userId, userId))
-      .get(),
+    pipeline
+      ? database
+          .select({ n: sum(schema.usageDaily.toolCalls) })
+          .from(schema.usageDaily)
+          .where(eq(schema.usageDaily.userId, userId))
+          .get()
+      : database
+          .select({ n: count() })
+          .from(schema.toolCalls)
+          .where(eq(schema.toolCalls.userId, userId))
+          .get(),
+    pipeline
+      ? Promise.resolve([])
+      : database
+          .select()
+          .from(schema.toolCalls)
+          .where(eq(schema.toolCalls.userId, userId))
+          .orderBy(desc(schema.toolCalls.createdAt))
+          .limit(20)
+          .all(),
+    pipeline
+      ? database
+          .select({ at: max(schema.usageDaily.lastActivityAt) })
+          .from(schema.usageDaily)
+          .where(eq(schema.usageDaily.userId, userId))
+          .get()
+      : database
+          .select({ at: max(schema.toolCalls.createdAt) })
+          .from(schema.toolCalls)
+          .where(eq(schema.toolCalls.userId, userId))
+          .get(),
   ]);
 
-  const devicesOnline = devices.filter(
-    (device) =>
-      device.revokedAt === null &&
-      device.lastSeenAt !== null &&
-      device.lastSeenAt.getTime() > seenSince.getTime(),
-  ).length;
+  const devicesOnline = devices.filter((device) => isDeviceOnline(device, cutoff)).length;
 
   const activeClients = clients.filter((client) => client.revokedAt === null).length;
 
@@ -243,13 +281,14 @@ admin.get("/api/admin/users/:id", async (c) => {
     devicesOnline,
     projects: projects.length,
     clients: activeClients,
-    toolCalls: toolCallCount?.n ?? 0,
+    toolCalls: Number(toolCallCount?.n ?? 0),
     lastActivityAt: lastActivity?.at?.getTime() ?? null,
     machineList: devices.map((device) => ({
       id: device.id,
       name: device.name,
       platform: device.platform,
       cliVersion: device.cliVersion,
+      online: isDeviceOnline(device, cutoff),
       lastSeenAt: device.lastSeenAt?.getTime() ?? null,
       revokedAt: device.revokedAt?.getTime() ?? null,
       createdAt: device.createdAt.getTime(),

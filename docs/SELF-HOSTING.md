@@ -115,3 +115,7 @@ One gateway is active at a time. Switching forgets the machine registration, the
 ## Local development
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Optional high-volume audit storage
+
+D1 is the default and is appropriate for ordinary self-hosted installations. At volumes where one indexed D1 row per tool call is no longer economical, use the staged Pipelines/Iceberg path in [`apps/gateway/pipelines/README.md`](../apps/gateway/pipelines/README.md). Its different Activity and deletion guarantees are documented in [`AUDIT-ARCHITECTURE.md`](AUDIT-ARCHITECTURE.md); do not enable pipeline-only mode until every acceptance gate there passes.

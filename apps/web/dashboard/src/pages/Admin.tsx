@@ -54,10 +54,16 @@ export function Admin() {
           loading={overview.isLoading}
         />
         <Stat
-          label="Calls (24h)"
+          label={
+            totals?.usageWindow === "complete_utc_days" ? "Calls (last UTC day)" : "Calls (24h)"
+          }
           value={`${totals?.toolCalls24h ?? 0}`}
           hint={
-            totals ? `${Math.round(totals.errorRate7d * 100)}% errors over 7d` : "errors over 7d"
+            totals
+              ? `${Math.round(totals.errorRate7d * 100)}% errors over ${
+                  totals.usageWindow === "complete_utc_days" ? "7 complete UTC days" : "7d"
+                }`
+              : "errors over 7d"
           }
           loading={overview.isLoading}
         />

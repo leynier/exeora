@@ -1,20 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
 import {
-  APPROVAL_WAIT_MS,
   BASELINE_CAPABILITIES,
-  type CommandPolicy,
   decodeExecutorMessage,
   type ExecutorCapabilities,
-  ExeoraError,
   encodeMessage,
   HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_REQUEST,
+  HEARTBEAT_RESPONSE,
   MIN_SUPPORTED_PROTOCOL_VERSION,
+  PRESENCE_CHECKPOINT_INTERVAL_MS,
+  PRESENCE_SIGNAL_INTERVAL_MS,
   PROTOCOL_VERSION,
-  RELAY_TIMEOUT_MS,
   type ToolName,
-  type WireError,
 } from "@exeora/protocol";
+import { observeD1, observeTool } from "./cost-metrics.js";
 import "./env.js";
+import { type CallerResponse, decodeCallerRequest } from "./relay-internal.js";
 
 /**
  * One instance per `userId:deviceId`. Holds the single outbound WebSocket the
@@ -25,18 +26,12 @@ import "./env.js";
  * a machine that sits connected all day is the whole day. With hibernation an
  * idle device costs nothing.
  *
- * Pending calls live in memory, deliberately. An in-flight RPC keeps the object
- * awake, so nothing is lost while a call is running; and if the object is ever
- * evicted anyway, the caller sees a timeout instead of a command that lands
- * later. A tool call that arrives late is the hazard this whole design refuses
- * to accept, which is also why nothing is queued.
+ * Tool callers and approval waiters also attach with hibernation-aware
+ * WebSockets. Their request id and visible approval state live in serialized
+ * socket attachments, so a long local command no longer pins this object in
+ * memory. Deadlines stay in the caller Worker and on the executor frame; calls
+ * are never queued for a disconnected machine.
  */
-
-interface Pending {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-}
 
 /** How a request to confirm a call ended. */
 export type ApprovalOutcome = "approved" | "declined" | "unanswered";
@@ -53,30 +48,36 @@ export interface ApprovalView {
   expiresAt: number;
 }
 
-interface PendingApproval {
-  settle: (outcome: ApprovalOutcome) => void;
-  timer: ReturnType<typeof setTimeout>;
-  view: ApprovalView;
-}
-
-interface SocketState {
+interface ExecutorSocketState {
+  role: "executor";
   deviceId: string;
-  projectIds: string[];
   /** Absent for an executor that predates the field; read as the baseline. */
   capabilities?: ExecutorCapabilities;
 }
 
-export class DeviceRelay extends DurableObject<Env> {
-  private readonly pending = new Map<string, Pending>();
+interface ToolCallerState {
+  role: "tool";
+  id: string;
+  settled: boolean;
+  issuedAt?: number;
+}
 
-  /**
-   * Calls waiting on someone to confirm them, keyed by approval id.
-   *
-   * In memory for the same reason `pending` is: the awaiting RPC keeps the
-   * object alive, and an approval that survived an eviction would be one
-   * answered long after the client that asked had given up.
-   */
-  private readonly approvals = new Map<string, PendingApproval>();
+interface ApprovalCallerState {
+  role: "approval";
+  id: string;
+  settled: boolean;
+  view?: ApprovalView;
+}
+
+type SocketState = ExecutorSocketState | ToolCallerState | ApprovalCallerState;
+
+export class DeviceRelay extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair(HEARTBEAT_REQUEST, HEARTBEAT_RESPONSE),
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Executor side
@@ -95,19 +96,36 @@ export class DeviceRelay extends DurableObject<Env> {
       return new Response("Expected a WebSocket upgrade.", { status: 426 });
     }
 
-    const deviceId = new URL(request.url).searchParams.get("deviceId") ?? "";
+    const url = new URL(request.url);
     const { 0: client, 1: server } = new WebSocketPair();
 
-    // Hibernation-aware accept. Anything we need after a hibernation cycle has
-    // to be attached here, because instance fields do not survive it.
-    this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ deviceId, projectIds: [] } satisfies SocketState);
+    if (url.pathname === "/caller/tool" || url.pathname === "/caller/approval") {
+      const id = url.searchParams.get("id");
+      if (!id) return new Response("Missing caller id.", { status: 400 });
+      const role = url.pathname === "/caller/tool" ? "tool" : "approval";
+      this.ctx.acceptWebSocket(server, ["caller", role, callerTag(role, id)]);
+      server.serializeAttachment({ role, id, settled: false } satisfies SocketState);
+    } else {
+      const deviceId = url.searchParams.get("deviceId") ?? "";
+      this.ctx.acceptWebSocket(server, ["executor"]);
+      server.serializeAttachment({
+        role: "executor",
+        deviceId,
+      } satisfies ExecutorSocketState);
+    }
 
     return new Response(null, { status: 101, webSocket: client });
   }
 
   override async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string") return;
+    const state = attachmentOf(socket);
+    if (!state) return;
+
+    if (state.role !== "executor") {
+      this.handleCallerMessage(socket, state, raw);
+      return;
+    }
 
     const message = decodeExecutorMessage(raw);
     if (!message) return; // malformed frame: drop it, keep the connection
@@ -139,30 +157,43 @@ export class DeviceRelay extends DurableObject<Env> {
           return;
         }
 
-        const state = attachmentOf(socket);
         socket.serializeAttachment({
-          deviceId: state?.deviceId ?? message.deviceId,
-          projectIds: message.projects.map((project) => project.id),
+          role: "executor",
+          deviceId: state.deviceId || message.deviceId,
           ...(message.capabilities ? { capabilities: message.capabilities } : {}),
-        } satisfies SocketState);
+        } satisfies ExecutorSocketState);
 
         socket.send(
           encodeMessage({
             type: "hello.ack",
             serverTime: Date.now(),
             heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+            heartbeatMode: "auto",
             ...(this.env.LATEST_CLI_VERSION
               ? { latestCliVersion: this.env.LATEST_CLI_VERSION }
               : {}),
           }),
         );
-        await this.touch(message.deviceId, message.cliVersion);
+        // The id from the upgrade URL, which the Worker checked belongs to the
+        // caller, in preference to the one in the frame. `devices` is keyed by
+        // id alone, so trusting the frame would let any account refresh the
+        // presence and CLI version of a machine it does not own.
+        await this.touch(state.deviceId || message.deviceId, {
+          cliVersion: message.cliVersion,
+          force: true,
+          connected: true,
+        });
         return;
       }
 
-      case "heartbeat": {
-        const state = attachmentOf(socket);
-        if (state) await this.touch(state.deviceId);
+      case "heartbeat":
+        // Legacy dynamic heartbeat. New CLIs use the fixed auto-response frame,
+        // which never wakes this object.
+        if (message.at !== undefined) await this.touch(state.deviceId);
+        return;
+
+      case "presence": {
+        await this.touch(state.deviceId);
         return;
       }
 
@@ -174,16 +205,17 @@ export class DeviceRelay extends DurableObject<Env> {
       }
 
       case "tool.result": {
-        const pending = this.pending.get(message.requestId);
-        // No entry means the call already timed out. Dropping the result is
-        // correct: the caller has been told it failed.
-        if (!pending) return;
-
-        this.pending.delete(message.requestId);
-        clearTimeout(pending.timer);
-
-        if (message.result.ok) pending.resolve(message.result.value);
-        else pending.reject(toError(message.result.error));
+        const caller = this.callerSocket("tool", message.requestId);
+        if (!caller) return;
+        const callerState = attachmentOf(caller);
+        const issuedAt = callerState?.role === "tool" ? callerState.issuedAt : undefined;
+        observeTool(
+          message.requestId,
+          issuedAt ? Date.now() - issuedAt : message.durationMs,
+          this.ctx.getWebSockets("tool").length,
+          message.result.ok ? "ok" : "error",
+        );
+        this.settleCaller(caller, { type: "tool.result", result: message.result });
         return;
       }
     }
@@ -191,20 +223,49 @@ export class DeviceRelay extends DurableObject<Env> {
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
     const state = attachmentOf(socket);
-    if (state) await this.touch(state.deviceId);
-    this.failPending("The device disconnected while the call was in flight.");
+    if (!state) return;
+    if (state.role === "executor") {
+      const replaced = this.hasOtherExecutor(socket);
+      await this.touch(state.deviceId, { force: true, connected: replaced });
+      // Only when nothing is left to answer. A close that arrives after the CLI
+      // has already redialled belongs to the old socket, and failing every
+      // caller for it would kill the calls just dispatched on the new one.
+      if (!replaced) this.failCallers("The device disconnected while the call was in flight.");
+      return;
+    }
+    if (!state.settled) {
+      if (state.role === "tool") this.sendCancel(state.id);
+      else this.resolveTerminalApproval(state.id);
+    }
   }
 
-  override async webSocketError(): Promise<void> {
-    this.failPending("The connection to the device failed.");
+  override async webSocketError(socket: WebSocket): Promise<void> {
+    const state = attachmentOf(socket);
+    if (state?.role === "executor") {
+      // A failed socket is gone whether or not a close frame follows, and the
+      // runtime does not promise one. Recording it here as well is idempotent.
+      const replaced = this.hasOtherExecutor(socket);
+      await this.touch(state.deviceId, { force: true, connected: replaced });
+      if (!replaced) this.failCallers("The connection to the device failed.");
+    } else if (state?.role === "tool" && !state.settled) this.sendCancel(state.id);
+    else if (state?.role === "approval" && !state.settled) this.resolveTerminalApproval(state.id);
   }
 
   // ---------------------------------------------------------------------
   // Caller side
   // ---------------------------------------------------------------------
 
+  /**
+   * The relay's own view of whether a socket is attached.
+   *
+   * No route calls this: presence for a list of machines is read from D1, which
+   * costs one query instead of one Durable Object round trip per row. It stays
+   * because it is the ground truth the D1 columns are a record of, and it is
+   * what the tests here assert against; a caller that needs a single machine's
+   * exact state, rather than a list's, should use it.
+   */
   async isOnline(): Promise<boolean> {
-    return this.ctx.getWebSockets().length > 0;
+    return this.executorSocket() !== undefined;
   }
 
   /**
@@ -217,156 +278,22 @@ export class DeviceRelay extends DurableObject<Env> {
    * question.
    */
   async capabilities(): Promise<ExecutorCapabilities | null> {
-    const socket = this.ctx.getWebSockets()[0];
+    const socket = this.executorSocket();
     if (!socket) return null;
-
-    return attachmentOf(socket)?.capabilities ?? BASELINE_CAPABILITIES;
-  }
-
-  /**
-   * Runs a tool on the device and waits for its answer.
-   *
-   * Throws `LOCAL_EXECUTOR_OFFLINE` immediately when nothing is connected. The
-   * alternative (parking the request until the machine returns) is how a
-   * command ends up running hours after it was asked for.
-   */
-  async callTool(options: {
-    requestId: string;
-    projectId: string;
-    tool: ToolName;
-    args: unknown;
-    client?: { name?: string; version?: string } | undefined;
-    /** What the account allows here. The executor narrows it, never widens it. */
-    policy?: CommandPolicy | undefined;
-  }): Promise<unknown> {
-    const socket = this.ctx.getWebSockets()[0];
-    if (!socket) {
-      throw new ExeoraError(
-        "LOCAL_EXECUTOR_OFFLINE",
-        "No Exeora CLI is connected for this project. Run `exeora connect` on that machine.",
-      );
-    }
-
-    const issuedAt = Date.now();
-    const expiresAt = issuedAt + RELAY_TIMEOUT_MS;
-
-    const answer = new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(options.requestId);
-        // Tell the executor too. Without this the relay stops waiting while the
-        // command keeps running on someone's machine, which is the same "it
-        // landed anyway" hazard the deadline exists to prevent.
-        this.sendCancel(options.requestId);
-        reject(new ExeoraError("TOOL_TIMEOUT", "The device did not answer before the deadline."));
-      }, RELAY_TIMEOUT_MS);
-
-      this.pending.set(options.requestId, { resolve, reject, timer });
-    });
-
-    // Marks the promise as observed. Without this, a call that is abandoned by
-    // its caller (a disconnected MCP client, a request the runtime already
-    // tore down) rejects at the deadline with nobody listening and surfaces as
-    // an unhandled rejection inside the object.
-    answer.catch(() => undefined);
-
-    socket.send(
-      encodeMessage({
-        type: "tool.call",
-        requestId: options.requestId,
-        projectId: options.projectId,
-        tool: options.tool,
-        arguments: options.args,
-        client: options.client,
-        policy: options.policy,
-        issuedAt,
-        expiresAt,
-      }),
-    );
-
-    return answer;
-  }
-
-  /**
-   * Asks whether this call may run, and waits for an answer.
-   *
-   * The path for a client that cannot be asked over MCP, which today is most of
-   * them. Two places can answer: the terminal where `exeora connect` is running,
-   * if there is one, and the dashboard. **The first answer wins**, and the other
-   * side is told the question is over rather than left holding a prompt that no
-   * longer does anything.
-   *
-   * Refuses immediately when nothing is connected, for the same reason
-   * `callTool` does: asking someone to confirm a call that cannot run either way
-   * wastes the only thing this spends, which is a person's attention.
-   */
-  async requestApproval(options: {
-    id: string;
-    projectId: string;
-    tool: ToolName;
-    prompt: string;
-    clientName?: string | undefined;
-    client?: { name?: string; version?: string } | undefined;
-  }): Promise<ApprovalOutcome> {
-    const socket = this.ctx.getWebSockets()[0];
-    if (!socket) {
-      throw new ExeoraError(
-        "LOCAL_EXECUTOR_OFFLINE",
-        "No Exeora CLI is connected for this project. Run `exeora connect` on that machine.",
-      );
-    }
-
     const state = attachmentOf(socket);
-    const requestedAt = Date.now();
-    const expiresAt = requestedAt + APPROVAL_WAIT_MS;
-
-    const view: ApprovalView = {
-      id: options.id,
-      deviceId: state?.deviceId ?? "",
-      projectId: options.projectId,
-      tool: options.tool,
-      prompt: options.prompt,
-      ...(options.clientName ? { clientName: options.clientName } : {}),
-      requestedAt,
-      expiresAt,
-    };
-
-    const answer = new Promise<ApprovalOutcome>((resolve) => {
-      const timer = setTimeout(() => {
-        this.settleApproval(options.id, "unanswered");
-      }, APPROVAL_WAIT_MS);
-
-      this.approvals.set(options.id, { settle: resolve, timer, view });
-    });
-
-    // Only to a machine that said it has someone to ask. A CLI running under
-    // systemd would drop the frame, and the question would sit here for the
-    // full ninety seconds waiting on a terminal nobody is looking at, when the
-    // dashboard could have answered it in five.
-    if (state?.capabilities?.prompt) {
-      try {
-        socket.send(
-          encodeMessage({
-            type: "approval.request",
-            id: options.id,
-            projectId: options.projectId,
-            tool: options.tool,
-            prompt: options.prompt,
-            client: options.client,
-            expiresAt,
-          }),
-        );
-      } catch {
-        // The socket went away. The dashboard can still answer, and the tool
-        // call that follows will fail on its own if the machine stays gone.
-      }
-    }
-
-    return answer;
+    return state?.role === "executor" ? (state.capabilities ?? BASELINE_CAPABILITIES) : null;
   }
 
   /** Every question currently waiting, for the dashboard to show and answer. */
   async listApprovals(): Promise<ApprovalView[]> {
-    return [...this.approvals.values()].map((approval) => approval.view);
+    return this.ctx
+      .getWebSockets("approval")
+      .map(attachmentOf)
+      .filter(
+        (state): state is ApprovalCallerState =>
+          state?.role === "approval" && !state.settled && state.view !== undefined,
+      )
+      .map((state) => state.view as ApprovalView);
   }
 
   /**
@@ -377,31 +304,9 @@ export class DeviceRelay extends DurableObject<Env> {
     return this.settleApproval(id, approved ? "approved" : "declined");
   }
 
-  /**
-   * Abandons a call in flight, because the caller went away.
-   *
-   * Both halves matter. Rejecting the pending entry frees whoever is still
-   * awaiting it; sending `cancel` is what actually stops the work, since a
-   * `run_command` the MCP client no longer wants would otherwise keep running
-   * on the machine for its full timeout with nobody left to read the answer.
-   *
-   * Safe to call for a request that already finished: the map lookup misses and
-   * an executor that does not recognise the id ignores the frame.
-   */
-  async cancelTool(requestId: string): Promise<void> {
-    const pending = this.pending.get(requestId);
-    if (pending) {
-      this.pending.delete(requestId);
-      clearTimeout(pending.timer);
-      pending.reject(new ExeoraError("CANCELLED", "The call was cancelled before it finished."));
-    }
-
-    this.sendCancel(requestId);
-  }
-
   /** Closes the socket when the device is revoked from the dashboard. */
   async revoke(): Promise<void> {
-    for (const socket of this.ctx.getWebSockets()) {
+    for (const socket of this.ctx.getWebSockets("executor")) {
       try {
         socket.send(encodeMessage({ type: "shutdown", reason: "This device was revoked." }));
       } catch {
@@ -409,10 +314,112 @@ export class DeviceRelay extends DurableObject<Env> {
       }
       socket.close(1008, "device revoked");
     }
-    this.failPending("This device was revoked.");
+    this.failCallers("This device was revoked.");
   }
 
   // ---------------------------------------------------------------------
+
+  private handleCallerMessage(
+    socket: WebSocket,
+    state: ToolCallerState | ApprovalCallerState,
+    raw: string,
+  ): void {
+    const message = decodeCallerRequest(raw);
+    if (!message || state.settled) return;
+
+    if (message.type === "cancel") {
+      socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
+      if (state.role === "tool") this.sendCancel(state.id);
+      else this.resolveTerminalApproval(state.id);
+      socket.close(1000, "cancelled");
+      return;
+    }
+
+    if (state.role === "tool" && message.type === "tool.start") {
+      if (message.requestId !== state.id || state.issuedAt !== undefined) return;
+      if (message.expiresAt <= Date.now()) {
+        this.settleCaller(
+          socket,
+          relayError("TOOL_TIMEOUT", "The tool call expired before dispatch."),
+        );
+        return;
+      }
+
+      const executor = this.executorSocket();
+      if (!executor) {
+        this.settleCaller(socket, offline("No Exeora CLI is connected for this project."));
+        return;
+      }
+
+      socket.serializeAttachment({
+        ...state,
+        issuedAt: message.issuedAt,
+      } satisfies ToolCallerState);
+      try {
+        executor.send(
+          encodeMessage({
+            type: "tool.call",
+            requestId: message.requestId,
+            projectId: message.projectId,
+            tool: message.tool,
+            arguments: message.arguments,
+            client: message.client,
+            policy: message.policy,
+            issuedAt: message.issuedAt,
+            expiresAt: message.expiresAt,
+          }),
+        );
+      } catch {
+        this.settleCaller(socket, offline("The connection to the device failed."));
+      }
+      return;
+    }
+
+    if (state.role === "approval" && message.type === "approval.start") {
+      if (message.id !== state.id || state.view !== undefined) return;
+      if (message.expiresAt <= Date.now()) {
+        this.settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
+        return;
+      }
+
+      const executor = this.executorSocket();
+      const executorState = executor ? attachmentOf(executor) : null;
+      if (!executor || executorState?.role !== "executor") {
+        this.settleCaller(socket, offline("No Exeora CLI is connected for this project."));
+        return;
+      }
+
+      const view: ApprovalView = {
+        id: message.id,
+        deviceId: executorState.deviceId,
+        projectId: message.projectId,
+        tool: message.tool,
+        prompt: message.prompt,
+        ...(message.clientName ? { clientName: message.clientName } : {}),
+        requestedAt: message.requestedAt,
+        expiresAt: message.expiresAt,
+      };
+      socket.serializeAttachment({ ...state, view } satisfies ApprovalCallerState);
+
+      if (executorState.capabilities?.prompt) {
+        try {
+          executor.send(
+            encodeMessage({
+              type: "approval.request",
+              id: message.id,
+              projectId: message.projectId,
+              tool: message.tool,
+              prompt: message.prompt,
+              client: message.client,
+              expiresAt: message.expiresAt,
+            }),
+          );
+        } catch {
+          // The dashboard can still answer while the caller socket is alive.
+        }
+      }
+    }
+  }
 
   /**
    * Asks the executor to stop working on one request.
@@ -422,7 +429,7 @@ export class DeviceRelay extends DurableObject<Env> {
    * surfacing to a caller who is no longer listening either.
    */
   private sendCancel(requestId: string): void {
-    const socket = this.ctx.getWebSockets()[0];
+    const socket = this.executorSocket();
     if (!socket) return;
 
     try {
@@ -432,58 +439,123 @@ export class DeviceRelay extends DurableObject<Env> {
     }
   }
 
-  /**
-   * Ends one question, whoever ended it, and tells the terminal so.
-   *
-   * The single door every outcome goes through, which is what makes "the first
-   * answer wins" true rather than approximately true: the map entry is deleted
-   * before anything else happens, so a second answer arriving a millisecond
-   * later finds nothing and changes nothing.
-   */
   private settleApproval(id: string, outcome: ApprovalOutcome): boolean {
-    const approval = this.approvals.get(id);
-    if (!approval) return false;
-
-    this.approvals.delete(id);
-    clearTimeout(approval.timer);
-    approval.settle(outcome);
-
-    const socket = this.ctx.getWebSockets()[0];
-    try {
-      socket?.send(encodeMessage({ type: "approval.resolved", id }));
-    } catch {
-      // Best effort: the prompt goes away on its own deadline regardless.
+    const caller = this.callerSocket("approval", id);
+    if (!caller) return false;
+    const state = attachmentOf(caller);
+    if (state?.role !== "approval" || !state.view) return false;
+    if (state.view.expiresAt <= Date.now()) {
+      this.settleCaller(caller, { type: "approval.result", outcome: "unanswered" });
+      this.resolveTerminalApproval(id);
+      return false;
     }
-
+    this.settleCaller(caller, { type: "approval.result", outcome });
+    this.resolveTerminalApproval(id);
     return true;
   }
 
-  private failPending(reason: string): void {
-    for (const [requestId, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.reject(new ExeoraError("LOCAL_EXECUTOR_OFFLINE", reason));
-      this.pending.delete(requestId);
-    }
-
-    // A question waiting on a machine that has gone is a question nobody can
-    // usefully answer: the call it guards would fail the moment it was let
-    // through. Ending them here is what stops the caller waiting the full
-    // ninety seconds to be told the machine is offline.
-    for (const id of [...this.approvals.keys()]) {
-      this.settleApproval(id, "unanswered");
+  private resolveTerminalApproval(id: string): void {
+    const executor = this.executorSocket();
+    try {
+      executor?.send(encodeMessage({ type: "approval.resolved", id }));
+    } catch {
+      // Best effort: the prompt goes away on its own deadline regardless.
     }
   }
 
-  /** Presence, so the dashboard can show online/offline and a last-seen time. */
-  private async touch(deviceId: string, cliVersion?: string): Promise<void> {
-    const columns = cliVersion ? "last_seen_at = ?1, cli_version = ?3" : "last_seen_at = ?1";
+  private callerSocket(role: "tool" | "approval", id: string): WebSocket | undefined {
+    return this.ctx.getWebSockets(callerTag(role, id)).find((socket) => {
+      const state = attachmentOf(socket);
+      return state?.role !== "executor" && state?.settled === false;
+    });
+  }
+
+  private settleCaller(socket: WebSocket, response: CallerResponse): void {
+    const state = attachmentOf(socket);
+    if (!state || state.role === "executor" || state.settled) return;
+    socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
+    try {
+      socket.send(JSON.stringify(response));
+    } catch {
+      // The caller has already gone; its Worker owns the timeout/error.
+    }
+    socket.close(1000, "settled");
+  }
+
+  private failCallers(reason: string): void {
+    for (const socket of this.ctx.getWebSockets("tool")) {
+      this.settleCaller(socket, offline(reason));
+    }
+    for (const socket of this.ctx.getWebSockets("approval")) {
+      const state = attachmentOf(socket);
+      if (state?.role === "approval") {
+        this.settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
+        this.resolveTerminalApproval(state.id);
+      }
+    }
+  }
+
+  private executorSocket(): WebSocket | undefined {
+    return this.ctx.getWebSockets("executor")[0];
+  }
+
+  /**
+   * Whether a socket other than this one is still attached as the executor.
+   *
+   * A close arriving for a socket the CLI has already replaced must not record
+   * a disconnection: a machine that dropped and redialled faster than the old
+   * connection was noticed would be marked offline while it is sitting there
+   * connected. The closing socket may or may not still be in the list, so the
+   * question is asked about the others rather than about the count.
+   */
+  private hasOtherExecutor(closing: WebSocket): boolean {
+    return this.ctx.getWebSockets("executor").some((socket) => socket !== closing);
+  }
+
+  /**
+   * Presence, so the dashboard can show online/offline and a last-seen time.
+   *
+   * `connected` is what separates a machine that left from one that is merely
+   * between checkpoints, and it is only passed by the events that know: the
+   * hello frame and the two ways a socket ends. Heartbeats leave the column
+   * alone, since they say nothing a stale `disconnected_at` would contradict.
+   */
+  private async touch(
+    deviceId: string,
+    options: { cliVersion?: string | undefined; force?: boolean; connected?: boolean } = {},
+  ): Promise<void> {
+    const { cliVersion, force = false, connected } = options;
+    const assignments = ["last_seen_at = ?1"];
     const bindings: unknown[] = [Date.now(), deviceId];
-    if (cliVersion) bindings.push(cliVersion);
+    if (cliVersion) {
+      assignments.push(`cli_version = ?${bindings.push(cliVersion)}`);
+    }
+    if (connected !== undefined) {
+      assignments.push(connected ? "disconnected_at = NULL" : "disconnected_at = ?1");
+    }
+    // The debounce fires one signal early on purpose. It is only ever evaluated
+    // when a presence frame arrives, and those arrive every
+    // `PRESENCE_SIGNAL_INTERVAL_MS`; comparing against the full checkpoint
+    // interval would mean the first eligible frame is the one after it, pushing
+    // the real write cadence out to checkpoint + signal. `PRESENCE_TIMEOUT_MS`
+    // is sized against the checkpoint interval alone, so that extra signal
+    // would come straight out of the slack the window has for a missed write.
+    const staleness = PRESENCE_CHECKPOINT_INTERVAL_MS - PRESENCE_SIGNAL_INTERVAL_MS;
+    const checkpoint = force
+      ? ""
+      : ` AND (last_seen_at IS NULL OR last_seen_at < ${Date.now() - staleness})`;
 
     try {
-      await this.env.DB.prepare(`UPDATE devices SET ${columns} WHERE id = ?2`)
+      const result = await this.env.DB.prepare(
+        `UPDATE devices SET ${assignments.join(", ")} WHERE id = ?2${checkpoint}`,
+      )
         .bind(...bindings)
         .run();
+      observeD1(
+        `${deviceId}:${Math.floor(Date.now() / HEARTBEAT_INTERVAL_MS)}`,
+        "presence.touch",
+        result.meta,
+      );
     } catch {
       // Presence is cosmetic; never fail a tool call because of it.
     }
@@ -495,6 +567,14 @@ function attachmentOf(socket: WebSocket): SocketState | null {
   return attachment ? (attachment as SocketState) : null;
 }
 
-function toError(error: WireError): Error {
-  return new ExeoraError(error.code, error.message);
+function callerTag(role: "tool" | "approval", id: string): string {
+  return `${role}:${id}`;
+}
+
+function relayError(code: "TOOL_TIMEOUT", message: string): CallerResponse {
+  return { type: "error", error: { code, message } };
+}
+
+function offline(message: string): CallerResponse {
+  return { type: "error", error: { code: "LOCAL_EXECUTOR_OFFLINE", message } };
 }

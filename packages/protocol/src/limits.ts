@@ -68,5 +68,45 @@ export const APPROVAL_WAIT_MS = 90_000;
 /** How often the CLI sends a heartbeat frame, in milliseconds. */
 export const HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** A device is considered offline if no frame arrived within this window. */
+/**
+ * How often live presence is checkpointed to D1.
+ *
+ * Connectivity heartbeats are answered by the Durable Object runtime without
+ * waking JavaScript. This slower frame exists only to keep `lastSeenAt`
+ * useful for aggregate/admin views that cannot fan out to every relay.
+ */
+export const PRESENCE_CHECKPOINT_INTERVAL_MS = 15 * 60_000;
+
+/**
+ * Retry cadence for presence signals.
+ *
+ * Shorter than the checkpoint interval so a lost frame is not a lost write. The
+ * gateway debounces to `PRESENCE_CHECKPOINT_INTERVAL_MS` minus one signal, which
+ * is what makes the checkpoint interval the real staleness of `lastSeenAt`
+ * rather than a floor a whole signal below it.
+ */
+export const PRESENCE_SIGNAL_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * How long a checkpoint stays good for.
+ *
+ * Wider than `PRESENCE_CHECKPOINT_INTERVAL_MS` by enough to survive a missed
+ * write, which is why it cannot be tight. Being loose costs little because it
+ * is only half the answer: the gateway records a disconnection as it happens,
+ * so this window is what covers the machines that left without saying so.
+ */
+export const PRESENCE_TIMEOUT_MS = 25 * 60_000;
+
+/** How long the CLI tolerates an unanswered fixed heartbeat before reconnecting. */
 export const HEARTBEAT_TIMEOUT_MS = 90_000;
+
+/**
+ * Bound data copied into Durable Object WebSocket attachments.
+ *
+ * Not the attachment budget, which is far larger: workerd enforces 16,384 bytes
+ * ("A WebSocket 'attachment' cannot be larger than 16384 bytes"), and the rest
+ * of the `ApprovalView` around the prompt is a few hundred more. This is a bound
+ * on what a person can be asked to read and judge in one prompt, and there is
+ * room to raise it if a real command needs it.
+ */
+export const MAX_APPROVAL_PROMPT_LENGTH = 2_048;
