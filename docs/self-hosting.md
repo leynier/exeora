@@ -12,7 +12,7 @@ Exeora is AGPL-3.0. If you modify it and offer it as a network service, you must
 
 - A Cloudflare account with Workers, D1 and KV
 - A domain on Cloudflare (or any zone you can point at Workers)
-- A GitHub OAuth App whose callback hits your gateway
+- A GitHub OAuth App, Google OAuth client, or both, whose callbacks hit your gateway
 - Node 22+ and [Bun](https://bun.sh)
 
 ## 1. Clone and install
@@ -34,18 +34,32 @@ bunx wrangler kv namespace create OAUTH_KV
 
 Also set `EXEORA_BASE_URL` and the `routes` pattern in that file to your hostname, and create a proxied DNS record for it. A single `AAAA` on `@` pointing at `100::` with the proxy on is enough; nothing ever connects to that address.
 
-## 3. Create a GitHub OAuth App
+## 3. Create identity provider credentials
+
+Configure at least one provider. A provider appears on the sign-in screen only when both of its secrets are present.
+
+### GitHub
 
 An OAuth App admits one callback URL, so keep a separate app for local development if you need one.
 
 - Homepage: your base URL (for example `https://your.example.com`)
 - Callback: `https://your.example.com/oauth/callback/github`
 
+### Google
+
+Create a Web application client in Google Auth Platform. Request only `openid email profile` and register this exact redirect URI:
+
+- Redirect URI: `https://your.example.com/oauth/callback/google`
+
+Google clients admit multiple redirect URIs, but separate production and development clients keep their secrets isolated.
+
 ## 4. Set Worker secrets
 
 ```bash
 bun run secret GITHUB_CLIENT_ID
 bun run secret GITHUB_CLIENT_SECRET
+bun run secret GOOGLE_CLIENT_ID
+bun run secret GOOGLE_CLIENT_SECRET
 bun run secret COOKIE_SECRET
 bun run secret REQUEST_STATE_SECRET
 ```
@@ -86,10 +100,12 @@ Repository secrets under Settings → Secrets and variables → Actions:
 | `CLOUDFLARE_ACCOUNT_ID` | Account owning the zone |
 | `GH_OAUTH_CLIENT_ID` | Production GitHub OAuth client id |
 | `GH_OAUTH_CLIENT_SECRET` | Production GitHub OAuth client secret |
+| `GOOGLE_CLIENT_ID` | Production Google OAuth client id |
+| `GOOGLE_CLIENT_SECRET` | Production Google OAuth client secret |
 | `COOKIE_SECRET` | `openssl rand -hex 32` |
 | `REQUEST_STATE_SECRET` | `openssl rand -hex 32`, different from the cookie secret |
 
-The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads.
+The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads. Google secrets keep the names the Worker uses.
 
 ## 7. Point the CLI at your gateway
 

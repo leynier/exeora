@@ -49,6 +49,8 @@ jobs:
           EXEORA_BASE_URL=http://localhost:8787
           GITHUB_CLIENT_ID=ci-placeholder
           GITHUB_CLIENT_SECRET=ci-placeholder
+          GOOGLE_CLIENT_ID=ci-placeholder
+          GOOGLE_CLIENT_SECRET=ci-placeholder
           COOKIE_SECRET=ci-placeholder-cookie-secret
           REQUEST_STATE_SECRET=ci-placeholder-request-state-secret-32-bytes
           EOF
@@ -62,4 +64,3 @@ jobs:
 
       - name: Test
         run: bun run test
-

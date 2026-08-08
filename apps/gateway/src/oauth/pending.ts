@@ -2,7 +2,7 @@ import type { AuthRequest } from "@cloudflare/workers-oauth-provider";
 import { newId } from "../ids.js";
 
 /**
- * Parks the in-flight authorization request while the user is away at GitHub.
+ * Parks the in-flight authorization request while the user is away at an identity provider.
  *
  * It lives in KV rather than in the `state` parameter because state travels
  * through the provider's URL: keeping the request server-side bounds its size

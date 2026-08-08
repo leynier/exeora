@@ -3,7 +3,7 @@ import { getCookie, setCookie } from "hono/cookie";
 
 /**
  * A signed cookie remembering who is signed in, so approving a second MCP
- * client does not mean a second round-trip through GitHub.
+ * client does not mean a second round-trip through the identity provider.
  *
  * It carries the user id and nothing else. It is not an access token: it only
  * lets `/oauth/authorize` skip the upstream login, and every API and MCP
@@ -16,7 +16,7 @@ export async function setSession(c: Context<{ Bindings: Env }>, userId: string):
   const value = `${userId}.${await sign(userId, c.env.COOKIE_SECRET)}`;
   setCookie(c, COOKIE_NAME, value, {
     httpOnly: true,
-    // The OAuth redirect back from GitHub is a cross-site top-level
+    // The OAuth redirect back from an identity provider is a cross-site top-level
     // navigation, so Strict would drop the cookie exactly when it is needed.
     sameSite: "Lax",
     // Derived from the configured base URL, not from c.req.url: wrangler dev

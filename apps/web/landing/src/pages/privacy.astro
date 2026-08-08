@@ -14,7 +14,7 @@ import Legal from "../layouts/Legal.astro";
   title="Privacy"
   description="What Exeora stores, what it deliberately does not, and how to have it removed."
   canonicalPath="/privacy/"
-  updated="6 August 2026"
+  updated="8 August 2026"
 >
   <p>
     Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico, who is the data
@@ -41,9 +41,10 @@ import Legal from "../layouts/Legal.astro";
   <h2>What is stored</h2>
   <ul>
     <li>
-      <strong>Your identity.</strong> When you sign in with GitHub: an account identifier, your email
-      address, your display name and your avatar URL. The identifier is what your account is keyed
-      on, so changing your email at GitHub keeps the same Exeora account.
+      <strong>Your identity.</strong> When you sign in with GitHub or Google: a provider account
+      identifier, your verified email address, your display name and your avatar URL. The identifier
+      keeps later sign-ins attached to the same account. Verified addresses shared by both providers
+      are linked to one Exeora account.
     </li>
     <li>
       <strong>Your machines.</strong> The name you gave each one, its platform, the CLI version it
@@ -77,9 +78,9 @@ import Legal from "../layouts/Legal.astro";
   <h2>Who else sees it</h2>
   <p>
     Exeora runs on Cloudflare, which processes and stores this data on its infrastructure on our
-    behalf. Signing in goes through GitHub, which tells us the identity fields listed above. The CLI
-    is distributed through npm. Nothing is sold, and nothing is shared with anyone else except where
-    the law requires it.
+    behalf. Signing in goes through GitHub or Google, whichever you choose, and that provider tells
+    us the identity fields listed above. The CLI is distributed through npm. Nothing is sold, and
+    nothing is shared with anyone else except where the law requires it.
   </p>
 
   <h2>Where</h2>

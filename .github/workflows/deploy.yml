@@ -63,6 +63,8 @@ jobs:
           secrets: |
             GITHUB_CLIENT_ID
             GITHUB_CLIENT_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
             COOKIE_SECRET
             REQUEST_STATE_SECRET
         env:
@@ -71,6 +73,7 @@ jobs:
           # the Worker actually reads.
           GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
-

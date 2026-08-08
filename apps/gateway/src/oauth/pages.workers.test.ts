@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { consentPage, errorPage, signInPage } from "./pages.js";
 import { github } from "./providers/github.js";
+import { google } from "./providers/google.js";
 
 /**
  * The authorization screens, rendered.
@@ -62,10 +63,12 @@ describe("the inlined stylesheet", () => {
 
 describe("sign in", () => {
   it("offers one button per configured provider, carrying its state", async () => {
-    const html = render(signInPage([github], "state-1"));
+    const html = render(signInPage([github, google], "state-1"));
 
     expect(html).toContain("Continue with GitHub");
     expect(html).toContain("/oauth/login/github?state=state-1");
+    expect(html).toContain("Continue with Google");
+    expect(html).toContain("/oauth/login/google?state=state-1");
   });
 });
 

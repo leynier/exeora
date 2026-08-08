@@ -1,12 +1,14 @@
 import { github } from "./github.js";
+import { google } from "./google.js";
 import type { ProviderId, UpstreamProvider } from "./types.js";
 
 /**
- * The whole registry. Adding Google is: write `google.ts`, add it here, widen
- * `ProviderId`, and set two secrets.
+ * The whole registry. Routes consume only this interface, so provider-specific
+ * endpoints and response shapes stay in their own adapters.
  */
 const PROVIDERS: Record<ProviderId, UpstreamProvider> = {
   github,
+  google,
 };
 
 export function getProvider(id: string): UpstreamProvider | undefined {
