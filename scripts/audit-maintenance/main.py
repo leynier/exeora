@@ -146,7 +146,10 @@ def settle(settings: Settings, deletion_id: str, *, ok: bool, error: str = "") -
 
 
 def cutoff(today: dt.date, days: int) -> str:
-    return (today - dt.timedelta(days=days)).isoformat() + "T00:00:00+00:00"
+    # No zone offset. The sink writes `created_at` as an Iceberg `timestamp`,
+    # which is zone-free, and PyIceberg refuses to bind a literal that carries
+    # one. The values are UTC either way; only the notation differs.
+    return (today - dt.timedelta(days=days)).isoformat() + "T00:00:00"
 
 
 def sql_literal(value: str) -> str:
