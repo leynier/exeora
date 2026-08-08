@@ -21,7 +21,7 @@ import Doc from "../../layouts/Doc.astro";
   <ul>
     <li>A Cloudflare account with Workers, D1 and KV available</li>
     <li>A domain on Cloudflare (or any zone you can point at Workers)</li>
-    <li>A GitHub OAuth App whose callback hits your gateway</li>
+    <li>A GitHub OAuth App, Google OAuth client, or both, whose callbacks hit your gateway</li>
     <li>Node 22+ and <a href="https://bun.sh">Bun</a> to build and deploy</li>
   </ul>
 
@@ -42,16 +42,28 @@ bunx wrangler kv namespace create OAUTH_KV`}</pre>
     <code>@</code> pointing at <code>100::</code> with the proxy on is enough).
   </p>
 
-  <h2>3. Create a GitHub OAuth App</h2>
+  <h2>3. Create identity provider credentials</h2>
+  <p>
+    Configure at least one provider. A provider appears only when both of its secrets are present.
+  </p>
+  <h3>GitHub</h3>
   <p>
     Homepage and callback must match your hostname. Callback path:{" "}
     <code>/oauth/callback/github</code>. An OAuth App admits one callback URL, so keep a separate
     app for local development if you need one.
   </p>
+  <h3>Google</h3>
+  <p>
+    Create a Web application client in Google Auth Platform, request only <code>openid email profile</code>,
+    and register <code>/oauth/callback/google</code> on your hostname. Use a separate client with{" "}
+    <code>http://localhost:8787/oauth/callback/google</code> for local development.
+  </p>
 
   <h2>4. Set Worker secrets</h2>
   <pre>{`bun run secret GITHUB_CLIENT_ID
 bun run secret GITHUB_CLIENT_SECRET
+bun run secret GOOGLE_CLIENT_ID
+bun run secret GOOGLE_CLIENT_SECRET
 bun run secret COOKIE_SECRET
 bun run secret REQUEST_STATE_SECRET`}</pre>
   <p>
@@ -105,8 +117,9 @@ npx @exeora/cli connect`}</pre>
   <h2>Local development</h2>
   <p>
     Copy <code>apps/gateway/.dev.vars.example</code> to <code>.dev.vars</code> and fill in the same
-    four secrets plus a development GitHub OAuth App whose callback is{" "}
-    <code>http://localhost:8787/oauth/callback/github</code>. Then:
+    provider credentials plus the two signing secrets. Development callbacks are{" "}
+    <code>http://localhost:8787/oauth/callback/github</code> and{" "}
+    <code>http://localhost:8787/oauth/callback/google</code>. Then:
   </p>
   <pre>{`bun run db:migrate:local
 bun run dev`}</pre>

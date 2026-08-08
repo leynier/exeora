@@ -79,7 +79,7 @@ describe("session cookie", () => {
 
   it("marks the cookie HttpOnly and SameSite=Lax", async () => {
     // HttpOnly keeps it away from scripts; Lax is required because the return
-    // from GitHub is a cross-site top-level navigation that Strict would drop.
+    // from an identity provider is a cross-site navigation that Strict would drop.
     const header = (await app.request("/set/usr_abc", {}, env)).headers.get("set-cookie") ?? "";
     expect(header).toMatch(/HttpOnly/i);
     expect(header).toMatch(/SameSite=Lax/i);

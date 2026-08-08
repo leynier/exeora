@@ -81,7 +81,10 @@ export const github: UpstreamProvider = {
     }
     const user = (await userResponse.json()) as GitHubUser;
 
-    const email = user.email ?? (await fetchPrimaryEmail(headers));
+    // Linking providers by email is only safe when the address is verified.
+    // `/user` exposes the public profile email but does not carry verification
+    // metadata, so always resolve the primary verified address from this endpoint.
+    const email = await fetchPrimaryEmail(headers);
     if (!email) {
       throw new UpstreamAuthError("This GitHub account has no verified email address");
     }

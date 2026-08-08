@@ -373,7 +373,7 @@ async function ownedProjectId(
  *
  * Two reasons. The Host header is attacker-controlled, and a redirect_uri
  * derived from it is a redirect-injection surface. And it has to match the
- * callback registered in the GitHub OAuth app exactly, which is a fixed value
+ * callback registered with the upstream provider exactly, which is a fixed value
  * per environment, and `wrangler dev` rewrites the request host to the configured
  * route, so deriving it from the request breaks local development outright.
  */

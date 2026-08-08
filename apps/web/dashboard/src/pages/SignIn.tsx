@@ -5,7 +5,7 @@ import { beginSignIn } from "../auth.js";
 /**
  * The screen that used to be missing.
  *
- * Before this, arriving without a token redirected to GitHub from a blank
+ * Before this, arriving without a token redirected to an identity provider from a blank
  * page, which is both disorienting and impossible to escape from: signing out
  * landed you right back in the redirect. Now sign-in is a click.
  */
@@ -39,12 +39,12 @@ export function SignIn() {
             Your machines, your projects and what agents have been doing with them.
           </p>
 
-          {/* The question this screen actually raises. GitHub is asked for
-              `read:user user:email` and nothing more, so saying so is both
-              reassuring and true. */}
+          {/* Provider choice happens on the authorization server. Both choices
+              expose only a verified identity profile, never repositories. */}
           <p className="text-body-md text-foreground-faint mb-5">
-            GitHub is only used to check that you are you. Exeora reads your name, username and
-            email address. It asks for no access to your repositories and never sees your code.
+            Your sign-in provider is only used to check that you are you. Exeora reads your name,
+            email address and avatar. It asks for no access to your repositories and never sees your
+            code.
           </p>
 
           <button
@@ -62,7 +62,7 @@ export function SignIn() {
               }
             }}
           >
-            {busy ? "Redirecting…" : "Continue with GitHub"}
+            {busy ? "Redirecting…" : "Continue"}
           </button>
 
           {error && <p className="text-body-md text-error mt-4">{error}</p>}

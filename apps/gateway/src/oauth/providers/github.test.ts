@@ -61,6 +61,9 @@ describe("exchangeCode", () => {
 describe("fetchIdentity", () => {
   it("keys off the numeric id, not the login, which users can change", async () => {
     mockFetch({
+      "https://api.github.com/user/emails": {
+        body: [{ email: "l@x.dev", primary: true, verified: true }],
+      },
       "https://api.github.com/user": {
         body: { id: 42, login: "leynier", name: "Leynier", email: "l@x.dev", avatar_url: "a.png" },
       },
@@ -73,7 +76,7 @@ describe("fetchIdentity", () => {
     });
   });
 
-  it("falls back to /user/emails when the profile email is private", async () => {
+  it("uses the primary verified email when the profile email is private", async () => {
     mockFetch({
       "https://api.github.com/user/emails": {
         body: [
@@ -95,6 +98,18 @@ describe("fetchIdentity", () => {
         body: [{ email: "spoof@x.dev", primary: true, verified: false }],
       },
       "https://api.github.com/user": { body: { id: 7, login: "l", name: null, email: null } },
+    });
+    await expect(github.fetchIdentity("tok")).rejects.toThrow(UpstreamAuthError);
+  });
+
+  it("does not trust a public profile email without verification metadata", async () => {
+    mockFetch({
+      "https://api.github.com/user/emails": {
+        body: [{ email: "other@x.dev", primary: true, verified: false }],
+      },
+      "https://api.github.com/user": {
+        body: { id: 8, login: "l", name: null, email: "victim@x.dev" },
+      },
     });
     await expect(github.fetchIdentity("tok")).rejects.toThrow(UpstreamAuthError);
   });

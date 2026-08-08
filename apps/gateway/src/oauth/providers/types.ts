@@ -1,9 +1,8 @@
 /**
  * The seam that keeps identity providers interchangeable.
  *
- * Only GitHub ships in this release. Adding Google means writing one more file
- * that implements this interface and adding it to the registry; the authorize
- * routes, the user resolution and the database schema stay untouched.
+ * Each provider verifies the identity fields before returning them, so the
+ * routes and account resolution never have to know provider-specific shapes.
  */
 
 export interface UpstreamIdentity {
@@ -35,7 +34,7 @@ export interface UpstreamProvider {
  * the Drizzle enum is a compile-time constraint only and adding a value
  * produces no migration.
  */
-export type ProviderId = "github";
+export type ProviderId = "github" | "google";
 
 export class UpstreamAuthError extends Error {
   constructor(message: string) {

@@ -103,3 +103,51 @@ describe("ADMIN_EMAILS allow-list", () => {
     expect(await isAdmin(LISTED.email)).toBe(true);
   });
 });
+
+describe("identity linking", () => {
+  it("links Google to the existing GitHub account by verified email", async () => {
+    const githubUser = await resolveUser(db(env), "github", FIRST);
+    const googleUser = await resolveUser(db(env), "google", {
+      ...FIRST,
+      providerUserId: "google_first",
+      email: "FIRST@example.com",
+    });
+
+    expect(googleUser.id).toBe(githubUser.id);
+    const identities = await db(env)
+      .select({ provider: schema.oauthIdentities.provider })
+      .from(schema.oauthIdentities)
+      .where(eq(schema.oauthIdentities.userId, githubUser.id));
+    expect(identities.map(({ provider }) => provider).sort()).toEqual(["github", "google"]);
+  });
+
+  it("keeps different verified emails as different accounts", async () => {
+    const githubUser = await resolveUser(db(env), "github", FIRST);
+    const googleUser = await resolveUser(db(env), "google", {
+      ...SECOND,
+      providerUserId: "google_second",
+    });
+
+    expect(googleUser.id).not.toBe(githubUser.id);
+  });
+
+  it("fails closed when an email already belongs to multiple accounts", async () => {
+    const database = db(env);
+    await database
+      .insert(schema.users)
+      .values([
+        { id: "usr_duplicate_1", email: "duplicate@example.com" },
+        { id: "usr_duplicate_2", email: "DUPLICATE@example.com" },
+      ])
+      .run();
+
+    await expect(
+      resolveUser(database, "google", {
+        providerUserId: "google_duplicate",
+        email: "duplicate@example.com",
+        name: "Duplicate",
+        avatarUrl: null,
+      }),
+    ).rejects.toThrow("more than one Exeora account");
+  });
+});

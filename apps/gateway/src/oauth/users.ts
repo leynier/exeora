@@ -1,14 +1,14 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { type Db, schema } from "../db/client.js";
 import { newId } from "../ids.js";
-import type { ProviderId, UpstreamIdentity } from "./providers/index.js";
+import { type ProviderId, UpstreamAuthError, type UpstreamIdentity } from "./providers/index.js";
 
 /**
  * Maps an upstream login onto an Exeora user, creating one on first sign-in.
  *
- * Lookup is by `(provider, providerUserId)` and never by email, so a user
- * changing their address at the provider keeps the same account, and someone
- * who later acquires a recycled address does not inherit it.
+ * Existing identities are looked up by `(provider, providerUserId)`, so a user
+ * changing their address at the provider keeps the same account. A new
+ * identity may link by verified email only when exactly one account matches.
  *
  * `adminEmails` is the optional `ADMIN_EMAILS` binding: a comma-separated list
  * of addresses that become administrators the first time they register. When
@@ -40,6 +40,38 @@ export async function resolveUser(
       .where(eq(schema.users.id, existing.userId))
       .run();
     return { id: existing.userId, email: identity.email };
+  }
+
+  // Both providers guarantee this address is verified before it reaches here.
+  // Matching it case-insensitively lets a person add Google after GitHub
+  // without creating a second account that owns none of their existing work.
+  const normalisedEmail = identity.email.trim().toLowerCase();
+  const matchingUsers = await database
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(sql`lower(${schema.users.email}) = ${normalisedEmail}`)
+    .limit(2);
+
+  if (matchingUsers.length > 1) {
+    // Picking one would attach a verified identity to projects without a
+    // defensible way to know which account is theirs. Fail closed instead.
+    throw new UpstreamAuthError(
+      "This email matches more than one Exeora account. Contact support before signing in.",
+    );
+  }
+
+  const matchingUser = matchingUsers[0];
+  if (matchingUser) {
+    await database
+      .insert(schema.oauthIdentities)
+      .values({ userId: matchingUser.id, provider, providerUserId: identity.providerUserId })
+      .run();
+    await database
+      .update(schema.users)
+      .set({ email: identity.email, name: identity.name, avatarUrl: identity.avatarUrl })
+      .where(eq(schema.users.id, matchingUser.id))
+      .run();
+    return { id: matchingUser.id, email: identity.email };
   }
 
   const userId = newId("usr");
