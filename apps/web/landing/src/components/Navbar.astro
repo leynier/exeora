@@ -4,9 +4,8 @@ import Wordmark from "./Wordmark.astro";
 
 const links = [
   { href: "/#how-it-works", label: "How it works" },
-  { href: "/#features", label: "Features" },
-  { href: "/#tools", label: "Tools" },
   { href: "/#compare", label: "Compare" },
+  { href: "/#features", label: "Guarantees" },
   { href: "/#faq", label: "FAQ" },
   { href: "/docs/", label: "Docs" },
 ];
@@ -58,6 +57,94 @@ const links = [
       >
         Dashboard
       </a>
+
+      <!-- Mobile menu toggle. Hidden from md up, where the inline links show. -->
+      <button
+        type="button"
+        id="nav-menu-toggle"
+        class="text-foreground-muted hover:text-foreground hover:bg-surface-variant inline-flex size-9 items-center justify-center rounded-lg transition-colors duration-fast md:hidden"
+        aria-expanded="false"
+        aria-controls="nav-mobile-menu"
+        aria-label="Open menu"
+      >
+        <svg
+          data-icon="open"
+          viewBox="0 0 24 24"
+          class="size-5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h16M4 17h16"></path>
+        </svg>
+        <svg
+          data-icon="close"
+          viewBox="0 0 24 24"
+          class="hidden size-5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M6 6l12 12M18 6L6 18"></path>
+        </svg>
+      </button>
     </div>
   </nav>
+
+  <div
+    id="nav-mobile-menu"
+    class="border-border-subtle bg-bg/95 hidden border-t backdrop-blur-xl md:hidden"
+  >
+    <div class="mx-auto flex max-w-6xl flex-col gap-1 px-6 py-3">
+      {
+        links.map((link) => (
+          <a
+            href={link.href}
+            data-nav-mobile-link
+            class="text-body-lg text-foreground-muted hover:text-foreground hover:bg-surface-variant rounded-lg px-3 py-2.5 transition-colors duration-fast"
+          >
+            {link.label}
+          </a>
+        ))
+      }
+      <a
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener"
+        data-nav-mobile-link
+        class="text-body-lg text-foreground-muted hover:text-foreground hover:bg-surface-variant rounded-lg px-3 py-2.5 transition-colors duration-fast sm:hidden"
+      >
+        GitHub
+      </a>
+    </div>
+  </div>
 </header>
+
+<script>
+  const toggle = document.getElementById("nav-menu-toggle");
+  const menu = document.getElementById("nav-mobile-menu");
+  if (toggle && menu) {
+    const openIcon = toggle.querySelector("[data-icon='open']");
+    const closeIcon = toggle.querySelector("[data-icon='close']");
+
+    const setOpen = (open: boolean) => {
+      menu.classList.toggle("hidden", !open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+      openIcon?.classList.toggle("hidden", open);
+      closeIcon?.classList.toggle("hidden", !open);
+    };
+
+    toggle.addEventListener("click", () => {
+      setOpen(menu.classList.contains("hidden"));
+    });
+
+    for (const link of menu.querySelectorAll("[data-nav-mobile-link]")) {
+      link.addEventListener("click", () => setOpen(false));
+    }
+  }
+</script>

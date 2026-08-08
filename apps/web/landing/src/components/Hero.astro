@@ -1,8 +1,29 @@
 ---
 import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
+
+/**
+ * Hero and client proof in one unit: the promise, the command, and the agents
+ * it already works with. Brand marks live in public/clients/ as monochrome SVGs
+ * and are painted through a CSS mask so they pick up the current color.
+ */
+
+const clients = [
+  { name: "Claude", logo: "/clients/claude.svg" },
+  { name: "ChatGPT", logo: "/clients/chatgpt.svg" },
+  { name: "Cursor", logo: "/clients/cursor.svg" },
+  { name: "VS Code", logo: "/clients/vscode.svg" },
+  { name: "Copilot", logo: "/clients/copilot.svg" },
+  { name: "Devin", logo: "/clients/devin.svg" },
+  { name: "Antigravity", logo: "/clients/antigravity.svg" },
+  { name: "Amp", logo: "/clients/amp.svg" },
+  { name: "Zed", logo: "/clients/zed.svg" },
+  { name: "Grok", logo: "/clients/grok.svg" },
+  { name: "Perplexity", logo: "/clients/perplexity.svg" },
+  { name: "OpenCode", logo: "/clients/opencode.svg" },
+];
 ---
 
-<section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-28">
+<section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
   <div class="hero-glow pointer-events-none absolute inset-x-0 top-0 h-[36rem]"></div>
 
   <div class="relative z-10 mx-auto max-w-4xl text-center">
@@ -31,10 +52,8 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
       class="animate-fade-in-up opacity-0-initial text-body-lg text-foreground-muted mx-auto mt-6 max-w-2xl sm:text-[17px]"
       style="animation-delay: 240ms"
     >
-      Connect any MCP client to the development environment on any machine you can run a command
-      on: a server, a VM, a build box, a Raspberry Pi, or your own laptop. No port to open, no
-      source code to upload, no tunnel to wire up. The whole stack is public - audit it, fork it,
-      contribute.
+      Connect Claude, ChatGPT or Cursor to a real project on any machine you can run a command on. No
+      open port. No upload. No tunnel. One outbound connection.
     </p>
 
     <div
@@ -51,9 +70,24 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
         href={GITHUB_URL}
         target="_blank"
         rel="noopener"
-        class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md w-full rounded-lg border px-5 py-2.5 transition-colors duration-fast sm:w-auto"
+        class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-5 py-2.5 transition-colors duration-fast sm:w-auto"
       >
-        Star on GitHub
+        Star on
+        <svg
+          viewBox="0 0 24 24"
+          class="size-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path
+            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
+          ></path>
+        </svg>
+        GitHub
       </a>
     </div>
 
@@ -87,5 +121,55 @@ import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
       Run it in the directory you want to serve. It signs you in and registers the machine on the
       way
     </p>
+  </div>
+
+  <!-- Same section as the hero: clients are proof of the promise above, not a
+       separate chapter with its own divider. -->
+  <div
+    class="animate-fade-in-up opacity-0-initial relative z-10 mx-auto mt-10 max-w-5xl text-center sm:mt-12"
+    style="animation-delay: 520ms"
+  >
+    <p class="text-label-md text-foreground-faint text-center font-mono uppercase">
+      Speaks MCP, so it works with
+    </p>
+
+    <ul class="mt-6 flex flex-wrap items-center justify-center gap-x-7 gap-y-4 sm:gap-x-9">
+      {
+        clients.map((client) => (
+          <li class="text-foreground-muted hover:text-foreground flex items-center gap-2 transition-colors duration-fast">
+            <span
+              class="bg-current block size-[18px] opacity-80"
+              style={`mask: url(${client.logo}) center / contain no-repeat; -webkit-mask: url(${client.logo}) center / contain no-repeat`}
+              aria-hidden="true"
+            />
+            <span class="text-title-md">{client.name}</span>
+          </li>
+        ))
+      }
+    </ul>
+
+    <p class="text-body-md text-foreground-faint mt-5 text-center">
+      Anything that speaks Streamable HTTP and OAuth 2.1 can connect - no plugin on the client side
+    </p>
+
+    <a
+      href="/#how-it-works"
+      class="text-foreground-faint hover:text-foreground mt-8 inline-flex flex-col items-center gap-1 transition-colors duration-fast"
+      aria-label="Continue to how it works"
+    >
+      <span class="text-label-md font-mono uppercase">How it works</span>
+      <svg
+        viewBox="0 0 24 24"
+        class="size-5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m6 9 6 6 6-6"></path>
+      </svg>
+    </a>
   </div>
 </section>
