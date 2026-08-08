@@ -7,9 +7,8 @@
  * `wrangler secret put <NAME>` in production and in `.dev.vars` locally.
  */
 
-import type { Pipeline } from "cloudflare:pipelines";
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
-import type { AuditEvent, AuditWriteMode } from "./audit.js";
+import type { AuditWriteMode } from "./audit.js";
 
 declare global {
   interface Env {
@@ -31,15 +30,30 @@ declare global {
 
     /** Optional during the D1-to-Pipelines migration; `d1` remains the safe default. */
     AUDIT_WRITE_MODE?: AuditWriteMode;
-    AUDIT_STREAM?: Pipeline<AuditEvent>;
-    /** R2 SQL credentials used only by the nightly external rollup prototype. */
-    CLOUDFLARE_ACCOUNT_ID?: string;
-    AUDIT_R2_BUCKET?: string;
-    AUDIT_R2_WAREHOUSE?: string;
+    /**
+     * Read-only R2 SQL credential for the nightly rollup and Activity.
+     *
+     * The archive's other coordinates (account, bucket, warehouse, table, start
+     * day) are plain vars in `wrangler.jsonc` and so come from the generated
+     * interface. Only this one is a secret, which is why only this one is here.
+     * `AUDIT_STREAM` likewise: it is a binding, not a secret.
+     *
+     * Both still get a runtime check where they are read. A self-hosted
+     * deployment that never provisioned Pipelines has neither, and the
+     * generated types describe this repository's config rather than theirs.
+     */
     AUDIT_R2_SQL_TOKEN?: string;
-    AUDIT_R2_TABLE?: string;
-    /** First UTC day present in the Iceberg table, YYYY-MM-DD. */
-    AUDIT_WAREHOUSE_START_DAY?: string;
+    /**
+     * Shared secret the archive maintenance job authenticates with.
+     *
+     * Deliberately separate from `AUDIT_R2_SQL_TOKEN`: that one is read-only
+     * and lives here so the Worker can query. The token that can delete from
+     * the table never reaches the Worker at all, only the job.
+     *
+     * Unset means the internal routes answer 404 and nothing drains the
+     * deletion queue, which is the right default for a `d1`-mode deployment.
+     */
+    AUDIT_MAINTENANCE_SECRET?: string;
 
     /**
      * Optional comma-separated emails that become administrators on first

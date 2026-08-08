@@ -149,7 +149,7 @@ export function Activity() {
             {interactive
               ? filtering
                 ? "Widen them to see more. This searched the whole log, not just the page on screen."
-                : "Tool calls appear here as soon as an agent makes one."
+                : "Tool calls appear here a few minutes after an agent makes one."
               : "This deployment chose lower storage cost over interactive call-by-call search. Daily usage remains available."}
           </EmptyState>
         ) : (

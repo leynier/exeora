@@ -1,0 +1,40 @@
+name: Audit maintenance
+
+# Nightly, after the gateway's own cron has rolled usage up. The two are
+# independent, but pruning the archive before the rollup has read a day would
+# make that day's usage undercount, and `usage_daily` is what plan limits read.
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+# One run at a time. Two runs draining the same queue would both try to close
+# the same target; the gateway rejects the second, but doing the delete twice
+# is wasted catalog work for no gain.
+concurrency:
+  group: audit-maintenance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v5
+
+      # Outside Cloudflare on purpose, and this is the cost of that choice: a
+      # self-hosted gateway needs this workflow in a fork with its own secrets,
+      # or nothing drains its deletion queue. R2 SQL cannot delete, and a Worker
+      # cannot run an Iceberg writer, so the job has to live somewhere else.
+      - name: Erase and prune the audit archive
+        env:
+          CATALOG_URI: ${{ secrets.AUDIT_CATALOG_URI }}
+          WAREHOUSE: ${{ secrets.AUDIT_R2_WAREHOUSE }}
+          AUDIT_R2_MAINTENANCE_TOKEN: ${{ secrets.AUDIT_R2_MAINTENANCE_TOKEN }}
+          GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
+          AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}
+        run: uv run --with "pyiceberg[pyarrow]" python scripts/audit-maintenance/main.py

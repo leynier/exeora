@@ -299,6 +299,43 @@ export const toolCalls = sqliteTable(
   ],
 );
 
+/**
+ * Rows the archive still has to forget.
+ *
+ * In pipeline mode the audit trail lives in an append-only Iceberg table that
+ * the Worker cannot delete from: R2 SQL is read-only, so a row only goes when a
+ * maintenance job runs a transaction through the catalog. Deletion therefore
+ * stops being one statement and becomes an intent recorded here and drained
+ * later, which is the asynchronous deletion `AUDIT-ARCHITECTURE.md` warns about.
+ *
+ * Deliberately no foreign key to `users`. `deleteAccount` removes the user row
+ * and the cascade would take this row with it, erasing the very instruction to
+ * erase. `target_id` is a bare string for the same reason: it has to outlive
+ * whatever it names.
+ */
+export const auditDeletions = sqliteTable(
+  "audit_deletions",
+  {
+    id: text("id").primaryKey(),
+    /**
+     * What `target_id` names. A machine is not a scope of its own: the archive
+     * has no device column, so deleting one enqueues its projects instead,
+     * which the gateway can still enumerate at the moment of deletion.
+     */
+    scope: text("scope", { enum: ["user", "project"] }).notNull(),
+    targetId: text("target_id").notNull(),
+    requestedAt: integer("requested_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    /** Null until a maintenance run has committed the delete transaction. */
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    /** Counted so a target that keeps failing can be found rather than retried forever. */
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+  },
+  (table) => [index("audit_deletions_pending").on(table.completedAt, table.requestedAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type Device = typeof devices.$inferSelect;
@@ -308,4 +345,6 @@ export type ClientEndpoint = ProjectClient["endpoint"];
 export type ActiveProject = typeof activeProjects.$inferSelect;
 export type ToolCall = typeof toolCalls.$inferSelect;
 export type UsageDaily = typeof usageDaily.$inferSelect;
+export type AuditDeletion = typeof auditDeletions.$inferSelect;
+export type AuditDeletionScope = AuditDeletion["scope"];
 export type UserPlan = User["plan"];

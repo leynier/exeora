@@ -87,8 +87,32 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.7.0"
+    "LATEST_CLI_VERSION": "0.7.0",
+
+    // Where the audit archive lives, for the nightly rollup that rebuilds
+    // `usage_daily` out of R2 SQL. Not secret: the account id is in every
+    // dashboard URL, and the table is only reachable with the token below it.
+    // `AUDIT_R2_SQL_TOKEN` is a secret and is set with `wrangler secret put`.
+    "CLOUDFLARE_ACCOUNT_ID": "6df65be91ad130fd6aa8cb64ac017f22",
+    "AUDIT_R2_BUCKET": "exeora-audit",
+    "AUDIT_R2_WAREHOUSE": "6df65be91ad130fd6aa8cb64ac017f22_exeora-audit",
+    "AUDIT_R2_TABLE": "default.tool_calls",
+
+    // The first UTC day the Iceberg table can contain, which is the day dual
+    // mode was switched on. Dating it earlier only makes the rollup query
+    // empty days every night for nothing.
+    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08"
   },
+
+  // The audit stream. `AUDIT_WRITE_MODE` decides whether anything is sent to
+  // it: unset means `d1` and the binding sits idle, which is why the binding
+  // can land here before the cutover rather than with it.
+  "pipelines": [
+    {
+      "binding": "AUDIT_STREAM",
+      "stream": "73d00047ba1f483482a3a85b4ce157eb"
+    }
+  ],
 
   // One Worker owns the whole hostname now, so a single route replaces the
   // four path patterns this used to need.

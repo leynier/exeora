@@ -11,6 +11,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
+import { internal } from "./api/internal.js";
 import { serveAssets } from "./assets.js";
 import {
   type AccountProject,
@@ -792,6 +793,11 @@ function propsOf(ctx: unknown): Props {
 /** Everything else: the OAuth screens, then the static site. */
 const site = new Hono<{ Bindings: Env }>();
 site.route("/", oauthRoutes);
+
+// Here rather than on `authenticated`, because the caller is a scheduled job
+// holding a shared secret, not a user holding an access token. The router
+// carries its own gate and 404s when the secret is unset.
+site.route("/", internal);
 
 /**
  * Tells `exeora login` which client id to use. Unauthenticated by design;

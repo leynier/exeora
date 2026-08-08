@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { enqueueAuditDeletion } from "../audit-deletions.js";
 import { isMetadataDocumentClient, setActiveProjectId, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
@@ -50,6 +51,11 @@ export async function deleteAccount(env: Env, userId: string): Promise<void> {
     .from(schema.projectClients)
     .where(eq(schema.projectClients.userId, userId))
     .all();
+
+  // Before the delete for the same reason, and one step further: the archive
+  // outlives D1, so what the maintenance job needs is the id, recorded while
+  // there is still a row that explains what it means.
+  await enqueueAuditDeletion(env, "user", [userId]);
 
   await database.delete(schema.users).where(eq(schema.users.id, userId)).run();
 

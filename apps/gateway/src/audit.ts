@@ -20,9 +20,15 @@ export interface AuditEvent extends Record<string, unknown> {
 
 export type AuditWriteMode = "d1" | "dual" | "pipeline";
 
-export function auditWriteMode(
-  env: Pick<Env, "AUDIT_WRITE_MODE" | "AUDIT_STREAM">,
-): AuditWriteMode {
+/**
+ * The binding is optional here even though the generated `Env` makes it
+ * required. Those types describe this repository's `wrangler.jsonc`; this
+ * function's whole job is the deployment where the binding is absent, which
+ * is any self-hosted gateway that never provisioned Pipelines.
+ */
+type AuditEnv = { AUDIT_WRITE_MODE?: AuditWriteMode; AUDIT_STREAM?: Env["AUDIT_STREAM"] };
+
+export function auditWriteMode(env: AuditEnv): AuditWriteMode {
   const requested =
     env.AUDIT_WRITE_MODE === "dual" || env.AUDIT_WRITE_MODE === "pipeline"
       ? env.AUDIT_WRITE_MODE
@@ -66,7 +72,7 @@ export function auditEvent(
 }
 
 export async function writeAuditEvent(
-  env: Pick<Env, "AUDIT_STREAM">,
+  env: Pick<AuditEnv, "AUDIT_STREAM">,
   event: AuditEvent,
 ): Promise<void> {
   if (!env.AUDIT_STREAM) {

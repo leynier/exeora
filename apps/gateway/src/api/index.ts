@@ -19,6 +19,7 @@ import {
 import { Hono } from "hono";
 import { z } from "zod";
 import { auditWriteMode } from "../audit.js";
+import { enqueueAuditDeletion, projectIdsOfDevice } from "../audit-deletions.js";
 import {
   parsePolicy,
   rememberAuthorization,
@@ -32,6 +33,7 @@ import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
 import { ownedProjectIds } from "../oauth/target.js";
 import { isPlanId, limitsFor, PLAN_IDS, type PlanId, retentionTiers } from "../plans.js";
 import { deviceOnline, isDeviceOnline, presenceCutoff } from "../presence.js";
+import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { rollupUsageDailyFromWarehouse } from "../warehouse-usage.js";
 import { admin } from "./admin.js";
 import {
@@ -245,6 +247,11 @@ api.delete("/api/devices/:id/permanently", async (c) => {
   if (!device) return c.json({ error: "not_found" }, 404);
   if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
 
+  // The archive has no device column, so a machine is not something it can be
+  // asked to forget. Its projects are, and they can only be enumerated while
+  // the machine is still here: the cascade below takes them with it.
+  await enqueueAuditDeletion(c.env, "project", await projectIdsOfDevice(c.env, userId, id));
+
   // projects cascade from devices, and tool_calls cascade from projects, so
   // this one statement removes all three.
   await db(c.env)
@@ -378,14 +385,21 @@ api.put("/api/projects/:id/policy", zValidator("json", CommandPolicy), async (c)
 });
 
 api.delete("/api/projects/:id", async (c) => {
+  const projectId = c.req.param("id");
+
   const result = await db(c.env)
     .delete(schema.projects)
-    .where(
-      and(eq(schema.projects.id, c.req.param("id")), eq(schema.projects.userId, c.get("userId"))),
-    )
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, c.get("userId"))))
     .run();
 
-  return result.meta.changes === 0 ? c.json({ error: "not_found" }, 404) : c.json({ ok: true });
+  if (result.meta.changes === 0) return c.json({ error: "not_found" }, 404);
+
+  // After the delete rather than before, unlike the other two: the `changes`
+  // count is what proves the project was this caller's, and enqueueing first
+  // would let anyone schedule the erasure of a project id they do not own.
+  await enqueueAuditDeletion(c.env, "project", [projectId]);
+
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -772,22 +786,38 @@ const CALLS_PAGE_SIZE = 50;
  * index orders by the timestamp alone.
  */
 api.get("/api/tool-calls", async (c) => {
-  if (auditWriteMode(c.env) === "pipeline") {
-    return c.json({ items: [], cursor: null, interactive: false });
-  }
-
   const userId = c.get("userId");
   const cursor = parseCallsCursor(c.req.query("cursor"));
+  const projectId = c.req.query("projectId");
+  const status = c.req.query("status");
+  const clientId = c.req.query("clientId");
+  const narrowStatus = status === "ok" || status === "error" ? status : undefined;
+
+  // In pipeline mode D1 holds no rows to page through, so the same question is
+  // put to the archive. The answer has the same shape and the same cursor; what
+  // differs is that a call becomes visible when the sink rolls its file rather
+  // than the instant it is made.
+  if (auditWriteMode(c.env) === "pipeline") {
+    const page = await queryWarehouseCalls(c.env, {
+      userId,
+      projectId,
+      status: narrowStatus,
+      clientId,
+      cursor,
+      pageSize: CALLS_PAGE_SIZE,
+    });
+
+    return c.json({
+      items: page.items,
+      cursor: page.last ? encodeCallsCursor(page.last.createdAt, page.last.id) : null,
+      interactive: true,
+    });
+  }
 
   const filters = [eq(schema.toolCalls.userId, userId)];
 
-  const projectId = c.req.query("projectId");
   if (projectId) filters.push(eq(schema.toolCalls.projectId, projectId));
-
-  const status = c.req.query("status");
-  if (status === "ok" || status === "error") filters.push(eq(schema.toolCalls.status, status));
-
-  const clientId = c.req.query("clientId");
+  if (narrowStatus) filters.push(eq(schema.toolCalls.status, narrowStatus));
   if (clientId) filters.push(eq(schema.toolCalls.clientId, clientId));
 
   if (cursor) {

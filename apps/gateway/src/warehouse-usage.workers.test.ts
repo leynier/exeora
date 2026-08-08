@@ -288,7 +288,7 @@ describe("warehouse usage rollup", () => {
         fetcher,
         now: new Date("2026-01-03T04:17:00.000Z"),
       }),
-    ).rejects.toThrow("incomplete usage response");
+    ).rejects.toThrow("incomplete response");
 
     const usage = await db(env)
       .select()
