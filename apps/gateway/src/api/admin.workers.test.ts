@@ -18,12 +18,19 @@ const USER = "usr_admin_subject";
 const USER_EMAIL = "subject@example.com";
 const OTHER = "usr_admin_other";
 
+/**
+ * Pinned to `d1`: the counts below are seeded as `tool_calls` rows, and that is
+ * the branch reading them. In `pipeline` mode the panel sums `usage_daily` and
+ * shows no recent calls, which is a different set of assertions than these.
+ */
+const d1Env = { ...env, AUDIT_WRITE_MODE: "d1" } as unknown as Env;
+
 function call(path: string, options: { method?: string; userId?: string } = {}) {
   const request = new Request(`https://exeora.dev${path}`, { method: options.method ?? "GET" });
   const ctx = createExecutionContext();
   (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? ADMIN };
 
-  return api.fetch(request, env, ctx);
+  return api.fetch(request, d1Env, ctx);
 }
 
 async function seed() {

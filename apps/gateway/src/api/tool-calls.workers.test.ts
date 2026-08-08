@@ -25,13 +25,23 @@ interface CallView {
   clientId: string | null;
 }
 
+/**
+ * Pinned to `d1`, because this file is about the D1 reader.
+ *
+ * The deployed config is `pipeline`, where the same route reads the Iceberg
+ * archive instead; that path has its own tests in `warehouse-calls`. Without
+ * the pin these would follow whatever mode `wrangler.jsonc` happens to carry,
+ * which is how a test stops testing what its name says.
+ */
+const d1Env = { ...env, AUDIT_WRITE_MODE: "d1" } as unknown as Env;
+
 function call(path: string, userId = USER) {
   const request = new Request(`https://exeora.dev${path}`);
   const ctx = createExecutionContext();
   // What the OAuth provider attaches once it has validated the bearer token.
   (ctx as { props?: Record<string, string> }).props = { userId };
 
-  return api.fetch(request, env, ctx);
+  return api.fetch(request, d1Env, ctx);
 }
 
 const page = async (path: string, userId = USER) =>

@@ -101,7 +101,13 @@
     // The first UTC day the Iceberg table can contain, which is the day dual
     // mode was switched on. Dating it earlier only makes the rollup query
     // empty days every night for nothing.
-    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08"
+    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08",
+
+    // The cutover. `tool_calls` stops being written on the request path and the
+    // Iceberg table becomes the only copy, so Activity reads it through R2 SQL
+    // and `usage_daily` is rebuilt from it nightly. A call becomes visible when
+    // the sink rolls its file rather than the instant it is made.
+    "AUDIT_WRITE_MODE": "pipeline"
   },
 
   // The audit stream. `AUDIT_WRITE_MODE` decides whether anything is sent to
