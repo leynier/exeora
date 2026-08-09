@@ -1006,6 +1006,7 @@ dependencies = [
 name = "exeora-cli"
 version = "0.8.0"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "assert_cmd",
  "atomic-write-file",
@@ -1027,6 +1028,7 @@ dependencies = [
  "open",
  "predicates",
  "process-wrap",
+ "regex-syntax",
  "regress",
  "reqwest 0.13.4",
  "self-replace",

@@ -38,11 +38,116 @@ struct Running {
     running: bool,
 }
 
+/// One read off a pipe, with its length in UTF-16 units measured once.
+struct Chunk {
+    text: String,
+    units: usize,
+}
+
+/**
+ * Output kept for one process, oldest chunk dropped first.
+ *
+ * Lengths and cursors count UTF-16 units, because the contract's cursor does
+ * and the two have to agree or a reader seeks somewhere it did not mean to.
+ * Chunks keep their own length so neither trimming nor reading has to measure
+ * the whole buffer: a reader asking for 100,000 units out of a full 256,000
+ * should pay for what it asked for, not for what is being held.
+ */
 #[derive(Default)]
 struct Ring {
-    chunks: VecDeque<String>,
+    chunks: VecDeque<Chunk>,
     units: usize,
     dropped: usize,
+}
+
+impl Ring {
+    fn append(&mut self, text: String) {
+        let units = utf16_len(&text);
+        self.units += units;
+        self.chunks.push_back(Chunk { text, units });
+        while self.units > MAX_PROCESS_BUFFER_BYTES && self.chunks.len() > 1 {
+            if let Some(oldest) = self.chunks.pop_front() {
+                self.units -= oldest.units;
+                self.dropped += oldest.units;
+            }
+        }
+    }
+
+    /// Copies at most `max` units starting `offset` units into what is still held.
+    fn slice(&self, offset: usize, max: usize) -> (String, usize) {
+        let mut skipped = offset;
+        let mut output = String::with_capacity(max);
+        let mut written = 0;
+
+        for chunk in &self.chunks {
+            if skipped >= chunk.units {
+                skipped -= chunk.units;
+                continue;
+            }
+            let budget = max - written;
+            let wanted = (chunk.units - skipped).min(budget);
+            let taken = append_units(&mut output, &chunk.text, chunk.units, skipped, budget);
+            written += taken;
+            skipped = 0;
+            // Short of what the chunk still held means the budget ran out
+            // inside a character rather than at the end of the chunk. The rest
+            // of this chunk is the next read's; going on to the following one
+            // would splice two ranges that are not adjacent.
+            if taken < wanted || written >= max {
+                break;
+            }
+        }
+        (output, written)
+    }
+}
+
+/**
+ * Appends up to `max` UTF-16 units of `text`, starting `skip` units in.
+ *
+ * Resolves the unit range to a byte range and copies it in one go. Pushing
+ * character by character would re-encode every one of them, and a reader
+ * walking a full buffer takes whole chunks: only the first and the last of them
+ * are ever partial, and `units` answers the rest without looking at the text.
+ *
+ * Returns the units consumed, which is what the caller's cursor advances by.
+ * That is the same as the units appended except where `skip` lands inside a
+ * surrogate pair: half a character cannot be handed back, so the pair is passed
+ * over whole and still counted, or the next cursor would point into it again.
+ */
+fn append_units(output: &mut String, text: &str, units: usize, skip: usize, max: usize) -> usize {
+    if skip == 0 && units <= max {
+        output.push_str(text);
+        return units;
+    }
+    if text.is_ascii() {
+        let start = skip.min(text.len());
+        let end = start.saturating_add(max).min(text.len());
+        output.push_str(&text[start..end]);
+        return end - start;
+    }
+
+    let mut position = 0;
+    let mut start = None;
+    let mut written = 0;
+
+    for (offset, character) in text.char_indices() {
+        let width = character.len_utf16();
+        if position < skip {
+            position += width;
+            written += position.saturating_sub(skip);
+            continue;
+        }
+        let start = *start.get_or_insert(offset);
+        if written + width > max {
+            output.push_str(&text[start..offset]);
+            return written;
+        }
+        written += width;
+    }
+    if let Some(start) = start {
+        output.push_str(&text[start..]);
+    }
+    written
 }
 
 pub struct ProcessRegistry {
@@ -156,9 +261,7 @@ impl ProcessRegistry {
         let total = ring.dropped + ring.units;
         let from = args.cursor.unwrap_or(0);
         let start = from.max(ring.dropped).min(total);
-        let available = ring.chunks.iter().cloned().collect::<String>();
-        let chunk = slice_utf16(&available, start - ring.dropped, MAX_PROCESS_CHUNK_BYTES);
-        let read = utf16_len(&chunk);
+        let (chunk, read) = ring.slice(start - ring.dropped, MAX_PROCESS_CHUNK_BYTES);
         Ok(json!({
             "processId": args.process_id,
             "chunk": chunk,
@@ -173,7 +276,6 @@ impl ProcessRegistry {
         let args: InputArgs = parse(value)?;
         let mut entries = self.entries.lock().await;
         let entry = find_entry(&mut entries, root, &args.process_id)?;
-        refresh(entry).await;
         if !entry.running {
             return Err(ExeoraError::tool("That process is not accepting input."));
         }
@@ -182,18 +284,29 @@ impl ProcessRegistry {
         } else {
             args.data
         };
+
+        // Deliberately not refreshed first. Asking the kernel whether the child
+        // is still alive is a syscall on every keystroke to learn what a failed
+        // write reports anyway, and the answer would be stale by the time it is
+        // used. The exit is confirmed only once writing has actually failed.
         let mut stdin = entry.stdin.lock().await;
-        let Some(stdin) = stdin.as_mut() else {
-            return Err(ExeoraError::tool("That process is not accepting input."));
+        let written = match stdin.as_mut() {
+            None => Err(std::io::ErrorKind::BrokenPipe.into()),
+            Some(stdin) => match stdin.write_all(payload.as_bytes()).await {
+                Ok(()) => stdin.flush().await,
+                Err(error) => Err(error),
+            },
         };
-        stdin
-            .write_all(payload.as_bytes())
-            .await
-            .map_err(|error| ExeoraError::tool(error.to_string()))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        drop(stdin);
+
+        if let Err(error) = written {
+            refresh(entry).await;
+            return Err(if entry.running {
+                ExeoraError::tool(error.to_string())
+            } else {
+                ExeoraError::tool("That process is not accepting input.")
+            });
+        }
         Ok(json!({ "processId": args.process_id, "bytesWritten": payload.len() }))
     }
 
@@ -207,9 +320,24 @@ impl ProcessRegistry {
                 json!({ "processId": args.process_id, "killed": false, "exitCode": entry.exit_code }),
             );
         }
+        // Signal the group and answer, rather than waiting for the reap. The
+        // status is not in the reply either way: `exit_code` is whatever the
+        // refresh above saw, and a process still alive a moment ago has none.
+        // Waiting costs the caller a full wait-and-retry loop to learn nothing.
         let mut child = entry.child.lock().await;
-        let _ = kill_child(child.as_mut()).await;
+        let _ = child.start_kill();
+        drop(child);
         entry.running = false;
+
+        // The reap still has to happen somewhere. Nothing else will do it: the
+        // entry stays in the map, so its child is never dropped, and `refresh`
+        // walks away from an entry already marked stopped. Left alone the
+        // killed group is a zombie for the rest of the session.
+        let child = entry.child.clone();
+        tokio::spawn(async move {
+            let mut child = child.lock().await;
+            let _ = child.wait().await;
+        });
         Ok(json!({ "processId": args.process_id, "killed": true, "exitCode": entry.exit_code }))
     }
 
@@ -299,10 +427,7 @@ fn spawn_reader<R: AsyncRead + Unpin + Send + 'static>(reader: Option<R>, ring: 
                 break;
             }
             let mut guard = ring.lock().await;
-            append(
-                &mut guard,
-                String::from_utf8_lossy(&buffer[..count]).into_owned(),
-            );
+            guard.append(String::from_utf8_lossy(&buffer[..count]).into_owned());
         }
     });
 }
@@ -322,19 +447,6 @@ async fn capture<R: AsyncRead + Unpin>(
     let cut = all.len() > max;
     let kept = if cut { &all[all.len() - max..] } else { &all };
     Ok((String::from_utf8_lossy(kept).into_owned(), cut))
-}
-
-fn append(ring: &mut Ring, text: String) {
-    let units = utf16_len(&text);
-    ring.units += units;
-    ring.chunks.push_back(text);
-    while ring.units > MAX_PROCESS_BUFFER_BYTES && ring.chunks.len() > 1 {
-        if let Some(oldest) = ring.chunks.pop_front() {
-            let old_units = utf16_len(&oldest);
-            ring.units -= old_units;
-            ring.dropped += old_units;
-        }
-    }
 }
 
 async fn refresh(entry: &mut Running) {
@@ -370,30 +482,6 @@ fn utf16_len(text: &str) -> usize {
         text.encode_utf16().count()
     }
 }
-fn slice_utf16(text: &str, start: usize, max: usize) -> String {
-    if text.is_ascii() {
-        let start = start.min(text.len());
-        return text[start..(start + max).min(text.len())].to_owned();
-    }
-    let mut position = 0;
-    let mut written = 0;
-    let mut output = String::new();
-    for ch in text.chars() {
-        let units = ch.len_utf16();
-        if position + units <= start {
-            position += units;
-            continue;
-        }
-        if written + units > max {
-            break;
-        }
-        output.push(ch);
-        position += units;
-        written += units;
-    }
-    output
-}
-
 fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {
     serde_json::from_value(value)
         .map_err(|error| ExeoraError::new(ErrorCode::InvalidArguments, error.to_string()))
@@ -404,4 +492,39 @@ fn join_error(error: tokio::task::JoinError) -> ExeoraError {
 
 async fn kill_child(child: &mut dyn ChildWrapper) -> std::io::Result<()> {
     Box::into_pin(child.kill()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Ring;
+
+    /// A pair the read limit lands inside waits: it cannot be halved, and the
+    /// units after it in the chunk are not adjacent to whatever follows.
+    #[test]
+    fn a_surrogate_pair_at_the_limit_ends_the_read() {
+        let mut ring = Ring::default();
+        ring.append("a".repeat(9));
+        ring.append("\u{1f600}tail".to_owned());
+        ring.append("later".to_owned());
+
+        let (head, read) = ring.slice(0, 10);
+        assert_eq!(head, "a".repeat(9));
+        assert_eq!(read, 9, "the pair is left for the next read");
+
+        let (tail, read) = ring.slice(read, 6);
+        assert_eq!(tail, "\u{1f600}tail");
+        assert_eq!(read, 6);
+    }
+
+    /// A cursor pointing inside a pair passes it whole and still counts it, or
+    /// the cursor it hands back would point into the same pair again.
+    #[test]
+    fn a_cursor_inside_a_pair_advances_past_it() {
+        let mut ring = Ring::default();
+        ring.append("\u{1f600}tail".to_owned());
+
+        let (chunk, read) = ring.slice(1, 10);
+        assert_eq!(chunk, "tail");
+        assert_eq!(read, 5, "one unit of the pair and four of the tail");
+    }
 }

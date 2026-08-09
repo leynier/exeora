@@ -11,7 +11,9 @@ fn exposes_the_legacy_command_surface_and_version_flag() {
         .arg("-v")
         .assert()
         .success()
-        .stdout("exeora 0.8.0\n");
+        // Read from Cargo rather than written out: the version is bumped every
+        // release, and a literal here only ever fails for having been bumped.
+        .stdout(format!("exeora {}\n", env!("CARGO_PKG_VERSION")));
 
     Command::cargo_bin("exeora")
         .unwrap()

@@ -26,6 +26,8 @@
     "secret": "bun run --cwd apps/gateway secret",
     "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen",
     "bench:tools": "bun run scripts/compare-tool-performance.ts",
+    "bench:tools:hard": "bun run scripts/compare-tool-performance.ts --suite hard",
+    "bench:tools:verify": "bun run scripts/compare-tool-performance.ts --suite hard --verify",
     "check:tool-performance": "bun run scripts/compare-tool-performance.ts --check"
   },
   "devDependencies": {

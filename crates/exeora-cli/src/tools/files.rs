@@ -3,15 +3,20 @@ use crate::{
     error::{ErrorCode, ExeoraError},
     protocol::{MAX_GREP_MATCHES, MAX_LIST_ENTRIES, MAX_READ_BYTES},
 };
+use aho_corasick::{AhoCorasick, AhoCorasickKind, Input, MatchKind};
 use cap_std::{
     ambient_authority,
     fs::{Dir, OpenOptions},
 };
 use globset::{Glob, GlobMatcher};
 use grep_matcher::{Match, Matcher, NoCaptures, NoError};
-use grep_searcher::{BinaryDetection, SearcherBuilder, sinks};
+use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, sinks};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use memchr::{memchr, memmem};
+use regex_syntax::{
+    ParserBuilder,
+    hir::literal::{ExtractKind, Extractor, Literal},
+};
 use regress::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -106,22 +111,18 @@ pub async fn grep(root: &Path, args: Value) -> Result<Value, ExeoraError> {
     tokio::task::spawn_blocking(move || {
         let args: GrepArgs = parse(args)?;
         let (real_root, start) = resolve_in_project(&root, args.path.as_deref().unwrap_or("."))?;
-        let flags = if args.case_insensitive.unwrap_or(false) {
-            "i"
-        } else {
-            ""
-        };
-        let regex = Regex::with_flags(&args.pattern, flags).map_err(|error| {
-            ExeoraError::new(
-                ErrorCode::InvalidArguments,
-                format!("Not a valid regular expression: {error}"),
-            )
-        })?;
-        let matcher = RegressMatcher(Arc::new(regex));
+        let matcher = RegressMatcher::new(&args.pattern, args.case_insensitive.unwrap_or(false))?;
         let glob = compile_glob(args.glob.as_deref())?;
         let limit = args.max_results.unwrap_or(MAX_GREP_MATCHES);
         let mut rows = Vec::new();
         let mut truncated = false;
+        // One searcher for the whole walk: it owns the line buffer, and a repo
+        // is thousands of files to build and throw one away for.
+        let mut searcher = SearcherBuilder::new()
+            .line_number(true)
+            .bom_sniffing(false)
+            .binary_detection(BinaryDetection::quit(b'\0'))
+            .build();
         for entry in walk(&real_root, &start, true, 50_000)? {
             if entry.directory
                 || entry.symlink
@@ -132,7 +133,8 @@ pub async fn grep(root: &Path, args: Value) -> Result<Value, ExeoraError> {
                 continue;
             }
 
-            let Ok((file_rows, exceeded)) = search_path(&matcher, &entry, limit - rows.len())
+            let Ok((file_rows, exceeded)) =
+                search_path(&mut searcher, &matcher, &entry, limit - rows.len())
             else {
                 continue;
             };
@@ -229,28 +231,196 @@ pub async fn write_file(root: &Path, args: Value) -> Result<Value, ExeoraError> 
     }).await.map_err(join_error)?
 }
 
+/**
+ * The JavaScript regex the contract promises, with something to skip on.
+ *
+ * `regress` matches what a browser would, which is the whole reason it is here,
+ * but it is a backtracking engine with no literal prefilter: a pattern with no
+ * anchor is attempted at every byte of every line. `prefilter` holds the set of
+ * literals a match has to start with, when that can be proven, so a buffer with
+ * none of them is skipped in one SIMD pass instead of being walked.
+ */
 #[derive(Clone)]
-struct RegressMatcher(Arc<Regex>);
+struct RegressMatcher {
+    regex: Arc<Regex>,
+    prefilter: Option<Arc<Prefilter>>,
+}
+
+/**
+ * One required literal, or a set of them.
+ *
+ * The split is about what it costs to build, not to search. A grep call
+ * compiles its prefilter and throws it away, and an Aho-Corasick automaton for
+ * a single needle costs more to construct than the scan it saves; `memmem`
+ * builds in the length of the needle.
+ */
+enum Prefilter {
+    /// Boxed: a `Finder` carries its shift table, and the enum is behind an
+    /// `Arc` cloned into every search anyway.
+    Single(Box<memmem::Finder<'static>>),
+    Set(AhoCorasick),
+}
+
+impl Prefilter {
+    fn find(&self, haystack: &[u8], at: usize) -> Option<usize> {
+        match self {
+            Self::Single(finder) => finder.find(&haystack[at..]).map(|start| at + start),
+            Self::Set(set) => set
+                .find(Input::new(haystack).span(at..haystack.len()))
+                .map(|found| found.start()),
+        }
+    }
+}
+
+impl RegressMatcher {
+    fn new(pattern: &str, case_insensitive: bool) -> Result<Self, ExeoraError> {
+        let flags = if case_insensitive { "i" } else { "" };
+        let regex = Regex::with_flags(pattern, flags).map_err(|error| {
+            ExeoraError::new(
+                ErrorCode::InvalidArguments,
+                format!("Not a valid regular expression: {error}"),
+            )
+        })?;
+        Ok(Self {
+            regex: Arc::new(regex),
+            prefilter: prefilter(pattern, case_insensitive).map(Arc::new),
+        })
+    }
+
+    /// Where the next match could begin, or `None` when there cannot be one.
+    fn candidate(&self, text: &str, at: usize) -> Option<usize> {
+        let Some(prefilter) = &self.prefilter else {
+            return Some(at);
+        };
+        // A literal is valid UTF-8, so its first byte is never a continuation
+        // byte, so a hit is always on a character boundary of the haystack.
+        prefilter.find(text.as_bytes(), at)
+    }
+}
 
 impl Matcher for RegressMatcher {
     type Captures = NoCaptures;
     type Error = NoError;
     fn find_at(&self, haystack: &[u8], at: usize) -> Result<Option<Match>, NoError> {
         match std::str::from_utf8(haystack) {
-            Ok(text) => Ok(self
-                .0
-                .find_from(text, at)
-                .next()
-                .map(|found| Match::new(found.start(), found.end()))),
+            Ok(text) => {
+                let Some(from) = self.candidate(text, at) else {
+                    return Ok(None);
+                };
+                Ok(self
+                    .regex
+                    .find_from(text, from)
+                    .next()
+                    .map(|found| Match::new(found.start(), found.end())))
+            }
             Err(_) => {
                 let text = String::from_utf8_lossy(&haystack[at..]);
-                Ok(self.0.find(&text).map(|_| Match::new(at, haystack.len())))
+                Ok(self
+                    .regex
+                    .find(&text)
+                    .map(|_| Match::new(at, haystack.len())))
             }
         }
     }
     fn new_captures(&self) -> Result<NoCaptures, NoError> {
         Ok(NoCaptures::new())
     }
+}
+
+/**
+ * Literals every match has to begin with, when `regex-syntax` can prove a set.
+ *
+ * This never changes what matches, only what is skipped, which rests on the set
+ * being an over-approximation of the JavaScript one. Where the two engines read
+ * a pattern differently, Rust reads it wider: `\d` is every Unicode digit
+ * rather than `[0-9]`, `\w` and `.` likewise. The one exception is `\s`, which
+ * in JavaScript also covers U+FEFF; `limit_class` is pinned below the 25
+ * characters of Unicode `White_Space`, so a pattern starting with `\s` is
+ * declined here rather than prefiltered against a set missing a character.
+ *
+ * Everything unparseable is declined the same way: JavaScript lookbehind and
+ * backreferences do not parse at all, and an unbounded prefix yields no
+ * literals. Both leave `regress` searching every buffer, as it did before.
+ */
+fn prefilter(pattern: &str, case_insensitive: bool) -> Option<Prefilter> {
+    if !escapes_agree(pattern) {
+        return None;
+    }
+    let hir = ParserBuilder::new().build().parse(pattern).ok()?;
+    let sequence = Extractor::new()
+        .kind(ExtractKind::Prefix)
+        .limit_class(10)
+        .extract(&hir);
+    let literals = sequence.literals()?;
+    if literals.is_empty() || literals.iter().any(|literal| literal.is_empty()) {
+        return None;
+    }
+    // Without the `u` flag, JavaScript never folds a non-ASCII character onto an
+    // ASCII one, so ASCII-insensitive matching is exact for an ASCII literal and
+    // the only case to decline is a literal that is not.
+    if case_insensitive && !literals.iter().all(|literal| literal.as_bytes().is_ascii()) {
+        return None;
+    }
+
+    if let ([literal], false) = (literals, case_insensitive) {
+        return Some(Prefilter::Single(Box::new(
+            memmem::Finder::new(literal.as_bytes()).into_owned(),
+        )));
+    }
+    AhoCorasick::builder()
+        .match_kind(MatchKind::LeftmostFirst)
+        // Building a DFA costs more than the scan it saves for a filter that
+        // lives exactly as long as one call.
+        .kind(Some(AhoCorasickKind::ContiguousNFA))
+        .ascii_case_insensitive(case_insensitive)
+        .build(literals.iter().map(Literal::as_bytes))
+        .ok()
+        .map(Prefilter::Set)
+}
+
+/**
+ * Whether every escape in the pattern means the same to both parsers.
+ *
+ * The over-approximation the prefilter rests on only holds where the Rust
+ * parse reads a construct the same way or wider. Escapes are where it does
+ * neither: without the `u` flag JavaScript reads `\a`, `\A`, `\z`, `\<` and
+ * `\>` as the character itself, while `regex-syntax` reads them as a bell, two
+ * anchors and two word boundaries. The prefix extracted from the Rust parse is
+ * then a literal the JavaScript pattern never requires, and grep answers
+ * nothing at all for `\<div`. The braced `\u{...}`, `\x{...}` and `\b{...}`
+ * diverge the same way.
+ *
+ * Only the escapes that agree are allowed through. `\d`, `\w`, `\s` and their
+ * negations stay because Rust reads them as Unicode classes far too large for
+ * `limit_class`, which declines them before they can narrow anything.
+ */
+fn escapes_agree(pattern: &str) -> bool {
+    let bytes = pattern.as_bytes();
+    let mut index = 0;
+
+    while let Some(offset) = memchr(b'\\', &bytes[index..]) {
+        let escape = index + offset + 1;
+        let Some(&character) = bytes.get(escape) else {
+            return false;
+        };
+        let braced = bytes.get(escape + 1) == Some(&b'{');
+        let agrees = match character {
+            b'd' | b'D' | b'w' | b'W' | b's' | b'S' | b'n' | b'r' | b't' | b'f' | b'v' | b'B' => {
+                true
+            }
+            b'b' | b'u' | b'x' => !braced,
+            b'<' | b'>' => false,
+            // Escaping punctuation is the character itself on both sides; a
+            // letter or a digit is a construct one of them has and the other
+            // reads as the letter, and a digit is a backreference besides.
+            _ => !character.is_ascii_alphanumeric(),
+        };
+        if !agrees {
+            return false;
+        }
+        index = escape + 1;
+    }
+    true
 }
 
 struct WalkEntry {
@@ -320,6 +490,7 @@ fn load_ignore(root: &Path) -> Gitignore {
 }
 
 fn search_path(
+    searcher: &mut Searcher,
     matcher: &RegressMatcher,
     entry: &WalkEntry,
     limit: usize,
@@ -337,11 +508,7 @@ fn search_path(
         rows.push(json!({ "path": path, "line": line_number, "text": utf16_prefix(&text, 500) }));
         Ok(true)
     });
-    SearcherBuilder::new()
-        .line_number(true)
-        .bom_sniffing(false)
-        .binary_detection(BinaryDetection::quit(b'\0'))
-        .build()
+    searcher
         .search_path(matcher, &entry.absolute, sink)
         .map_err(|error| ExeoraError::tool(error.to_string()))?;
     Ok((rows, exceeded))

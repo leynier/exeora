@@ -1,197 +1,105 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { executeTool } from "../packages/cli/src/tools/index.js";
 import { killAllProcesses } from "../packages/cli/src/tools/processes.js";
+import type { Suite } from "./tool-benchmark/config.js";
+import { runCoreSuite } from "./tool-benchmark/core-suite.js";
+import { createCoreFixture, createHeavyFixture } from "./tool-benchmark/fixtures.js";
+import { runHardSuite } from "./tool-benchmark/hard-suite.js";
+import type { BenchmarkResult } from "./tool-benchmark/harness.js";
+import { type Comparison, compare, geometricMean, printTable } from "./tool-benchmark/report.js";
+import { diffFingerprints, fingerprintHardSuite } from "./tool-benchmark/verify.js";
 
-const ROOT = join(import.meta.dirname, "..");
+/**
+ * Runs both executors over identical fixtures and reports the difference.
+ *
+ * `--suite core` (the default, and what CI gates on) is the ten tool calls at
+ * everyday sizes. `--suite hard` is the same ten under load: multi-megabyte
+ * files, full-corpus scans, binary the search has to decline, multi-byte output
+ * and concurrent bursts. `--suite all` runs both and reports them separately,
+ * because averaging a 4 KB read into an 8 MB one hides the answer.
+ */
+
+const ROOT = import.meta.dirname;
 const QUICK = process.argv.includes("--quick");
 const CHECK = process.argv.includes("--check");
 const JSON_OUTPUT = process.argv.includes("--json");
-const SAMPLES = QUICK ? 3 : 5;
+const SKIP_VERIFY = process.argv.includes("--no-verify");
+/** Prints what both engines answered and stops, without timing anything. */
+const VERIFY_ONLY = process.argv.includes("--verify");
+const SUITES = requestedSuites();
 
-interface CaseResult {
-  name: string;
-  iterations: number;
-  samples: number;
-  medianNs: number;
+function requestedSuites(): Suite[] {
+  const flag = process.argv.indexOf("--suite");
+  const value = flag < 0 ? "core" : process.argv[flag + 1];
+  if (value === "core" || value === undefined) return ["core"];
+  if (value === "hard") return ["hard"];
+  if (value === "all") return ["core", "hard"];
+  throw new Error(`Unknown suite: ${value}. Expected core, hard or all.`);
 }
 
-interface BenchmarkResult {
-  engine: "typescript" | "rust";
-  cases: CaseResult[];
-}
+async function runSuite(suite: Suite): Promise<Comparison[]> {
+  const heavy = suite === "hard";
+  const create = heavy ? createHeavyFixture : createCoreFixture;
+  const typescriptRoot = await create(`exeora-ts-${suite}-`);
+  const rustRoot = await create(`exeora-rust-${suite}-`);
 
-interface Comparison {
-  name: string;
-  iterations: number;
-  typescriptNs: number;
-  rustNs: number;
-  speedup: number;
-}
-
-function iterations(kind: "file" | "grep" | "process"): number {
-  if (QUICK) return kind === "file" ? 20 : kind === "grep" ? 3 : 5;
-  return kind === "file" ? 100 : kind === "grep" ? 10 : 20;
-}
-
-async function createFixture(prefix: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), prefix));
-  await mkdir(join(root, "src"));
-  const body = 'fn indexed_symbol() { println!("exeora benchmark"); }\n'.repeat(128);
-  await Promise.all(
-    Array.from({ length: 128 }, (_, index) =>
-      writeFile(join(root, `src/module-${index.toString().padStart(3, "0")}.rs`), body),
-    ),
-  );
-  return root;
-}
-
-async function elapsed(operation: () => Promise<unknown>): Promise<bigint> {
-  const started = process.hrtime.bigint();
-  await operation();
-  return process.hrtime.bigint() - started;
-}
-
-async function measure(
-  name: string,
-  count: number,
-  operation: () => Promise<bigint>,
-): Promise<CaseResult> {
-  for (let index = 0; index < 3; index++) await operation();
-
-  const averages: number[] = [];
-  for (let sample = 0; sample < SAMPLES; sample++) {
-    let total = 0n;
-    for (let index = 0; index < count; index++) total += await operation();
-    averages.push(Number(total) / count);
+  try {
+    if (heavy && (VERIFY_ONLY || !SKIP_VERIFY)) await verifyHardSuite(typescriptRoot, rustRoot);
+    if (VERIFY_ONLY) return [];
+    const typescript: BenchmarkResult = {
+      engine: "typescript",
+      cases: heavy
+        ? await runHardSuite(typescriptRoot, QUICK)
+        : await runCoreSuite(typescriptRoot, QUICK),
+    };
+    const rust = await benchmarkRust(suite, rustRoot);
+    return compare(typescript, rust);
+  } finally {
+    killAllProcesses();
+    await Promise.all([
+      rm(typescriptRoot, { recursive: true, force: true }),
+      rm(rustRoot, { recursive: true, force: true }),
+    ]);
   }
-  averages.sort((left, right) => left - right);
-  return {
-    name,
-    iterations: count,
-    samples: SAMPLES,
-    medianNs: averages[Math.floor(averages.length / 2)] ?? Number.NaN,
-  };
 }
 
-function getProcessId(result: unknown): string {
-  const processId = (result as { processId?: unknown }).processId;
-  if (typeof processId !== "string") throw new Error("start_command did not return processId");
-  return processId;
+/**
+ * Refuses to time two engines that disagree about the answer.
+ *
+ * One call per case, per engine, reduced to a line. It costs a fraction of the
+ * benchmark and is the difference between "Rust searched 4 MB of binary faster"
+ * and "Rust never opened it".
+ */
+async function verifyHardSuite(typescriptRoot: string, rustRoot: string): Promise<void> {
+  const typescript = await fingerprintHardSuite(typescriptRoot);
+  const rust = JSON.parse(await runExample(rustRoot, ["--verify"]));
+  const mismatches = diffFingerprints(typescript, rust);
+
+  if (mismatches.length === 0) {
+    if (JSON_OUTPUT) return;
+    console.log(`Parity verified on ${Object.keys(typescript).length} hard cases.`);
+    if (VERIFY_ONLY) {
+      for (const [name, value] of Object.entries(typescript)) console.log(`  ${name}: ${value}`);
+    }
+    return;
+  }
+  for (const mismatch of mismatches) {
+    console.error(
+      `${mismatch.name}\n  typescript: ${mismatch.typescript}\n  rust:       ${mismatch.rust}`,
+    );
+  }
+  throw new Error("The engines returned different results; the comparison would be meaningless.");
 }
 
-async function benchmarkTypescript(root: string): Promise<BenchmarkResult> {
-  const context = { root };
-  const cases: CaseResult[] = [];
-  const fileIterations = iterations("file");
-  const processIterations = iterations("process");
-
-  cases.push(
-    await measure("read_file", fileIterations, () =>
-      elapsed(() => executeTool(context, "read_file", { path: "src/module-000.rs" })),
-    ),
-  );
-  cases.push(
-    await measure("list_files", fileIterations, () =>
-      elapsed(() => executeTool(context, "list_files", { path: "src", recursive: true })),
-    ),
-  );
-  cases.push(
-    await measure("grep", iterations("grep"), () =>
-      elapsed(() =>
-        executeTool(context, "grep", {
-          pattern: "indexed_symbol",
-          path: "src",
-          maxResults: 200,
-        }),
-      ),
-    ),
-  );
-  cases.push(
-    await measure("edit_file", fileIterations, async () => {
-      await writeFile(join(root, "edit.txt"), "before\nneedle\nafter\n");
-      return elapsed(() =>
-        executeTool(context, "edit_file", {
-          path: "edit.txt",
-          oldString: "needle",
-          newString: "replacement",
-        }),
-      );
-    }),
-  );
-  const writeContent = "x".repeat(64 * 1024);
-  cases.push(
-    await measure("write_file", fileIterations, () =>
-      elapsed(() =>
-        executeTool(context, "write_file", { path: "output.txt", content: writeContent }),
-      ),
-    ),
-  );
-  const shortCommand = process.platform === "win32" ? "echo|set /p=exeora" : "printf exeora";
-  const interactiveCommand = process.platform === "win32" ? "more" : "cat";
-  cases.push(
-    await measure("run_command", processIterations, () =>
-      elapsed(() => executeTool(context, "run_command", { command: shortCommand })),
-    ),
-  );
-  cases.push(
-    await measure("start_command", processIterations, async () => {
-      const started = process.hrtime.bigint();
-      const result = await executeTool(context, "start_command", { command: interactiveCommand });
-      const duration = process.hrtime.bigint() - started;
-      await executeTool(context, "kill_command", { processId: getProcessId(result) });
-      killAllProcesses();
-      return duration;
-    }),
-  );
-  cases.push(
-    await measure("kill_command", processIterations, async () => {
-      const result = await executeTool(context, "start_command", { command: interactiveCommand });
-      const duration = await elapsed(() =>
-        executeTool(context, "kill_command", { processId: getProcessId(result) }),
-      );
-      killAllProcesses();
-      return duration;
-    }),
-  );
-
-  const persistent = await executeTool(context, "start_command", { command: interactiveCommand });
-  const persistentId = getProcessId(persistent);
-  cases.push(
-    await measure("send_command_input", fileIterations, () =>
-      elapsed(() =>
-        executeTool(context, "send_command_input", {
-          processId: persistentId,
-          data: "ping",
-          newline: true,
-        }),
-      ),
-    ),
-  );
-  await executeTool(context, "send_command_input", {
-    processId: persistentId,
-    data: "x".repeat(150_000),
-    newline: false,
-  });
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  cases.push(
-    await measure("get_command_output", fileIterations, () =>
-      elapsed(() =>
-        executeTool(context, "get_command_output", { processId: persistentId, cursor: 0 }),
-      ),
-    ),
-  );
-  await executeTool(context, "kill_command", { processId: persistentId });
-  killAllProcesses();
-  return { engine: "typescript", cases };
+async function benchmarkRust(suite: Suite, root: string): Promise<BenchmarkResult> {
+  return JSON.parse(await runExample(root, ["--suite", suite])) as BenchmarkResult;
 }
 
-async function benchmarkRust(root: string): Promise<BenchmarkResult> {
+async function runExample(root: string, extra: string[]): Promise<string> {
   await run("cargo", ["build", "--locked", "--release", "--example", "compare_tools"]);
 
-  const runArguments = [
+  const arguments_ = [
     "run",
     "--quiet",
     "--locked",
@@ -201,16 +109,16 @@ async function benchmarkRust(root: string): Promise<BenchmarkResult> {
     "--",
     "--fixture",
     root,
+    ...extra,
   ];
-  if (QUICK) runArguments.push("--quick");
-  const output = await run("cargo", runArguments, true);
-  return JSON.parse(output) as BenchmarkResult;
+  if (QUICK) arguments_.push("--quick");
+  return run("cargo", arguments_, true);
 }
 
 function run(command: string, arguments_: string[], capture = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, arguments_, {
-      cwd: ROOT,
+      cwd: join(ROOT, ".."),
       stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
     });
     let output = "";
@@ -226,72 +134,23 @@ function run(command: string, arguments_: string[], capture = false): Promise<st
   });
 }
 
-function compare(typescript: BenchmarkResult, rust: BenchmarkResult): Comparison[] {
-  if (typescript.cases.length !== 10 || rust.cases.length !== 10) {
-    throw new Error("Both engines must report all ten tool calls");
-  }
-  const rustCases = new Map(rust.cases.map((result) => [result.name, result]));
-  return typescript.cases.map((tsCase) => {
-    const rustCase = rustCases.get(tsCase.name);
-    if (!rustCase) throw new Error(`Rust result is missing ${tsCase.name}`);
-    if (rustCase.iterations !== tsCase.iterations || rustCase.samples !== tsCase.samples) {
-      throw new Error(`The engines used different sample settings for ${tsCase.name}`);
-    }
-    if (!(tsCase.medianNs > 0) || !(rustCase.medianNs > 0)) {
-      throw new Error(`The engines reported an invalid duration for ${tsCase.name}`);
-    }
-    return {
-      name: tsCase.name,
-      iterations: tsCase.iterations,
-      typescriptNs: tsCase.medianNs,
-      rustNs: rustCase.medianNs,
-      speedup: tsCase.medianNs / rustCase.medianNs,
-    };
-  });
-}
-
-function geometricMean(values: number[]): number {
-  return Math.exp(values.reduce((sum, value) => sum + Math.log(value), 0) / values.length);
-}
-
-function duration(nanoseconds: number): string {
-  if (nanoseconds >= 1_000_000) return `${(nanoseconds / 1_000_000).toFixed(2)} ms`;
-  if (nanoseconds >= 1_000) return `${(nanoseconds / 1_000).toFixed(2)} us`;
-  return `${nanoseconds.toFixed(0)} ns`;
-}
-
-function printTable(comparisons: Comparison[], mean: number): void {
-  console.log("| tool call | TypeScript | Rust | Rust speedup | winner |");
-  console.log("| --- | ---: | ---: | ---: | --- |");
-  for (const result of comparisons) {
-    const winner = result.speedup >= 1 ? "Rust" : "TypeScript";
-    console.log(
-      `| ${result.name} | ${duration(result.typescriptNs)} | ${duration(result.rustNs)} | ${result.speedup.toFixed(2)}x | ${winner} |`,
-    );
-  }
-  console.log(`\nGeometric mean Rust speedup: ${mean.toFixed(2)}x`);
-}
-
-const typescriptRoot = await createFixture("exeora-ts-tools-");
-const rustRoot = await createFixture("exeora-rust-tools-");
+const report: Record<string, { comparisons: Comparison[]; geometricMean: number }> = {};
 try {
-  const typescript = await benchmarkTypescript(typescriptRoot);
-  const rust = await benchmarkRust(rustRoot);
-  const comparisons = compare(typescript, rust);
-  const mean = geometricMean(comparisons.map((result) => result.speedup));
+  for (const suite of SUITES) {
+    const comparisons = await runSuite(suite);
+    if (comparisons.length === 0) continue;
+    const mean = geometricMean(comparisons.map((result) => result.speedup));
+    report[suite] = { comparisons, geometricMean: mean };
 
-  if (JSON_OUTPUT)
-    console.log(JSON.stringify({ typescript, rust, comparisons, geometricMean: mean }));
-  else printTable(comparisons, mean);
-
-  if (CHECK && mean < 1) {
-    console.error(`Rust regressed: geometric mean speedup is ${mean.toFixed(2)}x (minimum 1.00x).`);
-    process.exitCode = 1;
+    if (!JSON_OUTPUT) printTable(`${suite} suite`, comparisons);
+    if (CHECK && mean < 1) {
+      console.error(
+        `Rust regressed in the ${suite} suite: geometric mean speedup is ${mean.toFixed(2)}x (minimum 1.00x).`,
+      );
+      process.exitCode = 1;
+    }
   }
+  if (JSON_OUTPUT) console.log(JSON.stringify(report));
 } finally {
   killAllProcesses();
-  await Promise.all([
-    rm(typescriptRoot, { recursive: true, force: true }),
-    rm(rustRoot, { recursive: true, force: true }),
-  ]);
 }
