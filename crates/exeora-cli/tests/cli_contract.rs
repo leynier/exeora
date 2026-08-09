@@ -1,0 +1,63 @@
+use assert_cmd::Command;
+use predicates::prelude::*;
+use serde_json::json;
+
+use exeora_cli::protocol::{ToolResult, WireError};
+
+#[test]
+fn exposes_the_legacy_command_surface_and_version_flag() {
+    Command::cargo_bin("exeora")
+        .unwrap()
+        .arg("-v")
+        .assert()
+        .success()
+        .stdout("exeora 0.8.0\n");
+
+    Command::cargo_bin("exeora")
+        .unwrap()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("login")
+                .and(predicate::str::contains("logout"))
+                .and(predicate::str::contains("gateway"))
+                .and(predicate::str::contains("device"))
+                .and(predicate::str::contains("project"))
+                .and(predicate::str::contains("connect"))
+                .and(predicate::str::contains("status"))
+                .and(predicate::str::contains("logs"))
+                .and(predicate::str::contains("init"))
+                .and(predicate::str::contains("prompt"))
+                .and(predicate::str::contains("sync"))
+                .and(predicate::str::contains("upgrade")),
+        );
+}
+
+#[test]
+fn serializes_wire_results_with_boolean_discriminators() {
+    assert_eq!(
+        serde_json::to_value(ToolResult::ok(json!({"answer": 42}))).unwrap(),
+        json!({"ok": true, "value": {"answer": 42}})
+    );
+    assert_eq!(
+        serde_json::to_value(ToolResult::err(WireError::new(
+            exeora_cli::error::ErrorCode::ToolFailed,
+            "failed",
+        )))
+        .unwrap(),
+        json!({"ok": false, "error": {"code": "TOOL_FAILED", "message": "failed"}})
+    );
+}
+
+#[test]
+fn json_mode_keeps_errors_machine_readable() {
+    let config = tempfile::NamedTempFile::new().unwrap();
+    Command::cargo_bin("exeora")
+        .unwrap()
+        .env("EXEORA_CONFIG_PATH", config.path())
+        .args(["--json", "status"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::starts_with("{\"error\":"));
+}

@@ -1,5 +1,6 @@
 ---
-import { GITHUB_URL, QUICKSTART } from "../lib/site.js";
+import { GITHUB_URL } from "../lib/site.js";
+import InstallCommands from "./InstallCommands.astro";
 
 /**
  * Hero and client proof in one unit: the promise, the command, and the agents
@@ -112,35 +113,18 @@ const clients = [
       </a>
     </div>
 
-    <!-- One command. It signs in, registers the machine and registers the
-         directory only when those are missing, so there is nothing to run
-         before it and nothing to read first. -->
     <div
-      class="animate-fade-in-up opacity-0-initial border-border bg-surface mx-auto mt-12 flex max-w-xl items-center gap-3 rounded-xl border py-3 pr-3 pl-4 text-left"
+      class="animate-fade-in-up opacity-0-initial mx-auto mt-12 max-w-2xl"
       style="animation-delay: 400ms"
     >
-      <!-- The `$` prompt is drawn with ::before so it stays out of
-           textContent, and copying yields a runnable command. -->
-      <code
-        id="hero-quickstart"
-        class="text-foreground before:text-foreground-faint min-w-0 flex-1 truncate font-mono text-[13px] before:content-['$_'] before:select-none sm:text-[15px]"
-        >{QUICKSTART}</code
-      >
-      <button
-        type="button"
-        data-copy-target="hero-quickstart"
-        class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
-      >
-        <span data-copy-label>Copy</span>
-      </button>
+      <InstallCommands id="hero" />
     </div>
 
     <p
       class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-4"
       style="animation-delay: 460ms"
     >
-      Run it in the directory you want to serve. It signs you in and registers the machine on the
-      way
+      Native Rust CLI. Install once, then run it in the directory you want to serve.
     </p>
   </div>
 

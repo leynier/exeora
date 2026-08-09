@@ -1,5 +1,6 @@
 ---
-import { GITHUB_URL, NPM_URL, QUICKSTART } from "../lib/site.js";
+import { GITHUB_URL, RELEASES_URL } from "../lib/site.js";
+import InstallCommands from "./InstallCommands.astro";
 ---
 
 <section class="defer-offscreen-rendering border-border-subtle relative overflow-hidden border-t px-6 py-24">
@@ -12,22 +13,7 @@ import { GITHUB_URL, NPM_URL, QUICKSTART } from "../lib/site.js";
       Run it wherever the work is. Open source under AGPL-3.0 - every line is on GitHub.
     </p>
 
-    <div
-      class="border-border bg-surface mx-auto mt-8 flex max-w-xl items-center gap-3 rounded-xl border py-3 pr-3 pl-4 text-left"
-    >
-      <code
-        id="cta-quickstart"
-        class="text-foreground before:text-foreground-faint min-w-0 flex-1 truncate font-mono text-[13px] before:content-['$_'] before:select-none sm:text-[15px]"
-        >{QUICKSTART}</code
-      >
-      <button
-        type="button"
-        data-copy-target="cta-quickstart"
-        class="text-label-md text-foreground-muted hover:text-foreground border-border hover:border-foreground-faint/30 shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
-      >
-        <span data-copy-label>Copy</span>
-      </button>
-    </div>
+    <div class="mx-auto mt-8 max-w-xl"><InstallCommands id="cta" /></div>
 
     <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
       <a
@@ -47,9 +33,9 @@ import { GITHUB_URL, NPM_URL, QUICKSTART } from "../lib/site.js";
     </div>
 
     <p class="text-body-md text-foreground-faint mt-8">
-      Requires Node 22 or newer · macOS, Linux and Windows ·{" "}
-      <a href={NPM_URL} target="_blank" rel="noopener" class="hover:text-foreground underline-offset-2 hover:underline"
-        >CLI on npm</a
+      No Node.js runtime · macOS, Linux and Windows ·{" "}
+      <a href={RELEASES_URL} target="_blank" rel="noopener" class="hover:text-foreground underline-offset-2 hover:underline"
+        >Native releases</a
       >
     </p>
   </div>

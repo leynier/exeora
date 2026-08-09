@@ -82,6 +82,21 @@ const jsonLd = {
       // in with `data-copy-target="<id of the element holding the text>"`,
       // which keeps the markup declarative and the JS to a single block.
       document.addEventListener("click", async (event) => {
+        const platform = (event.target as HTMLElement).closest<HTMLElement>(
+          "[data-install-platform]",
+        );
+        if (platform) {
+          const selector = platform.closest<HTMLElement>("[data-install-selector]");
+          const command = selector?.querySelector<HTMLElement>("[data-install-command]");
+          if (selector && command && platform.dataset.command) {
+            command.textContent = platform.dataset.command;
+            for (const option of selector.querySelectorAll<HTMLElement>("[data-install-platform]")) {
+              option.setAttribute("aria-pressed", String(option === platform));
+            }
+          }
+          return;
+        }
+
         const button = (event.target as HTMLElement).closest<HTMLElement>("[data-copy-target]");
         if (!button) return;
 

@@ -19,6 +19,23 @@ permissions:
   contents: read
 
 jobs:
+  installers:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Exercise Unix platform routing and checksums
+        if: runner.os == 'Linux'
+        run: sh scripts/test-installers.sh
+
+      - name: Parse the PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '[scriptblock]::Create((Get-Content -Raw install.ps1)) | Out-Null'
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +47,27 @@ jobs:
 
       - name: Install
         run: bun install --frozen-lockfile
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify generated Rust protocol contract
+        run: |
+          bun run protocol:rust
+          git diff --exit-code -- crates/exeora-cli/protocol crates/exeora-cli/src/generated
+
+      - name: Check native CLI
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+          cargo bench --workspace --no-run
+
+      - name: Compare Rust and TypeScript tool-call performance
+        run: bun run check:tool-performance
 
       - name: Lint and format
         run: bun run check

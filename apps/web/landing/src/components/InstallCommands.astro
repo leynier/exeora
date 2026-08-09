@@ -1,0 +1,56 @@
+---
+import { INSTALL_COMMANDS, QUICKSTART } from "../lib/site.js";
+
+interface Props {
+  id: string;
+}
+
+const { id } = Astro.props;
+---
+
+<div data-install-selector class="border-border bg-surface overflow-hidden rounded-xl border text-left">
+  <div class="border-border-subtle flex items-center border-b px-2 pt-2">
+    {
+      Object.entries(INSTALL_COMMANDS).map(([platform, command], index) => (
+        <button
+          type="button"
+          data-install-platform={platform}
+          data-command={command}
+          aria-pressed={index === 0 ? "true" : "false"}
+          class="text-label-md text-foreground-faint aria-pressed:bg-bg aria-pressed:text-foreground hover:text-foreground rounded-t-md px-3 py-2 font-mono capitalize transition-colors duration-fast"
+        >
+          {platform === "macos" ? "macOS" : platform === "windows" ? "Windows" : "Linux"}
+        </button>
+      ))
+    }
+  </div>
+
+  <div class="divide-border-subtle divide-y">
+    <div class="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4">
+      <span class="text-label-md text-foreground-faint font-mono" aria-hidden="true">01</span>
+      <code id={`${id}-install`} data-install-command class="text-foreground min-w-0 flex-1 truncate font-mono text-[12px] sm:text-[13px]"
+        >{INSTALL_COMMANDS.macos}</code
+      >
+      <button
+        type="button"
+        data-copy-target={`${id}-install`}
+        class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+      >
+        <span data-copy-label>Copy</span>
+      </button>
+    </div>
+    <div class="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4">
+      <span class="text-label-md text-foreground-faint font-mono" aria-hidden="true">02</span>
+      <code id={`${id}-connect`} class="text-foreground min-w-0 flex-1 truncate font-mono text-[12px] sm:text-[13px]"
+        >{QUICKSTART}</code
+      >
+      <button
+        type="button"
+        data-copy-target={`${id}-connect`}
+        class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+      >
+        <span data-copy-label>Copy</span>
+      </button>
+    </div>
+  </div>
+</div>

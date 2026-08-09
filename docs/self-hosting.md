@@ -112,14 +112,14 @@ The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets
 The published CLI talks to `https://exeora.dev` until you tell it otherwise. Tell it once:
 
 ```bash
-npx @exeora/cli gateway use https://your.example.com
-npx @exeora/cli connect
+exeora gateway use https://your.example.com
+exeora connect
 ```
 
 Or in one step, which is the same thing followed immediately by `connect`:
 
 ```bash
-npx @exeora/cli connect --gateway https://your.example.com
+exeora connect --gateway https://your.example.com
 ```
 
 The choice is stored, so every later command talks to your gateway with no flag and no variable. `exeora gateway` prints the active one, and `exeora gateway reset` goes back to the hosted one.

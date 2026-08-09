@@ -9,7 +9,10 @@ import { CopyButton } from "./CopyButton.js";
  * those is missing, so the empty dashboard hands over one line.
  */
 
-const COMMAND = "npx @exeora/cli connect";
+const COMMAND = "exeora connect";
+const LINUX_INSTALL = "curl -fsSL https://exeora.dev/linux/install.sh | sh";
+const MACOS_INSTALL = "curl -fsSL https://exeora.dev/macos/install.sh | sh";
+const WINDOWS_INSTALL = "irm https://exeora.dev/windows/install.ps1 | iex";
 
 export function Onboarding() {
   return (
@@ -34,11 +37,18 @@ export function Onboarding() {
       </p>
 
       <div className="text-body-md text-foreground-faint border-border-subtle mt-7 space-y-2 border-t pt-5">
-        <p>Requires Node 22 or newer.</p>
-        <p>
-          To keep the binary on your PATH instead:{" "}
-          <code className="font-mono">npm install -g @exeora/cli</code>, then{" "}
-          <code className="font-mono">exeora connect</code>.
+        <p>Install the native Rust CLI first. It does not require Node.js.</p>
+        <p className="break-all">
+          <span className="text-foreground-muted">Linux:</span>{" "}
+          <code className="font-mono">{LINUX_INSTALL}</code>
+        </p>
+        <p className="break-all">
+          <span className="text-foreground-muted">macOS:</span>{" "}
+          <code className="font-mono">{MACOS_INSTALL}</code>
+        </p>
+        <p className="break-all">
+          <span className="text-foreground-muted">Windows PowerShell:</span>{" "}
+          <code className="font-mono">{WINDOWS_INSTALL}</code>
         </p>
       </div>
 

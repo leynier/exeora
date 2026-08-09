@@ -23,12 +23,21 @@ claude mcp add --transport http exeora <the URL>
 
 Leave `connect` running: nothing is served while it is not.
 
-Requires Node 22 or newer. To keep the binary on your PATH instead of going through `npx`:
+Requires Node 22 or newer. To keep the binary on your PATH instead of going through `npx`, install
+it globally with your preferred package manager:
 
 ```bash
 npm install -g @exeora/cli
+# pnpm add --global @exeora/cli
+# yarn global add @exeora/cli
+# bun add --global @exeora/cli
+# volta install @exeora/cli
 exeora connect
 ```
+
+Later, `exeora upgrade` detects which of those package managers owns the running executable and uses
+the same one to install `@exeora/cli@latest`. For unusual custom layouts, set
+`EXEORA_PACKAGE_MANAGER` to `npm`, `pnpm`, `yarn`, `bun`, or `volta`.
 
 | Command | What it does |
 |---|---|
@@ -42,6 +51,7 @@ exeora connect
 | `status` | Show registration, gateway and projects |
 | `logs` | Recent tool calls: what ran, which client asked, and how it ended |
 | `init [path]` | Write an `exeora.toml` restricting what agents may do in a directory |
+| `upgrade` | Upgrade through the package manager that owns this installation |
 
 Everything below `connect` in that table is what `connect` does for you. They stay because a script sometimes wants one step without the others.
 

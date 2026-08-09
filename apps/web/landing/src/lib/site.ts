@@ -3,8 +3,8 @@
 /** Public source tree. */
 export const GITHUB_URL = "https://github.com/leynier/exeora";
 
-/** Published CLI package. */
-export const NPM_URL = "https://www.npmjs.com/package/@exeora/cli";
+/** Native executables and their signed release checksums. */
+export const RELEASES_URL = `${GITHUB_URL}/releases/latest`;
 
 /**
  * The one command a first-time visitor runs.
@@ -13,7 +13,10 @@ export const NPM_URL = "https://www.npmjs.com/package/@exeora/cli";
  * any of those is missing, so there is nothing to run before it. The package
  * is scoped because npm would not give up the bare name.
  */
-export const QUICKSTART = "npx @exeora/cli connect";
+export const QUICKSTART = "exeora connect";
 
-/** For anyone who would rather have the binary on their PATH. */
-export const GLOBAL_INSTALL = "npm install -g @exeora/cli";
+export const INSTALL_COMMANDS = {
+  macos: "curl -fsSL https://exeora.dev/macos/install.sh | sh",
+  linux: "curl -fsSL https://exeora.dev/linux/install.sh | sh",
+  windows: "irm https://exeora.dev/windows/install.ps1 | iex",
+} as const;

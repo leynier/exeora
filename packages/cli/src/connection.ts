@@ -277,7 +277,7 @@ async function handleMessage(
       if (message.latestCliVersion && isOutdated(CLI_VERSION, message.latestCliVersion)) {
         events.onNotice?.(
           `A newer Exeora CLI is available (${CLI_VERSION} → ${message.latestCliVersion}). ` +
-            "Update with `npm i -g @exeora/cli`.",
+            "Run `exeora upgrade`.",
         );
       }
       return;

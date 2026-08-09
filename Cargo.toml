@@ -1,0 +1,18 @@
+[workspace]
+members = ["crates/exeora-cli", "crates/exeora-protocol-gen"]
+resolver = "2"
+
+[workspace.package]
+version = "0.8.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "AGPL-3.0-only"
+authors = ["Leynier Gutiérrez González <leynier41@gmail.com>"]
+repository = "https://github.com/leynier/exeora"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

@@ -61,6 +61,10 @@ import Doc from "../../layouts/Doc.astro";
         <td><code>sync</code></td>
         <td>Reconcile this machine's registration and projects with the dashboard</td>
       </tr>
+      <tr>
+        <td><code>upgrade</code></td>
+        <td>Update the installed native binary or global registry package</td>
+      </tr>
     </tbody>
   </table>
 
@@ -127,6 +131,25 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     See <a href="/docs/agent-prompt/">the agent prompt</a> for what it says and the other three ways
     to get it.
+  </p>
+
+  <h2>upgrade</h2>
+
+  <p>
+    <code>exeora upgrade</code> follows the distribution currently running. The native Rust CLI
+    downloads the newest stable GitHub release for this operating system and CPU, verifies its
+    published SHA-256 checksum, and safely replaces itself. The Node.js CLI detects whether npm,
+    pnpm, Yarn Classic, Bun, or Volta owns its executable, then runs that manager's global upgrade
+    for <code>@exeora/cli</code>.
+  </p>
+
+  <p>
+    Native installations need write access to the executable. Installations made with the standard
+    scripts live in a user-owned directory, so they do not normally need elevated privileges.
+    Temporary Node.js executions such as <code>npx</code>, <code>pnpm dlx</code>, and
+    <code>bunx</code> have no persistent installation to update. For a nonstandard global layout,
+    set <code>EXEORA_PACKAGE_MANAGER</code> to <code>npm</code>, <code>pnpm</code>,
+    <code>yarn</code>, <code>bun</code>, or <code>volta</code> before upgrading.
   </p>
 
   <h2>Machine-readable output</h2>

@@ -1,0 +1,653 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExeoraProtocolTypes",
+  "type": "object",
+  "properties": {
+    "executorMessage": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "hello"
+            },
+            "protocolVersion": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "deviceId": {
+              "type": "string"
+            },
+            "cliVersion": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "projects": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "capabilities": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "boolean"
+                },
+                "tools": {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                }
+              },
+              "required": [
+                "prompt",
+                "tools"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "protocolVersion",
+            "deviceId",
+            "cliVersion",
+            "platform",
+            "projects"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "heartbeat"
+            },
+            "at": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "presence"
+            },
+            "at": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool.result"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "result": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "ok",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "LOCAL_EXECUTOR_OFFLINE",
+                            "TOOL_TIMEOUT",
+                            "CANCELLED",
+                            "PATH_ESCAPE",
+                            "PATH_NOT_FOUND",
+                            "TOOL_FAILED",
+                            "INVALID_ARGUMENTS",
+                            "UNKNOWN_TOOL",
+                            "UNKNOWN_PROJECT",
+                            "NO_ACTIVE_PROJECT",
+                            "FORBIDDEN",
+                            "APPROVAL_DECLINED",
+                            "APPROVAL_TIMEOUT",
+                            "INTERNAL_ERROR"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "durationMs",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "approval.answer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "approved": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "approved"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "relayMessage": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "hello.ack"
+            },
+            "serverTime": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "heartbeatIntervalMs": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "latestCliVersion": {
+              "type": "string"
+            },
+            "heartbeatMode": {
+              "type": "string",
+              "const": "auto"
+            }
+          },
+          "required": [
+            "type",
+            "serverTime",
+            "heartbeatIntervalMs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "heartbeat.ack"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool.call"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string",
+              "enum": [
+                "read_file",
+                "list_files",
+                "grep",
+                "edit_file",
+                "write_file",
+                "run_command",
+                "start_command",
+                "get_command_output",
+                "send_command_input",
+                "kill_command"
+              ]
+            },
+            "arguments": {},
+            "client": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "policy": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "allow_all",
+                    "allow_list",
+                    "read_only"
+                  ]
+                },
+                "allow": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deny": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "shell": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "approve": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "tools": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "read_file",
+                          "list_files",
+                          "grep",
+                          "edit_file",
+                          "write_file",
+                          "run_command",
+                          "start_command",
+                          "get_command_output",
+                          "send_command_input",
+                          "kill_command"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "allow",
+                "deny",
+                "shell",
+                "approve",
+                "tools"
+              ],
+              "additionalProperties": false
+            },
+            "issuedAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "projectId",
+            "tool",
+            "arguments",
+            "issuedAt",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "cancel"
+            },
+            "requestId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "requestId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "shutdown"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "reason"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "approval.request"
+            },
+            "id": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string",
+              "enum": [
+                "read_file",
+                "list_files",
+                "grep",
+                "edit_file",
+                "write_file",
+                "run_command",
+                "start_command",
+                "get_command_output",
+                "send_command_input",
+                "kill_command"
+              ]
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "client": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "projectId",
+            "tool",
+            "prompt",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "approval.resolved"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "commandPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "allow_all",
+            "allow_list",
+            "read_only"
+          ]
+        },
+        "allow": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "default": false,
+          "type": "boolean"
+        },
+        "approve": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tools": {
+          "default": null,
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "read_file",
+                  "list_files",
+                  "grep",
+                  "edit_file",
+                  "write_file",
+                  "run_command",
+                  "start_command",
+                  "get_command_output",
+                  "send_command_input",
+                  "kill_command"
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "allow",
+        "deny",
+        "shell",
+        "approve",
+        "tools"
+      ],
+      "additionalProperties": false
+    },
+    "localCommandPolicy": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "allow_all",
+            "allow_list",
+            "read_only"
+          ]
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shell": {
+          "type": "boolean"
+        },
+        "approve": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read_file",
+              "list_files",
+              "grep",
+              "edit_file",
+              "write_file",
+              "run_command",
+              "start_command",
+              "get_command_output",
+              "send_command_input",
+              "kill_command"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "executorMessage",
+    "relayMessage",
+    "commandPolicy",
+    "localCommandPolicy"
+  ],
+  "additionalProperties": false
+}

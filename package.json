@@ -23,14 +23,19 @@
     "db:migrate:local": "bun run --cwd apps/gateway db:migrate:local",
     "db:migrate": "bun run --cwd apps/gateway db:migrate",
     "types": "bun run --cwd apps/gateway types",
-    "secret": "bun run --cwd apps/gateway secret"
+    "secret": "bun run --cwd apps/gateway secret",
+    "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen",
+    "bench:tools": "bun run scripts/compare-tool-performance.ts",
+    "check:tool-performance": "bun run scripts/compare-tool-performance.ts --check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
     "@exeora/design": "workspace:*",
     "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "latest",
     "fflate": "^0.8.3",
     "typescript": "7.0.2",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "zod": "4.4.3"
   }
 }

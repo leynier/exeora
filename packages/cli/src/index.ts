@@ -10,6 +10,7 @@ import * as project from "./commands/project.js";
 import * as prompt from "./commands/prompt.js";
 import * as status from "./commands/status.js";
 import * as sync from "./commands/sync.js";
+import * as upgrade from "./commands/upgrade.js";
 import { asJson, configureOutput } from "./output.js";
 import { interactive, maybeAskForStar } from "./star.js";
 import { CLI_VERSION } from "./version.js";
@@ -50,5 +51,6 @@ logs.register(program);
 init.register(program);
 prompt.register(program);
 sync.register(program);
+upgrade.register(program);
 
 program.parseAsync(process.argv);

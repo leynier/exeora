@@ -18,6 +18,7 @@
       "!**/public",
       "!**/.astro",
       "!**/.wrangler",
+      "!crates/exeora-cli/protocol/*.json",
       "!**/worker-configuration.d.ts"
     ]
   },

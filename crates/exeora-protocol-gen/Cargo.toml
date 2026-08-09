@@ -1,0 +1,16 @@
+[package]
+name = "exeora-protocol-gen"
+description = "Generate checked-in Rust protocol types from Exeora JSON Schema"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1.0.100"
+serde_json = "1.0.145"
+typify = "0.7.0"
+schemars = "0.8.22"
+prettyplease = "0.2.37"
+syn = { version = "2.0.108", features = ["full"] }

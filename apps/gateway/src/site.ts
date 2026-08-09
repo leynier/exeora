@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { internal } from "./api/internal.js";
 import { serveAssets } from "./assets.js";
 import "./env.js";
+import { installers } from "./installers.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
@@ -18,6 +19,7 @@ import { oauthRoutes } from "./oauth/routes.js";
 
 /** Everything else: the OAuth screens, then the static site. */
 export const site = new Hono<{ Bindings: Env }>();
+site.route("/", installers);
 site.route("/", oauthRoutes);
 
 // Here rather than on `authenticated`, because the caller is a scheduled job

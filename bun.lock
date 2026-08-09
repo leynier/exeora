@@ -8,9 +8,11 @@
         "@biomejs/biome": "2.5.7",
         "@exeora/design": "workspace:*",
         "@resvg/resvg-js": "^2.6.2",
+        "@types/node": "latest",
         "fflate": "^0.8.3",
         "typescript": "7.0.2",
         "vitest": "4.1.10",
+        "zod": "4.4.3",
       },
     },
     "apps/gateway": {
@@ -58,7 +60,7 @@
     },
     "packages/cli": {
       "name": "@exeora/cli",
-      "version": "0.5.0",
+      "version": "0.8.0",
       "bin": {
         "exeora": "./bin/index.mjs",
       },

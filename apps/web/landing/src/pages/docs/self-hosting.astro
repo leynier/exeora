@@ -101,12 +101,12 @@ bun run deploy`}</pre>
   <p>
     The published CLI talks to <code>https://exeora.dev</code> until you tell it otherwise. Tell it once, and the choice is stored: every later command talks to your gateway with no flag and no variable.
   </p>
-  <pre>{`npx @exeora/cli gateway use https://your.example.com
-npx @exeora/cli connect`}</pre>
+  <pre>{`exeora gateway use https://your.example.com
+exeora connect`}</pre>
   <p>
     Or in one step, which is the same thing followed immediately by <code>connect</code>.
   </p>
-  <pre>{`npx @exeora/cli connect --gateway https://your.example.com`}</pre>
+  <pre>{`exeora connect --gateway https://your.example.com`}</pre>
   <p>
     <code>exeora gateway</code> prints the active one and <code>exeora gateway reset</code> goes back to the hosted one. One gateway is active at a time: switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI says what it is about to forget and asks first.
   </p>

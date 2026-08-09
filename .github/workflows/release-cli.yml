@@ -20,6 +20,54 @@ jobs:
   check:
     uses: ./.github/workflows/ci.yml
 
+  build-native:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ""
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            suffix: ""
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            suffix: ""
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            suffix: ""
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build native executable
+        run: cargo build --locked --release -p exeora-cli --target ${{ matrix.target }}
+
+      - name: Stage executable
+        shell: bash
+        run: |
+          mkdir native
+          cp "target/${{ matrix.target }}/release/exeora${{ matrix.suffix }}" "native/exeora-${{ matrix.target }}${{ matrix.suffix }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exeora-${{ matrix.target }}
+          path: native/*
+          if-no-files-found: error
+
   publish:
     needs: check
     runs-on: ubuntu-latest
@@ -53,8 +101,9 @@ jobs:
         run: |
           tagged="${GITHUB_REF_NAME#cli-v}"
           declared="$(node -p "require('./packages/cli/package.json').version")"
-          if [ "$tagged" != "$declared" ]; then
-            echo "Tag $GITHUB_REF_NAME says $tagged, packages/cli/package.json says $declared." >&2
+          rust_declared="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          if [ "$tagged" != "$declared" ] || [ "$tagged" != "$rust_declared" ]; then
+            echo "Tag $GITHUB_REF_NAME says $tagged, npm says $declared and Cargo says $rust_declared." >&2
             exit 1
           fi
 
@@ -93,8 +142,15 @@ jobs:
         run: npm publish --provenance --access public
         working-directory: packages/cli
 
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Publish Rust crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked -p exeora-cli
+
   release:
-    needs: publish
+    needs: [publish, build-native]
     runs-on: ubuntu-latest
     permissions:
       # Publishing to npm only needed to read the repo; creating a release
@@ -102,6 +158,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: exeora-*
+          path: native
+          merge-multiple: true
+
+      - name: Write checksums
+        run: |
+          cd native
+          sha256sum exeora-* > checksums-sha256.txt
 
       - name: Create the GitHub release
         env:
@@ -114,4 +181,4 @@ jobs:
           if [[ "$version" == *-* ]]; then
             args+=(--prerelease)
           fi
-          gh release create "$GITHUB_REF_NAME" "${args[@]}"
+          gh release create "$GITHUB_REF_NAME" native/* "${args[@]}"

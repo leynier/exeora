@@ -8,7 +8,9 @@ Thanks for looking at the source. This file is how to run Exeora locally, check 
 |---|---|
 | `packages/protocol` | Tool contract (zod) and relay wire format. Shared by CLI and gateway. |
 | `packages/design` | Design tokens used by the landing, dashboard and OAuth screens. |
-| `packages/cli` | The `exeora` binary published as [`@exeora/cli`](https://www.npmjs.com/package/@exeora/cli). |
+| `crates/exeora-cli` | Native Rust `exeora` binary and high-performance local tool executor. |
+| `crates/exeora-protocol-gen` | Checked-in Rust types generated from the canonical Zod schemas. |
+| `packages/cli` | Compatible Node.js CLI published as [`@exeora/cli`](https://www.npmjs.com/package/@exeora/cli). |
 | `apps/gateway` | Cloudflare Worker: OAuth, MCP, relay, dashboard API, static site. |
 | `apps/web` | Astro landing + docs, React dashboard. Built here, served by the gateway. |
 
@@ -16,7 +18,7 @@ Product documentation sources live under `apps/web/landing/src/pages/docs/`, ord
 
 ## Development
 
-Requires Node 22+ and [Bun](https://bun.sh).
+Requires Node 22+, [Bun](https://bun.sh), and the pinned Rust toolchain from `rust-toolchain.toml`.
 
 ```bash
 bun install
@@ -50,7 +52,21 @@ bun run --cwd apps/web dev:dashboard   # Vite, proxying /api and /oauth to :8787
 bun run typecheck
 bun run test      # node and workerd projects
 bun run check     # Biome
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bun run bench:tools                 # Rust vs TypeScript, all ten tool calls
+bun run check:tool-performance      # same comparison and overall CI gate
 ```
+
+The TypeScript schemas remain canonical. Run `bun run protocol:rust` after changing anything under `packages/protocol`; CI regenerates the JSON contract and Rust types and fails if the checked-in output drifts.
+
+The tool performance comparison excludes fixture creation and runner startup,
+warms both engines, and reports median per-call latency from equivalent
+operations. Its speedup is `TypeScript latency / Rust latency`, so values above
+`1.00x` favor Rust. CI gates on the geometric mean instead of requiring every
+individual call to win, because subprocess scheduling is noisy on shared
+runners.
 
 The gateway's tests run inside workerd through `@cloudflare/vitest-pool-workers`, so the Durable Object, WebSocket hibernation and D1 are the real implementations rather than stand-ins.
 
@@ -85,7 +101,7 @@ git commit -am "release: cli v0.1.1" && git tag cli-v0.1.1
 git push && git push --tags
 ```
 
-The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, checks that the tag agrees with `package.json`, builds, and publishes to npm. Authentication is npm trusted publishing over OIDC, so there is no token in the repository secrets; the trusted publisher is configured on the package's page on npmjs.com and points at this workflow.
+The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, checks that the tag agrees with both manifests, publishes npm and crates.io packages, builds native Linux, macOS Intel, macOS Apple Silicon and Windows binaries, and attaches checksums to a GitHub release. npm uses trusted publishing over OIDC; crates.io uses `CARGO_REGISTRY_TOKEN`.
 
 A stable tag must also agree with `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish otherwise, so bumping the var and letting it deploy is part of the release, not an afterthought. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
 
@@ -97,7 +113,7 @@ Set `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc` to the version being p
 
 **Adding to the protocol does not break installed CLIs.** The relay serves the range `MIN_SUPPORTED_PROTOCOL_VERSION` to `PROTOCOL_VERSION`, and anything a newer CLI gained is negotiated: the executor announces `capabilities` in its `hello`, and the gateway advertises only the tools it named. Raise `MIN_SUPPORTED_PROTOCOL_VERSION` only for a change an old CLI would get actively *wrong*, as opposed to one it would merely not have, and expect that to disconnect everyone below it. Merge first so the gateway deploys, then tag, never the other way around.
 
-The CLI's version lives in `packages/cli/package.json` and nowhere else. tsdown substitutes it into the bundle, and `packages/cli/src/version.ts` reports `0.0.0-dev` when the sources are run directly.
+The CLI version must agree between `packages/cli/package.json`, the workspace version in `Cargo.toml`, and `LATEST_CLI_VERSION` for stable releases. tsdown substitutes the npm version into the bundle, while Rust reads it from Cargo at compile time.
 
 ## Pull requests
 

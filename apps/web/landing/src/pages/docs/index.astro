@@ -1,6 +1,6 @@
 ---
+import InstallCommands from "../../components/InstallCommands.astro";
 import Doc from "../../layouts/Doc.astro";
-import { GLOBAL_INSTALL, QUICKSTART } from "../../lib/site.js";
 ---
 
 <Doc
@@ -15,10 +15,12 @@ import { GLOBAL_INSTALL, QUICKSTART } from "../../lib/site.js";
     why the same command works on a laptop behind NAT and on a box behind a corporate firewall.
   </p>
 
-  <h2>Run it</h2>
+  <h2>Install and run it</h2>
+
+  <InstallCommands id="docs-getting-started" />
 
   <pre>cd the-project-you-want-to-serve
-{QUICKSTART}</pre>
+exeora connect</pre>
 
   <p>
     That is the whole setup. <code>connect</code> opens a browser to sign in if you are not signed
@@ -31,9 +33,16 @@ import { GLOBAL_INSTALL, QUICKSTART } from "../../lib/site.js";
     <code>connect</code> running: nothing is served while it is not.
   </p>
 
-  <p>Requires Node 22 or newer. To keep the binary on your PATH instead of going through npx:</p>
+  <p>
+    The native CLI does not require Node.js. The installer selects the release for your operating
+    system and CPU, verifies its SHA-256 checksum, and puts <code>exeora</code> on your PATH.
+  </p>
 
-  <pre>{GLOBAL_INSTALL}</pre>
+  <p>
+    Later, run <code>exeora upgrade</code>. Native installations securely replace the current
+    binary; registry installations detect whether npm, pnpm, Yarn Classic, Bun, or Volta owns the
+    executable and update <code>@exeora/cli</code> with that same package manager.
+  </p>
 
   <h2>What a project is</h2>
 

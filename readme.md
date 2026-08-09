@@ -12,13 +12,14 @@ Connect Claude, ChatGPT, Cursor, VS Code or Claude Code to a real project on a s
 No port to open. No source code to upload. No tunnel to wire up.
 
 ```bash
+curl -fsSL https://exeora.dev/linux/install.sh | sh
 cd the-project-you-want-to-serve
-npx @exeora/cli connect
+exeora connect
 ```
 
 That one command signs you in, registers the machine, registers the directory, and prints an MCP URL. Point any client at it and leave `connect` running.
 
-**Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **npm:** [@exeora/cli](https://www.npmjs.com/package/@exeora/cli)
+**Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [native releases](https://github.com/leynier/exeora/releases/latest)
 
 > **Demo.** Drop a terminal recording at `docs/demo.gif` when you have one (see `docs/demo.gif.placeholder`). Until then, the live product is at [exeora.dev](https://exeora.dev).
 
@@ -126,10 +127,23 @@ It is about Exeora rather than about your codebase, so keep your own `AGENTS.md`
 
 ## Install
 
-**Requires Node 22+.**
+The native Rust CLI has no Node.js runtime dependency:
 
 ```bash
-# one-shot (recommended)
+# Linux
+curl -fsSL https://exeora.dev/linux/install.sh | sh
+
+# macOS
+curl -fsSL https://exeora.dev/macos/install.sh | sh
+
+# Windows PowerShell
+irm https://exeora.dev/windows/install.ps1 | iex
+```
+
+The registry implementation remains available as a compatible fallback and requires Node 22+:
+
+```bash
+# one-shot without a global installation
 cd your-project
 npx @exeora/cli connect
 
@@ -137,6 +151,17 @@ npx @exeora/cli connect
 npm install -g @exeora/cli
 exeora connect
 ```
+
+Global registry installations can also be made with pnpm, Yarn Classic, Bun, or Volta. Both CLI
+distributions update through the same public command:
+
+```bash
+exeora upgrade
+```
+
+The registry CLI detects which package manager owns its executable and uses that same manager for
+the upgrade. One-shot executions such as `npx`, `pnpm dlx`, and `bunx` are intentionally not treated
+as persistent installations.
 
 Then add the printed URL to your client, for example:
 
@@ -161,7 +186,9 @@ claude mcp add --transport http exeora <the URL>
 
 | Path | What it is |
 |---|---|
-| `packages/cli` | The `exeora` binary (`@exeora/cli`) |
+| `crates/exeora-cli` | Native Rust `exeora` binary and local tool executor |
+| `crates/exeora-protocol-gen` | Rust types generated from the canonical Zod schemas |
+| `packages/cli` | Compatible Node.js CLI (`@exeora/cli`) |
 | `packages/protocol` | Shared tool contract and relay wire format |
 | `packages/design` | Design tokens |
 | `apps/gateway` | Cloudflare Worker (OAuth, MCP, relay, API, static site) |
