@@ -1,7 +1,6 @@
 # Exeora
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
-[![npm](https://img.shields.io/npm/v/@exeora/cli.svg)](https://www.npmjs.com/package/@exeora/cli)
 [![CI](https://github.com/leynier/exeora/actions/workflows/deploy.yml/badge.svg)](https://github.com/leynier/exeora/actions/workflows/deploy.yml)
 [![GitHub stars](https://img.shields.io/github/stars/leynier/exeora?style=social)](https://github.com/leynier/exeora)
 
@@ -19,7 +18,7 @@ exeora connect
 
 That one command signs you in, registers the machine, registers the directory, and prints an MCP URL. Point any client at it and leave `connect` running.
 
-**Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [native releases](https://github.com/leynier/exeora/releases/latest)
+**Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [releases](https://github.com/leynier/exeora/releases/latest)
 
 > **Demo.** Drop a terminal recording at `docs/demo.gif` when you have one (see `docs/demo.gif.placeholder`). Until then, the live product is at [exeora.dev](https://exeora.dev).
 
@@ -127,7 +126,7 @@ It is about Exeora rather than about your codebase, so keep your own `AGENTS.md`
 
 ## Install
 
-The native Rust CLI has no Node.js runtime dependency:
+The CLI is a single native binary:
 
 ```bash
 # Linux
@@ -140,28 +139,12 @@ curl -fsSL https://exeora.dev/macos/install.sh | sh
 irm https://exeora.dev/windows/install.ps1 | iex
 ```
 
-The registry implementation remains available as a compatible fallback and requires Node 22+:
-
-```bash
-# one-shot without a global installation
-cd your-project
-npx @exeora/cli connect
-
-# or install globally
-npm install -g @exeora/cli
-exeora connect
-```
-
-Global registry installations can also be made with pnpm, Yarn Classic, Bun, or Volta. Both CLI
-distributions update through the same public command:
+The installer selects the release for your operating system and CPU, verifies its SHA-256 checksum,
+and puts `exeora` on your PATH. Later, one command updates it in place:
 
 ```bash
 exeora upgrade
 ```
-
-The registry CLI detects which package manager owns its executable and uses that same manager for
-the upgrade. One-shot executions such as `npx`, `pnpm dlx`, and `bunx` are intentionally not treated
-as persistent installations.
 
 Then add the printed URL to your client, for example:
 
@@ -188,7 +171,6 @@ claude mcp add --transport http exeora <the URL>
 |---|---|
 | `crates/exeora-cli` | Native Rust `exeora` binary and local tool executor |
 | `crates/exeora-protocol-gen` | Rust types generated from the canonical Zod schemas |
-| `packages/cli` | Compatible Node.js CLI (`@exeora/cli`) |
 | `packages/protocol` | Shared tool contract and relay wire format |
 | `packages/design` | Design tokens |
 | `apps/gateway` | Cloudflare Worker (OAuth, MCP, relay, API, static site) |
@@ -204,4 +186,4 @@ Issues and pull requests are welcome. For vulnerabilities, email **hello@exeora.
 
 [AGPL-3.0-only](./LICENSE).
 
-If you modify Exeora and offer it as a network service, you must offer the corresponding source to the users of that service. Vendored third-party notices for the CLI live in [`packages/cli/LICENSE`](./packages/cli/LICENSE).
+If you modify Exeora and offer it as a network service, you must offer the corresponding source to the users of that service.

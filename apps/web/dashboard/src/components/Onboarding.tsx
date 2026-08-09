@@ -37,7 +37,7 @@ export function Onboarding() {
       </p>
 
       <div className="text-body-md text-foreground-faint border-border-subtle mt-7 space-y-2 border-t pt-5">
-        <p>Install the native Rust CLI first. It does not require Node.js.</p>
+        <p>Install the CLI first:</p>
         <p className="break-all">
           <span className="text-foreground-muted">Linux:</span>{" "}
           <code className="font-mono">{LINUX_INSTALL}</code>

@@ -5,7 +5,7 @@ use serde_json::json;
 use exeora_cli::protocol::{ToolResult, WireError};
 
 #[test]
-fn exposes_the_legacy_command_surface_and_version_flag() {
+fn exposes_the_command_surface_and_version_flag() {
     Command::cargo_bin("exeora")
         .unwrap()
         .arg("-v")

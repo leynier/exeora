@@ -160,18 +160,18 @@ pub fn config_path() -> Result<PathBuf> {
         let base = env::var_os("APPDATA")
             .or_else(|| env::var_os("USERPROFILE"))
             .context("Neither APPDATA nor USERPROFILE is set")?;
-        return Ok(PathBuf::from(base).join("exeora-nodejs/Config/config.json"));
+        return Ok(PathBuf::from(base).join("exeora/config.json"));
     }
     #[cfg(target_os = "macos")]
     {
-        return Ok(home_dir()?.join("Library/Preferences/exeora-nodejs/config.json"));
+        return Ok(home_dir()?.join("Library/Preferences/exeora/config.json"));
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let base = env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or(home_dir()?.join(".config"));
-        Ok(base.join("exeora-nodejs/config.json"))
+        Ok(base.join("exeora/config.json"))
     }
 }
 

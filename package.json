@@ -15,7 +15,7 @@
     "check:file-length": "bun run scripts/check-file-length.ts",
     "typecheck": "tsc --build && tsc -p apps/web/dashboard/tsconfig.json",
     "test": "vitest run",
-    "ci": "bun run check && bun run check:file-length && bun run typecheck && bun run --cwd apps/web build && bun run --cwd packages/cli build && bun run test",
+    "ci": "bun run check && bun run check:file-length && bun run typecheck && bun run --cwd apps/web build && bun run test",
     "brand": "bun run scripts/brand-assets.ts",
     "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
     "deploy": "bun run --cwd apps/web build && bun run --cwd apps/gateway deploy",
@@ -24,11 +24,7 @@
     "db:migrate": "bun run --cwd apps/gateway db:migrate",
     "types": "bun run --cwd apps/gateway types",
     "secret": "bun run --cwd apps/gateway secret",
-    "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen",
-    "bench:tools": "bun run scripts/compare-tool-performance.ts",
-    "bench:tools:hard": "bun run scripts/compare-tool-performance.ts --suite hard",
-    "bench:tools:verify": "bun run scripts/compare-tool-performance.ts --suite hard --verify",
-    "check:tool-performance": "bun run scripts/compare-tool-performance.ts --check"
+    "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

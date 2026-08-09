@@ -59,15 +59,12 @@ jobs:
           bun run protocol:rust
           git diff --exit-code -- crates/exeora-cli/protocol crates/exeora-cli/src/generated
 
-      - name: Check native CLI
+      - name: Check CLI
         run: |
           cargo fmt --all -- --check
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
           cargo bench --workspace --no-run
-
-      - name: Compare Rust and TypeScript tool-call performance
-        run: bun run check:tool-performance
 
       - name: Lint and format
         run: bun run check
@@ -96,9 +93,7 @@ jobs:
       # Before the tests, not after: the gateway serves the built site through
       # its ASSETS binding, and the tests that cover that read the real files.
       - name: Build
-        run: |
-          bun run --cwd apps/web build
-          bun run --cwd packages/cli build
+        run: bun run --cwd apps/web build
 
       - name: Test
         run: bun run test

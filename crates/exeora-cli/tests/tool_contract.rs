@@ -16,7 +16,7 @@ async fn call(
 }
 
 #[tokio::test]
-async fn file_tools_share_the_typescript_contract() {
+async fn file_tools_follow_the_tool_contract() {
     let root = TempDir::new().unwrap();
     let engine = ToolEngine::new().unwrap();
 

@@ -10,8 +10,7 @@ export const RELEASES_URL = `${GITHUB_URL}/releases/latest`;
  * The one command a first-time visitor runs.
  *
  * `connect` signs in, registers the machine and registers the directory when
- * any of those is missing, so there is nothing to run before it. The package
- * is scoped because npm would not give up the bare name.
+ * any of those is missing, so there is nothing to run before it.
  */
 export const QUICKSTART = "exeora connect";
 

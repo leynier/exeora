@@ -71,39 +71,17 @@ jobs:
   publish:
     needs: check
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # Required for npm trusted publishing. Without it there is no OIDC token
-      # to exchange and npm falls back to asking for credentials nobody set.
-      id-token: write
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      # Both runtimes: bun installs and builds as everywhere else in this repo,
-      # npm publishes. Trusted publishing needs npm 11.5.1+, which is newer
-      # than what ships with Node 22, hence the explicit upgrade. Provenance
-      # needs a public repository and the same OIDC token.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      - name: Use an npm that can publish with OIDC
-        run: npm install -g npm@latest
-
-      # npm refuses to reuse a version, so a tag that disagrees with
-      # package.json is a mistake that cannot be corrected by retagging.
+      # crates.io refuses to reuse a version, so a tag that disagrees with
+      # Cargo.toml is a mistake that cannot be corrected by retagging.
       - name: Check the tag matches the package version
         run: |
           tagged="${GITHUB_REF_NAME#cli-v}"
-          declared="$(node -p "require('./packages/cli/package.json').version")"
-          rust_declared="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
-          if [ "$tagged" != "$declared" ] || [ "$tagged" != "$rust_declared" ]; then
-            echo "Tag $GITHUB_REF_NAME says $tagged, npm says $declared and Cargo says $rust_declared." >&2
+          declared="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          if [ "$tagged" != "$declared" ]; then
+            echo "Tag $GITHUB_REF_NAME says $tagged, but Cargo.toml says $declared." >&2
             exit 1
           fi
 
@@ -120,27 +98,14 @@ jobs:
             exit 0
           fi
           advertised="$(
-            node -e "
-              const line = require('fs').readFileSync('apps/gateway/wrangler.jsonc', 'utf8')
-                .split('\n').find((l) => l.includes('LATEST_CLI_VERSION'));
-              console.log(line.match(/\"[0-9]+\.[0-9]+\.[0-9]+[^\"]*\"/)[0].replaceAll('\"', ''));
-            "
+            grep 'LATEST_CLI_VERSION' apps/gateway/wrangler.jsonc | head -1 \
+              | sed -n 's/.*"\([0-9][0-9.]*[^"]*\)".*/\1/p'
           )"
           if [ "$version" != "$advertised" ]; then
             echo "Tag $GITHUB_REF_NAME says $version, but apps/gateway/wrangler.jsonc advertises $advertised." >&2
             echo "Bump LATEST_CLI_VERSION on main, let it deploy, then retag." >&2
             exit 1
           fi
-
-      - name: Install
-        run: bun install --frozen-lockfile
-
-      - name: Build
-        run: bun run --cwd packages/cli build
-
-      - name: Publish
-        run: npm publish --provenance --access public
-        working-directory: packages/cli
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
@@ -153,7 +118,7 @@ jobs:
     needs: [publish, build-native]
     runs-on: ubuntu-latest
     permissions:
-      # Publishing to npm only needed to read the repo; creating a release
+      # Checking out the code only needed to read the repo; creating a release
       # writes to it.
       contents: write
     steps:

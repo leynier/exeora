@@ -65,7 +65,6 @@ pub async fn run(json_output: bool) -> Result<()> {
                 "updated": true,
                 "previousVersion": current.to_string(),
                 "version": latest.to_string(),
-                "distribution": "native",
             })
         );
     } else {

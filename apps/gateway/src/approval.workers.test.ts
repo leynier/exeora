@@ -13,7 +13,7 @@ import { describeCall, hashArguments } from "./approval.js";
 
 describe("hashing the arguments an approval was given for", () => {
   it("gives the same call the same hash", async () => {
-    const args = { command: "npm test", cwd: "packages/cli" };
+    const args = { command: "npm test", cwd: "apps/gateway" };
     expect(await hashArguments(args)).toBe(await hashArguments({ ...args }));
   });
 
@@ -64,8 +64,8 @@ describe("what the prompt says", () => {
   });
 
   it("says where a command will run when it is not the project root", () => {
-    expect(describeCall("run_command", { command: "npm test", cwd: "packages/cli" })).toContain(
-      "packages/cli",
+    expect(describeCall("run_command", { command: "npm test", cwd: "apps/gateway" })).toContain(
+      "apps/gateway",
     );
     expect(describeCall("run_command", { command: "npm test", cwd: "." })).not.toContain("in .");
   });
