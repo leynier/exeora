@@ -78,6 +78,40 @@ const jsonLd = {
     <slot />
 
     <script>
+      import { detectInstallPlatform } from "../lib/install-platform.js";
+
+      const selectInstallPlatform = (platform: HTMLElement) => {
+        const selector = platform.closest<HTMLElement>("[data-install-selector]");
+        const command = selector?.querySelector<HTMLElement>("[data-install-command]");
+        if (!selector || !command || !platform.dataset.command) return;
+
+        command.textContent = platform.dataset.command;
+        for (const option of selector.querySelectorAll<HTMLElement>("[data-install-platform]")) {
+          option.setAttribute("aria-pressed", String(option === platform));
+        }
+      };
+
+      const navigatorWithClientHints = navigator as Navigator & {
+        userAgentData?: { platform?: string };
+      };
+      const preferredPlatform = detectInstallPlatform({
+        userAgentDataPlatform: navigatorWithClientHints.userAgentData?.platform,
+        legacyPlatform: navigator.platform,
+        userAgent: navigator.userAgent,
+      });
+
+      if (preferredPlatform) {
+        for (const selector of document.querySelectorAll<HTMLElement>("[data-install-selector]")) {
+          const platform = selector.querySelector<HTMLElement>(
+            `[data-install-platform="${preferredPlatform}"]`,
+          );
+          if (!platform) continue;
+
+          platform.parentElement?.prepend(platform);
+          selectInstallPlatform(platform);
+        }
+      }
+
       // One delegated listener for every copy button on the page. Buttons opt
       // in with `data-copy-target="<id of the element holding the text>"`,
       // which keeps the markup declarative and the JS to a single block.
@@ -86,14 +120,7 @@ const jsonLd = {
           "[data-install-platform]",
         );
         if (platform) {
-          const selector = platform.closest<HTMLElement>("[data-install-selector]");
-          const command = selector?.querySelector<HTMLElement>("[data-install-command]");
-          if (selector && command && platform.dataset.command) {
-            command.textContent = platform.dataset.command;
-            for (const option of selector.querySelectorAll<HTMLElement>("[data-install-platform]")) {
-              option.setAttribute("aria-pressed", String(option === platform));
-            }
-          }
+          selectInstallPlatform(platform);
           return;
         }
 

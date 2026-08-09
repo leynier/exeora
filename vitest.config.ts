@@ -8,7 +8,11 @@ export default defineConfig({
         // of the gateway that are ordinary functions (OAuth provider, session).
         test: {
           name: "node",
-          include: ["packages/*/src/**/*.test.ts", "apps/gateway/src/**/*.test.ts"],
+          include: [
+            "packages/*/src/**/*.test.ts",
+            "apps/gateway/src/**/*.test.ts",
+            "apps/web/landing/src/**/*.test.ts",
+          ],
           exclude: [
             "**/node_modules/**",
             "**/dist/**",
