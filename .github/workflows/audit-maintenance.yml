@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
 
       # Outside Cloudflare on purpose, and this is the cost of that choice: a
       # self-hosted gateway needs this workflow in a fork with its own secrets,
