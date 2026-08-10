@@ -62,7 +62,7 @@ jobs:
           mkdir native
           cp "target/${{ matrix.target }}/release/exeora${{ matrix.suffix }}" "native/exeora-${{ matrix.target }}${{ matrix.suffix }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: exeora-${{ matrix.target }}
           path: native/*
@@ -124,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: exeora-*
           path: native
