@@ -34,7 +34,7 @@ describe("install platform detection", () => {
           legacyPlatform: "Linux armv8l",
           userAgent: `Mozilla/5.0 (${mobilePlatform}) Mobile`,
         }),
-      ).toBeNull();
+      ).toBe("mobile");
     },
   );
 

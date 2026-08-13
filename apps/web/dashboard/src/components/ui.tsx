@@ -76,6 +76,36 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
   );
 }
 
+/** A failed query must never be mistaken for an empty account. */
+export function ErrorBanner({
+  error,
+  onRetry,
+  title = "Could not load this data",
+}: {
+  error: unknown;
+  onRetry?: () => void;
+  title?: string;
+}) {
+  return (
+    <div
+      role="alert"
+      className="border-error/30 bg-error/8 mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border px-4 py-3"
+    >
+      <div>
+        <p className="text-title-md text-error">{title}</p>
+        <p className="text-body-md text-foreground-muted mt-0.5">
+          {error instanceof Error ? error.message : "The gateway did not return a usable response."}
+        </p>
+      </div>
+      {onRetry && (
+        <button type="button" className="btn shrink-0" onClick={onRetry}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** A live/idle indicator. Colour alone would not carry it, so it is labelled. */
 export function StatusDot({ on, label }: { on: boolean; label: string }) {
   return (

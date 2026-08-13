@@ -48,7 +48,9 @@ export function signOut(): void {
   for (const key of [TOKEN_KEY, EXPIRY_KEY, VERIFIER_KEY, STATE_KEY, RETURN_KEY]) {
     sessionStorage.removeItem(key);
   }
-  window.location.href = "/";
+  // Revokes the opaque browser session as well as dropping this tab's access
+  // token, so signing out is a server-side action rather than a visual reset.
+  window.location.href = "/oauth/logout";
 }
 
 /**

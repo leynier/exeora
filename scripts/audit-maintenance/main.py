@@ -1,3 +1,8 @@
+# /// script
+# requires-python = "==3.12.*"
+# dependencies = ["pyiceberg[pyarrow]==0.11.1"]
+# ///
+
 """Removes from the audit archive what the gateway cannot remove itself.
 
 R2 SQL is read-only, so a row leaves the Iceberg table only when a transaction
@@ -11,9 +16,9 @@ Two jobs in one run, in this order:
    first because somebody is waiting on it and because it is bounded.
 2. Retention. Rows older than the window their owner's plan allows.
 
-Nothing here is idempotent by accident. A target is closed only after its
-transaction commits, so a run that dies halfway leaves the rest queued rather
-than silently dropped, and the next run repeats work that is a no-op.
+Nothing here is idempotent by accident. A target is closed only after two
+successful transactions at least 24 hours apart, so a run that dies halfway
+leaves the rest queued and events already in flight are caught by the recheck.
 """
 
 from __future__ import annotations
@@ -25,10 +30,17 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-
-from pyiceberg.catalog.rest import RestCatalog
+from typing import Protocol
 
 TIMEOUT_S = 60
+
+
+class Table(Protocol):
+    def delete(self, *, delete_filter: str) -> None: ...
+
+
+class Catalog(Protocol):
+    def load_table(self, table: str) -> Table: ...
 
 
 @dataclass(frozen=True)
@@ -58,10 +70,16 @@ class Settings:
         )
 
 
-def gateway_request(settings: Settings, path: str, body: dict | None = None) -> dict:
+def gateway_request(
+    settings: Settings,
+    path: str,
+    body: dict | None = None,
+    *,
+    method: str | None = None,
+) -> dict:
     request = urllib.request.Request(
         f"{settings.gateway}{path}",
-        method="POST" if body is not None else "GET",
+        method=method or ("POST" if body is not None else "GET"),
         headers={
             "authorization": f"Bearer {settings.secret}",
             "content-type": "application/json",
@@ -76,14 +94,25 @@ def gateway_request(settings: Settings, path: str, body: dict | None = None) -> 
         return json.loads(response.read() or b"{}")
 
 
-def erase(catalog: RestCatalog, settings: Settings) -> int:
+@dataclass(frozen=True)
+class EraseResult:
+    passes: int
+    failed: int
+
+
+def erase(catalog: Catalog, settings: Settings) -> EraseResult:
     """Drains the gateway's deletion queue, one committed transaction at a time."""
-    pending = gateway_request(settings, "/internal/audit-deletions").get("items", [])
+    pending = gateway_request(
+        settings,
+        "/internal/audit-deletions/claim",
+        method="POST",
+    ).get("items", [])
     if not pending:
         print("nothing to erase")
-        return 0
+        return EraseResult(passes=0, failed=0)
 
     done = 0
+    failed = 0
     for item in pending:
         column = "user_id" if item["scope"] == "user" else "project_id"
         target = item["targetId"]
@@ -94,19 +123,26 @@ def erase(catalog: RestCatalog, settings: Settings) -> int:
             # Reported rather than raised: one unerasable target must not stop
             # the queue, and the gateway keeps it pending with the reason.
             print(f"failed {item['scope']} {target}: {type(error).__name__}: {error}")
-            settle(settings, item["id"], ok=False, error=f"{type(error).__name__}: {error}")
+            settle(
+                settings,
+                item["id"],
+                item["leaseToken"],
+                ok=False,
+                error=f"{type(error).__name__}: {error}",
+            )
+            failed += 1
             continue
 
-        # Only now. Closing a target before its transaction commits would lose
-        # the instruction with nothing deleted, and nothing else remembers it.
-        settle(settings, item["id"], ok=True)
+        # Only now. This reports one committed pass; the gateway deliberately
+        # requeues the first success and closes the target after the second.
+        settle(settings, item["id"], item["leaseToken"], ok=True)
         done += 1
-        print(f"erased {item['scope']} {target}")
+        print(f"committed erasure pass for {item['scope']} {target}")
 
-    return done
+    return EraseResult(passes=done, failed=failed)
 
 
-def prune(catalog: RestCatalog, settings: Settings, today: dt.date) -> None:
+def prune(catalog: Catalog, settings: Settings, today: dt.date) -> bool:
     """Applies each plan's retention window.
 
     Two statements, and the shape is inverted on purpose. Everything past the
@@ -115,6 +151,15 @@ def prune(catalog: RestCatalog, settings: Settings, today: dt.date) -> None:
     fraction of all accounts, so naming them is what scales.
     """
     policy = gateway_request(settings, "/internal/retention")
+    rollup = policy.get("rollup", {})
+    if not rollup.get("pruneAllowed", False):
+        detail = rollup.get("error") or (
+            f"checkpoint {rollup.get('lastCompleteDay')} has "
+            f"{rollup.get('backlogDays')} day(s) pending before {rollup.get('targetDay')}"
+        )
+        print(f"retention paused: {detail}", file=sys.stderr)
+        return False
+
     table = catalog.load_table(settings.table)
 
     longest = cutoff(today, policy["longestDays"])
@@ -124,7 +169,7 @@ def prune(catalog: RestCatalog, settings: Settings, today: dt.date) -> None:
     exempt = policy["exemptUserIds"]
     shortest = cutoff(today, policy["shortestDays"])
     if policy["shortestDays"] == policy["longestDays"]:
-        return
+        return True
 
     spare = (
         ""
@@ -133,10 +178,20 @@ def prune(catalog: RestCatalog, settings: Settings, today: dt.date) -> None:
     )
     table.delete(delete_filter=f"created_at < {sql_literal(shortest)}{spare}")
     print(f"pruned before {shortest}, sparing {len(exempt)} longer-plan accounts")
+    return True
 
 
-def settle(settings: Settings, deletion_id: str, *, ok: bool, error: str = "") -> None:
-    body = {"ok": ok} if ok else {"ok": False, "error": error[:500]}
+def settle(
+    settings: Settings,
+    deletion_id: str,
+    lease_token: str,
+    *,
+    ok: bool,
+    error: str = "",
+) -> None:
+    body = {"ok": ok, "leaseToken": lease_token}
+    if not ok:
+        body["error"] = error[:500]
     try:
         gateway_request(settings, f"/internal/audit-deletions/{deletion_id}", body)
     except urllib.error.HTTPError as http_error:
@@ -156,18 +211,30 @@ def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def main() -> None:
-    settings = Settings.from_env()
-    catalog = RestCatalog(
-        name="r2",
-        warehouse=settings.warehouse,
-        uri=settings.catalog_uri,
-        token=settings.token,
-    )
+def run(
+    settings: Settings | None = None,
+    catalog: Catalog | None = None,
+    today: dt.date | None = None,
+) -> int:
+    settings = settings or Settings.from_env()
+    if catalog is None:
+        from pyiceberg.catalog.rest import RestCatalog
 
-    erased = erase(catalog, settings)
-    prune(catalog, settings, dt.datetime.now(dt.timezone.utc).date())
-    print(f"done: {erased} targets erased")
+        catalog = RestCatalog(
+            name="r2",
+            warehouse=settings.warehouse,
+            uri=settings.catalog_uri,
+            token=settings.token,
+        )
+
+    result = erase(catalog, settings)
+    pruned = prune(catalog, settings, today or dt.datetime.now(dt.timezone.utc).date())
+    print(f"done: {result.passes} erasure passes committed, {result.failed} failed")
+    return 1 if result.failed or not pruned else 0
+
+
+def main() -> None:
+    raise SystemExit(run())
 
 
 if __name__ == "__main__":

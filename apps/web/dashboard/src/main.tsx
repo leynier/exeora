@@ -61,7 +61,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
  */
 function RequireAdmin({ children }: { children: ReactNode }) {
   const me = useMe();
-  if (me.isLoading) return null;
+  if (me.isLoading || me.isError) return null;
   if (me.data?.isAdmin !== true) return <Navigate to="/" replace />;
   return children;
 }

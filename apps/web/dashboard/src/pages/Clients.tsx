@@ -1,6 +1,6 @@
 import { AccountClientList } from "../components/AccountClientList.js";
 import { ClientList } from "../components/ClientList.js";
-import { Card, EmptyState, PageHeader, SkeletonRows } from "../components/ui.js";
+import { Card, EmptyState, ErrorBanner, PageHeader, SkeletonRows } from "../components/ui.js";
 import { useAccountClients, useClients, useProjects } from "../queries.js";
 
 /**
@@ -28,12 +28,26 @@ export function Clients() {
   const nameOf = (projectId: string) =>
     projects.data?.find((project) => project.id === projectId)?.name ?? "removed project";
 
+  if (clients.isError || projects.isError) {
+    return <PageHeader title="Clients" subtitle="Authorization data is temporarily unavailable." />;
+  }
+
   return (
     <>
       <PageHeader
         title="Clients"
         subtitle="The AI clients you have authorized, and what each of them can still reach."
       />
+
+      {accountClients.isError && (
+        <ErrorBanner
+          error={accountClients.error}
+          title="Could not load account clients"
+          onRetry={() => {
+            void accountClients.refetch();
+          }}
+        />
+      )}
 
       <Card
         title="On the account URL"
@@ -43,7 +57,7 @@ export function Clients() {
             projects are the tick boxes and the names in the dropdown, so
             rendering before they land shows a connection with no projects to
             give it and every project it already has as "removed". */}
-        {accountClients.isLoading || projects.isLoading ? (
+        {accountClients.isError ? null : accountClients.isLoading || projects.isLoading ? (
           <SkeletonRows />
         ) : accountRows.length === 0 ? (
           <EmptyState title="No clients on the account URL">

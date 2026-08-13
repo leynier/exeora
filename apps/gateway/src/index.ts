@@ -3,14 +3,22 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { advertisedAccountTools, advertisedTools } from "./advertised.js";
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
+import { reconcileAuditOutbox } from "./audit.js";
 import { rememberAccountMcpClient, rememberMcpClient } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
-import { createProjectMcpHandler, handshakeClientInfo, peekMethod } from "./mcp.js";
+import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
 import { CLI_SCOPES, DASHBOARD_SCOPES } from "./oauth/clients.js";
+import {
+  hasEveryScope,
+  hasScope,
+  inspectMcpAccess,
+  insufficientScope,
+  MCP_SCOPES,
+} from "./oauth/scopes.js";
 import { propsOf } from "./props.js";
 import {
   callerAddress,
@@ -69,7 +77,10 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
     return c.text("Expected a WebSocket upgrade.", 426);
   }
 
-  const { userId } = propsOf(c.executionCtx);
+  const props = propsOf(c.executionCtx);
+  if (!hasEveryScope(props, CLI_SCOPES)) return insufficientScope(CLI_SCOPES);
+
+  const { userId } = props;
   const deviceId = c.req.param("deviceId");
 
   const device = await db(c.env)
@@ -92,6 +103,8 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
 /** One MCP endpoint per project. */
 authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
+  const { method, required } = await inspectMcpAccess(c.req.raw.clone());
+  if (!hasScope(propsOf(c.executionCtx), required)) return insufficientScope([required]);
 
   // The request's signal, so a client that hangs up stops the work rather than
   // leaving a command running on someone's machine for its full timeout.
@@ -100,7 +113,7 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   // Which tools to advertise. Asked only for `tools/list`, so a tool call pays
   // neither the lookup nor the round trip to the device.
   const advertised =
-    (await peekMethod(c.req.raw.clone())) === "tools/list"
+    method === "tools/list"
       ? await advertisedTools(c.env, propsOf(c.executionCtx).userId, projectId)
       : undefined;
 
@@ -158,11 +171,11 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
 authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
   const { signal } = c.req.raw;
   const { userId, clientId } = propsOf(c.executionCtx);
+  const { method, required } = await inspectMcpAccess(c.req.raw.clone());
+  if (!hasScope(propsOf(c.executionCtx), required)) return insufficientScope([required]);
 
   const advertised =
-    (await peekMethod(c.req.raw.clone())) === "tools/list"
-      ? await advertisedAccountTools(c.env, userId, clientId)
-      : undefined;
+    method === "tools/list" ? await advertisedAccountTools(c.env, userId, clientId) : undefined;
 
   const handler = createAccountMcpHandler(
     (call, tool, args) => dispatchAccountCall(c.env, call, tool, args, signal),
@@ -210,7 +223,7 @@ const provider = new OAuthProvider({
   clientRegistrationEndpoint: "/oauth/register",
   clientIdMetadataDocumentEnabled: true,
 
-  scopesSupported: ["tools:read", "tools:execute", ...CLI_SCOPES, ...DASHBOARD_SCOPES],
+  scopesSupported: [...MCP_SCOPES, ...CLI_SCOPES, ...DASHBOARD_SCOPES],
 
   // resourceMetadata.resource is deliberately left unset: the provider then
   // derives one resource identifier per path, so a token minted for
@@ -220,6 +233,13 @@ const provider = new OAuthProvider({
     resource_name: "Exeora",
     scopes_supported: ["tools:read", "tools:execute"],
   },
+
+  // The provider exposes grant props to handlers but does not expose the
+  // token's effective scope. Copy the downscoped value into access-token props
+  // on authorization-code exchange and every refresh.
+  tokenExchangeCallback: ({ props, requestedScope }) => ({
+    accessTokenProps: { ...(props as object), scopes: requestedScope },
+  }),
 });
 
 /**
@@ -246,12 +266,28 @@ export default {
    * derived from it before the prune, and expired grants are only noticed by
    * whoever tries to use one.
    *
-   * Rollup prefers to run first so it still sees rows the prune is about to
-   * drop, but a failure there must not skip the prune: retention is the job
-   * that bounds an unbounded table. The OAuth purge is independent of both.
+   * The archive maintenance job reads the durable rollup checkpoint and
+   * refuses to prune until it reaches yesterday. The OAuth purge is independent
+   * of both archive jobs.
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runNightlyHousekeeping(env));
-    ctx.waitUntil(provider.purgeExpiredData(env).then(() => undefined));
+    ctx.waitUntil(
+      reconcileAuditOutbox(env).catch((error) =>
+        console.error("audit outbox reconcile failed", error),
+      ),
+    );
+
+    // The frequent cron only drains the outbox. Every other scheduled event is
+    // treated as nightly so local/test controllers without a cron string retain
+    // the complete housekeeping behavior.
+    if (_event.cron !== "*/5 * * * *") {
+      ctx.waitUntil(runNightlyHousekeeping(env));
+      ctx.waitUntil(
+        provider
+          .purgeExpiredData(env)
+          .then(() => undefined)
+          .catch((error) => console.error("OAuth purge failed", error)),
+      );
+    }
   },
 } satisfies ExportedHandler<Env>;

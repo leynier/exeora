@@ -66,6 +66,10 @@ export function Machines() {
 
   const busy = revoke.isPending || remove.isPending;
 
+  if (devices.isError || projects.isError) {
+    return <PageHeader title="Machines" subtitle="Machine data is temporarily unavailable." />;
+  }
+
   return (
     <>
       <PageHeader

@@ -23,6 +23,13 @@ export interface WarehouseRollupResult {
   rows: number;
 }
 
+export interface WarehouseRollupStatus {
+  lastCompleteDay: string | null;
+  targetDay: string;
+  backlogDays: number;
+  pruneAllowed: boolean;
+}
+
 type DayCount = {
   userId: string;
   toolCalls: number;
@@ -120,6 +127,29 @@ export async function rollupUsageDailyFromWarehouse(
   return { days: days.length, rows: rowsWritten };
 }
 
+/** Retention must not remove a day the durable rollup has not consumed. */
+export async function warehouseRollupStatus(
+  env: Pick<Env, "DB">,
+  options: { config?: WarehouseConfig; now?: Date } = {},
+): Promise<WarehouseRollupStatus> {
+  const config = options.config ?? warehouseConfig(env as Env);
+  const targetDay = addUtcDays(utcDay(options.now ?? new Date()), -1);
+  const checkpoint = await db(env)
+    .select({ day: schema.usageRollupState.lastCompleteDay })
+    .from(schema.usageRollupState)
+    .where(eq(schema.usageRollupState.source, sourceKey(config)))
+    .get();
+  const lastCompleteDay = checkpoint?.day ?? null;
+  const neededStart = lastCompleteDay ? addUtcDays(lastCompleteDay, 1) : config.startDay;
+  return {
+    lastCompleteDay,
+    targetDay,
+    backlogDays: neededStart > targetDay ? 0 : dayDistance(neededStart, targetDay) + 1,
+    pruneAllowed:
+      config.startDay > targetDay || (lastCompleteDay !== null && lastCompleteDay >= targetDay),
+  };
+}
+
 async function queryDay(
   config: WarehouseConfig,
   day: string,
@@ -158,8 +188,8 @@ async function queryDayPage(
   const afterClause = afterUserId ? `\n  AND user_id > ${sqlString(afterUserId)}` : "";
   const query = `SELECT
   user_id,
-  COUNT(*) AS tool_calls,
-  SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
+  COUNT(DISTINCT id) AS tool_calls,
+  COUNT(DISTINCT CASE WHEN status = 'error' THEN id END) AS errors,
   MAX(created_at) AS last_activity_at
 FROM ${config.table}
 WHERE created_at >= '${day}T00:00:00.000Z'
@@ -220,6 +250,13 @@ function daysToProcess(
 
 function sourceKey(config: WarehouseConfig): string {
   return `r2-sql:${config.accountId}:${config.bucket}:${config.warehouse}:${config.table}`;
+}
+
+function dayDistance(from: string, to: string): number {
+  return Math.max(
+    0,
+    Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000),
+  );
 }
 
 function chunks<T>(values: T[], size: number): T[][] {

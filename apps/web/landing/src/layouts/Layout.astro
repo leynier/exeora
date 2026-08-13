@@ -86,8 +86,31 @@ const jsonLd = {
         if (!selector || !command || !platform.dataset.command) return;
 
         command.textContent = platform.dataset.command;
+        selector
+          .querySelector<HTMLElement>("[data-install-mobile-hint]")
+          ?.setAttribute("hidden", "");
+        const copy = selector.querySelector<HTMLButtonElement>("[data-install-copy]");
+        copy?.removeAttribute("disabled");
+        const copyLabel = copy?.querySelector<HTMLElement>("[data-copy-label]");
+        if (copyLabel) copyLabel.textContent = "Copy";
         for (const option of selector.querySelectorAll<HTMLElement>("[data-install-platform]")) {
           option.setAttribute("aria-pressed", String(option === platform));
+        }
+      };
+
+      const showMobileInstaller = (selector: HTMLElement) => {
+        const command = selector.querySelector<HTMLElement>("[data-install-command]");
+        const hint = selector.querySelector<HTMLElement>("[data-install-mobile-hint]");
+        const copy = selector.querySelector<HTMLButtonElement>("[data-install-copy]");
+        if (!command || !hint || !copy) return;
+
+        command.textContent = "Choose the desktop where Exeora will run";
+        hint.removeAttribute("hidden");
+        copy.disabled = true;
+        const label = copy.querySelector<HTMLElement>("[data-copy-label]");
+        if (label) label.textContent = "Choose a platform";
+        for (const option of selector.querySelectorAll<HTMLElement>("[data-install-platform]")) {
+          option.setAttribute("aria-pressed", "false");
         }
       };
 
@@ -100,7 +123,11 @@ const jsonLd = {
         userAgent: navigator.userAgent,
       });
 
-      if (preferredPlatform) {
+      if (preferredPlatform === "mobile") {
+        for (const selector of document.querySelectorAll<HTMLElement>("[data-install-selector]")) {
+          showMobileInstaller(selector);
+        }
+      } else if (preferredPlatform) {
         for (const selector of document.querySelectorAll<HTMLElement>("[data-install-selector]")) {
           const platform = selector.querySelector<HTMLElement>(
             `[data-install-platform="${preferredPlatform}"]`,
@@ -130,14 +157,20 @@ const jsonLd = {
         const source = document.getElementById(button.dataset.copyTarget ?? "");
         if (!source?.textContent) return;
 
+        const label = button.querySelector<HTMLElement>("[data-copy-label]") ?? button;
+        const original = label.textContent;
+        label.setAttribute("aria-live", "polite");
+
         try {
           await navigator.clipboard.writeText(source.textContent.trim());
         } catch {
-          return; // No clipboard permission; leave the label alone rather than lie.
+          label.textContent = "Copy failed";
+          setTimeout(() => {
+            label.textContent = original;
+          }, 2000);
+          return;
         }
 
-        const label = button.querySelector("[data-copy-label]") ?? button;
-        const original = label.textContent;
         label.textContent = "Copied";
         setTimeout(() => {
           label.textContent = original;

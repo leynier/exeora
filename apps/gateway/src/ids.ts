@@ -11,7 +11,7 @@ const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"; // Crockford base32: no i, 
 const MASK = ALPHABET.length - 1;
 const LENGTH = 22;
 
-export type IdPrefix = "usr" | "dev" | "prj" | "req" | "call" | "pcl" | "apr" | "adl";
+export type IdPrefix = "usr" | "dev" | "prj" | "req" | "call" | "pcl" | "apr" | "adl" | "lsh";
 
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(LENGTH));

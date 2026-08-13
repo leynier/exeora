@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { ACCOUNT_MCP_ROUTE } from "../mcp-account.js";
+import { normalizeEmail } from "../oauth/users.js";
 import { limitsFor } from "../plans.js";
 import { deleteAccount } from "./ops.js";
 import { normalizePlan } from "./plan.js";
@@ -38,7 +39,7 @@ me.get("/api/me", async (c) => {
   const adminRow = await database
     .select({ email: schema.adminUsers.email })
     .from(schema.adminUsers)
-    .where(eq(schema.adminUsers.email, user.email))
+    .where(eq(schema.adminUsers.email, normalizeEmail(user.email)))
     .get();
 
   const [deviceCount, projectCount, monthCalls] = await Promise.all([

@@ -50,13 +50,8 @@ function ApprovalRow({ approval, project }: { approval: Approval; project?: stri
     } catch (error) {
       // The terminal answered first, which is a race rather than a failure:
       // both places are asked at once, on purpose, and either may win.
-      toast(
-        error instanceof AlreadyAnswered
-          ? "That was answered somewhere else."
-          : error instanceof Error
-            ? error.message
-            : "Could not answer.",
-      );
+      if (error instanceof AlreadyAnswered) toast("That was answered somewhere else.");
+      else toast(error instanceof Error ? error.message : "Could not answer.", "error");
     } finally {
       // Either way the question is gone, and the audit log has a new row.
       await queryClient.invalidateQueries({ queryKey: keys.approvals });

@@ -21,7 +21,10 @@ const OTHER = "usr_admin_other";
 function call(path: string, options: { method?: string; userId?: string } = {}) {
   const request = new Request(`https://exeora.dev${path}`, { method: options.method ?? "GET" });
   const ctx = createExecutionContext();
-  (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? ADMIN };
+  (ctx as { props?: { userId: string; scopes: string[] } }).props = {
+    userId: options.userId ?? ADMIN,
+    scopes: ["dashboard:manage"],
+  };
 
   return api.fetch(request, env, ctx);
 }

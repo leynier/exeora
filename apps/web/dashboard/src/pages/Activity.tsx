@@ -6,6 +6,7 @@ import {
   Card,
   Divided,
   EmptyState,
+  ErrorBanner,
   PageHeader,
   Row,
   SkeletonRows,
@@ -101,6 +102,16 @@ export function Activity() {
         subtitle="What ran and how it ended. Never the arguments, never the output."
       />
 
+      {calls.isError && (
+        <ErrorBanner
+          error={calls.error}
+          title="Could not load activity"
+          onRetry={() => {
+            void calls.refetch();
+          }}
+        />
+      )}
+
       <Card
         // Counts what has been loaded, not what exists: the server never sends
         // a total, and inventing one from the pages in hand would be a number
@@ -133,7 +144,7 @@ export function Activity() {
           </div>
         }
       >
-        {calls.isLoading ? (
+        {calls.isError ? null : calls.isLoading ? (
           <SkeletonRows count={5} />
         ) : rows.length === 0 ? (
           <EmptyState title={filtering ? "Nothing matches those filters" : "Nothing yet"}>

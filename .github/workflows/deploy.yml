@@ -5,8 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Two Workers share one zone and one database. Overlapping runs could apply a
-# migration underneath a deploy, so they are serialised rather than cancelled:
+# The Worker and its D1 database deploy as one unit. Overlapping runs could
+# apply a migration underneath another deploy, so they are serialised rather
+# than cancelled:
 # a half-finished deploy is worse than a slow queue.
 concurrency:
   group: deploy-production
@@ -67,6 +68,8 @@ jobs:
             GOOGLE_CLIENT_SECRET
             COOKIE_SECRET
             REQUEST_STATE_SECRET
+            AUDIT_R2_SQL_TOKEN
+            AUDIT_MAINTENANCE_SECRET
         env:
           # GitHub refuses repository secrets whose name starts with GITHUB_,
           # so they are stored under GH_OAUTH_* and renamed here to the names
@@ -77,3 +80,5 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
+          AUDIT_R2_SQL_TOKEN: ${{ secrets.AUDIT_R2_SQL_TOKEN }}
+          AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}

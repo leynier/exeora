@@ -3,7 +3,11 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "./api/index.js";
 import { deleteAccount } from "./api/ops.js";
-import { pendingAuditDeletions, settleAuditDeletion } from "./audit-deletions.js";
+import {
+  claimAuditDeletions,
+  pendingAuditDeletions,
+  settleAuditDeletion,
+} from "./audit-deletions.js";
 import { db, schema } from "./db/client.js";
 
 /**
@@ -27,7 +31,10 @@ const fullEnv = env as unknown as Env;
 function call(path: string, options: { method?: string; userId?: string } = {}) {
   const request = new Request(`https://exeora.dev${path}`, { method: options.method ?? "GET" });
   const ctx = createExecutionContext();
-  (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? USER };
+  (ctx as { props?: { userId: string; scopes: string[] } }).props = {
+    userId: options.userId ?? USER,
+    scopes: ["dashboard:manage"],
+  };
 
   return api.fetch(request, env, ctx);
 }
@@ -118,23 +125,34 @@ describe("enqueueing what the archive must forget", () => {
 });
 
 describe("settling", () => {
-  it("closes a target and takes it out of the queue", async () => {
+  it("rechecks a target before taking it out of the queue", async () => {
     await deleteAccount(fullEnv, USER);
-    const [pending] = await pendingAuditDeletions(env);
-    if (!pending) throw new Error("nothing was enqueued");
+    const [first] = await claimAuditDeletions(env);
+    if (!first) throw new Error("nothing was enqueued");
 
-    expect(await settleAuditDeletion(env, pending.id, { ok: true })).toBe(true);
+    expect(await settleAuditDeletion(env, first.id, first.leaseToken, { ok: true })).toBe(true);
+    await db(env)
+      .update(schema.auditDeletions)
+      .set({ nextAttemptAt: new Date(0) })
+      .where(eq(schema.auditDeletions.id, first.id))
+      .run();
+    const [second] = await claimAuditDeletions(env);
+    if (!second) throw new Error("nothing was requeued");
+    expect(await settleAuditDeletion(env, second.id, second.leaseToken, { ok: true })).toBe(true);
     expect(await pendingAuditDeletions(env)).toEqual([]);
   });
 
   it("keeps a failed target queued, with the reason attached", async () => {
     await deleteAccount(fullEnv, USER);
-    const [pending] = await pendingAuditDeletions(env);
+    const [pending] = await claimAuditDeletions(env);
     if (!pending) throw new Error("nothing was enqueued");
 
-    expect(await settleAuditDeletion(env, pending.id, { ok: false, error: "catalog 503" })).toBe(
-      true,
-    );
+    expect(
+      await settleAuditDeletion(env, pending.id, pending.leaseToken, {
+        ok: false,
+        error: "catalog 503",
+      }),
+    ).toBe(true);
 
     // Still owed, and now carrying both why it failed and how many runs have
     // tried. A target stuck at twenty attempts is the thing worth alerting on.
@@ -149,12 +167,43 @@ describe("settling", () => {
     expect(row?.lastError).toBe("catalog 503");
   });
 
+  it("does not count a failed catalog transaction as the first erasure pass", async () => {
+    await deleteAccount(fullEnv, USER);
+    const [failed] = await claimAuditDeletions(env);
+    if (!failed) throw new Error("nothing was enqueued");
+    await settleAuditDeletion(env, failed.id, failed.leaseToken, {
+      ok: false,
+      error: "catalog 503",
+    });
+
+    await db(env)
+      .update(schema.auditDeletions)
+      .set({ nextAttemptAt: new Date(0) })
+      .where(eq(schema.auditDeletions.id, failed.id))
+      .run();
+    const [firstSuccess] = await claimAuditDeletions(env);
+    if (!firstSuccess) throw new Error("nothing was requeued");
+    await settleAuditDeletion(env, firstSuccess.id, firstSuccess.leaseToken, { ok: true });
+
+    expect(await pendingAuditDeletions(env)).toEqual([
+      expect.objectContaining({ targetId: USER, attempts: 2 }),
+    ]);
+    const row = await db(env)
+      .select({ successfulPasses: schema.auditDeletions.successfulPasses })
+      .from(schema.auditDeletions)
+      .where(eq(schema.auditDeletions.id, failed.id))
+      .get();
+    expect(row?.successfulPasses).toBe(1);
+  });
+
   it("refuses to settle a target another run already closed", async () => {
     await deleteAccount(fullEnv, USER);
-    const [pending] = await pendingAuditDeletions(env);
+    const [pending] = await claimAuditDeletions(env);
     if (!pending) throw new Error("nothing was enqueued");
 
-    expect(await settleAuditDeletion(env, pending.id, { ok: true })).toBe(true);
-    expect(await settleAuditDeletion(env, pending.id, { ok: true })).toBe(false);
+    expect(await settleAuditDeletion(env, pending.id, pending.leaseToken, { ok: true })).toBe(true);
+    expect(await settleAuditDeletion(env, pending.id, pending.leaseToken, { ok: true })).toBe(
+      false,
+    );
   });
 });

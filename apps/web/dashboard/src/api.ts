@@ -214,9 +214,33 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // The token expired or was revoked while the tab was open; the caller sends
   // the user back through sign-in rather than showing a broken page.
   if (response.status === 401) throw new Unauthorized("Session expired.");
-  if (!response.ok) throw new Error(`${path} failed (${response.status}).`);
+  if (!response.ok) {
+    const body = await response
+      .clone()
+      .json()
+      .then((value) => value as Record<string, unknown>)
+      .catch(() => null);
+    throw new Error(`${apiError(body)} (${response.status}).`);
+  }
 
   return (await response.json()) as T;
+}
+
+function apiError(body: Record<string, unknown> | null): string {
+  if (typeof body?.message === "string") return body.message;
+  const code = typeof body?.error === "string" ? body.error : null;
+  if (code === "plan_limit") {
+    const limit = typeof body?.limit === "string" ? body.limit : "resources";
+    const max = typeof body?.max === "number" ? ` (${body.max} maximum)` : "";
+    return `This plan has reached its ${limit} limit${max}`;
+  }
+  const messages: Record<string, string> = {
+    device_revoked: "That machine has been revoked",
+    not_found: "That item no longer exists",
+    not_revoked: "Revoke this item before deleting it permanently",
+    forbidden: "This account is not allowed to do that",
+  };
+  return (code && messages[code]) ?? "The gateway could not complete the request";
 }
 
 /**

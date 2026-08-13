@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, schema } from "./db/client.js";
-import { rollupUsageDailyFromWarehouse } from "./warehouse-usage.js";
+import { rollupUsageDailyFromWarehouse, warehouseRollupStatus } from "./warehouse-usage.js";
 
 const USER = "usr_warehouse_rollup";
 const USER_B = "usr_warehouse_rollup_b";
@@ -238,8 +238,7 @@ describe("warehouse usage rollup", () => {
     const secondQuery = JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body)).query as string;
     expect(secondQuery).toContain(`user_id > '${USER}'`);
     expect(secondQuery).toContain("LIMIT 1");
-    expect(secondQuery).toContain("COUNT(*)");
-    expect(secondQuery).not.toContain("COUNT(DISTINCT");
+    expect(secondQuery).toContain("COUNT(DISTINCT id)");
     const thirdQuery = JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body)).query as string;
     expect(thirdQuery).toContain(`user_id > '${USER_B}'`);
 
@@ -313,5 +312,36 @@ describe("warehouse usage rollup", () => {
     expect(result.days).toBe(31);
     const state = await db(env).select().from(schema.usageRollupState).get();
     expect(state?.lastCompleteDay).toBe("2026-01-31");
+  });
+
+  it("blocks retention while a backlog larger than one nightly batch remains", async () => {
+    const status = await warehouseRollupStatus(env, {
+      config: { ...config, startDay: "2026-01-01" },
+      now: new Date("2026-03-20T04:17:00.000Z"),
+    });
+
+    expect(status).toEqual({
+      lastCompleteDay: null,
+      targetDay: "2026-03-19",
+      backlogDays: 78,
+      pruneAllowed: false,
+    });
+  });
+
+  it("allows retention only when the checkpoint reaches yesterday", async () => {
+    await db(env)
+      .insert(schema.usageRollupState)
+      .values({
+        source: "r2-sql:account:audit:audit:default.tool_calls",
+        lastCompleteDay: "2026-03-19",
+      })
+      .run();
+
+    const status = await warehouseRollupStatus(env, {
+      config: { ...config, startDay: "2026-01-01" },
+      now: new Date("2026-03-20T04:17:00.000Z"),
+    });
+    expect(status.pruneAllowed).toBe(true);
+    expect(status.backlogDays).toBe(0);
   });
 });

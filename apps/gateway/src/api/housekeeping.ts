@@ -1,4 +1,6 @@
 import "../env.js";
+import { purgeExpiredAuthorizations } from "../oauth/pending.js";
+import { purgeBrowserSessions } from "../oauth/session.js";
 import { rollupUsageDailyFromWarehouse } from "../warehouse-usage.js";
 
 /**
@@ -27,12 +29,25 @@ export async function runNightlyHousekeeping(
   deps: { rollup?: (env: NightlyEnv) => Promise<unknown> } = {},
 ): Promise<void> {
   const rollup = deps.rollup ?? rollupUsageDailyFromWarehouse;
+  const startedAt = Date.now();
+  const results = await Promise.allSettled([
+    rollup(env),
+    purgeExpiredAuthorizations(env),
+    purgeBrowserSessions(env),
+  ]);
 
-  try {
-    await rollup(env);
-  } catch (error) {
-    // Logged rather than thrown: nothing downstream of this depends on it, and
-    // the checkpoint means tomorrow's run picks up the day that failed.
-    console.error("usage rollup failed", error);
-  }
+  const failed = results.find((result) => result.status === "rejected");
+  console.log(
+    JSON.stringify({
+      job: "nightly_housekeeping",
+      status: failed ? "error" : "ok",
+      durationMs: Date.now() - startedAt,
+      ...(failed ? { error: describe(failed.reason) } : {}),
+    }),
+  );
+  if (failed) throw failed.reason;
+}
+
+function describe(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }

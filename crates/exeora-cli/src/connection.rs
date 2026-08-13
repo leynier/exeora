@@ -6,7 +6,7 @@ use crate::{
     error::{ErrorCode, ExeoraError},
     policy::{CommandPolicy, effective_policy, policy_allows},
     protocol::{
-        HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS,
+        HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES,
         PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
     },
     tools::ToolEngine,
@@ -324,9 +324,13 @@ async fn spawn_tool_call(
     tokio::spawn(async move {
         let result = engine.execute(&project.root, tool, arguments, cancel).await;
         in_flight.lock().await.remove(&request_id);
-        let ok = result.is_ok();
         let elapsed = now_ms().saturating_sub(started);
-        let _ = outgoing.send(result_frame(&request_id, started, result));
+        let frame = result_frame(&request_id, started, result);
+        let ok = frame
+            .pointer("/result/ok")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let _ = outgoing.send(frame);
         emit_event(
             json_output,
             "result",
@@ -374,7 +378,18 @@ async fn handle_approval(
 
 fn result_frame(request_id: &str, started: u64, result: Result<Value, ExeoraError>) -> Value {
     let result = match result {
-        Ok(value) => json!({ "ok": true, "value": value }),
+        Ok(value)
+            if serde_json::to_vec(&value).is_ok_and(|bytes| bytes.len() <= MAX_RESULT_BYTES) =>
+        {
+            json!({ "ok": true, "value": value })
+        }
+        Ok(_) => json!({
+            "ok": false,
+            "error": {
+                "code": ErrorCode::ToolFailed.as_str(),
+                "message": format!("Tool result exceeded the {MAX_RESULT_BYTES}-byte protocol limit. Narrow the request and try again."),
+            }
+        }),
         Err(error) => {
             json!({ "ok": false, "error": { "code": error.code.as_str(), "message": error.message } })
         }
@@ -431,5 +446,23 @@ fn platform() -> &'static str {
         "darwin"
     } else {
         "linux"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::result_frame;
+    use crate::protocol::MAX_RESULT_BYTES;
+    use serde_json::json;
+
+    #[test]
+    fn rejects_an_oversized_tool_result_before_it_reaches_the_socket() {
+        let frame = result_frame(
+            "req_test",
+            0,
+            Ok(json!({ "content": "x".repeat(MAX_RESULT_BYTES) })),
+        );
+        assert_eq!(frame["result"]["ok"], false);
+        assert_eq!(frame["result"]["error"]["code"], "TOOL_FAILED");
     }
 }

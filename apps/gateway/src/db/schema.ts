@@ -67,6 +67,37 @@ export const oauthIdentities = sqliteTable(
   ],
 );
 
+/** Revocable browser login sessions used only by the OAuth consent UI. */
+export const browserSessions = sqliteTable(
+  "browser_sessions",
+  {
+    /** HMAC of the opaque cookie value; the bearer value itself is never stored. */
+    idHash: text("id_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("browser_sessions_user_expiry").on(table.userId, table.expiresAt),
+    index("browser_sessions_expiry").on(table.expiresAt),
+  ],
+);
+
+/** One-time OAuth requests parked while the browser visits an identity provider. */
+export const oauthPending = sqliteTable(
+  "oauth_pending",
+  {
+    state: text("state").primaryKey(),
+    payload: text("payload").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("oauth_pending_expiry").on(table.expiresAt)],
+);
+
 export const devices = sqliteTable(
   "devices",
   {
@@ -242,7 +273,8 @@ export const activeProjects = sqliteTable(
  * the nightly cron from the Iceberg archive, never on the request path.
  *
  * `day` is a UTC calendar day as `YYYY-MM-DD`. Counting happens in the cron
- * rather than on every call, so the request path writes no D1 row at all.
+ * rather than on every call; the request path only writes the bounded producer
+ * outbox that makes delivery recoverable.
  */
 export const usageDaily = sqliteTable(
   "usage_daily",
@@ -267,6 +299,43 @@ export const usageRollupState = sqliteTable("usage_rollup_state", {
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
 });
+
+/**
+ * Durable producer-side audit outbox.
+ *
+ * A row is inserted before a tool can touch the executor. Pipeline delivery is
+ * at-least-once; `id` is stable across retries and warehouse queries deduplicate
+ * it. There are deliberately no foreign keys: deletion may remove the account
+ * while an already-started call is being reconciled.
+ */
+export const auditOutbox = sqliteTable(
+  "audit_outbox",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    projectId: text("project_id").notNull(),
+    tool: text("tool").notNull(),
+    status: text("status", { enum: ["ok", "error"] }),
+    durationMs: integer("duration_ms"),
+    errorCode: text("error_code"),
+    clientId: text("client_id"),
+    clientName: text("client_name"),
+    endpoint: text("endpoint", { enum: ["project", "account"] }).notNull(),
+    readyAt: integer("ready_at", { mode: "timestamp_ms" }),
+    acceptedAt: integer("accepted_at", { mode: "timestamp_ms" }),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }).notNull(),
+    leaseToken: text("lease_token"),
+    leaseUntil: integer("lease_until", { mode: "timestamp_ms" }),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("audit_outbox_delivery").on(table.acceptedAt, table.nextAttemptAt),
+    index("audit_outbox_started").on(table.status, table.createdAt),
+    index("audit_outbox_user_project").on(table.userId, table.projectId),
+  ],
+);
 
 /**
  * Rows the archive still has to forget.
@@ -295,13 +364,23 @@ export const auditDeletions = sqliteTable(
     requestedAt: integer("requested_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
-    /** Null until a maintenance run has committed the delete transaction. */
+    /** Null until two successful catalog deletes have committed at least 24 hours apart. */
     completedAt: integer("completed_at", { mode: "timestamp_ms" }),
     /** Counted so a target that keeps failing can be found rather than retried forever. */
     attempts: integer("attempts").notNull().default(0),
+    /** Two committed deletes catch events that were still in the Pipeline when erasure began. */
+    successfulPasses: integer("successful_passes").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    leaseToken: text("lease_token"),
+    leaseUntil: integer("lease_until", { mode: "timestamp_ms" }),
     lastError: text("last_error"),
   },
-  (table) => [index("audit_deletions_pending").on(table.completedAt, table.requestedAt)],
+  (table) => [
+    index("audit_deletions_pending").on(table.completedAt, table.nextAttemptAt),
+    uniqueIndex("audit_deletions_target").on(table.scope, table.targetId),
+  ],
 );
 
 export type User = typeof users.$inferSelect;
@@ -314,4 +393,5 @@ export type ActiveProject = typeof activeProjects.$inferSelect;
 export type UsageDaily = typeof usageDaily.$inferSelect;
 export type AuditDeletion = typeof auditDeletions.$inferSelect;
 export type AuditDeletionScope = AuditDeletion["scope"];
+export type AuditOutbox = typeof auditOutbox.$inferSelect;
 export type UserPlan = User["plan"];

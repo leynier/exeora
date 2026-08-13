@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import "../env.js";
+import { hasScope, insufficientScope, isExecutorApiRequest } from "../oauth/scopes.js";
+import { propsOf } from "../props.js";
 import { accountClients } from "./account-clients.js";
 import { admin } from "./admin.js";
 import { audit } from "./audit.js";
@@ -27,9 +29,15 @@ import type { ApiEnv } from "./router.js";
 export const api = new Hono<ApiEnv>();
 
 api.use("/api/*", async (c, next) => {
-  const props = (c.executionCtx as unknown as { props?: { userId?: string } }).props;
-  const userId = props?.userId;
+  const props = propsOf(c.executionCtx);
+  const userId = props.userId;
   if (!userId) return c.json({ error: "unauthorized" }, 401);
+  if (!hasScope(props, "dashboard:manage")) {
+    const executorRoute = isExecutorApiRequest(c.req.method, c.req.path);
+    if (!executorRoute || !hasScope(props, "executor:connect")) {
+      return insufficientScope([executorRoute ? "executor:connect" : "dashboard:manage"]);
+    }
+  }
   c.set("userId", userId);
   await next();
 });

@@ -19,10 +19,11 @@ import Doc from "../../layouts/Doc.astro";
 
   <h2>What you need</h2>
   <ul>
-    <li>A Cloudflare account with Workers, D1 and KV available</li>
+    <li>A Cloudflare account with Workers, D1, KV, Pipelines and R2 Data Catalog</li>
     <li>A domain on Cloudflare (or any zone you can point at Workers)</li>
     <li>A GitHub OAuth App, Google OAuth client, or both, whose callbacks hit your gateway</li>
     <li>Node 22+ and <a href="https://bun.sh">Bun</a> to build and deploy</li>
+    <li>A recurring runner for archive maintenance; GitHub Actions is included</li>
   </ul>
 
   <h2>1. Clone and install</h2>
@@ -89,7 +90,36 @@ bun run secret REQUEST_STATE_SECRET`}</pre>
     not a secret. Leave it unset to keep the first-user rule.
   </p>
 
-  <h2>6. Migrate and deploy</h2>
+  <h2>6. Provision the required audit archive</h2>
+  <p>
+    Audit storage is part of the operating contract, not optional analytics. D1 first persists a
+    bounded outbox intent; the durable history, Activity queries and usage rollups live in an
+    Iceberg table written through Cloudflare Pipelines. If the intent cannot be written, Exeora
+    does not execute the tool. A temporary Pipeline failure stays queued for retry.
+  </p>
+  <p>
+    Follow <code>apps/gateway/pipelines/readme.md</code> to create the Pipeline, R2 Data Catalog
+    table and three separately held catalog tokens. Copy the stream binding and archive coordinates
+    into <code>wrangler.jsonc</code>, then set the two secrets the Worker holds:
+  </p>
+  <pre>{`bun run secret AUDIT_R2_SQL_TOKEN
+bun run secret AUDIT_MAINTENANCE_SECRET`}</pre>
+  <p>
+    Run <code>.github/workflows/audit-maintenance.yml</code> nightly with repository secrets{" "}
+    <code>AUDIT_CATALOG_URI</code>, <code>AUDIT_R2_WAREHOUSE</code>,{" "}
+    <code>AUDIT_R2_MAINTENANCE_TOKEN</code>, <code>GATEWAY_URL</code> and the same{" "}
+    <code>AUDIT_MAINTENANCE_SECRET</code>. It drains leased erasure work twice, at least 24 hours
+    apart, and refuses to prune retention while the usage rollup is behind.
+  </p>
+  <p>
+    The repository's{" "}
+    <a href="https://github.com/leynier/exeora/blob/main/docs/self-hosting.md"
+      >complete self-hosting guide</a
+    >{" "}
+    contains the exact token permissions and maintenance setup.
+  </p>
+
+  <h2>7. Migrate and deploy</h2>
   <pre>{`bun run db:migrate
 bun run deploy`}</pre>
   <p>
@@ -97,7 +127,7 @@ bun run deploy`}</pre>
     serves the built site through its <code>ASSETS</code> binding.
   </p>
 
-  <h2>7. Point the CLI at your gateway</h2>
+  <h2>8. Point the CLI at your gateway</h2>
   <p>
     The published CLI talks to <code>https://exeora.dev</code> until you tell it otherwise. Tell it once, and the choice is stored: every later command talks to your gateway with no flag and no variable.
   </p>

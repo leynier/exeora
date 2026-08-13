@@ -89,9 +89,10 @@ export async function queryWarehouseCalls(
   // One more than the page, so the caller learns whether a next page exists
   // without a second, separately billed query.
   const query = `SELECT id, project_id, tool, status, duration_ms, error_code, client_id, client_name, created_at
-FROM ${config.table}
-WHERE ${conditions.join("\n  AND ")}
-ORDER BY created_at DESC, id DESC
+	FROM ${config.table}
+	WHERE ${conditions.join("\n  AND ")}
+	GROUP BY id, project_id, tool, status, duration_ms, error_code, client_id, client_name, created_at
+	ORDER BY created_at DESC, id DESC
 LIMIT ${filter.pageSize + 1}`;
 
   const rows = await runQuery(config, query, fetcher);

@@ -38,116 +38,85 @@ struct Running {
     running: bool,
 }
 
-/// One read off a pipe, with its length in UTF-16 units measured once.
+/// One read off a pipe, with its UTF-8 byte length measured once.
 struct Chunk {
     text: String,
-    units: usize,
+    bytes: usize,
 }
 
 /**
  * Output kept for one process, oldest chunk dropped first.
  *
- * Lengths and cursors count UTF-16 units, because the contract's cursor does
- * and the two have to agree or a reader seeks somewhere it did not mean to.
+ * Lengths and cursors count UTF-8 bytes, matching the shared protocol limits.
  * Chunks keep their own length so neither trimming nor reading has to measure
- * the whole buffer: a reader asking for 100,000 units out of a full 256,000
+ * the whole buffer: a reader asking for 100,000 bytes out of a full 256,000
  * should pay for what it asked for, not for what is being held.
  */
 #[derive(Default)]
 struct Ring {
     chunks: VecDeque<Chunk>,
-    units: usize,
+    bytes: usize,
     dropped: usize,
 }
 
 impl Ring {
     fn append(&mut self, text: String) {
-        let units = utf16_len(&text);
-        self.units += units;
-        self.chunks.push_back(Chunk { text, units });
-        while self.units > MAX_PROCESS_BUFFER_BYTES && self.chunks.len() > 1 {
-            if let Some(oldest) = self.chunks.pop_front() {
-                self.units -= oldest.units;
-                self.dropped += oldest.units;
+        let bytes = text.len();
+        self.bytes += bytes;
+        self.chunks.push_back(Chunk { text, bytes });
+        while self.bytes > MAX_PROCESS_BUFFER_BYTES {
+            let overflow = self.bytes - MAX_PROCESS_BUFFER_BYTES;
+            let Some(oldest) = self.chunks.front_mut() else {
+                break;
+            };
+            if oldest.bytes <= overflow {
+                let oldest = self.chunks.pop_front().expect("front exists");
+                self.bytes -= oldest.bytes;
+                self.dropped += oldest.bytes;
+                continue;
             }
+
+            let mut cut = overflow;
+            while !oldest.text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            oldest.text = oldest.text.split_off(cut);
+            oldest.bytes -= cut;
+            self.bytes -= cut;
+            self.dropped += cut;
         }
     }
 
-    /// Copies at most `max` units starting `offset` units into what is still held.
+    /// Copies at most `max` bytes starting `offset` bytes into what is still held.
     fn slice(&self, offset: usize, max: usize) -> (String, usize) {
         let mut skipped = offset;
         let mut output = String::with_capacity(max);
-        let mut written = 0;
+        let mut consumed = 0;
 
         for chunk in &self.chunks {
-            if skipped >= chunk.units {
-                skipped -= chunk.units;
+            if skipped >= chunk.bytes {
+                skipped -= chunk.bytes;
                 continue;
             }
-            let budget = max - written;
-            let wanted = (chunk.units - skipped).min(budget);
-            let taken = append_units(&mut output, &chunk.text, chunk.units, skipped, budget);
-            written += taken;
+            let mut start = skipped;
+            while !chunk.text.is_char_boundary(start) {
+                start += 1;
+            }
+            consumed += start - skipped;
+            let budget = max.saturating_sub(output.len());
+            let mut end = (start + budget).min(chunk.bytes);
+            while end > start && !chunk.text.is_char_boundary(end) {
+                end -= 1;
+            }
+            output.push_str(&chunk.text[start..end]);
+            consumed += end - start;
             skipped = 0;
-            // Short of what the chunk still held means the budget ran out
-            // inside a character rather than at the end of the chunk. The rest
-            // of this chunk is the next read's; going on to the following one
-            // would splice two ranges that are not adjacent.
-            if taken < wanted || written >= max {
+            if end < chunk.bytes || output.len() >= max {
                 break;
             }
         }
-        (output, written)
+        (output, consumed)
     }
-}
-
-/**
- * Appends up to `max` UTF-16 units of `text`, starting `skip` units in.
- *
- * Resolves the unit range to a byte range and copies it in one go. Pushing
- * character by character would re-encode every one of them, and a reader
- * walking a full buffer takes whole chunks: only the first and the last of them
- * are ever partial, and `units` answers the rest without looking at the text.
- *
- * Returns the units consumed, which is what the caller's cursor advances by.
- * That is the same as the units appended except where `skip` lands inside a
- * surrogate pair: half a character cannot be handed back, so the pair is passed
- * over whole and still counted, or the next cursor would point into it again.
- */
-fn append_units(output: &mut String, text: &str, units: usize, skip: usize, max: usize) -> usize {
-    if skip == 0 && units <= max {
-        output.push_str(text);
-        return units;
-    }
-    if text.is_ascii() {
-        let start = skip.min(text.len());
-        let end = start.saturating_add(max).min(text.len());
-        output.push_str(&text[start..end]);
-        return end - start;
-    }
-
-    let mut position = 0;
-    let mut start = None;
-    let mut written = 0;
-
-    for (offset, character) in text.char_indices() {
-        let width = character.len_utf16();
-        if position < skip {
-            position += width;
-            written += position.saturating_sub(skip);
-            continue;
-        }
-        let start = *start.get_or_insert(offset);
-        if written + width > max {
-            output.push_str(&text[start..offset]);
-            return written;
-        }
-        written += width;
-    }
-    if let Some(start) = start {
-        output.push_str(&text[start..]);
-    }
-    written
 }
 
 pub struct ProcessRegistry {
@@ -179,8 +148,9 @@ impl ProcessRegistry {
         let mut child = spawn_wrapped(&args.command, &real_root.join(cwd), false)?;
         let stdout = child.stdout().take();
         let stderr = child.stderr().take();
-        let stdout_task = tokio::spawn(capture(stdout, MAX_COMMAND_OUTPUT_BYTES));
-        let stderr_task = tokio::spawn(capture(stderr, MAX_COMMAND_OUTPUT_BYTES));
+        let captured = Arc::new(Mutex::new(CapturedOutput::default()));
+        let stdout_task = tokio::spawn(capture(stdout, OutputStream::Stdout, captured.clone()));
+        let stderr_task = tokio::spawn(capture(stderr, OutputStream::Stderr, captured.clone()));
 
         let mut timed_out = false;
         let mut cancelled = false;
@@ -196,8 +166,11 @@ impl ProcessRegistry {
         if status.is_none() {
             let _ = kill_child(child.as_mut()).await;
         }
-        let (stdout, stdout_cut) = stdout_task.await.map_err(join_error)??;
-        let (stderr, stderr_cut) = stderr_task.await.map_err(join_error)??;
+        stdout_task.await.map_err(join_error)??;
+        stderr_task.await.map_err(join_error)??;
+        let captured = std::mem::take(&mut *captured.lock().await);
+        let truncated = captured.truncated;
+        let (stdout, stderr) = captured.into_strings();
         if cancelled {
             return Err(ExeoraError::new(
                 ErrorCode::Cancelled,
@@ -209,7 +182,7 @@ impl ProcessRegistry {
             "exitCode": status.and_then(|status| status.code()),
             "stdout": stdout,
             "stderr": stderr,
-            "truncated": stdout_cut || stderr_cut,
+            "truncated": truncated,
             "timedOut": timed_out,
         }))
     }
@@ -219,6 +192,9 @@ impl ProcessRegistry {
         let (real_root, cwd) = resolve_in_project(root, args.cwd.as_deref().unwrap_or("."))?;
         let root_key = real_root.clone();
         let mut entries = self.entries.lock().await;
+        for entry in entries.values_mut() {
+            refresh(entry).await;
+        }
         if entries
             .values()
             .filter(|entry| entry.root == root_key && entry.running)
@@ -258,7 +234,7 @@ impl ProcessRegistry {
         let entry = find_entry(&mut entries, root, &args.process_id)?;
         refresh(entry).await;
         let ring = entry.ring.lock().await;
-        let total = ring.dropped + ring.units;
+        let total = ring.dropped + ring.bytes;
         let from = args.cursor.unwrap_or(0);
         let start = from.max(ring.dropped).min(total);
         let (chunk, read) = ring.slice(start - ring.dropped, MAX_PROCESS_CHUNK_BYTES);
@@ -432,21 +408,87 @@ fn spawn_reader<R: AsyncRead + Unpin + Send + 'static>(reader: Option<R>, ring: 
     });
 }
 
+#[derive(Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+struct OutputChunk {
+    stream: OutputStream,
+    bytes: Vec<u8>,
+}
+
+#[derive(Default)]
+struct CapturedOutput {
+    chunks: VecDeque<OutputChunk>,
+    bytes: usize,
+    truncated: bool,
+}
+
+impl CapturedOutput {
+    fn append(&mut self, stream: OutputStream, mut bytes: Vec<u8>) {
+        if bytes.len() > MAX_COMMAND_OUTPUT_BYTES {
+            self.truncated = true;
+            bytes.drain(..bytes.len() - MAX_COMMAND_OUTPUT_BYTES);
+        }
+        self.bytes += bytes.len();
+        self.chunks.push_back(OutputChunk { stream, bytes });
+        while self.bytes > MAX_COMMAND_OUTPUT_BYTES {
+            self.truncated = true;
+            let overflow = self.bytes - MAX_COMMAND_OUTPUT_BYTES;
+            let Some(oldest) = self.chunks.front_mut() else {
+                break;
+            };
+            if oldest.bytes.len() <= overflow {
+                let oldest = self.chunks.pop_front().expect("front exists");
+                self.bytes -= oldest.bytes.len();
+            } else {
+                oldest.bytes.drain(..overflow);
+                self.bytes -= overflow;
+            }
+        }
+    }
+
+    fn into_strings(self) -> (String, String) {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        for chunk in self.chunks {
+            match chunk.stream {
+                OutputStream::Stdout => stdout.extend(chunk.bytes),
+                OutputStream::Stderr => stderr.extend(chunk.bytes),
+            }
+        }
+        (
+            String::from_utf8_lossy(&stdout).into_owned(),
+            String::from_utf8_lossy(&stderr).into_owned(),
+        )
+    }
+}
+
 async fn capture<R: AsyncRead + Unpin>(
     reader: Option<R>,
-    max: usize,
-) -> Result<(String, bool), ExeoraError> {
+    stream: OutputStream,
+    captured: Arc<Mutex<CapturedOutput>>,
+) -> Result<(), ExeoraError> {
     let Some(mut reader) = reader else {
-        return Ok((String::new(), false));
+        return Ok(());
     };
-    let mut all = Vec::new();
-    reader
-        .read_to_end(&mut all)
-        .await
-        .map_err(|error| ExeoraError::tool(error.to_string()))?;
-    let cut = all.len() > max;
-    let kept = if cut { &all[all.len() - max..] } else { &all };
-    Ok((String::from_utf8_lossy(kept).into_owned(), cut))
+    let mut buffer = vec![0; 8192];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .await
+            .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        if count == 0 {
+            break;
+        }
+        captured
+            .lock()
+            .await
+            .append(stream, buffer[..count].to_vec());
+    }
+    Ok(())
 }
 
 async fn refresh(entry: &mut Running) {
@@ -475,13 +517,6 @@ fn find_entry<'a>(
         })
 }
 
-fn utf16_len(text: &str) -> usize {
-    if text.is_ascii() {
-        text.len()
-    } else {
-        text.encode_utf16().count()
-    }
-}
 fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {
     serde_json::from_value(value)
         .map_err(|error| ExeoraError::new(ErrorCode::InvalidArguments, error.to_string()))
@@ -496,12 +531,11 @@ async fn kill_child(child: &mut dyn ChildWrapper) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Ring;
+    use super::{CapturedOutput, OutputStream, Ring};
+    use crate::protocol::{MAX_COMMAND_OUTPUT_BYTES, MAX_PROCESS_BUFFER_BYTES};
 
-    /// A pair the read limit lands inside waits: it cannot be halved, and the
-    /// units after it in the chunk are not adjacent to whatever follows.
     #[test]
-    fn a_surrogate_pair_at_the_limit_ends_the_read() {
+    fn a_multibyte_character_at_the_byte_limit_waits_for_the_next_read() {
         let mut ring = Ring::default();
         ring.append("a".repeat(9));
         ring.append("\u{1f600}tail".to_owned());
@@ -509,22 +543,43 @@ mod tests {
 
         let (head, read) = ring.slice(0, 10);
         assert_eq!(head, "a".repeat(9));
-        assert_eq!(read, 9, "the pair is left for the next read");
+        assert_eq!(read, 9, "the character is left for the next read");
 
-        let (tail, read) = ring.slice(read, 6);
+        let (tail, read) = ring.slice(read, 8);
         assert_eq!(tail, "\u{1f600}tail");
-        assert_eq!(read, 6);
+        assert_eq!(read, 8);
     }
 
-    /// A cursor pointing inside a pair passes it whole and still counts it, or
-    /// the cursor it hands back would point into the same pair again.
     #[test]
-    fn a_cursor_inside_a_pair_advances_past_it() {
+    fn a_cursor_inside_a_character_advances_past_it() {
         let mut ring = Ring::default();
         ring.append("\u{1f600}tail".to_owned());
 
         let (chunk, read) = ring.slice(1, 10);
         assert_eq!(chunk, "tail");
-        assert_eq!(read, 5, "one unit of the pair and four of the tail");
+        assert_eq!(read, 7, "three skipped bytes and four bytes of tail");
+    }
+
+    #[test]
+    fn one_large_chunk_is_trimmed_to_the_process_byte_limit() {
+        let mut ring = Ring::default();
+        let input = "\u{00e9}".repeat(MAX_PROCESS_BUFFER_BYTES);
+        let input_bytes = input.len();
+        ring.append(input);
+
+        assert!(ring.bytes <= MAX_PROCESS_BUFFER_BYTES);
+        assert_eq!(ring.dropped + ring.bytes, input_bytes);
+    }
+
+    #[test]
+    fn stdout_and_stderr_share_one_command_output_budget() {
+        let mut output = CapturedOutput::default();
+        output.append(OutputStream::Stdout, vec![b'o'; 150_000]);
+        output.append(OutputStream::Stderr, vec![b'e'; 100_000]);
+        assert!(output.truncated);
+        assert_eq!(output.bytes, MAX_COMMAND_OUTPUT_BYTES);
+
+        let (stdout, stderr) = output.into_strings();
+        assert_eq!(stdout.len() + stderr.len(), MAX_COMMAND_OUTPUT_BYTES);
     }
 }

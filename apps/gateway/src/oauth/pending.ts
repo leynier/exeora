@@ -1,13 +1,14 @@
 import type { AuthRequest } from "@cloudflare/workers-oauth-provider";
+import { and, eq, gt } from "drizzle-orm";
+import { db, schema } from "../db/client.js";
 import { newId } from "../ids.js";
 
 /**
  * Parks the in-flight authorization request while the user is away at an identity provider.
  *
- * It lives in KV rather than in the `state` parameter because state travels
- * through the provider's URL: keeping the request server-side bounds its size
- * and means a tampered state can only ever fail to resolve, never smuggle a
- * different redirect_uri back into the flow.
+ * It lives in D1 rather than in the `state` parameter because state travels
+ * through the provider's URL. D1 also gives the final claim an atomic
+ * `DELETE ... RETURNING`, so two concurrent approvals cannot mint two codes.
  */
 const TTL_SECONDS = 600;
 
@@ -17,9 +18,14 @@ export interface PendingAuthorization {
 
 export async function parkAuthorization(env: Env, pending: PendingAuthorization): Promise<string> {
   const state = newId("req");
-  await env.OAUTH_KV.put(key(state), JSON.stringify(pending), {
-    expirationTtl: TTL_SECONDS,
-  });
+  await db(env)
+    .insert(schema.oauthPending)
+    .values({
+      state,
+      payload: JSON.stringify(pending),
+      expiresAt: new Date(Date.now() + TTL_SECONDS * 1000),
+    })
+    .run();
   return state;
 }
 
@@ -28,8 +34,12 @@ export async function peekAuthorization(
   env: Env,
   state: string,
 ): Promise<PendingAuthorization | null> {
-  const raw = await env.OAUTH_KV.get(key(state));
-  return raw ? (JSON.parse(raw) as PendingAuthorization) : null;
+  const row = await db(env)
+    .select({ payload: schema.oauthPending.payload })
+    .from(schema.oauthPending)
+    .where(and(eq(schema.oauthPending.state, state), gt(schema.oauthPending.expiresAt, new Date())))
+    .get();
+  return row ? parse(row.payload) : null;
 }
 
 /**
@@ -40,11 +50,23 @@ export async function claimAuthorization(
   env: Env,
   state: string,
 ): Promise<PendingAuthorization | null> {
-  const pending = await peekAuthorization(env, state);
-  if (pending) await env.OAUTH_KV.delete(key(state));
-  return pending;
+  const row = await env.DB.prepare(
+    "DELETE FROM oauth_pending WHERE state = ?1 AND expires_at > ?2 RETURNING payload",
+  )
+    .bind(state, Date.now())
+    .first<{ payload: string }>();
+  return row ? parse(row.payload) : null;
 }
 
-function key(state: string): string {
-  return `pending_auth:${state}`;
+export async function purgeExpiredAuthorizations(env: Pick<Env, "DB">): Promise<void> {
+  await env.DB.prepare("DELETE FROM oauth_pending WHERE expires_at <= ?1").bind(Date.now()).run();
+}
+
+function parse(raw: string): PendingAuthorization | null {
+  try {
+    const value = JSON.parse(raw) as PendingAuthorization;
+    return value?.authRequest ? value : null;
+  } catch {
+    return null;
+  }
 }

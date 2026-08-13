@@ -37,6 +37,10 @@ export function Overview() {
       ? Math.round(recent.reduce((total, call) => total + call.durationMs, 0) / recent.length)
       : 0;
 
+  if (devices.isError || projects.isError || calls.isError) {
+    return <PageHeader title="Overview" subtitle="Live account data is temporarily unavailable." />;
+  }
+
   if (!devices.isLoading && machines.length === 0) {
     return (
       <>

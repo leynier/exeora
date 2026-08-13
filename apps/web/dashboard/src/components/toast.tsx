@@ -38,6 +38,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
+            role={toast.tone === "error" ? "alert" : "status"}
             className={`border-border bg-surface-elevated text-body-md rounded-lg border px-4 py-2.5 shadow-lg ${
               toast.tone === "error" ? "text-error" : "text-foreground"
             }`}

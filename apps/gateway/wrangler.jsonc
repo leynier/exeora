@@ -13,7 +13,7 @@
   // lets the OAuth provider drop grants and tokens that have expired. Neither
   // has anything to do with a request. Retention on the archive itself belongs
   // to the maintenance job, which cannot run here.
-  "triggers": { "crons": ["17 4 * * *"] },
+  "triggers": { "crons": ["*/5 * * * *", "17 4 * * *"] },
 
   "durable_objects": {
     "bindings": [{ "name": "DEVICE_RELAY", "class_name": "DeviceRelay" }]
@@ -94,7 +94,7 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.8.3",
+    "LATEST_CLI_VERSION": "0.8.4",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds
     // `usage_daily` out of R2 SQL. Not secret: the account id is in every
@@ -111,8 +111,9 @@
     "AUDIT_WAREHOUSE_START_DAY": "2026-08-08"
   },
 
-  // The audit stream. Every tool call is sent here and nowhere else: D1 holds
-  // no per-call row, only the daily rollup the cron above rebuilds from it.
+  // The long-lived audit stream. D1 holds a bounded producer outbox so a
+  // Pipeline outage cannot silently lose a call; Activity and retention read
+  // the Iceberg table, not that transient queue.
   "pipelines": [
     {
       "binding": "AUDIT_STREAM",

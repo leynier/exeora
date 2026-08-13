@@ -32,6 +32,10 @@ export function Projects() {
 
   const rows = projects.data ?? [];
 
+  if (projects.isError || devices.isError || me.isError) {
+    return <PageHeader title="Projects" subtitle="Project data is temporarily unavailable." />;
+  }
+
   return (
     <>
       <PageHeader

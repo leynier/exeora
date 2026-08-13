@@ -15,6 +15,7 @@
     "check:file-length": "bun run scripts/check-file-length.ts",
     "typecheck": "tsc --build && tsc -p apps/web/dashboard/tsconfig.json",
     "test": "vitest run",
+    "test:e2e": "bun run --cwd apps/web build && playwright test",
     "ci": "bun run check && bun run check:file-length && bun run typecheck && bun run --cwd apps/web build && bun run test",
     "brand": "bun run scripts/brand-assets.ts",
     "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
     "@exeora/design": "workspace:*",
+    "@playwright/test": "1.62.1",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "latest",
     "fflate": "^0.8.3",

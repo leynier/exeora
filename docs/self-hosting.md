@@ -10,10 +10,11 @@ Exeora is AGPL-3.0. If you modify it and offer it as a network service, you must
 
 ## What you need
 
-- A Cloudflare account with Workers, D1 and KV
+- A Cloudflare account with Workers, D1, KV, Pipelines and R2 Data Catalog
 - A domain on Cloudflare (or any zone you can point at Workers)
 - A GitHub OAuth App, Google OAuth client, or both, whose callbacks hit your gateway
 - Node 22+ and [Bun](https://bun.sh)
+- A recurring runner for archive maintenance; the repository includes a GitHub Actions workflow
 
 ## 1. Clone and install
 
@@ -79,7 +80,32 @@ To name operators ahead of time instead, set the Worker var `ADMIN_EMAILS` to a 
 
 Matching addresses are promoted when they register; everyone else stays ordinary. It is a var, not a secret. Leave it unset to keep the first-user rule.
 
-## 6. Migrate and deploy
+## 6. Provision the required audit archive
+
+Tool execution has a durable producer outbox in D1 and a long-lived Iceberg archive in R2. The archive is not an optional analytics add-on: Activity, usage limits, retention and account erasure depend on it.
+
+Follow [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md) to create the `exeora_audit` Pipeline, its `exeora-audit` bucket and `default.tool_calls` table, then copy the generated stream binding and archive coordinates into `apps/gateway/wrangler.jsonc`.
+
+Create separate read-only and read-write R2 Data Catalog tokens. Only the read-only token reaches the Worker:
+
+```bash
+bun run secret AUDIT_R2_SQL_TOKEN
+bun run secret AUDIT_MAINTENANCE_SECRET
+```
+
+Use the same random `AUDIT_MAINTENANCE_SECRET` in the Worker and maintenance runner. The included `.github/workflows/audit-maintenance.yml` also needs these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `AUDIT_CATALOG_URI` | R2 Data Catalog REST URI |
+| `AUDIT_R2_WAREHOUSE` | Warehouse identifier from the catalog |
+| `AUDIT_R2_MAINTENANCE_TOKEN` | Separate Admin Read & Write catalog token |
+| `GATEWAY_URL` | Your public gateway origin |
+| `AUDIT_MAINTENANCE_SECRET` | The same random value set on the Worker |
+
+If the outbox cannot be persisted, a tool is not executed. A transient Pipeline failure stays queued for retry. Archive erasure is claimed with leases and needs two successful catalog passes at least 24 hours apart; retention pauses automatically unless the usage rollup has consumed every complete day through yesterday.
+
+## 7. Migrate and deploy
 
 ```bash
 bun run db:migrate
@@ -104,10 +130,12 @@ Repository secrets under Settings → Secrets and variables → Actions:
 | `GOOGLE_CLIENT_SECRET` | Production Google OAuth client secret |
 | `COOKIE_SECRET` | `openssl rand -hex 32` |
 | `REQUEST_STATE_SECRET` | `openssl rand -hex 32`, different from the cookie secret |
+| `AUDIT_R2_SQL_TOKEN` | Admin Read only R2 Data Catalog token |
+| `AUDIT_MAINTENANCE_SECRET` | Random maintenance secret, also used by the nightly workflow |
 
 The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads. Google secrets keep the names the Worker uses.
 
-## 7. Point the CLI at your gateway
+## 8. Point the CLI at your gateway
 
 The published CLI talks to `https://exeora.dev` until you tell it otherwise. Tell it once:
 
@@ -134,6 +162,6 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Audit storage
 
-Required, not optional: the gateway records every tool call to a Cloudflare Pipelines stream with an Iceberg sink in R2, and keeps no per-call row in D1. Without it, tool calls still run but nothing is recorded and `usage_daily` stays empty. Setup is in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md), and what the contract does and does not promise is in [`audit-architecture.md`](audit-architecture.md).
+The transient D1 outbox is the fail-closed delivery boundary; Iceberg is the durable, queryable history. Accepted outbox rows are retained for seven days and then removed, while warehouse reads deduplicate the stable id used by retries. Setup is in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md), and what the contract does and does not promise is in [`audit-architecture.md`](audit-architecture.md).
 
-Erasing an account from that archive needs a job that cannot run inside a Worker, because R2 SQL cannot delete. It ships as a GitHub Actions workflow, so a self-hosted deployment needs this repository forked with its own secrets, or account deletion will leave audit rows behind.
+Erasing an account from that archive needs a job that cannot run inside a Worker, because R2 SQL cannot delete. A self-hosted deployment therefore needs the included workflow or an equivalent recurring runner; without it, deletion debts and retention remain visible but undrained.

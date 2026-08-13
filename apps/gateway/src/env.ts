@@ -50,7 +50,8 @@ declare global {
      * the table never reaches the Worker at all, only the job.
      *
      * Unset means the internal routes answer 404 and nothing drains the
-     * deletion queue, which is the right default for a `d1`-mode deployment.
+     * deletion queue. Audit storage is required, so that is an incomplete
+     * deployment rather than an alternate operating mode.
      */
     AUDIT_MAINTENANCE_SECRET?: string;
 

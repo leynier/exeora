@@ -59,8 +59,17 @@ export const getDashboardClientId = (env: Env) => clientIdFor(env, dashboard(env
  * that one registers the client when it is missing and an authorize request
  * naming some other client should not have that side effect.
  */
-export async function isDashboardClient(env: Env, clientId: string): Promise<boolean> {
+export async function isDashboardClient(
+  env: Pick<Env, "OAUTH_KV">,
+  clientId: string,
+): Promise<boolean> {
   const stored = await env.OAUTH_KV.get(DASHBOARD_KV_KEY);
+  return stored !== null && stored === clientId;
+}
+
+/** Whether this is the public client installed by the native executor. */
+export async function isCliClient(env: Pick<Env, "OAUTH_KV">, clientId: string): Promise<boolean> {
+  const stored = await env.OAUTH_KV.get(CLI.kvKey);
   return stored !== null && stored === clientId;
 }
 

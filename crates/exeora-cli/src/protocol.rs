@@ -8,6 +8,7 @@ pub const HEARTBEAT_REQUEST: &str = r#"{"type":"heartbeat"}"#;
 pub const HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 pub const HEARTBEAT_TIMEOUT_MS: u64 = 90_000;
 pub const PRESENCE_SIGNAL_INTERVAL_MS: u64 = 5 * 60_000;
+pub const MAX_RESULT_BYTES: usize = 1_000_000;
 pub const MAX_READ_BYTES: usize = 500_000;
 pub const MAX_LIST_ENTRIES: usize = 1_000;
 pub const MAX_GREP_MATCHES: usize = 200;

@@ -5,7 +5,13 @@
  * import `index.ts`, which is the Worker entry point and imports them back.
  */
 
-export type Props = { userId: string; clientId?: string; clientName?: string };
+export type Props = {
+  userId: string;
+  clientId?: string;
+  clientName?: string;
+  /** Effective scopes on this access token, not merely the grant ceiling. */
+  scopes?: string[];
+};
 
 /**
  * OAuthProvider attaches the grant's props to the ExecutionContext before

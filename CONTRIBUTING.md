@@ -56,6 +56,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+Critical landing and dashboard flows also have real-browser coverage. Install Chromium once, then
+run the explicit suite (it is intentionally separate from the fast root test command):
+
+```bash
+bunx playwright install chromium
+bun run test:e2e
+```
+
+To use an existing Chromium build instead, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to its
+executable.
+
 The TypeScript schemas remain canonical. Run `bun run protocol:rust` after changing anything under `packages/protocol`; CI regenerates the JSON contract and Rust types and fails if the checked-in output drifts.
 
 The gateway's tests run inside workerd through `@cloudflare/vitest-pool-workers`, so the Durable Object, WebSocket hibernation and D1 are the real implementations rather than stand-ins.
@@ -86,11 +97,11 @@ Stopping `connect` should make the next tool call fail immediately with `LOCAL_E
 
 ```bash
 # bump the workspace version in Cargo.toml, then
-git commit -am "release: cli v0.8.3" && git tag cli-v0.8.3
+git commit -am "release: cli v0.8.4" && git tag cli-v0.8.4
 git push && git push --tags
 ```
 
-The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, checks that the tag agrees with the manifest, publishes the crates.io package, builds native Linux, macOS Intel, macOS Apple Silicon and Windows binaries, and attaches checksums to a GitHub release. crates.io uses `CARGO_REGISTRY_TOKEN`.
+The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, builds native Linux, macOS Intel, macOS Apple Silicon and Windows binaries, checks that the tag agrees with the manifest, then publishes the crates.io package and attaches the binaries plus checksums to a GitHub release. Publishing waits for every native build because a crates.io version cannot be rolled back. crates.io uses `CARGO_REGISTRY_TOKEN`.
 
 A stable tag must also agree with `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish otherwise, so bumping the var and letting it deploy is part of the release, not an afterthought. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
 

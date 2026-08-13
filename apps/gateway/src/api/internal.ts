@@ -1,6 +1,12 @@
 import { Hono } from "hono";
-import { pendingAuditDeletions, retentionPolicy, settleAuditDeletion } from "../audit-deletions.js";
+import {
+  claimAuditDeletions,
+  pendingAuditDeletions,
+  retentionPolicy,
+  settleAuditDeletion,
+} from "../audit-deletions.js";
 import "../env.js";
+import { warehouseRollupStatus } from "../warehouse-usage.js";
 
 /**
  * The surface the archive maintenance job talks to.
@@ -40,6 +46,11 @@ internal.get("/internal/audit-deletions", async (c) => {
   return c.json({ items: await pendingAuditDeletions(c.env) });
 });
 
+/** Atomically leases work to one maintenance run. */
+internal.post("/internal/audit-deletions/claim", async (c) => {
+  return c.json({ items: await claimAuditDeletions(c.env) });
+});
+
 /**
  * The retention the archive has to enforce tonight.
  *
@@ -48,25 +59,36 @@ internal.get("/internal/audit-deletions", async (c) => {
  * back on every call, which is the cost this whole archive exists to remove.
  */
 internal.get("/internal/retention", async (c) => {
-  return c.json(await retentionPolicy(c.env));
+  const policy = await retentionPolicy(c.env);
+  const rollup = await warehouseRollupStatus(c.env).catch((error) => ({
+    lastCompleteDay: null,
+    targetDay: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+    backlogDays: null,
+    pruneAllowed: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+  return c.json({ ...policy, rollup });
 });
 
 /**
- * Closes one target, or records why it could not be closed.
+ * Records one successful erasure pass, or why it failed.
  *
- * The job calls this only after its catalog transaction has committed. Closing
- * a target first and deleting after would lose the instruction with nothing
- * deleted, and nothing else in the system remembers that the deletion was owed.
+ * The job calls this only after its catalog transaction has committed. The
+ * gateway requeues the first success for a second pass 24 hours later and only
+ * then closes the target, so events already in flight cannot resurrect it.
  */
 internal.post("/internal/audit-deletions/:id", async (c) => {
-  const body = await c.req.json<{ ok?: boolean; error?: string }>().catch(() => null);
-  if (!body || typeof body.ok !== "boolean") {
+  const body = await c.req
+    .json<{ ok?: boolean; error?: string; leaseToken?: string }>()
+    .catch(() => null);
+  if (!body || typeof body.ok !== "boolean" || !body.leaseToken) {
     return c.json({ error: "bad_request" }, 400);
   }
 
   const settled = await settleAuditDeletion(
     c.env,
     c.req.param("id"),
+    body.leaseToken,
     body.ok ? { ok: true } : { ok: false, error: body.error ?? "unspecified" },
   );
 

@@ -1,4 +1,5 @@
 import { type AccountToolName, ExeoraError, type ToolName } from "@exeora/protocol";
+import { beginAudit } from "./audit.js";
 import {
   type AccountProject,
   accountProjects,
@@ -184,6 +185,19 @@ export async function answerAccountTool(
     }
 
     const project = await resolveAccountProject(env, { ...entry, named });
+    const audit = await beginAudit(env, {
+      userId,
+      projectId: project.id,
+      tool,
+      caller,
+      endpoint: "account",
+    }).catch((error) => {
+      console.error("audit outbox begin failed", error);
+      throw new ExeoraError(
+        "INTERNAL_ERROR",
+        "The audit service is unavailable, so the project was not changed. Try again later.",
+      );
+    });
 
     await setActiveProjectId(env, { ...entry, projectId: project.id });
     await record(env, {
@@ -191,7 +205,7 @@ export async function answerAccountTool(
       projectId: project.id,
       tool,
       caller,
-      startedAt: Date.now(),
+      audit,
       status: "ok",
       endpoint: "account",
     });

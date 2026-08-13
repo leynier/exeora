@@ -21,10 +21,14 @@ permissions:
 jobs:
   maintain:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
+
+      - name: Test maintenance logic
+        run: uv run -p 3.12 python -m unittest discover -s scripts/audit-maintenance -p 'test_*.py'
 
       # Outside Cloudflare on purpose, and this is the cost of that choice: a
       # self-hosted gateway needs this workflow in a fork with its own secrets,
@@ -35,6 +39,7 @@ jobs:
           CATALOG_URI: ${{ secrets.AUDIT_CATALOG_URI }}
           WAREHOUSE: ${{ secrets.AUDIT_R2_WAREHOUSE }}
           AUDIT_R2_MAINTENANCE_TOKEN: ${{ secrets.AUDIT_R2_MAINTENANCE_TOKEN }}
+          AUDIT_R2_TABLE: ${{ vars.AUDIT_R2_TABLE || 'default.tool_calls' }}
           GATEWAY_URL: ${{ secrets.GATEWAY_URL }}
           AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}
-        run: uv run --with "pyiceberg[pyarrow]" python scripts/audit-maintenance/main.py
+        run: uv run --locked scripts/audit-maintenance/main.py

@@ -345,7 +345,7 @@ async fn project_command(
             let device = config.data().device_id.clone().ok_or_else(|| {
                 anyhow!("This machine is not registered. Run `exeora device register` first.")
             })?;
-            let root = absolute(path.unwrap_or_else(|| PathBuf::from(".")))?;
+            let root = project_root(Some(path.unwrap_or_else(|| PathBuf::from("."))))?;
             let name = file_name(&root)?;
             let slug = slug.unwrap_or_else(|| slugify(&name));
             let added = api
@@ -896,9 +896,16 @@ fn normalize_gateway(input: &str) -> Result<String> {
 
 fn project_root(path: Option<PathBuf>) -> Result<PathBuf> {
     let root = absolute(path.unwrap_or_else(|| PathBuf::from(".")))?;
-    if env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-        .is_some_and(|home| root.as_os_str() == home)
-    {
+    let home = env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .and_then(|home| PathBuf::from(home).canonicalize().ok());
+    validate_project_root(root, home.as_deref())
+}
+
+fn validate_project_root(root: PathBuf, home: Option<&Path>) -> Result<PathBuf> {
+    if !root.is_dir() {
+        bail!("{} is not a directory.", root.display());
+    }
+    if home.is_some_and(|home| root == home) {
         bail!(
             "That is your home directory, and a project is the boundary an agent is confined to. Run this inside the directory you want to serve."
         );
@@ -1018,4 +1025,40 @@ fn client_name(call: &ToolCallView) -> String {
             "—".to_owned()
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_project_root;
+    use std::{fs, path::PathBuf};
+    use tempfile::tempdir;
+
+    #[test]
+    fn rejects_home_root_and_files_as_project_boundaries() {
+        let temp = tempdir().expect("temp directory");
+        let home = temp.path().to_path_buf();
+        assert!(validate_project_root(home.clone(), Some(&home)).is_err());
+
+        let file = home.join("file.txt");
+        fs::write(&file, "not a directory").expect("fixture");
+        assert!(validate_project_root(file, None).is_err());
+
+        let filesystem_root = home
+            .ancestors()
+            .last()
+            .map(PathBuf::from)
+            .expect("filesystem root");
+        assert!(validate_project_root(filesystem_root, None).is_err());
+    }
+
+    #[test]
+    fn accepts_a_regular_project_directory() {
+        let temp = tempdir().expect("temp directory");
+        let project = temp.path().join("project");
+        fs::create_dir(&project).expect("fixture");
+        assert_eq!(
+            validate_project_root(project.clone(), Some(temp.path())).expect("valid project"),
+            project
+        );
+    }
 }

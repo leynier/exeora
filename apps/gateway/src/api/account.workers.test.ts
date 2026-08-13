@@ -74,7 +74,10 @@ function call(
   const request = new Request(`https://exeora.dev${path}`, { method: options.method ?? "GET" });
   const ctx = createExecutionContext();
   // What the OAuth provider attaches once it has validated the bearer token.
-  (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? USER };
+  (ctx as { props?: { userId: string; scopes: string[] } }).props = {
+    userId: options.userId ?? USER,
+    scopes: ["dashboard:manage"],
+  };
 
   return api.fetch(request, { ...env, ...options.bindings } as typeof env, ctx);
 }

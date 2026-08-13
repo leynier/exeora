@@ -1,6 +1,6 @@
 import { ExeoraError, needsApproval, policyAllows, type ToolName } from "@exeora/protocol";
 import { describeCall } from "./approval.js";
-import { auditEvent, writeAuditEvent } from "./audit.js";
+import { type AuditHandle, beginAudit, finishAudit } from "./audit.js";
 import { resolveAccountTarget, resolveTarget } from "./client-targets.js";
 import { type CallerIdentity, touchClient } from "./clients.js";
 import "./env.js";
@@ -86,6 +86,23 @@ export async function dispatchToDevice(
   // executor's own check is what covers a local `exeora.toml` and what still
   // stands if this one is wrong.
   const verdict = policyAllows(project.policy, tool, args);
+  // Elicitation is a protocol round trip, not a tool attempt. The approved
+  // second request is the one that receives an audit row and consumes usage.
+  if (verdict.allowed && needsApproval(project.policy, tool) && !call.approved && call.canElicit) {
+    return { kind: "needs-approval", projectId };
+  }
+
+  let audit: AuditHandle;
+  try {
+    audit = await beginAudit(env, { userId, projectId, tool, caller, endpoint });
+  } catch (error) {
+    console.error("audit outbox begin failed", error);
+    throw new ExeoraError(
+      "INTERNAL_ERROR",
+      "The audit service is unavailable, so no tool was run. Try again later.",
+    );
+  }
+
   if (!verdict.allowed) {
     const error = new ExeoraError(
       "FORBIDDEN",
@@ -96,7 +113,7 @@ export async function dispatchToDevice(
       projectId,
       tool,
       caller,
-      startedAt: Date.now(),
+      audit,
       status: "error",
       errorCode: error.code,
       endpoint,
@@ -104,7 +121,6 @@ export async function dispatchToDevice(
     throw error;
   }
 
-  const startedAt = Date.now();
   const requestId = newId("req");
   const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
 
@@ -115,8 +131,6 @@ export async function dispatchToDevice(
     // a second round carrying a signed state bound to these arguments, which is
     // the best available answer because the person is already looking at the
     // conversation the call came from.
-    if (call.canElicit) return { kind: "needs-approval", projectId };
-
     // Everyone else is asked out of band. This used to refuse outright, which
     // made the setting decorative for exactly the clients most people use:
     // claude.ai and ChatGPT still speak the 2025 protocol today.
@@ -144,7 +158,7 @@ export async function dispatchToDevice(
         projectId,
         tool,
         caller,
-        startedAt,
+        audit,
         status: "error",
         errorCode: error.code,
         endpoint,
@@ -165,7 +179,7 @@ export async function dispatchToDevice(
       policy: project.policy,
       signal,
     });
-    await record(env, { userId, projectId, tool, caller, startedAt, status: "ok", endpoint });
+    await record(env, { userId, projectId, tool, caller, audit, status: "ok", endpoint });
     return { kind: "value", value };
   } catch (error) {
     await record(env, {
@@ -173,7 +187,7 @@ export async function dispatchToDevice(
       projectId,
       tool,
       caller,
-      startedAt,
+      audit,
       status: "error",
       errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
       endpoint,
@@ -204,41 +218,34 @@ export async function record(
     projectId: string;
     tool: string;
     caller: CallerIdentity;
-    startedAt: number;
+    audit: AuditHandle;
     status: "ok" | "error";
     errorCode?: string;
     endpoint?: "project" | "account";
   },
 ): Promise<void> {
   const { caller } = entry;
-  const id = newId("call");
-  const durationMs = Date.now() - entry.startedAt;
-  const writes: Promise<unknown>[] = [
-    writeAuditEvent(env, auditEvent(id, { ...entry, durationMs })),
-  ];
-
-  if (caller.clientId) {
-    writes.push(
-      touchClient(
-        env,
-        {
-          userId: entry.userId,
-          projectId: entry.projectId,
-          clientId: caller.clientId,
-          endpoint: entry.endpoint ?? "project",
-        },
-        caller.mcp,
-      ),
-    );
+  try {
+    await finishAudit(env, entry.audit, {
+      status: entry.status,
+      ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+    });
+  } catch (error) {
+    // The started row is already durable. The sweeper will close it as an
+    // incomplete outcome; returning an error here could make a caller repeat a
+    // command that did in fact run.
+    console.error("audit outbox finish failed", error);
   }
 
-  // Auditing and last-used bookkeeping must never be why a tool call fails, but
-  // a failure that leaves no trace is worse than the failure: the stream write
-  // is the whole audit row, and the sampled cost metric only sees one event in
-  // a thousand. Loud in the logs, invisible to the caller.
-  for (const result of await Promise.allSettled(writes)) {
-    if (result.status === "rejected") {
-      console.error("audit or last-used bookkeeping failed", result.reason);
-    }
-  }
+  if (!caller.clientId) return;
+  await touchClient(
+    env,
+    {
+      userId: entry.userId,
+      projectId: entry.projectId,
+      clientId: caller.clientId,
+      endpoint: entry.endpoint ?? "project",
+    },
+    caller.mcp,
+  ).catch((error) => console.error("last-used bookkeeping failed", error));
 }

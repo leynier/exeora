@@ -25,7 +25,10 @@ function call(path: string, options: { method?: string; body?: unknown; userId?:
   });
   const ctx = createExecutionContext();
   // What the OAuth provider attaches once it has validated the bearer token.
-  (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? USER };
+  (ctx as { props?: { userId: string; scopes: string[] } }).props = {
+    userId: options.userId ?? USER,
+    scopes: ["dashboard:manage"],
+  };
 
   return api.fetch(request, env, ctx);
 }

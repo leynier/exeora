@@ -43,6 +43,7 @@ export async function resolveTarget(
       clientRevokedAt: schema.projectClients.revokedAt,
     })
     .from(schema.projects)
+    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .leftJoin(
       schema.projectClients,
       and(
@@ -51,7 +52,13 @@ export async function resolveTarget(
         eq(schema.projectClients.endpoint, "project"),
       ),
     )
-    .where(and(eq(schema.projects.id, entry.projectId), eq(schema.projects.userId, entry.userId)))
+    .where(
+      and(
+        eq(schema.projects.id, entry.projectId),
+        eq(schema.projects.userId, entry.userId),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
     .get();
 
   if (!row) return null;
@@ -95,7 +102,14 @@ export async function resolveAccountTarget(
         isNull(schema.projectClients.revokedAt),
       ),
     )
-    .where(and(eq(schema.projects.id, entry.projectId), eq(schema.projects.userId, entry.userId)))
+    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
+    .where(
+      and(
+        eq(schema.projects.id, entry.projectId),
+        eq(schema.projects.userId, entry.userId),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
     .get();
 
   if (!row) return null;
@@ -145,6 +159,7 @@ export async function accountProjects(
         eq(schema.projectClients.clientId, entry.clientId),
         eq(schema.projectClients.endpoint, "account"),
         isNull(schema.projectClients.revokedAt),
+        isNull(schema.devices.revokedAt),
       ),
     )
     .orderBy(schema.projects.name)
@@ -183,8 +198,11 @@ export async function activeProjectChoice(
     .select({
       projectId: schema.activeProjects.projectId,
       grantedId: schema.projectClients.id,
+      deviceRevokedAt: schema.devices.revokedAt,
     })
     .from(schema.activeProjects)
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.activeProjects.projectId))
+    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .leftJoin(
       schema.projectClients,
       and(
@@ -203,7 +221,10 @@ export async function activeProjectChoice(
     .get();
 
   if (!row) return null;
-  return { projectId: row.projectId, reachable: row.grantedId !== null };
+  return {
+    projectId: row.projectId,
+    reachable: row.grantedId !== null && row.deviceRevokedAt === null,
+  };
 }
 
 /** Points a client at a project, or clears the pointer when given null. */

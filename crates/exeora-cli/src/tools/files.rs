@@ -24,7 +24,7 @@ use similar::TextDiff;
 use std::{
     collections::VecDeque,
     fs,
-    io::{Read, Write},
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -45,24 +45,61 @@ pub async fn read_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
         let args: ReadArgs = parse(args)?;
         let (real_root, relative) = resolve_in_project(&root, &args.path)?;
         let dir = open_root(&real_root)?;
-        let mut file = dir.open(&relative).map_err(|error| ExeoraError::tool(format!("Could not read {}: {:?}.", relative_string(&relative), error.kind())))?;
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).map_err(|error| ExeoraError::tool(error.to_string()))?;
-        if memchr(0, &bytes[..bytes.len().min(8192)]).is_some() {
-            return Err(ExeoraError::tool(format!("{} is a binary file ({} bytes). read_file only returns text.", relative_string(&relative), bytes.len())));
+        let mut file = dir.open(&relative).map_err(|error| {
+            ExeoraError::tool(format!(
+                "Could not read {}: {:?}.",
+                relative_string(&relative),
+                error.kind()
+            ))
+        })?;
+        let size = file
+            .metadata()
+            .map(|metadata| metadata.len())
+            .unwrap_or_default();
+        let mut prefix = [0u8; 8192];
+        let prefix_len = file
+            .read(&mut prefix)
+            .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        if memchr(0, &prefix[..prefix_len]).is_some() {
+            return Err(ExeoraError::tool(format!(
+                "{} is a binary file ({size} bytes). read_file only returns text.",
+                relative_string(&relative)
+            )));
         }
-        let text = String::from_utf8_lossy(&bytes);
-        let lines: Vec<&str> = text.split('\n').collect();
-        let total = if text.is_empty() { 0 } else if text.ends_with('\n') { lines.len() - 1 } else { lines.len() };
-        let start = args.offset.map_or(0, |offset| offset - 1);
-        if start > 0 && start >= total {
-            return Err(ExeoraError::tool(format!("Offset {} is past the end of {}, which has {total} lines.", args.offset.unwrap_or_default(), relative_string(&relative))));
+        let offset = args.offset.unwrap_or(1);
+        if offset == 0 {
+            return Err(ExeoraError::new(
+                ErrorCode::InvalidArguments,
+                "offset must be at least 1.",
+            ));
         }
-        let end = args.limit.map_or(total, |limit| (start + limit).min(total));
-        let selected = lines[start..end].join("\n");
-        let (content, cut) = truncate_complete_lines(&selected, MAX_READ_BYTES);
-        Ok(json!({ "path": relative_string(&relative), "content": content, "truncated": cut || end < total, "totalLines": total }))
-    }).await.map_err(join_error)?
+        let start = offset - 1;
+        let window = scan_text_window(
+            Cursor::new(&prefix[..prefix_len]).chain(file),
+            start,
+            args.limit,
+            MAX_READ_BYTES,
+        )
+        .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        if start > 0 && start >= window.total_lines {
+            return Err(ExeoraError::tool(format!(
+                "Offset {offset} is past the end of {}, which has {} lines.",
+                relative_string(&relative),
+                window.total_lines
+            )));
+        }
+        let requested_end = args
+            .limit
+            .map_or(usize::MAX, |limit| start.saturating_add(limit));
+        Ok(json!({
+            "path": relative_string(&relative),
+            "content": window.content,
+            "truncated": window.byte_limit_reached || requested_end < window.total_lines,
+            "totalLines": window.total_lines,
+        }))
+    })
+    .await
+    .map_err(join_error)?
 }
 
 #[derive(Deserialize)]
@@ -555,19 +592,68 @@ fn unique_match(
     }
 }
 
-fn truncate_complete_lines(text: &str, max: usize) -> (String, bool) {
-    if text.len() <= max {
-        return (text.to_owned(), false);
-    }
-    let mut end = 0;
-    for (index, line) in text.split('\n').enumerate() {
-        let cost = line.len() + usize::from(index > 0);
-        if end + cost > max {
+struct TextWindow {
+    content: String,
+    total_lines: usize,
+    byte_limit_reached: bool,
+}
+
+/// Scans the entire file to preserve an exact line count while retaining only
+/// the requested, bounded window in memory.
+fn scan_text_window(
+    mut reader: impl Read,
+    start: usize,
+    limit: Option<usize>,
+    max_bytes: usize,
+) -> std::io::Result<TextWindow> {
+    let end = limit.map_or(usize::MAX, |limit| start.saturating_add(limit));
+    let mut buffer = [0u8; 8192];
+    let mut selected = Vec::with_capacity(max_bytes.min(8192));
+    let mut line = 0usize;
+    let mut bytes_read = 0usize;
+    let mut newline_count = 0usize;
+    let mut ended_with_newline = false;
+    let mut byte_limit_reached = false;
+
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
             break;
         }
-        end += cost;
+        for &byte in &buffer[..count] {
+            bytes_read += 1;
+            if line >= start && line < end && !byte_limit_reached {
+                if selected.len() < max_bytes {
+                    selected.push(byte);
+                } else {
+                    byte_limit_reached = true;
+                }
+            }
+            if byte == b'\n' {
+                newline_count += 1;
+                line += 1;
+                ended_with_newline = true;
+            } else {
+                ended_with_newline = false;
+            }
+        }
     }
-    (text[..end].to_owned(), true)
+
+    if byte_limit_reached {
+        selected.truncate(memchr::memrchr(b'\n', &selected).unwrap_or(0));
+    } else if selected.last() == Some(&b'\n') {
+        selected.pop();
+    }
+
+    Ok(TextWindow {
+        content: String::from_utf8_lossy(&selected).into_owned(),
+        total_lines: if bytes_read == 0 {
+            0
+        } else {
+            newline_count + usize::from(!ended_with_newline)
+        },
+        byte_limit_reached,
+    })
 }
 
 fn utf16_prefix(text: &str, max: usize) -> String {
@@ -603,4 +689,28 @@ fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {
 }
 fn join_error(error: tokio::task::JoinError) -> ExeoraError {
     ExeoraError::tool(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_text_window;
+    use std::io::Cursor;
+
+    #[test]
+    fn scans_only_the_requested_lines_but_counts_the_whole_file() {
+        let window = scan_text_window(Cursor::new(b"one\ntwo\nthree\n"), 1, Some(1), 100)
+            .expect("scan succeeds");
+        assert_eq!(window.content, "two");
+        assert_eq!(window.total_lines, 3);
+        assert!(!window.byte_limit_reached);
+    }
+
+    #[test]
+    fn a_byte_limit_returns_only_complete_lines() {
+        let input = format!("short\n{}\nlast", "x".repeat(50));
+        let window = scan_text_window(Cursor::new(input), 0, None, 10).expect("scan succeeds");
+        assert_eq!(window.content, "short");
+        assert_eq!(window.total_lines, 3);
+        assert!(window.byte_limit_reached);
+    }
 }

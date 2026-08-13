@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { enqueueAuditDeletion, projectIdsOfDevice } from "../audit-deletions.js";
+import { deviceProjectDeletionStatement } from "../audit-deletions.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
@@ -124,14 +124,15 @@ devices.delete("/api/devices/:id/permanently", async (c) => {
   // The archive has no device column, so a machine is not something it can be
   // asked to forget. Its projects are, and they can only be enumerated while
   // the machine is still here: the cascade below takes them with it.
-  await enqueueAuditDeletion(c.env, "project", await projectIdsOfDevice(c.env, userId, id));
-
-  // projects cascade from devices, and tool_calls cascade from projects, so
-  // this one statement removes all three.
-  await db(c.env)
-    .delete(schema.devices)
-    .where(and(eq(schema.devices.id, id), eq(schema.devices.userId, userId)))
-    .run();
+  await c.env.DB.batch([
+    deviceProjectDeletionStatement(c.env, userId, id),
+    c.env.DB.prepare(
+      `DELETE FROM audit_outbox
+        WHERE user_id = ?1
+          AND project_id IN (SELECT id FROM projects WHERE user_id = ?1 AND device_id = ?2)`,
+    ).bind(userId, id),
+    c.env.DB.prepare("DELETE FROM devices WHERE id = ?1 AND user_id = ?2").bind(id, userId),
+  ]);
 
   return c.json({ ok: true });
 });

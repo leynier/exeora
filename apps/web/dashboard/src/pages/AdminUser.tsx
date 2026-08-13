@@ -9,6 +9,7 @@ import {
   Card,
   Divided,
   EmptyState,
+  ErrorBanner,
   PageHeader,
   Row,
   SkeletonRows,
@@ -92,6 +93,21 @@ export function AdminUser() {
         <Card>
           <SkeletonRows count={4} />
         </Card>
+      </>
+    );
+  }
+
+  if (detail.isError) {
+    return (
+      <>
+        <PageHeader title="User" />
+        <ErrorBanner
+          error={detail.error}
+          title="Could not load this account"
+          onRetry={() => {
+            void detail.refetch();
+          }}
+        />
       </>
     );
   }

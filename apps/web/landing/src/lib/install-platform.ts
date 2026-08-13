@@ -1,4 +1,5 @@
 export type InstallPlatform = "macos" | "linux" | "windows";
+export type InstallPlatformPreference = InstallPlatform | "mobile";
 
 interface BrowserPlatformSignals {
   userAgentDataPlatform?: string;
@@ -11,8 +12,14 @@ export function detectInstallPlatform({
   userAgentDataPlatform = "",
   legacyPlatform = "",
   userAgent = "",
-}: BrowserPlatformSignals): InstallPlatform | null {
-  if (/android|iphone|ipad|ipod|mobile/i.test(userAgent)) return null;
+}: BrowserPlatformSignals): InstallPlatformPreference | null {
+  if (
+    /android|iphone|ipad|ipod|mobile/i.test(
+      `${userAgentDataPlatform} ${legacyPlatform} ${userAgent}`,
+    )
+  ) {
+    return "mobile";
+  }
 
   const platform = userAgentDataPlatform || legacyPlatform || userAgent;
   if (/mac/i.test(platform)) return "macos";

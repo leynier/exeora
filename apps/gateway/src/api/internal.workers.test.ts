@@ -67,7 +67,8 @@ describe("the gate", () => {
   });
 
   it("404s on a deployment that never configured the secret", async () => {
-    // A d1-mode gateway has no maintenance job, so the surface should not exist.
+    // An incomplete self-hosted deployment must not expose an unauthenticated
+    // maintenance surface merely because its secret was forgotten.
     const response = await call("/internal/audit-deletions", { configured: false });
     expect(response.status).toBe(404);
   });
@@ -102,20 +103,52 @@ describe("the retention it serves", () => {
 });
 
 describe("settling a target", () => {
-  it("closes it once the job says its transaction committed", async () => {
+  async function claim() {
+    const response = await call("/internal/audit-deletions/claim", { method: "POST" });
+    const body = await response.json<{
+      items: Array<{ id: string; leaseToken: string }>;
+    }>();
+    const item = body.items[0];
+    if (!item) throw new Error("nothing was claimed");
+    return item;
+  }
+
+  async function makeDue() {
+    await db(env)
+      .update(schema.auditDeletions)
+      .set({ nextAttemptAt: new Date(0) })
+      .where(eq(schema.auditDeletions.id, "adl_one"))
+      .run();
+  }
+
+  it("rechecks it before closing after a committed transaction", async () => {
+    const first = await claim();
     const response = await call("/internal/audit-deletions/adl_one", {
       method: "POST",
-      body: { ok: true },
+      body: { ok: true, leaseToken: first.leaseToken },
     });
 
     expect(response.status).toBe(200);
+    expect(await pendingAuditDeletions(env)).toHaveLength(1);
+
+    await makeDue();
+    const second = await claim();
+    expect(
+      (
+        await call("/internal/audit-deletions/adl_one", {
+          method: "POST",
+          body: { ok: true, leaseToken: second.leaseToken },
+        })
+      ).status,
+    ).toBe(200);
     expect(await pendingAuditDeletions(env)).toEqual([]);
   });
 
   it("keeps it queued when the job reports a failure", async () => {
+    const item = await claim();
     const response = await call("/internal/audit-deletions/adl_one", {
       method: "POST",
-      body: { ok: false, error: "catalog 503" },
+      body: { ok: false, error: "catalog 503", leaseToken: item.leaseToken },
     });
 
     expect(response.status).toBe(200);
@@ -140,10 +173,20 @@ describe("settling a target", () => {
   });
 
   it("404s a target that is already closed", async () => {
-    await call("/internal/audit-deletions/adl_one", { method: "POST", body: { ok: true } });
+    const first = await claim();
+    await call("/internal/audit-deletions/adl_one", {
+      method: "POST",
+      body: { ok: true, leaseToken: first.leaseToken },
+    });
+    await makeDue();
+    const second = await claim();
+    await call("/internal/audit-deletions/adl_one", {
+      method: "POST",
+      body: { ok: true, leaseToken: second.leaseToken },
+    });
     const again = await call("/internal/audit-deletions/adl_one", {
       method: "POST",
-      body: { ok: true },
+      body: { ok: true, leaseToken: second.leaseToken },
     });
 
     expect(again.status).toBe(404);

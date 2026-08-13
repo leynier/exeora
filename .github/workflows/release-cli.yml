@@ -69,7 +69,10 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: check
+    # crates.io publication cannot be rolled back. Wait for every native target
+    # to build before making that irreversible step, so a platform failure does
+    # not leave a crate published without a matching binary release.
+    needs: build-native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

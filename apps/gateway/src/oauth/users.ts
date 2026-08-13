@@ -21,6 +21,9 @@ export async function resolveUser(
   identity: UpstreamIdentity,
   adminEmails?: string,
 ): Promise<{ id: string; email: string }> {
+  const email = normalizeEmail(identity.email);
+  if (!email) throw new UpstreamAuthError("The identity provider returned an empty email address.");
+
   const existing = await database
     .select({ userId: schema.oauthIdentities.userId })
     .from(schema.oauthIdentities)
@@ -36,16 +39,16 @@ export async function resolveUser(
     // Refresh the profile so the dashboard does not show a stale avatar.
     await database
       .update(schema.users)
-      .set({ email: identity.email, name: identity.name, avatarUrl: identity.avatarUrl })
+      .set({ email, name: identity.name, avatarUrl: identity.avatarUrl })
       .where(eq(schema.users.id, existing.userId))
       .run();
-    return { id: existing.userId, email: identity.email };
+    return { id: existing.userId, email };
   }
 
   // Both providers guarantee this address is verified before it reaches here.
   // Matching it case-insensitively lets a person add Google after GitHub
   // without creating a second account that owns none of their existing work.
-  const normalisedEmail = identity.email.trim().toLowerCase();
+  const normalisedEmail = email;
   const matchingUsers = await database
     .select({ id: schema.users.id })
     .from(schema.users)
@@ -68,10 +71,10 @@ export async function resolveUser(
       .run();
     await database
       .update(schema.users)
-      .set({ email: identity.email, name: identity.name, avatarUrl: identity.avatarUrl })
+      .set({ email, name: identity.name, avatarUrl: identity.avatarUrl })
       .where(eq(schema.users.id, matchingUser.id))
       .run();
-    return { id: matchingUser.id, email: identity.email };
+    return { id: matchingUser.id, email };
   }
 
   const userId = newId("usr");
@@ -79,7 +82,7 @@ export async function resolveUser(
     .insert(schema.users)
     .values({
       id: userId,
-      email: identity.email,
+      email,
       name: identity.name,
       avatarUrl: identity.avatarUrl,
     })
@@ -89,9 +92,14 @@ export async function resolveUser(
     .values({ userId, provider, providerUserId: identity.providerUserId })
     .run();
 
-  await maybeBootstrapAdmin(database, identity.email, adminEmails);
+  await maybeBootstrapAdmin(database, email, adminEmails);
 
-  return { id: userId, email: identity.email };
+  return { id: userId, email };
+}
+
+/** Canonical email identity. It intentionally does not apply provider-specific alias rules. */
+export function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 /**
@@ -101,7 +109,7 @@ export function parseAdminEmails(value: string | undefined): string[] {
   if (!value) return [];
   return value
     .split(",")
-    .map((part) => part.trim().toLowerCase())
+    .map(normalizeEmail)
     .filter((part) => part.length > 0);
 }
 
@@ -124,7 +132,7 @@ export async function maybeBootstrapAdmin(
   adminEmails?: string,
 ): Promise<void> {
   const allowList = parseAdminEmails(adminEmails);
-  const normalised = email.trim().toLowerCase();
+  const normalised = normalizeEmail(email);
   if (!normalised) return;
 
   if (allowList.length > 0) {

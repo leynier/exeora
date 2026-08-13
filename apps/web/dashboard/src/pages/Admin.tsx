@@ -5,6 +5,7 @@ import {
   Card,
   Divided,
   EmptyState,
+  ErrorBanner,
   PageHeader,
   Row,
   SkeletonRows,
@@ -26,6 +27,21 @@ export function Admin() {
 
   const totals = overview.data;
   const list = users.data ?? [];
+
+  if (overview.isError || users.isError) {
+    return (
+      <>
+        <PageHeader title="Administration" />
+        <ErrorBanner
+          error={overview.error ?? users.error}
+          title="Could not load administration data"
+          onRetry={() => {
+            void Promise.all([overview.refetch(), users.refetch()]);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -70,7 +86,7 @@ export function Admin() {
       </div>
 
       <Card title="Users" className="mt-6">
-        {users.isLoading ? (
+        {users.isError ? null : users.isLoading ? (
           <SkeletonRows count={4} />
         ) : list.length === 0 ? (
           <EmptyState title="No users yet">Accounts appear here as people sign in.</EmptyState>

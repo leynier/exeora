@@ -1,6 +1,8 @@
 # Audit archive
 
-The audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. There is no second contract: D1 holds no per-call row, so this has to be provisioned for the gateway to record anything at all.
+The durable audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. D1 also holds a bounded producer outbox: the gateway persists an intent before executing a tool, retries stream failures every five minutes, and removes acknowledged rows after seven days. Activity, usage rollups and retention read Iceberg rather than that transient queue.
+
+This archive is required. If the D1 intent cannot be written, the tool is not executed. If the Pipeline is temporarily unavailable, the stable event remains queued and execution can complete without silently losing its audit record.
 
 Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity and cannot be erased from. The reasoning is in [`audit-architecture.md`](../../../docs/audit-architecture.md).
 
@@ -72,19 +74,27 @@ Set `AUDIT_WAREHOUSE_START_DAY` to the day the stream starts receiving events. I
 
 `AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret. It is what the deletion job authenticates with, and while it is unset the `/internal/*` routes answer 404 rather than advertising themselves.
 
+Set the Worker-held secrets explicitly:
+
+```bash
+bun run secret AUDIT_R2_SQL_TOKEN
+bun run secret AUDIT_MAINTENANCE_SECRET
+```
+
 ## Deleting from the archive
 
 R2 SQL is read-only, so the gateway cannot delete its own audit rows: a row only goes when a transaction commits through the catalog. Deletion is therefore recorded and drained rather than done.
 
-- `deleteAccount`, permanent machine deletion and project deletion write a row into `audit_deletions` in D1, **before** the statement whose cascade would otherwise erase the evidence of what to delete. A machine enqueues its projects, because the archive has no device column.
-- The job reads `GET /internal/audit-deletions`, commits its deletes, and closes each target with `POST /internal/audit-deletions/:id`.
-- Retention comes from `GET /internal/retention`, which returns the two windows and the ids of accounts on the longer one. Deleting past the longest window needs no list; sparing the longer-plan accounts does, and that set is the small one.
+- `deleteAccount`, permanent machine deletion and project deletion enqueue into `audit_deletions` in the same D1 batch as the destructive mutation. A machine enqueues its projects, because the archive has no device column.
+- The job atomically leases up to 100 targets with `POST /internal/audit-deletions/claim`, commits each catalog delete, and reports the result to `POST /internal/audit-deletions/:id` with the lease token. A failed transaction stays queued and does not count as an erasure pass.
+- The first successful pass is requeued for 24 hours later. Only the second successful catalog transaction closes it, so a delayed event that was already inside Pipelines when deletion began is removed too.
+- Retention comes from `GET /internal/retention`, which returns the two windows, the ids of accounts on the longer one, and the durable rollup checkpoint. The job refuses to prune and exits nonzero unless that checkpoint has reached yesterday.
 
-The job is `scripts/audit-maintenance/main.py`, run nightly by `.github/workflows/audit-maintenance.yml`. PyIceberg rather than PySpark: Cloudflare documents Spark for `DELETE`, but `table.delete(delete_filter=...)` was verified against this catalog and keeps the runner free of a JVM.
+The job is `scripts/audit-maintenance/main.py`, run nightly by `.github/workflows/audit-maintenance.yml`. Its Python 3.12 and PyIceberg dependency are pinned in PEP 723 metadata and `main.py.lock`; the workflow tests the maintenance logic before running the locked script. PyIceberg rather than PySpark keeps the runner free of a JVM.
 
 It lives outside Cloudflare, which is the cost of that choice: a self-hosted gateway needs this workflow in a fork with its own secrets, or nothing drains its queue. Repository secrets: `AUDIT_CATALOG_URI`, `AUDIT_R2_WAREHOUSE`, `AUDIT_R2_MAINTENANCE_TOKEN`, `GATEWAY_URL`, `AUDIT_MAINTENANCE_SECRET`.
 
-It runs at 05:30 UTC, after the gateway's own cron. The order matters: pruning a day before the rollup has read it would undercount that day's usage, and `usage_daily` is what plan limits read.
+It runs at 05:30 UTC, after the gateway's own cron. The checkpoint gate enforces the dependency even when the earlier cron fails or needs several nights to catch up, so schedule order alone is not the safety mechanism.
 
 Two things it learned the hard way, both recorded in its comments: Cloudflare's WAF answers 403 to the default `Python-urllib` user agent before the request reaches the Worker, and `created_at` is a zone-free Iceberg `timestamp`, so a literal carrying an offset will not bind.
 

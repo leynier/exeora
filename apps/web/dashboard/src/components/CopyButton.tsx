@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "./toast.js";
 
 /**
  * Copies a string and says so for a moment.
@@ -15,8 +16,9 @@ export function CopyButton({
   label?: string;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const toast = useToast();
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -24,18 +26,23 @@ export function CopyButton({
     <button
       type="button"
       className={className}
+      aria-live="polite"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
         } catch {
-          return; // No clipboard permission: better to do nothing than to claim success.
+          setState("failed");
+          toast("Clipboard access was refused. Select and copy the text manually.", "error");
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => setState("idle"), 2000);
+          return;
         }
-        setCopied(true);
+        setState("copied");
         clearTimeout(timer.current);
-        timer.current = setTimeout(() => setCopied(false), 1500);
+        timer.current = setTimeout(() => setState("idle"), 1500);
       }}
     >
-      {copied ? "Copied" : label}
+      {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : label}
     </button>
   );
 }

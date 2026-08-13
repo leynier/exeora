@@ -2,8 +2,8 @@
 //!
 //! The slice is taken across chunks now rather than from one flattened copy, so
 //! the offset arithmetic runs per chunk and every boundary is a place to be off
-//! by one. Multi-byte text is what makes that visible: a cursor counts UTF-16
-//! units and a chunk is stored as UTF-8, and the two only line up for ASCII.
+//! by one. Multi-byte text is what makes that visible: cursors and limits count
+//! UTF-8 bytes, while every returned chunk must still end on a character boundary.
 
 #![cfg(unix)]
 
@@ -13,9 +13,9 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio_util::sync::CancellationToken;
 
-/// Nine UTF-16 units and sixteen bytes, so no offset is a byte offset.
+/// Nine UTF-16 units and sixteen UTF-8 bytes.
 const UNIT: &str = "héllo→世界 ";
-/// Past the 100,000-unit read limit, under the 256,000-unit ring.
+/// Past the 100,000-byte read limit, under the 256,000-byte ring.
 const REPEATS: usize = 12_000;
 
 async fn call(engine: &ToolEngine, root: &TempDir, tool: ToolName, args: Value) -> Value {
@@ -30,7 +30,7 @@ async fn a_multibyte_ring_reads_back_in_order_across_chunks() {
     let root = TempDir::new().unwrap();
     let engine = ToolEngine::new().unwrap();
     let sent = UNIT.repeat(REPEATS);
-    let units = sent.encode_utf16().count();
+    let bytes = sent.len();
 
     let started = call(
         &engine,
@@ -57,7 +57,7 @@ async fn a_multibyte_ring_reads_back_in_order_across_chunks() {
     )
     .await;
     let head = first["chunk"].as_str().unwrap().to_owned();
-    assert_eq!(head.encode_utf16().count(), 100_000, "read limit in units");
+    assert_eq!(head.len(), 100_000, "read limit in bytes");
     assert_eq!(first["nextCursor"], 100_000);
     assert_eq!(first["skipped"], false, "nothing was dropped at this size");
 
@@ -70,7 +70,7 @@ async fn a_multibyte_ring_reads_back_in_order_across_chunks() {
     .await;
     let tail = second["chunk"].as_str().unwrap();
 
-    assert_eq!(second["nextCursor"].as_u64().unwrap() as usize, units);
+    assert_eq!(second["nextCursor"].as_u64().unwrap() as usize, bytes);
     assert_eq!(
         format!("{head}{tail}"),
         sent,

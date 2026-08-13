@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
 import { ApprovalBanner } from "../components/ApprovalBanner.js";
+import { ErrorBanner } from "../components/ui.js";
 import {
   useApprovals,
   useClients,
@@ -21,8 +23,14 @@ import {
 export function AppShell() {
   const me = useMe();
   const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
+  const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
+  const failed = queries.find((query) => query.isError && !(query.error instanceof Unauthorized));
 
-  if (queries.some((query) => query.error instanceof Unauthorized)) signOut();
+  useEffect(() => {
+    if (unauthorized) signOut();
+  }, [unauthorized]);
+
+  if (unauthorized) return null;
 
   const links = [
     { to: "/", label: "Overview", end: true },
@@ -103,6 +111,14 @@ export function AppShell() {
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-8">
+        {failed && (
+          <ErrorBanner
+            error={failed.error}
+            onRetry={() => {
+              void failed.refetch();
+            }}
+          />
+        )}
         <Outlet />
       </main>
     </div>

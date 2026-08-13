@@ -6,6 +6,7 @@ import { isDashboardClient } from "./clients.js";
 import { accountConsentPage, consentPage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
+import { grantedScopes } from "./scopes.js";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
 import {
   authScopeFromResource,
@@ -20,7 +21,7 @@ import { resolveUser } from "./users.js";
  * /token, /register and the metadata documents itself; what it delegates here
  * is deciding *who* the user is and whether they consent.
  *
- * The flow parks the authorization request in KV under an unguessable state,
+ * The flow parks the authorization request in D1 under an unguessable state,
  * bounces the user through the upstream provider, and only consumes that entry
  * when they approve, which also makes the state the CSRF token for the form.
  */
@@ -34,6 +35,10 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
     authRequest = await c.env.OAUTH_PROVIDER.parseAuthRequest(c.req.raw);
   } catch (error) {
     return c.html(errorPage(describe(error)), 400);
+  }
+
+  if ((await grantedScopes(c.env, authRequest)).length === 0) {
+    return c.html(errorPage("This application did not request a scope it is allowed to use."), 400);
   }
 
   const providers = configuredProviders(c.env);
@@ -67,7 +72,7 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
     }
 
     // A cookie whose user no longer exists: treat it as signed out.
-    clearSession(c);
+    await clearSession(c);
   }
 
   return c.html(signInPage(providers, await parkAuthorization(c.env, { authRequest })));
@@ -150,11 +155,9 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   // is still the only place an entry is consumed, so a resubmitted form cannot
   // mint a second authorization code.
   //
-  // `claimAuthorization` is a KV read followed by a delete, so two submissions
-  // arriving together can both pass it: the window is inherent and predates the
-  // peek. What matters is keeping it short, which is why nothing below runs
-  // between the two except the one lookup the account screen cannot decide
-  // without, and why the project scope claims with nothing in between at all.
+  // The final claim is one atomic D1 DELETE ... RETURNING, so concurrent
+  // submissions cannot both mint a code. The peek keeps the state available
+  // only for the account screen's validation round trip.
   const pending = await peekAuthorization(c.env, state);
   if (!pending) return c.html(errorPage("This request has expired. Start again."), 400);
 
@@ -200,7 +203,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
           client: await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId),
           userEmail: user.email,
           state,
-          scopes: authRequest.scope,
+          scopes: await grantedScopes(c.env, authRequest),
           projects: await resolveAccountTarget(c.env, userId, authRequest.clientId),
           problem:
             "Choose at least one project, or cancel. A connection that reaches nothing would " +
@@ -228,8 +231,8 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   return c.redirect(redirectTo);
 });
 
-oauthRoutes.get("/oauth/logout", (c) => {
-  clearSession(c);
+oauthRoutes.get("/oauth/logout", async (c) => {
+  await clearSession(c);
   return c.redirect("/");
 });
 
@@ -254,6 +257,7 @@ async function complete(
 ) {
   const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(() => null);
   const scope = authScopeFromResource(authRequest.resource);
+  const scopes = await grantedScopes(env, authRequest);
   const identity = { clientName: client?.clientName, clientUri: client?.clientUri };
 
   const projectId =
@@ -294,7 +298,7 @@ async function complete(
   return env.OAUTH_PROVIDER.completeAuthorization({
     request: authRequest,
     userId,
-    scope: authRequest.scope,
+    scope: scopes,
     // `projectId` is here because a grant summary does not carry the resource
     // it was issued for, and revoking one client's access to one project means
     // finding exactly the grants that named it. `projectIds` is the same fact
@@ -314,6 +318,7 @@ async function complete(
       userId,
       clientId: authRequest.clientId,
       clientName: client?.clientName,
+      scopes,
     },
   });
 }
@@ -333,7 +338,12 @@ async function askForConsent(
   const { authRequest, userId, userEmail, state } = options;
   const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId);
   const scope = authScopeFromResource(authRequest.resource);
-  const common = { client, userEmail, state, scopes: authRequest.scope };
+  const common = {
+    client,
+    userEmail,
+    state,
+    scopes: await grantedScopes(env, authRequest),
+  };
 
   if (scope?.kind === "account") {
     return accountConsentPage({

@@ -1,6 +1,7 @@
 import { count, desc, eq, gte, isNull, max, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
+import { normalizeEmail } from "../oauth/users.js";
 import { deviceOnline, deviceOnlineSql, isDeviceOnline, presenceCutoff } from "../presence.js";
 import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { deleteAccount, revokeClient, revokeDevice } from "./ops.js";
@@ -30,7 +31,7 @@ admin.use("/api/admin/*", async (c, next) => {
   const allowed = await db(c.env)
     .select({ email: schema.adminUsers.email })
     .from(schema.adminUsers)
-    .where(eq(schema.adminUsers.email, user.email))
+    .where(eq(schema.adminUsers.email, normalizeEmail(user.email)))
     .get();
 
   if (!allowed) return c.json({ error: "not_found" }, 404);

@@ -76,7 +76,7 @@ export function CommandPolicyCard({ project }: { project: Project }) {
       await queryClient.invalidateQueries({ queryKey: keys.projects });
       toast("Policy saved. It applies to the next tool call.");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Could not save the policy.");
+      toast(error instanceof Error ? error.message : "Could not save the policy.", "error");
     } finally {
       setSaving(false);
     }

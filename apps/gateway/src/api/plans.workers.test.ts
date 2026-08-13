@@ -31,7 +31,10 @@ function call(
   }
   const request = new Request(`https://exeora.dev${path}`, init);
   const ctx = createExecutionContext();
-  (ctx as { props?: Record<string, string> }).props = { userId: options.userId ?? FREE };
+  (ctx as { props?: { userId: string; scopes: string[] } }).props = {
+    userId: options.userId ?? FREE,
+    scopes: ["dashboard:manage"],
+  };
   return api.fetch(request, env, ctx);
 }
 
@@ -192,6 +195,24 @@ describe("project plan limits", () => {
 
     expect(upsert.status).toBe(200);
     expect(await upsert.json()).toMatchObject({ slug: "project-0", name: "Project 0 renamed" });
+  });
+
+  it("refuses to register or move a project onto a revoked machine", async () => {
+    const deviceId = await device();
+    expect((await call(`/api/devices/${deviceId}`, { method: "DELETE" })).status).toBe(200);
+
+    const response = await call("/api/projects", {
+      method: "POST",
+      body: {
+        deviceId,
+        name: "Revoked target",
+        slug: "revoked-target",
+        localPath: "/work/revoked",
+      },
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "device_revoked" });
   });
 });
 

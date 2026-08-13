@@ -4,6 +4,8 @@ dist/
 .astro/
 .wrangler/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 .env
 .env.*
@@ -14,6 +16,8 @@ dist/
 
 .DS_Store
 apps/web/public/
+playwright-report/
+test-results/
 
 # Working notes kept locally, not published with the source tree.
 context.md

@@ -25,6 +25,15 @@ const { id } = Astro.props;
     }
   </div>
 
+  <p
+    data-install-mobile-hint
+    hidden
+    class="border-border-subtle text-body-md text-foreground-muted border-b px-4 py-3"
+  >
+    Exeora runs on a desktop. Choose the macOS, Linux or Windows tab for the machine where you
+    will install it.
+  </p>
+
   <div class="divide-border-subtle divide-y">
     <div class="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4">
       <span class="text-label-md text-foreground-faint font-mono" aria-hidden="true">01</span>
@@ -34,9 +43,10 @@ const { id } = Astro.props;
       <button
         type="button"
         data-copy-target={`${id}-install`}
-        class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+        data-install-copy
+        class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <span data-copy-label>Copy</span>
+        <span data-copy-label aria-live="polite">Copy</span>
       </button>
     </div>
     <div class="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4">
@@ -49,7 +59,7 @@ const { id } = Astro.props;
         data-copy-target={`${id}-connect`}
         class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
       >
-        <span data-copy-label>Copy</span>
+        <span data-copy-label aria-live="polite">Copy</span>
       </button>
     </div>
   </div>

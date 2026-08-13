@@ -132,7 +132,7 @@ export function Select({
         // Tabbing out of the menu should close it, but focus moving between
         // options must not. React's onBlur is focusout, so it sees both.
         onBlur={(event) => {
-          if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {
+          if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) {
             panel.current?.hidePopover();
           }
         }}

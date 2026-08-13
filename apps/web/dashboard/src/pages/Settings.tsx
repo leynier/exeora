@@ -15,6 +15,10 @@ export function Settings() {
   const me = useMe();
   const user = me.data;
 
+  if (me.isError) {
+    return <PageHeader title="Settings" subtitle="Account data is temporarily unavailable." />;
+  }
+
   return (
     <>
       <PageHeader title="Settings" subtitle="Account preferences and irreversible actions." />

@@ -1,53 +1,98 @@
+import { and, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import { db, schema } from "../db/client.js";
 
 /**
- * A signed cookie remembering who is signed in, so approving a second MCP
- * client does not mean a second round-trip through the identity provider.
+ * Revocable, opaque browser session for the OAuth consent UI.
  *
- * It carries the user id and nothing else. It is not an access token: it only
- * lets `/oauth/authorize` skip the upstream login, and every API and MCP
- * request is authorised by an OAuth token instead.
+ * This is deliberately separate from OAuth access tokens. It only avoids a
+ * second upstream sign-in while authorizing another client; API and MCP calls
+ * still require their own scoped bearer token.
  */
 const COOKIE_NAME = "exeora_session";
+const COOKIE_VERSION = "v2";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 
 export async function setSession(c: Context<{ Bindings: Env }>, userId: string): Promise<void> {
-  const value = `${userId}.${await sign(userId, c.env.COOKIE_SECRET)}`;
-  setCookie(c, COOKIE_NAME, value, {
-    httpOnly: true,
-    // The OAuth redirect back from an identity provider is a cross-site top-level
-    // navigation, so Strict would drop the cookie exactly when it is needed.
-    sameSite: "Lax",
-    // Derived from the configured base URL, not from c.req.url: wrangler dev
-    // rewrites the request host to the configured route, so reading the
-    // protocol off the request could mark the cookie Secure while the browser
-    // is on plain-http localhost, which silently drops it mid-login.
-    secure: new URL(c.env.EXEORA_BASE_URL).protocol === "https:",
-    path: "/",
-    maxAge: MAX_AGE_SECONDS,
-  });
+  const token = randomToken();
+  const expiresAt = new Date(Date.now() + MAX_AGE_SECONDS * 1000);
+
+  await db(c.env)
+    .insert(schema.browserSessions)
+    .values({ idHash: await tokenHash(token, c.env.COOKIE_SECRET), userId, expiresAt })
+    .run();
+
+  setCookie(c, COOKIE_NAME, `${COOKIE_VERSION}.${token}`, cookieOptions(c, MAX_AGE_SECONDS));
 }
 
 export async function getSessionUserId(c: Context<{ Bindings: Env }>): Promise<string | null> {
+  const token = sessionToken(c);
+  if (!token) return null;
+
+  const row = await db(c.env)
+    .select({ userId: schema.browserSessions.userId })
+    .from(schema.browserSessions)
+    .where(
+      and(
+        eq(schema.browserSessions.idHash, await tokenHash(token, c.env.COOKIE_SECRET)),
+        gt(schema.browserSessions.expiresAt, new Date()),
+        isNull(schema.browserSessions.revokedAt),
+      ),
+    )
+    .get();
+
+  return row?.userId ?? null;
+}
+
+export async function clearSession(c: Context<{ Bindings: Env }>): Promise<void> {
+  const token = sessionToken(c);
+  if (token) {
+    await db(c.env)
+      .update(schema.browserSessions)
+      .set({ revokedAt: new Date() })
+      .where(eq(schema.browserSessions.idHash, await tokenHash(token, c.env.COOKIE_SECRET)))
+      .run();
+  }
+  setCookie(c, COOKIE_NAME, "", cookieOptions(c, 0));
+}
+
+export async function purgeBrowserSessions(env: Pick<Env, "DB">): Promise<void> {
+  const now = new Date();
+  await db(env)
+    .delete(schema.browserSessions)
+    .where(
+      or(
+        lt(schema.browserSessions.expiresAt, now),
+        and(isNotNull(schema.browserSessions.revokedAt), lt(schema.browserSessions.revokedAt, now)),
+      ),
+    )
+    .run();
+}
+
+function sessionToken(c: Context): string | null {
   const raw = getCookie(c, COOKIE_NAME);
-  if (!raw) return null;
-
-  const separator = raw.lastIndexOf(".");
-  if (separator <= 0) return null;
-
-  const userId = raw.slice(0, separator);
-  const signature = raw.slice(separator + 1);
-  const expected = await sign(userId, c.env.COOKIE_SECRET);
-
-  return timingSafeEqual(signature, expected) ? userId : null;
+  if (!raw?.startsWith(`${COOKIE_VERSION}.`)) return null;
+  const token = raw.slice(COOKIE_VERSION.length + 1);
+  return token.length > 0 ? token : null;
 }
 
-export function clearSession(c: Context<{ Bindings: Env }>): void {
-  setCookie(c, COOKIE_NAME, "", { path: "/", maxAge: 0 });
+function cookieOptions(c: Context<{ Bindings: Env }>, maxAge: number) {
+  return {
+    httpOnly: true,
+    sameSite: "Lax" as const,
+    secure: new URL(c.env.EXEORA_BASE_URL).protocol === "https:",
+    path: "/",
+    maxAge,
+  };
 }
 
-async function sign(value: string, secret: string): Promise<string> {
+function randomToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return base64Url(bytes);
+}
+
+async function tokenHash(token: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -55,20 +100,12 @@ async function sign(value: string, secret: string): Promise<string> {
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value));
-  return base64Url(signature);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(token));
+  return base64Url(new Uint8Array(signature));
 }
 
-function base64Url(buffer: ArrayBuffer): string {
+function base64Url(bytes: Uint8Array): string {
   let binary = "";
-  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-}
-
-/** Constant-time compare so a forged cookie cannot be guessed byte by byte. */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }

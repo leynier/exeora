@@ -39,7 +39,7 @@ export function DangerZone() {
     } catch (error) {
       setWorking(false);
       setAsking(false);
-      toast(error instanceof Error ? error.message : "Could not delete the account.");
+      toast(error instanceof Error ? error.message : "Could not delete the account.", "error");
     }
   }
 

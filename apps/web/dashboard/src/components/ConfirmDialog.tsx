@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 /**
  * A confirmation that names its consequence.
@@ -35,6 +35,8 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const bodyId = useId();
   const [typed, setTyped] = useState("");
 
   useEffect(() => {
@@ -52,6 +54,8 @@ export function ConfirmDialog({
   return (
     <dialog
       ref={dialog}
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
       // Escape closes the dialog natively; `cancel` is where that surfaces.
       onCancel={(event) => {
         event.preventDefault();
@@ -59,8 +63,12 @@ export function ConfirmDialog({
       }}
       className="border-border bg-surface text-foreground m-auto w-[min(26rem,calc(100vw-2rem))] rounded-xl border p-6 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
-      <h2 className="text-title-lg">{title}</h2>
-      <p className="text-body-md text-foreground-muted mt-2">{body}</p>
+      <h2 id={titleId} className="text-title-lg">
+        {title}
+      </h2>
+      <p id={bodyId} className="text-body-md text-foreground-muted mt-2">
+        {body}
+      </p>
 
       {confirmText !== undefined && (
         <label className="mt-4 block">

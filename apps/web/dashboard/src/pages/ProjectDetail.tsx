@@ -31,6 +31,10 @@ export function ProjectDetail() {
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
 
+  if (projects.isError || devices.isError || clients.isError || calls.isError) {
+    return <PageHeader title="Project" subtitle="Project data is temporarily unavailable." />;
+  }
+
   if (projects.isLoading) return <Skeleton className="h-64 w-full rounded-xl" />;
 
   if (!project) {
