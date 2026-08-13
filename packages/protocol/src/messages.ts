@@ -164,11 +164,9 @@ export const HelloAckMessage = z.object({
    * The newest CLI the gateway knows about, so `connect` can say a newer one
    * exists.
    *
-   * It comes from here rather than from a request to the npm registry: the
-   * gateway already knows which version it wants, and asking a third party on
-   * every connect would make signing in depend on a service that has nothing to
-   * do with any of this. Optional because a gateway predating the field sends
-   * none, and because the value is configuration that may simply be unset.
+   * It comes from gateway configuration rather than querying a release service
+   * on every connect. Optional because a gateway predating the field sends none,
+   * and because the value is configuration that may simply be unset.
    */
   latestCliVersion: z.string().optional(),
   /** Present only when fixed heartbeat frames are handled at the edge. */

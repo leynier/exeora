@@ -4,8 +4,8 @@ export default defineConfig({
   test: {
     projects: [
       {
-        // Plain Node: the protocol contract, the local executor, and the parts
-        // of the gateway that are ordinary functions (OAuth provider, session).
+        // Plain Node: the protocol contract and the parts of the gateway that
+        // are ordinary functions (OAuth provider, session).
         test: {
           name: "node",
           include: [
