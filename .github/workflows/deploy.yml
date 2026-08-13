@@ -61,6 +61,8 @@ jobs:
           workingDirectory: apps/gateway
           packageManager: bun
           # Names of the Worker secrets to set, each matching an env var below.
+          # AUDIT_R2_SQL_TOKEN is provisioned directly on the Worker; Wrangler
+          # preserves it across code deploys, so Actions never needs its value.
           secrets: |
             GITHUB_CLIENT_ID
             GITHUB_CLIENT_SECRET
@@ -68,7 +70,6 @@ jobs:
             GOOGLE_CLIENT_SECRET
             COOKIE_SECRET
             REQUEST_STATE_SECRET
-            AUDIT_R2_SQL_TOKEN
             AUDIT_MAINTENANCE_SECRET
         env:
           # GitHub refuses repository secrets whose name starts with GITHUB_,
@@ -80,5 +81,4 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
-          AUDIT_R2_SQL_TOKEN: ${{ secrets.AUDIT_R2_SQL_TOKEN }}
           AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}

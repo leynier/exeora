@@ -130,10 +130,11 @@ Repository secrets under Settings → Secrets and variables → Actions:
 | `GOOGLE_CLIENT_SECRET` | Production Google OAuth client secret |
 | `COOKIE_SECRET` | `openssl rand -hex 32` |
 | `REQUEST_STATE_SECRET` | `openssl rand -hex 32`, different from the cookie secret |
-| `AUDIT_R2_SQL_TOKEN` | Admin Read only R2 Data Catalog token |
 | `AUDIT_MAINTENANCE_SECRET` | Random maintenance secret, also used by the nightly workflow |
 
 The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads. Google secrets keep the names the Worker uses.
+
+Provision `AUDIT_R2_SQL_TOKEN` directly on the Worker with `bun run secret`, as described above. It is deliberately not copied into GitHub Actions; Wrangler preserves existing Worker secrets when deploying new code.
 
 ## 8. Point the CLI at your gateway
 
