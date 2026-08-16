@@ -48,7 +48,7 @@ export { DeviceRelay } from "./relay-do.js";
  */
 
 /** Requests carrying a valid access token. */
-const authenticated = new Hono<{ Bindings: Env }>();
+export const authenticated = new Hono<{ Bindings: Env }>();
 
 /**
  * Per-user limits, applied here rather than in the outer wrapper because this

@@ -45,7 +45,10 @@ export function hasEveryScope(
 /** The narrow dashboard API surface the native executor actually consumes. */
 export function isExecutorApiRequest(method: string, path: string): boolean {
   if (method === "GET") {
-    return ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path);
+    return (
+      ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path) ||
+      /^\/api\/relay\/[^/]+$/.test(path)
+    );
   }
   if (method === "POST") return path === "/api/devices" || path === "/api/projects";
   return method === "DELETE" && /^\/api\/projects\/[^/]+$/.test(path);

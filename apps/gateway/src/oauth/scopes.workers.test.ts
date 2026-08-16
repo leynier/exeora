@@ -55,9 +55,9 @@ describe("OAuth scope ceilings", () => {
     expect(
       await grantedScopes(env, {
         clientId: "cli",
-        scope: ["executor:connect", "tools:read"],
+        scope: ["executor:connect", "executor:execute", "tools:read"],
       }),
-    ).toEqual(["executor:connect"]);
+    ).toEqual(["executor:connect", "executor:execute"]);
   });
 
   it("fails closed when token props carry no effective scopes", async () => {
@@ -73,6 +73,7 @@ describe("OAuth scope ceilings", () => {
 
   it("limits executor tokens to the API routes used by the native CLI", () => {
     expect(isExecutorApiRequest("GET", "/api/me")).toBe(true);
+    expect(isExecutorApiRequest("GET", "/api/relay/dev_one")).toBe(true);
     expect(isExecutorApiRequest("POST", "/api/devices")).toBe(true);
     expect(isExecutorApiRequest("DELETE", "/api/projects/prj_one")).toBe(true);
 

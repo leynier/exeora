@@ -18,7 +18,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, mpsc};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
+    tungstenite::{Error as WebSocketError, Message, client::IntoClientRequest, http::HeaderValue},
 };
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -101,6 +101,39 @@ enum ConnectOutcome {
     Disconnected,
 }
 
+fn handshake_rejection(status: u16, body: Option<&[u8]>) -> String {
+    let detail = body
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(|text| {
+            serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|value| {
+                    let error = value.get("error")?.as_str()?;
+                    let scopes = value
+                        .get("requiredScopes")
+                        .and_then(Value::as_array)
+                        .map(|entries| {
+                            entries
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .filter(|scopes| !scopes.is_empty());
+                    Some(scopes.map_or_else(
+                        || error.to_owned(),
+                        |scopes| format!("{error}; required scopes: {scopes}"),
+                    ))
+                })
+                .unwrap_or_else(|| text.chars().take(200).collect())
+        })
+        .unwrap_or_else(|| "the gateway refused this machine".to_owned());
+
+    format!("Relay rejected the connection ({status}): {detail}")
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn connect_once(
     gateway: &str,
@@ -121,9 +154,18 @@ async fn connect_once(
         "authorization",
         HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
-    let (mut socket, _) = connect_async(request)
-        .await
-        .context("Could not connect to the Exeora relay")?;
+    let (mut socket, _) = match connect_async(request).await {
+        Ok(connection) => connection,
+        Err(WebSocketError::Http(response))
+            if matches!(response.status().as_u16(), 401 | 403 | 404) =>
+        {
+            return Ok(ConnectOutcome::Rejected(handshake_rejection(
+                response.status().as_u16(),
+                response.body().as_deref(),
+            )));
+        }
+        Err(error) => return Err(error).context("Could not connect to the Exeora relay"),
+    };
     let can_prompt = !json_output
         && std::io::IsTerminal::is_terminal(&std::io::stdin())
         && std::io::IsTerminal::is_terminal(&std::io::stdout());
@@ -451,7 +493,7 @@ fn platform() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::result_frame;
+    use super::{handshake_rejection, result_frame};
     use crate::protocol::MAX_RESULT_BYTES;
     use serde_json::json;
 
@@ -464,5 +506,18 @@ mod tests {
         );
         assert_eq!(frame["result"]["ok"], false);
         assert_eq!(frame["result"]["error"]["code"], "TOOL_FAILED");
+    }
+
+    #[test]
+    fn explains_a_rejected_relay_handshake_instead_of_hiding_it_in_retries() {
+        let message = handshake_rejection(
+            403,
+            Some(br#"{"error":"insufficient_scope","requiredScopes":["executor:connect"]}"#),
+        );
+
+        assert_eq!(
+            message,
+            "Relay rejected the connection (403): insufficient_scope; required scopes: executor:connect"
+        );
     }
 }
