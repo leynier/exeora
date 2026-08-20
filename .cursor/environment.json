@@ -1,0 +1,12 @@
+{
+  "name": "Exeora",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "gateway",
+      "command": "export PATH=\"$HOME/.bun/bin:$PATH\" && bun run db:migrate:local && bun run dev"
+    }
+  ],
+  "ports": [{ "name": "gateway", "port": 8787 }]
+}
