@@ -47,6 +47,18 @@ impl ToolEngine {
         arguments: Value,
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
+        self.execute_for_project(root, &root.to_string_lossy(), tool, arguments, cancel)
+            .await
+    }
+
+    pub async fn execute_for_project(
+        &self,
+        root: &Path,
+        project_scope: &str,
+        tool: ToolName,
+        arguments: Value,
+        cancel: CancellationToken,
+    ) -> Result<Value, ExeoraError> {
         let validator = self
             .validators
             .get(&tool)
@@ -71,7 +83,11 @@ impl ToolEngine {
             ToolName::EditFile => files::edit_file(root, arguments).await,
             ToolName::WriteFile => files::write_file(root, arguments).await,
             ToolName::RunCommand => self.processes.run_command(root, arguments, cancel).await,
-            ToolName::StartCommand => self.processes.start_command(root, arguments).await,
+            ToolName::StartCommand => {
+                self.processes
+                    .start_command(root, project_scope, arguments)
+                    .await
+            }
             ToolName::GetCommandOutput => self.processes.get_output(root, arguments).await,
             ToolName::SendCommandInput => self.processes.send_input(root, arguments).await,
             ToolName::KillCommand => self.processes.kill_command(root, arguments).await,
@@ -80,5 +96,9 @@ impl ToolEngine {
 
     pub async fn kill_all(&self) {
         self.processes.kill_all().await;
+    }
+
+    pub async fn kill_root(&self, root: &Path) {
+        self.processes.kill_root(root).await;
     }
 }

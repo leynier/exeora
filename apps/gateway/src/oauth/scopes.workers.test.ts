@@ -76,6 +76,9 @@ describe("OAuth scope ceilings", () => {
     expect(isExecutorApiRequest("GET", "/api/relay/dev_one")).toBe(true);
     expect(isExecutorApiRequest("POST", "/api/devices")).toBe(true);
     expect(isExecutorApiRequest("DELETE", "/api/projects/prj_one")).toBe(true);
+    expect(isExecutorApiRequest("GET", "/api/projects/prj_one/worktrees")).toBe(true);
+    expect(isExecutorApiRequest("PUT", "/api/projects/prj_one/worktrees/wtr_one")).toBe(true);
+    expect(isExecutorApiRequest("DELETE", "/api/projects/prj_one/worktrees/wtr_one")).toBe(true);
 
     expect(isExecutorApiRequest("DELETE", "/api/me")).toBe(false);
     expect(isExecutorApiRequest("DELETE", "/api/devices/dev_one")).toBe(false);

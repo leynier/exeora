@@ -46,7 +46,18 @@ const SECONDS = (ms: number) => `${ms / 1000}s`;
 
 /** The full coding-agent system prompt. */
 export function agentPrompt(options: AgentPromptOptions = {}): string {
-  return [OPENING, PROJECT, FINDING, CHANGING, RUNNING, POLICY, WORK, OBJECTIVITY, ANSWERING]
+  return [
+    OPENING,
+    PROJECT,
+    FINDING,
+    CHANGING,
+    RUNNING,
+    POLICY,
+    WORK,
+    OBJECTIVITY,
+    ANSWERING,
+    WORKTREES,
+  ]
     .concat(options.account ? [PROJECTS] : [])
     .concat([CAVEAT])
     .join("\n\n");
@@ -61,7 +72,7 @@ export function agentPrompt(options: AgentPromptOptions = {}): string {
  * prompt is pulled deliberately, once, by whoever wants it.
  */
 export function serverInstructions(options: AgentPromptOptions = {}): string {
-  return [INSTRUCTIONS]
+  return [INSTRUCTIONS, INSTRUCTIONS_WORKTREES]
     .concat(options.account ? [INSTRUCTIONS_ACCOUNT] : [])
     .concat([INSTRUCTIONS_POINTER])
     .join("\n\n");
@@ -171,6 +182,12 @@ const PROJECTS = `## Choosing a project
 - The project is part of each call, not shared client state. Other conversations can work in other projects at the same time without moving this one.
 - A connection with exactly one project may omit \`project\`; Exeora resolves the only possible target.`;
 
+const WORKTREES = `## Choosing a worktree
+
+- \`list_worktrees\` shows the Git worktrees connected under the current project.
+- Every executor tool accepts an optional \`worktree\` slug or id. Omit it, or use \`main\`, for the project's primary root. Pass the same worktree to process follow-up tools.
+- \`UNKNOWN_WORKTREE\` means the selector is not connected; \`WORKTREE_UNAVAILABLE\` means the local CLI cannot currently serve it. Never fall back to main after either error.`;
+
 const CAVEAT = `Not every tool named here is necessarily offered on this connection, because a project can hide any of them. Call what appears in your tool list, and treat an absent tool as a decision someone made rather than a fault to work around.`;
 
 // ---------------------------------------------------------------------------
@@ -187,5 +204,7 @@ const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside 
 - Not every Exeora tool is necessarily offered here. Call what you can see; an absent one is policy, not a fault.`;
 
 const INSTRUCTIONS_ACCOUNT = `This connection reaches several projects: \`list_projects\` shows them, and every other tool call must name its \`project\` when more than one is reachable. The choice is per call, so conversations do not move each other.`;
+
+const INSTRUCTIONS_WORKTREES = `\`list_worktrees\` shows connected Git worktrees. Every executor tool accepts an optional \`worktree\`; omit it for main, and never fall back to main after a worktree error.`;
 
 const INSTRUCTIONS_POINTER = `Exeora's full coding-agent prompt is available as the \`${AGENT_PROMPT_NAME}\` prompt and the \`${AGENT_PROMPT_TOOL.name}\` tool.`;

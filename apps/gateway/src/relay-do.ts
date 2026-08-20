@@ -326,6 +326,21 @@ export class DeviceRelay extends DurableObject<Env> {
         settleCaller(socket, offline("No Exeora CLI is connected for this project."));
         return;
       }
+      const executorState = attachmentOf(executor);
+      if (
+        message.worktreeId &&
+        executorState?.role === "executor" &&
+        !executorState.capabilities?.worktreeRouting
+      ) {
+        settleCaller(
+          socket,
+          relayError(
+            "WORKTREE_UNAVAILABLE",
+            "The connected Exeora CLI does not support worktree routing. Upgrade it and reconnect.",
+          ),
+        );
+        return;
+      }
 
       socket.serializeAttachment({
         ...state,
@@ -337,6 +352,8 @@ export class DeviceRelay extends DurableObject<Env> {
             type: "tool.call",
             requestId: message.requestId,
             projectId: message.projectId,
+            worktreeId: message.worktreeId,
+            worktreeSlug: message.worktreeSlug,
             tool: message.tool,
             arguments: message.arguments,
             client: message.client,
@@ -369,6 +386,8 @@ export class DeviceRelay extends DurableObject<Env> {
         id: message.id,
         deviceId: executorState.deviceId,
         projectId: message.projectId,
+        ...(message.worktreeId ? { worktreeId: message.worktreeId } : {}),
+        ...(message.worktreeSlug ? { worktreeSlug: message.worktreeSlug } : {}),
         tool: message.tool,
         prompt: message.prompt,
         ...(message.clientName ? { clientName: message.clientName } : {}),
@@ -384,6 +403,8 @@ export class DeviceRelay extends DurableObject<Env> {
               type: "approval.request",
               id: message.id,
               projectId: message.projectId,
+              worktreeId: message.worktreeId,
+              worktreeSlug: message.worktreeSlug,
               tool: message.tool,
               prompt: message.prompt,
               client: message.client,

@@ -51,6 +51,7 @@ class Settings:
     table: str
     gateway: str
     secret: str
+    legacy_table: str | None = None
 
     @staticmethod
     def from_env() -> "Settings":
@@ -64,7 +65,8 @@ class Settings:
             catalog_uri=need("CATALOG_URI"),
             warehouse=need("WAREHOUSE"),
             token=need("AUDIT_R2_MAINTENANCE_TOKEN"),
-            table=os.environ.get("AUDIT_R2_TABLE", "default.tool_calls"),
+            table=os.environ.get("AUDIT_R2_TABLE", "default.tool_calls_v2"),
+            legacy_table=os.environ.get("AUDIT_R2_LEGACY_TABLE", "").strip() or None,
             gateway=need("GATEWAY_URL").rstrip("/"),
             secret=need("AUDIT_MAINTENANCE_SECRET"),
         )
@@ -117,8 +119,9 @@ def erase(catalog: Catalog, settings: Settings) -> EraseResult:
         column = "user_id" if item["scope"] == "user" else "project_id"
         target = item["targetId"]
         try:
-            table = catalog.load_table(settings.table)
-            table.delete(delete_filter=f"{column} == {sql_literal(target)}")
+            for table_name in tables(settings):
+                table = catalog.load_table(table_name)
+                table.delete(delete_filter=f"{column} == {sql_literal(target)}")
         except Exception as error:  # noqa: BLE001
             # Reported rather than raised: one unerasable target must not stop
             # the queue, and the gateway keeps it pending with the reason.
@@ -160,10 +163,10 @@ def prune(catalog: Catalog, settings: Settings, today: dt.date) -> bool:
         print(f"retention paused: {detail}", file=sys.stderr)
         return False
 
-    table = catalog.load_table(settings.table)
-
     longest = cutoff(today, policy["longestDays"])
-    table.delete(delete_filter=f"created_at < {sql_literal(longest)}")
+    for table_name in tables(settings):
+        table = catalog.load_table(table_name)
+        table.delete(delete_filter=f"created_at < {sql_literal(longest)}")
     print(f"pruned everything before {longest}")
 
     exempt = policy["exemptUserIds"]
@@ -176,7 +179,9 @@ def prune(catalog: Catalog, settings: Settings, today: dt.date) -> bool:
         if not exempt
         else " and " + " and ".join(f"user_id != {sql_literal(user)}" for user in exempt)
     )
-    table.delete(delete_filter=f"created_at < {sql_literal(shortest)}{spare}")
+    for table_name in tables(settings):
+        table = catalog.load_table(table_name)
+        table.delete(delete_filter=f"created_at < {sql_literal(shortest)}{spare}")
     print(f"pruned before {shortest}, sparing {len(exempt)} longer-plan accounts")
     return True
 
@@ -209,6 +214,10 @@ def cutoff(today: dt.date, days: int) -> str:
 
 def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
+
+def tables(settings: Settings) -> tuple[str, ...]:
+    return (settings.table,) if not settings.legacy_table else (settings.table, settings.legacy_table)
 
 
 def run(

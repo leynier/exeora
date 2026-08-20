@@ -31,6 +31,7 @@ type SharedChild = Arc<Mutex<Box<dyn ChildWrapper>>>;
 
 struct Running {
     root: PathBuf,
+    project_scope: String,
     child: SharedChild,
     stdin: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
     ring: Arc<Mutex<Ring>>,
@@ -187,17 +188,21 @@ impl ProcessRegistry {
         }))
     }
 
-    pub async fn start_command(&self, root: &Path, value: Value) -> Result<Value, ExeoraError> {
+    pub async fn start_command(
+        &self,
+        root: &Path,
+        project_scope: &str,
+        value: Value,
+    ) -> Result<Value, ExeoraError> {
         let args: StartArgs = parse(value)?;
         let (real_root, cwd) = resolve_in_project(root, args.cwd.as_deref().unwrap_or("."))?;
-        let root_key = real_root.clone();
         let mut entries = self.entries.lock().await;
         for entry in entries.values_mut() {
             refresh(entry).await;
         }
         if entries
             .values()
-            .filter(|entry| entry.root == root_key && entry.running)
+            .filter(|entry| entry.project_scope == project_scope && entry.running)
             .count()
             >= MAX_PROCESSES_PER_PROJECT
         {
@@ -218,6 +223,7 @@ impl ProcessRegistry {
             id.clone(),
             Running {
                 root: real_root,
+                project_scope: project_scope.to_owned(),
                 child: Arc::new(Mutex::new(child)),
                 stdin,
                 ring,
@@ -326,6 +332,25 @@ impl ProcessRegistry {
             }
         }
         entries.clear();
+    }
+
+    pub async fn kill_root(&self, root: &Path) {
+        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let mut entries = self.entries.lock().await;
+        let ids: Vec<_> = entries
+            .iter()
+            .filter(|(_, entry)| entry.root == root)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            if let Some(mut entry) = entries.remove(&id)
+                && entry.running
+            {
+                let mut child = entry.child.lock().await;
+                let _ = kill_child(child.as_mut()).await;
+                entry.running = false;
+            }
+        }
     }
 }
 

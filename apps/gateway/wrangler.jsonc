@@ -105,6 +105,11 @@
     "AUDIT_R2_WAREHOUSE": "6df65be91ad130fd6aa8cb64ac017f22_exeora-audit",
     "AUDIT_R2_TABLE": "default.tool_calls",
 
+    // The production binding above still targets the immutable v1 stream.
+    // Change this to "2" only in the same deploy that switches AUDIT_STREAM
+    // and AUDIT_R2_TABLE to their provisioned v2 resources.
+    "AUDIT_SCHEMA_VERSION": "1",
+
     // The first UTC day the Iceberg table can contain, which is the day dual
     // mode was switched on. Dating it earlier only makes the rollup query
     // empty days every night for nothing.

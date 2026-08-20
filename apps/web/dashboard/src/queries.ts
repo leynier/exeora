@@ -13,6 +13,7 @@ export const keys = {
   me: ["me"] as const,
   devices: ["devices"] as const,
   projects: ["projects"] as const,
+  worktrees: (projectId: string) => ["projects", projectId, "worktrees"] as const,
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
@@ -89,6 +90,14 @@ export const useDevices = () =>
   useQuery({ queryKey: keys.devices, queryFn: api.devices, refetchInterval: LIVE });
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.projects });
+
+export const useWorktrees = (projectId: string | undefined) =>
+  useQuery({
+    queryKey: keys.worktrees(projectId ?? ""),
+    queryFn: () => api.worktrees(projectId ?? ""),
+    enabled: Boolean(projectId),
+    refetchInterval: LIVE,
+  });
 
 /** Polled too: "last used" is the only sign a client is still talking to us. */
 export const useClients = () =>

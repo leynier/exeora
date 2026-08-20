@@ -1,6 +1,8 @@
 import { type AccountToolName, ExeoraError, type ToolName } from "@exeora/protocol";
+import { eq } from "drizzle-orm";
 import { type AccountProject, accountProjects } from "./client-targets.js";
 import { touchAccountClient } from "./clients.js";
+import { db, schema } from "./db/client.js";
 import { dispatchToDevice } from "./dispatch.js";
 import "./env.js";
 import type { AccountCall, AccountDispatchResult } from "./mcp-account.js";
@@ -88,6 +90,7 @@ export async function dispatchAccountCall(
   const result = await dispatchToDevice(env, {
     userId,
     projectId: project.id,
+    worktree: call.worktree,
     tool,
     args,
     caller,
@@ -95,13 +98,19 @@ export async function dispatchAccountCall(
     // anywhere else. Without this comparison, confirming `run_command` in one
     // project would confirm the same command in every other.
     approved: call.approvedProjectId === project.id,
+    approvedWorktreeId: call.approvedWorktreeId,
     canElicit: call.canElicit,
     signal,
     endpoint: "account",
   });
 
   return result.kind === "needs-approval"
-    ? { kind: "needs-approval", projectId: project.id, project: project.slug }
+    ? {
+        kind: "needs-approval",
+        projectId: project.id,
+        project: result.worktreeSlug ? `${project.slug}/${result.worktreeSlug}` : project.slug,
+        ...(result.worktreeId ? { worktreeId: result.worktreeId } : {}),
+      }
     : result;
 }
 
@@ -109,8 +118,8 @@ export async function dispatchAccountCall(
 export async function answerAccountTool(
   env: Env,
   call: Pick<AccountCall, "userId" | "caller">,
-  _tool: AccountToolName,
-  _args: unknown,
+  tool: AccountToolName,
+  args: unknown,
 ): Promise<unknown> {
   const { userId, caller } = call;
   const clientId = caller.clientId;
@@ -123,6 +132,26 @@ export async function answerAccountTool(
 
   // Bookkeeping only, and never a reason for the call to fail.
   const touch = () => touchAccountClient(env, entry, caller.mcp).catch(() => undefined);
+
+  if (tool === "list_worktrees") {
+    const named = (args as { project?: unknown } | null)?.project;
+    const project = await resolveAccountProject(env, {
+      ...entry,
+      named: typeof named === "string" ? named : undefined,
+    });
+    const rows = await db(env)
+      .select({
+        slug: schema.worktrees.slug,
+        name: schema.worktrees.name,
+        branch: schema.worktrees.branch,
+        managed: schema.worktrees.managed,
+      })
+      .from(schema.worktrees)
+      .where(eq(schema.worktrees.projectId, project.id))
+      .all();
+    await touch();
+    return { project: project.slug, worktrees: rows };
+  }
 
   const reachable = await accountProjects(env, entry);
   await touch();

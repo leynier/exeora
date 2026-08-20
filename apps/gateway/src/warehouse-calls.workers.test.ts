@@ -63,6 +63,8 @@ describe("reading a page", () => {
       {
         id: "call_1",
         projectId: "prj_1",
+        worktreeId: null,
+        worktreeSlug: null,
         tool: "read_file",
         status: "ok",
         durationMs: 12,

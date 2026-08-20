@@ -167,6 +167,31 @@ export const projects = sqliteTable(
   ],
 );
 
+/** Git worktrees exposed as routable subspaces of one project. */
+export const worktrees = sqliteTable(
+  "worktrees",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    branch: text("branch"),
+    /** Display and reconciliation metadata only; the executor resolves the trusted local root. */
+    localPath: text("local_path").notNull(),
+    managed: integer("managed", { mode: "boolean" }).notNull().default(false),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("worktrees_project_slug").on(table.projectId, table.slug),
+    index("worktrees_project").on(table.projectId),
+  ],
+);
+
 /**
  * An MCP client that has been authorized to reach one project.
  *
@@ -285,6 +310,8 @@ export const auditOutbox = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
     projectId: text("project_id").notNull(),
+    worktreeId: text("worktree_id"),
+    worktreeSlug: text("worktree_slug"),
     tool: text("tool").notNull(),
     status: text("status", { enum: ["ok", "error"] }),
     durationMs: integer("duration_ms"),
@@ -358,6 +385,7 @@ export type User = typeof users.$inferSelect;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
+export type Worktree = typeof worktrees.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;
 export type ClientEndpoint = ProjectClient["endpoint"];
 export type UsageDaily = typeof usageDaily.$inferSelect;

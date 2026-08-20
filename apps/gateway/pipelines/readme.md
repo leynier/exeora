@@ -8,10 +8,14 @@ Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity 
 
 ## Provision
 
+Pipeline stream schemas are immutable. The worktree-aware audit format is schema version 2, so an
+existing `tool_calls` stream must remain as historical storage and a new stream/table must be
+created; do not point the v2 producer at the v1 stream.
+
 From `apps/gateway`:
 
 ```bash
-bunx wrangler pipelines setup --name exeora_audit
+bunx wrangler pipelines setup --name exeora_audit_v2
 ```
 
 Underscores, not hyphens: `pipelines setup` rejects any other punctuation. The name is only a label, and nothing in the gateway reads it. The rollup checkpoint is keyed by account, bucket, warehouse and table (`sourceKey` in `src/warehouse-usage.ts`), so renaming the stream later does not orphan it.
@@ -25,9 +29,9 @@ Answer the wizard:
 | Transform | `SELECT * FROM stream` | The gateway already emits the table's shape. A transform would be a second place the schema is defined. |
 | Destination type | **Data Catalog (Iceberg)** | A plain R2 bucket gives Parquet with no selective row deletion and no R2 SQL, which loses both account erasure and the exact rollup. |
 | R2 bucket name | `exeora-audit` | Hyphens here, unlike the pipeline name: R2 buckets reject underscores. |
-| Namespace / table | `default` / `tool_calls` | Underscores here, unlike the bucket: `AUDIT_R2_TABLE` is validated as `namespace.table` against `[a-zA-Z_][\w]*`. |
+| Namespace / table | `default` / `tool_calls_v2` | The original `tool_calls` table stays readable as the legacy source. |
 
-Three names, three different punctuation rules. `exeora_audit` for the pipeline, `exeora-audit` for the bucket, `tool_calls` for the table.
+Three names, three different punctuation rules. `exeora_audit_v2` for the pipeline, `exeora-audit` for the bucket, `tool_calls_v2` for the table.
 
 Merge the emitted stream id using `pipelines/wrangler.fragment.jsonc` and run `bun run types`.
 
@@ -64,13 +68,20 @@ These cannot be scoped to `exeora-audit`. R2 Data Catalog requires an Admin-leve
 CLOUDFLARE_ACCOUNT_ID
 AUDIT_R2_BUCKET=exeora-audit
 AUDIT_R2_WAREHOUSE=<account_id>_exeora-audit
-AUDIT_R2_TABLE=default.tool_calls
+AUDIT_R2_TABLE=default.tool_calls_v2
+AUDIT_R2_LEGACY_TABLE=default.tool_calls
+AUDIT_SCHEMA_VERSION=2
 AUDIT_WAREHOUSE_START_DAY=YYYY-MM-DD
 AUDIT_R2_SQL_TOKEN         (secret, the Admin Read only token)
 AUDIT_MAINTENANCE_SECRET   (secret, shared with the deletion job)
 ```
 
 Set `AUDIT_WAREHOUSE_START_DAY` to the day the stream starts receiving events. It is the first UTC day the table can contain, and dating it earlier only makes the rollup query empty days every night.
+
+Switch `AUDIT_STREAM`, `AUDIT_R2_TABLE`, `AUDIT_R2_LEGACY_TABLE` and
+`AUDIT_SCHEMA_VERSION` in the same Worker deploy. Until then, keep
+`AUDIT_SCHEMA_VERSION=1`: the producer will omit worktree fields and remain compatible with the
+immutable v1 stream while retaining them in the D1 outbox.
 
 `AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret. It is what the deletion job authenticates with, and while it is unset the `/internal/*` routes answer 404 rather than advertising themselves.
 

@@ -22,6 +22,7 @@ export interface WarehouseConfig {
   bucket: string;
   warehouse: string;
   table: string;
+  legacyTable?: string;
   token: string;
   startDay: string;
 }
@@ -39,6 +40,7 @@ type WarehouseEnv = Pick<
   | "AUDIT_R2_WAREHOUSE"
   | "AUDIT_R2_SQL_TOKEN"
   | "AUDIT_R2_TABLE"
+  | "AUDIT_R2_LEGACY_TABLE"
   | "AUDIT_WAREHOUSE_START_DAY"
 >;
 
@@ -56,6 +58,7 @@ export function warehouseConfig(env: WarehouseEnv): WarehouseConfig {
   const token = env.AUDIT_R2_SQL_TOKEN;
   const startDay = env.AUDIT_WAREHOUSE_START_DAY;
   const table = env.AUDIT_R2_TABLE ?? "default.tool_calls";
+  const legacyTable = env.AUDIT_R2_LEGACY_TABLE;
 
   if (!accountId || !bucket || !warehouse || !token || !startDay) {
     throw new Error("R2 SQL usage rollup is not configured");
@@ -66,8 +69,30 @@ export function warehouseConfig(env: WarehouseEnv): WarehouseConfig {
   if (!/^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*)?$/.test(table)) {
     throw new Error("AUDIT_R2_TABLE must be namespace.table");
   }
+  if (legacyTable && !/^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*)?$/.test(legacyTable)) {
+    throw new Error("AUDIT_R2_LEGACY_TABLE must be namespace.table");
+  }
 
-  return { accountId, bucket, warehouse, table, token, startDay };
+  return {
+    accountId,
+    bucket,
+    warehouse,
+    table,
+    token,
+    startDay,
+    ...(legacyTable ? { legacyTable } : {}),
+  };
+}
+
+export function auditSource(config: WarehouseConfig, includeWorktree: boolean): string {
+  const current = includeWorktree
+    ? `SELECT id, user_id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, endpoint, created_at FROM ${config.table}`
+    : `SELECT id, user_id, project_id, tool, status, duration_ms, error_code, client_id, client_name, endpoint, created_at FROM ${config.table}`;
+  if (!config.legacyTable) return `(${current}) AS audit_events`;
+  const legacy = includeWorktree
+    ? `SELECT id, user_id, project_id, NULL AS worktree_id, NULL AS worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, endpoint, created_at FROM ${config.legacyTable}`
+    : `SELECT id, user_id, project_id, tool, status, duration_ms, error_code, client_id, client_name, endpoint, created_at FROM ${config.legacyTable}`;
+  return `(${current} UNION ALL ${legacy}) AS audit_events`;
 }
 
 /** Runs one statement and returns its rows untyped, for the caller to validate. */

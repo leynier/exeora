@@ -12,6 +12,7 @@ SETTINGS = maintenance.Settings(
     table="default.tool_calls",
     gateway="https://gateway.example",
     secret="secret",
+    legacy_table=None,
 )
 
 

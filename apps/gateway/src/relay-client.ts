@@ -18,6 +18,8 @@ export async function callRelayTool(
   options: {
     requestId: string;
     projectId: string;
+    worktreeId?: string | undefined;
+    worktreeSlug?: string | undefined;
     tool: ToolName;
     args: unknown;
     client?: { name?: string; version?: string } | undefined;
@@ -39,6 +41,8 @@ export async function callRelayTool(
     type: "tool.start",
     requestId: options.requestId,
     projectId: options.projectId,
+    worktreeId: options.worktreeId,
+    worktreeSlug: options.worktreeSlug,
     tool: options.tool,
     arguments: options.args,
     client: options.client,
@@ -150,6 +154,8 @@ export async function requestRelayApproval(
   options: {
     id: string;
     projectId: string;
+    worktreeId?: string | undefined;
+    worktreeSlug?: string | undefined;
     tool: ToolName;
     prompt: string;
     clientName?: string | undefined;

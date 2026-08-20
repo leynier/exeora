@@ -140,6 +140,9 @@ pub mod error {
 ///                    "maxLength": 64
 ///                  },
 ///                  "maxItems": 64
+///                },
+///                "worktreeRouting": {
+///                  "type": "boolean"
 ///                }
 ///              },
 ///              "additionalProperties": false
@@ -281,6 +284,8 @@ pub mod error {
 ///                            "INVALID_ARGUMENTS",
 ///                            "UNKNOWN_TOOL",
 ///                            "UNKNOWN_PROJECT",
+///                            "UNKNOWN_WORKTREE",
+///                            "WORKTREE_UNAVAILABLE",
 ///                            "NO_ACTIVE_PROJECT",
 ///                            "FORBIDDEN",
 ///                            "APPROVAL_DECLINED",
@@ -561,6 +566,12 @@ pub mod error {
 ///            "type": {
 ///              "type": "string",
 ///              "const": "tool.call"
+///            },
+///            "worktreeId": {
+///              "type": "string"
+///            },
+///            "worktreeSlug": {
+///              "type": "string"
 ///            }
 ///          },
 ///          "additionalProperties": false
@@ -654,6 +665,12 @@ pub mod error {
 ///            "type": {
 ///              "type": "string",
 ///              "const": "approval.request"
+///            },
+///            "worktreeId": {
+///              "type": "string"
+///            },
+///            "worktreeSlug": {
+///              "type": "string"
 ///            }
 ///          },
 ///          "additionalProperties": false
@@ -1007,6 +1024,9 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                "maxLength": 64
 ///              },
 ///              "maxItems": 64
+///            },
+///            "worktreeRouting": {
+///              "type": "boolean"
 ///            }
 ///          },
 ///          "additionalProperties": false
@@ -1148,6 +1168,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "INVALID_ARGUMENTS",
 ///                        "UNKNOWN_TOOL",
 ///                        "UNKNOWN_PROJECT",
+///                        "UNKNOWN_WORKTREE",
+///                        "WORKTREE_UNAVAILABLE",
 ///                        "NO_ACTIVE_PROJECT",
 ///                        "FORBIDDEN",
 ///                        "APPROVAL_DECLINED",
@@ -1262,6 +1284,9 @@ pub enum ExeoraProtocolTypesExecutorMessage {
 ///        "maxLength": 64
 ///      },
 ///      "maxItems": 64
+///    },
+///    "worktreeRouting": {
+///      "type": "boolean"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -1273,6 +1298,12 @@ pub enum ExeoraProtocolTypesExecutorMessage {
 pub struct ExeoraProtocolTypesExecutorMessageCapabilities {
     pub prompt: bool,
     pub tools: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageCapabilitiesToolsItem>,
+    #[serde(
+        rename = "worktreeRouting",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub worktree_routing: ::std::option::Option<bool>,
 }
 ///`ExeoraProtocolTypesExecutorMessageCapabilitiesToolsItem`
 ///
@@ -1425,6 +1456,8 @@ pub struct ExeoraProtocolTypesExecutorMessageProjectsItem {
 ///                "INVALID_ARGUMENTS",
 ///                "UNKNOWN_TOOL",
 ///                "UNKNOWN_PROJECT",
+///                "UNKNOWN_WORKTREE",
+///                "WORKTREE_UNAVAILABLE",
 ///                "NO_ACTIVE_PROJECT",
 ///                "FORBIDDEN",
 ///                "APPROVAL_DECLINED",
@@ -1485,6 +1518,8 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "INVALID_ARGUMENTS",
 ///        "UNKNOWN_TOOL",
 ///        "UNKNOWN_PROJECT",
+///        "UNKNOWN_WORKTREE",
+///        "WORKTREE_UNAVAILABLE",
 ///        "NO_ACTIVE_PROJECT",
 ///        "FORBIDDEN",
 ///        "APPROVAL_DECLINED",
@@ -1523,6 +1558,8 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant1Error {
 ///    "INVALID_ARGUMENTS",
 ///    "UNKNOWN_TOOL",
 ///    "UNKNOWN_PROJECT",
+///    "UNKNOWN_WORKTREE",
+///    "WORKTREE_UNAVAILABLE",
 ///    "NO_ACTIVE_PROJECT",
 ///    "FORBIDDEN",
 ///    "APPROVAL_DECLINED",
@@ -1563,6 +1600,10 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant1ErrorCode {
     UnknownTool,
     #[serde(rename = "UNKNOWN_PROJECT")]
     UnknownProject,
+    #[serde(rename = "UNKNOWN_WORKTREE")]
+    UnknownWorktree,
+    #[serde(rename = "WORKTREE_UNAVAILABLE")]
+    WorktreeUnavailable,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
     NoActiveProject,
     #[serde(rename = "FORBIDDEN")]
@@ -1586,6 +1627,8 @@ impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             Self::InvalidArguments => f.write_str("INVALID_ARGUMENTS"),
             Self::UnknownTool => f.write_str("UNKNOWN_TOOL"),
             Self::UnknownProject => f.write_str("UNKNOWN_PROJECT"),
+            Self::UnknownWorktree => f.write_str("UNKNOWN_WORKTREE"),
+            Self::WorktreeUnavailable => f.write_str("WORKTREE_UNAVAILABLE"),
             Self::NoActiveProject => f.write_str("NO_ACTIVE_PROJECT"),
             Self::Forbidden => f.write_str("FORBIDDEN"),
             Self::ApprovalDeclined => f.write_str("APPROVAL_DECLINED"),
@@ -1607,6 +1650,8 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             "INVALID_ARGUMENTS" => Ok(Self::InvalidArguments),
             "UNKNOWN_TOOL" => Ok(Self::UnknownTool),
             "UNKNOWN_PROJECT" => Ok(Self::UnknownProject),
+            "UNKNOWN_WORKTREE" => Ok(Self::UnknownWorktree),
+            "WORKTREE_UNAVAILABLE" => Ok(Self::WorktreeUnavailable),
             "NO_ACTIVE_PROJECT" => Ok(Self::NoActiveProject),
             "FORBIDDEN" => Ok(Self::Forbidden),
             "APPROVAL_DECLINED" => Ok(Self::ApprovalDeclined),
@@ -2102,6 +2147,12 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        "type": {
 ///          "type": "string",
 ///          "const": "tool.call"
+///        },
+///        "worktreeId": {
+///          "type": "string"
+///        },
+///        "worktreeSlug": {
+///          "type": "string"
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -2195,6 +2246,12 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        "type": {
 ///          "type": "string",
 ///          "const": "approval.request"
+///        },
+///        "worktreeId": {
+///          "type": "string"
+///        },
+///        "worktreeSlug": {
+///          "type": "string"
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -2261,6 +2318,18 @@ pub enum ExeoraProtocolTypesRelayMessage {
         #[serde(rename = "requestId")]
         request_id: ::std::string::String,
         tool: ExeoraProtocolTypesRelayMessageTool,
+        #[serde(
+            rename = "worktreeId",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        worktree_id: ::std::option::Option<::std::string::String>,
+        #[serde(
+            rename = "worktreeSlug",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        worktree_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "cancel")]
     Cancel {
@@ -2280,6 +2349,18 @@ pub enum ExeoraProtocolTypesRelayMessage {
         project_id: ::std::string::String,
         prompt: ::std::string::String,
         tool: ExeoraProtocolTypesRelayMessageTool,
+        #[serde(
+            rename = "worktreeId",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        worktree_id: ::std::option::Option<::std::string::String>,
+        #[serde(
+            rename = "worktreeSlug",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        worktree_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "approval.resolved")]
     ApprovalResolved { id: ::std::string::String },

@@ -1,10 +1,12 @@
 import { ExeoraError, needsApproval, policyAllows, type ToolName } from "@exeora/protocol";
+import { and, eq } from "drizzle-orm";
 import { describeCall } from "./approval.js";
 import { type AuditHandle, beginAudit, finishAudit } from "./audit.js";
 import { resolveAccountTarget, resolveTarget } from "./client-targets.js";
 import { type CallerIdentity, touchClient } from "./clients.js";
 import "./env.js";
 import { relayName } from "./api/ops.js";
+import { db, schema } from "./db/client.js";
 import { newId } from "./ids.js";
 import type { DispatchResult } from "./mcp.js";
 import { callRelayTool, requestRelayApproval } from "./relay-client.js";
@@ -33,11 +35,13 @@ export async function dispatchToDevice(
   call: {
     userId: string;
     projectId: string;
+    worktree?: string | undefined;
     tool: ToolName;
     args: unknown;
     caller: CallerIdentity;
     /** Whether the user has confirmed this exact call, on a previous round. */
     approved: boolean;
+    approvedWorktreeId?: string | undefined;
     /** Whether this client can be asked over MCP, rather than out of band. */
     canElicit: boolean;
     signal?: AbortSignal | undefined;
@@ -80,6 +84,9 @@ export async function dispatchToDevice(
     );
   }
 
+  const worktree = await resolveWorktree(env, projectId, call.worktree);
+  const approved = call.approved && call.approvedWorktreeId === worktree?.id;
+
   // Checked here as well as on the machine, and both are necessary. This is
   // the only side that holds the account's policy, and an older CLI would
   // ignore a field it does not know and run the command regardless; the
@@ -88,13 +95,24 @@ export async function dispatchToDevice(
   const verdict = policyAllows(project.policy, tool, args);
   // Elicitation is a protocol round trip, not a tool attempt. The approved
   // second request is the one that receives an audit row and consumes usage.
-  if (verdict.allowed && needsApproval(project.policy, tool) && !call.approved && call.canElicit) {
-    return { kind: "needs-approval", projectId };
+  if (verdict.allowed && needsApproval(project.policy, tool) && !approved && call.canElicit) {
+    return {
+      kind: "needs-approval",
+      projectId,
+      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+    };
   }
 
   let audit: AuditHandle;
   try {
-    audit = await beginAudit(env, { userId, projectId, tool, caller, endpoint });
+    audit = await beginAudit(env, {
+      userId,
+      projectId,
+      tool,
+      caller,
+      endpoint,
+      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+    });
   } catch (error) {
     console.error("audit outbox begin failed", error);
     throw new ExeoraError(
@@ -126,7 +144,7 @@ export async function dispatchToDevice(
 
   // Asked before anything is dispatched, and asked here rather than in the MCP
   // layer because this is where the project's policy is known.
-  if (needsApproval(project.policy, tool) && !call.approved) {
+  if (needsApproval(project.policy, tool) && !approved) {
     // A client speaking 2026-07-28 is asked over MCP: the answer comes back on
     // a second round carrying a signed state bound to these arguments, which is
     // the best available answer because the person is already looking at the
@@ -137,8 +155,9 @@ export async function dispatchToDevice(
     const outcome = await requestRelayApproval(relay, {
       id: newId("apr"),
       projectId,
+      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
       tool,
-      prompt: describeCall(tool, args),
+      prompt: `${describeCall(tool, args)}${worktree ? ` Worktree: ${worktree.slug}.` : ""}`,
       clientName: caller.clientName ?? caller.mcp?.name,
       client: callerLabel(caller),
     });
@@ -171,6 +190,7 @@ export async function dispatchToDevice(
     const value = await callRelayTool(relay, {
       requestId,
       projectId,
+      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
       tool,
       args,
       client: callerLabel(caller),
@@ -194,6 +214,30 @@ export async function dispatchToDevice(
     });
     throw error;
   }
+}
+
+async function resolveWorktree(
+  env: Pick<Env, "DB">,
+  projectId: string,
+  selector: string | undefined,
+): Promise<{ id: string; slug: string } | null> {
+  if (!selector || selector.toLowerCase() === "main") return null;
+  const row = await db(env)
+    .select({ id: schema.worktrees.id, slug: schema.worktrees.slug })
+    .from(schema.worktrees)
+    .where(
+      and(
+        eq(schema.worktrees.projectId, projectId),
+        selector.startsWith("wtr_")
+          ? eq(schema.worktrees.id, selector)
+          : eq(schema.worktrees.slug, selector),
+      ),
+    )
+    .get();
+  if (!row) {
+    throw new ExeoraError("UNKNOWN_WORKTREE", "That worktree is not available in this project.");
+  }
+  return row;
 }
 
 /**

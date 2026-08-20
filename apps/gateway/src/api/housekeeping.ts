@@ -20,6 +20,7 @@ type NightlyEnv = Pick<Env, "DB"> &
       | "AUDIT_R2_WAREHOUSE"
       | "AUDIT_R2_SQL_TOKEN"
       | "AUDIT_R2_TABLE"
+      | "AUDIT_R2_LEGACY_TABLE"
       | "AUDIT_WAREHOUSE_START_DAY"
     >
   >;

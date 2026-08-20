@@ -45,7 +45,9 @@ describe("agentPrompt", () => {
     const account = agentPrompt({ account: true });
 
     for (const name of ACCOUNT_TOOL_NAMES) {
-      expect(project, `${name} has no meaning on a per-project URL`).not.toContain(name);
+      if (name !== "list_worktrees") {
+        expect(project, `${name} has no meaning on a per-project URL`).not.toContain(name);
+      }
       expect(account, `${name} is unexplained on the account URL`).toContain(name);
     }
 

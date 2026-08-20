@@ -7,5 +7,10 @@
       "binding": "AUDIT_STREAM",
       "stream": "<STREAM_ID>"
     }
-  ]
+  ],
+  "vars": {
+    "AUDIT_SCHEMA_VERSION": "2",
+    "AUDIT_R2_TABLE": "default.tool_calls_v2",
+    "AUDIT_R2_LEGACY_TABLE": "default.tool_calls"
+  }
 }

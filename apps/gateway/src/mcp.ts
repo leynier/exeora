@@ -1,11 +1,11 @@
 import {
+  ACCOUNT_TOOL_DEFINITIONS,
   AGENT_PROMPT_NAME,
   AGENT_PROMPT_TITLE,
   AGENT_PROMPT_TOOL,
   agentPrompt,
   ExeoraError,
   serverInstructions,
-  TOOL_DEFINITIONS,
   type ToolName,
 } from "@exeora/protocol";
 import {
@@ -26,6 +26,7 @@ import {
 } from "./approval.js";
 import type { CallerIdentity, McpClientInfo } from "./clients.js";
 import "./env.js";
+import { registerExecutorTools } from "./mcp-executor-tools.js";
 
 /**
  * One MCP endpoint per project: `exeora.dev/p/:projectId/mcp`.
@@ -46,9 +47,11 @@ export function mcpRoute(projectId: string): string {
 export interface McpToolContext {
   userId: string;
   projectId: string;
+  worktree?: string | undefined;
   caller: CallerIdentity;
   /** True once the user has confirmed this exact call. */
   approved: boolean;
+  approvedWorktreeId?: string | undefined;
   /**
    * Whether this client can be asked over MCP.
    *
@@ -82,7 +85,7 @@ export type DispatchResult =
    * for `run_command` in one project would verify against the same arguments in
    * another.
    */
-  | { kind: "needs-approval"; projectId: string };
+  | { kind: "needs-approval"; projectId: string; worktreeId?: string; worktreeSlug?: string };
 
 /** Runs a tool on the user's machine, through the relay. */
 export type ToolDispatcher = (
@@ -109,6 +112,9 @@ export function createProjectMcpHandler(
    * `LOCAL_EXECUTOR_OFFLINE`, which says the true thing.
    */
   advertised?: ReadonlySet<ToolName>,
+  listWorktrees?: (
+    context: Pick<McpToolContext, "userId" | "projectId" | "caller">,
+  ) => Promise<unknown>,
 ) {
   return createMcpHandler(
     (request) => {
@@ -128,25 +134,57 @@ export function createProjectMcpHandler(
 
       registerAgentPrompt(server, false);
 
+      if (listWorktrees) {
+        server.registerTool(
+          "list_worktrees",
+          {
+            title: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.title,
+            description: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.description,
+            inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.inputSchema.omit({
+              project: true,
+            }),
+            annotations: { readOnlyHint: true },
+          },
+          async (_args, ctx) => {
+            const props = propsOf();
+            return toolResult(
+              await listWorktrees({
+                userId: String(props.userId ?? ""),
+                projectId,
+                caller: {
+                  clientId: props.clientId,
+                  clientName: props.clientName,
+                  mcp: mcpClientInfo(ctx),
+                },
+              }),
+            );
+          },
+        );
+      }
+
       // Every tool is forwarded verbatim to the executor, which validates the
       // arguments again against the same schema before touching the disk.
       const run = async (tool: ToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
+        const { worktree, rest } = splitWorktree(args);
+        const approval = await approvalFor(ctx, tool, args);
 
         const result = await dispatch(
           {
             userId: String(props.userId ?? ""),
             projectId,
+            worktree,
             caller: {
               clientId: props.clientId,
               clientName: props.clientName,
               mcp: mcpClientInfo(ctx),
             },
-            approved: await isApproved(ctx, projectId, tool, args),
+            approved: approval?.projectId === projectId,
+            approvedWorktreeId: approval?.worktreeId,
             canElicit: request.era === "modern",
           },
           tool,
-          args,
+          rest,
         );
 
         if (result.kind === "needs-approval") {
@@ -161,102 +199,32 @@ export function createProjectMcpHandler(
             );
           }
 
-          return askToConfirm(codec, ctx, result.projectId, tool, args);
+          return askToConfirm(
+            codec,
+            ctx,
+            result.projectId,
+            tool,
+            args,
+            undefined,
+            result.worktreeId,
+          );
         }
 
         return toolResult(result.value);
       };
 
-      // Registered one by one rather than in a loop: the SDK infers the
-      // argument type of each callback from its own schema, and a loop would
-      // collapse the schemas into a union that erases that inference.
-      const meta = <N extends ToolName>(name: N) => ({
-        title: TOOL_DEFINITIONS[name].title,
-        description: TOOL_DEFINITIONS[name].description,
-        annotations: { readOnlyHint: TOOL_DEFINITIONS[name].readOnly },
-      });
-
-      if (offers("read_file")) {
-        server.registerTool(
-          "read_file",
-          { ...meta("read_file"), inputSchema: TOOL_DEFINITIONS.read_file.inputSchema },
-          (args, ctx) => run("read_file", args, ctx),
-        );
-      }
-      if (offers("list_files")) {
-        server.registerTool(
-          "list_files",
-          { ...meta("list_files"), inputSchema: TOOL_DEFINITIONS.list_files.inputSchema },
-          (args, ctx) => run("list_files", args, ctx),
-        );
-      }
-      if (offers("grep")) {
-        server.registerTool(
-          "grep",
-          { ...meta("grep"), inputSchema: TOOL_DEFINITIONS.grep.inputSchema },
-          (args, ctx) => run("grep", args, ctx),
-        );
-      }
-      if (offers("edit_file")) {
-        server.registerTool(
-          "edit_file",
-          { ...meta("edit_file"), inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema },
-          (args, ctx) => run("edit_file", args, ctx),
-        );
-      }
-      if (offers("write_file")) {
-        server.registerTool(
-          "write_file",
-          { ...meta("write_file"), inputSchema: TOOL_DEFINITIONS.write_file.inputSchema },
-          (args, ctx) => run("write_file", args, ctx),
-        );
-      }
-      if (offers("run_command")) {
-        server.registerTool(
-          "run_command",
-          { ...meta("run_command"), inputSchema: TOOL_DEFINITIONS.run_command.inputSchema },
-          (args, ctx) => run("run_command", args, ctx),
-        );
-      }
-      if (offers("start_command")) {
-        server.registerTool(
-          "start_command",
-          { ...meta("start_command"), inputSchema: TOOL_DEFINITIONS.start_command.inputSchema },
-          (args, ctx) => run("start_command", args, ctx),
-        );
-      }
-      if (offers("get_command_output")) {
-        server.registerTool(
-          "get_command_output",
-          {
-            ...meta("get_command_output"),
-            inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema,
-          },
-          (args, ctx) => run("get_command_output", args, ctx),
-        );
-      }
-      if (offers("send_command_input")) {
-        server.registerTool(
-          "send_command_input",
-          {
-            ...meta("send_command_input"),
-            inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema,
-          },
-          (args, ctx) => run("send_command_input", args, ctx),
-        );
-      }
-      if (offers("kill_command")) {
-        server.registerTool(
-          "kill_command",
-          { ...meta("kill_command"), inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema },
-          (args, ctx) => run("kill_command", args, ctx),
-        );
-      }
+      registerExecutorTools(server, offers, run);
 
       return server;
     },
     { route: mcpRoute(projectId) },
   );
+}
+
+function splitWorktree(args: unknown): { worktree: string | undefined; rest: unknown } {
+  if (!args || typeof args !== "object") return { worktree: undefined, rest: args };
+  const { worktree, ...rest } = args as Record<string, unknown>;
+  return { worktree: typeof worktree === "string" ? worktree : undefined, rest };
 }
 
 /**
@@ -320,6 +288,7 @@ export async function askToConfirm(
   tool: ToolName,
   args: unknown,
   where?: string,
+  worktreeId?: string,
 ) {
   const question = describeCall(tool, args);
 
@@ -330,7 +299,15 @@ export async function askToConfirm(
         requestedSchema: APPROVAL_SCHEMA,
       }),
     },
-    requestState: await codec.mint({ projectId, tool, argsHash: await hashArguments(args) }, ctx),
+    requestState: await codec.mint(
+      {
+        projectId,
+        ...(worktreeId ? { worktreeId } : {}),
+        tool,
+        argsHash: await hashArguments(args),
+      },
+      ctx,
+    ),
   });
 }
 
@@ -355,7 +332,7 @@ export async function approvalFor(
   ctx: Pick<ServerContext, "mcpReq">,
   tool: ToolName,
   args: unknown,
-): Promise<{ projectId: string } | null> {
+): Promise<{ projectId: string; worktreeId?: string } | null> {
   const state = ctx.mcpReq.requestState<ApprovalState>();
   if (!state || typeof state !== "object") return null;
   if (state.tool !== tool) return null;
@@ -370,7 +347,10 @@ export async function approvalFor(
 
   if (state.argsHash !== (await hashArguments(args))) return null;
 
-  return { projectId: state.projectId };
+  return {
+    projectId: state.projectId,
+    ...(state.worktreeId ? { worktreeId: state.worktreeId } : {}),
+  };
 }
 
 /** Whether this round confirms this exact call on this project. */

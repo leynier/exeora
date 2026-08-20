@@ -123,15 +123,31 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
       dispatchToDevice(c.env, {
         userId: context.userId,
         projectId,
+        worktree: context.worktree,
         tool,
         args,
         caller: context.caller,
         approved: context.approved,
+        approvedWorktreeId: context.approvedWorktreeId,
         canElicit: context.canElicit,
         signal,
       }),
     c.env,
     advertised,
+    async ({ userId }) => {
+      const rows = await db(c.env)
+        .select({
+          slug: schema.worktrees.slug,
+          name: schema.worktrees.name,
+          branch: schema.worktrees.branch,
+          managed: schema.worktrees.managed,
+        })
+        .from(schema.worktrees)
+        .innerJoin(schema.projects, eq(schema.worktrees.projectId, schema.projects.id))
+        .where(and(eq(schema.worktrees.projectId, projectId), eq(schema.projects.userId, userId)))
+        .all();
+      return { project: projectId, worktrees: rows };
+    },
   );
 
   // Cloned, not consumed: the handler needs the body intact. The clone is read
