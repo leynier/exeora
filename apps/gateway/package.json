@@ -24,9 +24,9 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.20.2",
+    "@cloudflare/vitest-pool-workers": "0.21.3",
     "@types/node": "latest",
     "drizzle-kit": "latest",
-    "wrangler": "4.119.0"
+    "wrangler": "4.123.0"
   }
 }

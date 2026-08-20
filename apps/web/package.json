@@ -26,7 +26,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
-    "astro": "7.2.0",
+    "astro": "7.2.2",
     "tailwindcss": "4.3.3",
     "vite": "8.2.1"
   },
