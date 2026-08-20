@@ -40,7 +40,7 @@ describe("agentPrompt", () => {
     expect(prompt).toContain(`${MAX_PROCESSES_PER_PROJECT} live processes`);
   });
 
-  it("explains the project-management tools only on the account endpoint", () => {
+  it("explains per-call project selection only on the account endpoint", () => {
     const project = agentPrompt();
     const account = agentPrompt({ account: true });
 
@@ -49,8 +49,10 @@ describe("agentPrompt", () => {
       expect(account, `${name} is unexplained on the account URL`).toContain(name);
     }
 
-    expect(account).toContain("NO_ACTIVE_PROJECT");
-    expect(project).not.toContain("NO_ACTIVE_PROJECT");
+    expect(account).toContain("every executor tool call");
+    expect(account).toContain("Other conversations can work in other projects");
+    expect(account).not.toContain("active project");
+    expect(project).not.toContain("every executor tool call");
   });
 
   it("says a refusal is a decision rather than something to work around", () => {

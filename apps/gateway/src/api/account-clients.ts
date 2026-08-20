@@ -1,8 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { setActiveProjectId } from "../client-targets.js";
 import { rememberAuthorization, revokeAccountProjectsExcept } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
@@ -15,8 +14,9 @@ import type { ApiEnv } from "./router.js";
  *
  * One entry per client rather than per project, because on this endpoint a
  * client is a single connection that reaches several projects. Which of them it
- * may reach is an access list the user edits here, and which one it is working
- * in right now is a pointer this endpoint moves.
+ * may reach is an access list the user edits here. Calls name a project when
+ * that list contains more than one, so no shared working-project state lives
+ * on the client row.
  */
 
 export const accountClients = new Hono<ApiEnv>();
@@ -32,26 +32,15 @@ export const accountClients = new Hono<ApiEnv>();
 accountClients.get("/api/account-clients", async (c) => {
   const userId = c.get("userId");
 
-  const [rows, active] = await Promise.all([
-    db(c.env)
-      .select()
-      .from(schema.projectClients)
-      .where(
-        and(
-          eq(schema.projectClients.userId, userId),
-          eq(schema.projectClients.endpoint, "account"),
-        ),
-      )
-      .orderBy(desc(schema.projectClients.authorizedAt))
-      .all(),
-    db(c.env)
-      .select()
-      .from(schema.activeProjects)
-      .where(eq(schema.activeProjects.userId, userId))
-      .all(),
-  ]);
+  const rows = await db(c.env)
+    .select()
+    .from(schema.projectClients)
+    .where(
+      and(eq(schema.projectClients.userId, userId), eq(schema.projectClients.endpoint, "account")),
+    )
+    .orderBy(desc(schema.projectClients.authorizedAt))
+    .all();
 
-  const activeByClient = new Map(active.map((row) => [row.clientId, row.projectId]));
   const byClient = new Map<string, ReturnType<typeof toAccountClientView>>();
 
   for (const row of rows) {
@@ -59,7 +48,6 @@ accountClients.get("/api/account-clients", async (c) => {
     if (!existing) {
       byClient.set(row.clientId, {
         ...toAccountClientView(row),
-        activeProjectId: activeByClient.get(row.clientId) ?? null,
         projects: [toAccountProjectView(row)],
       });
       continue;
@@ -77,20 +65,6 @@ accountClients.get("/api/account-clients", async (c) => {
     existing.mcpVersion ??= row.mcpVersion;
     existing.clientName ??= row.clientName;
     existing.clientUri ??= row.clientUri;
-  }
-
-  // The pointer outlives a revocation on purpose, so that resolving a call can
-  // tell "never chose" from "chose something now gone" and refuse rather than
-  // silently move the client. That distinction is worth nothing to this screen,
-  // which only draws where the connection is working: a choice it can no longer
-  // reach is not one, and offering it in the dropdown would invite picking it.
-  for (const client of byClient.values()) {
-    const reaches = new Set(
-      client.projects.filter((entry) => entry.revokedAt === null).map((entry) => entry.projectId),
-    );
-    if (client.activeProjectId && !reaches.has(client.activeProjectId)) {
-      client.activeProjectId = null;
-    }
   }
 
   return c.json([...byClient.values()]);
@@ -182,41 +156,6 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
   return c.json({ ok: true });
 });
 
-const activeInput = z.object({
-  clientId: z.string().min(1),
-  projectId: z.string().min(1).nullable(),
-});
-
-/** Points a client at a project from the dashboard, or clears the pointer. */
-accountClients.put(
-  "/api/account-clients/active-project",
-  zValidator("json", activeInput),
-  async (c) => {
-    const userId = c.get("userId");
-    const { clientId, projectId } = c.req.valid("json");
-
-    if (projectId !== null) {
-      const granted = await db(c.env)
-        .select({ id: schema.projectClients.id })
-        .from(schema.projectClients)
-        .where(
-          and(
-            eq(schema.projectClients.userId, userId),
-            eq(schema.projectClients.clientId, clientId),
-            eq(schema.projectClients.projectId, projectId),
-            eq(schema.projectClients.endpoint, "account"),
-            isNull(schema.projectClients.revokedAt),
-          ),
-        )
-        .get();
-
-      if (!granted) return c.json({ error: "not_found" }, 404);
-    }
-
-    await setActiveProjectId(c.env, { userId, clientId, projectId });
-    return c.json({ ok: true });
-  },
-);
 function toAccountClientView(client: typeof schema.projectClients.$inferSelect) {
   return {
     clientId: client.clientId,
@@ -226,7 +165,6 @@ function toAccountClientView(client: typeof schema.projectClients.$inferSelect) 
     mcpVersion: client.mcpVersion,
     authorizedAt: client.authorizedAt.getTime(),
     lastUsedAt: client.lastUsedAt?.getTime() ?? null,
-    activeProjectId: null as string | null,
     projects: [] as ReturnType<typeof toAccountProjectView>[],
   };
 }

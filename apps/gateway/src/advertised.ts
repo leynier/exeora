@@ -1,7 +1,7 @@
 import { TOOL_NAMES, type ToolName } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
-import { accountProjects, activeProjectChoice } from "./client-targets.js";
+import { accountProjects } from "./client-targets.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 
@@ -52,20 +52,13 @@ export async function advertisedTools(
 }
 
 /**
- * The same question on the account endpoint, asked of whichever project the
- * connection is currently pointed at.
+ * The same question on the account endpoint. A single reachable project is
+ * unambiguous and can narrow the tool list; several cannot, because each call
+ * may name a different one.
  *
- * Undefined, meaning "offer every tool", whenever there is nothing to narrow
- * by: no project selected, or several to choose from and none chosen. That is
- * the right answer rather than an empty list, because the three management
- * tools are always registered and a connection whose whole purpose is to be
- * pointed somewhere should not look empty before it has been.
- *
- * Switching the active project can change this answer, and nothing tells the
- * client so: the endpoint is stateless and there is no session to notify. A
- * client that never lists again keeps offering a tool the current project's
- * machine cannot run, and that call fails with `LOCAL_EXECUTOR_OFFLINE` or
- * `UNKNOWN_TOOL`, which is the same thing it would have said anyway.
+ * Undefined means "offer every tool" when zero or several projects are
+ * reachable. The list tool remains available either way, and dispatch still
+ * checks the named project's executor before anything runs.
  */
 export async function advertisedAccountTools(
   env: Env,
@@ -74,22 +67,8 @@ export async function advertisedAccountTools(
 ): Promise<ReadonlySet<ToolName> | undefined> {
   if (!userId || !clientId) return undefined;
 
-  const [reachable, choice] = await Promise.all([
-    accountProjects(env, { userId, clientId }),
-    activeProjectChoice(env, { userId, clientId }),
-  ]);
-
-  // The dispatcher's rule, not a second reading of it: the fallback to the only
-  // project belongs to a connection that never chose. A choice that no longer
-  // stands is refused there rather than replaced, so narrowing by whatever is
-  // left would publish a toolset for a project no call will reach.
-  const chosen = choice
-    ? choice.reachable
-      ? reachable.find((project) => project.id === choice.projectId)
-      : undefined
-    : reachable.length === 1
-      ? reachable[0]
-      : undefined;
+  const reachable = await accountProjects(env, { userId, clientId });
+  const chosen = reachable.length === 1 ? reachable[0] : undefined;
 
   return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
 }

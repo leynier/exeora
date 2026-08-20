@@ -166,10 +166,10 @@ const ANSWERING = `## Answering
 
 const PROJECTS = `## Choosing a project
 
-- This connection reaches several projects. \`list_projects\` shows them and says which is active, \`get_active_project\` asks for only that, and \`set_active_project\` moves it.
-- The active project belongs to the client rather than to this conversation. Moving it moves it for every other conversation open in the same client, and it stays moved after this one ends.
-- To work somewhere else for a single call, give that call a \`project\` argument instead of moving the active one.
-- \`NO_ACTIVE_PROJECT\` means nothing is selected yet. List the projects and ask which one, rather than choosing for the user.`;
+- \`list_projects\` shows every project this connection can reach. When it lists more than one, ask which one the user means unless their request already names it.
+- Give every executor tool call a \`project\` argument when more than one project is reachable. Keep using the same value for follow-up process calls: \`get_command_output\`, \`send_command_input\` and \`kill_command\`.
+- The project is part of each call, not shared client state. Other conversations can work in other projects at the same time without moving this one.
+- A connection with exactly one project may omit \`project\`; Exeora resolves the only possible target.`;
 
 const CAVEAT = `Not every tool named here is necessarily offered on this connection, because a project can hide any of them. Call what appears in your tool list, and treat an absent tool as a decision someone made rather than a fault to work around.`;
 
@@ -186,6 +186,6 @@ const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside 
 - A project's policy can make it read only, restrict which commands run, hide tools, and require a person to confirm. \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are decisions: report them and stop, never work around them. \`LOCAL_EXECUTOR_OFFLINE\` means the machine is not connected.
 - Not every Exeora tool is necessarily offered here. Call what you can see; an absent one is policy, not a fault.`;
 
-const INSTRUCTIONS_ACCOUNT = `This connection reaches several projects: \`list_projects\` and \`set_active_project\` choose the one everything else runs in, and any call may name a \`project\` of its own instead.`;
+const INSTRUCTIONS_ACCOUNT = `This connection reaches several projects: \`list_projects\` shows them, and every other tool call must name its \`project\` when more than one is reachable. The choice is per call, so conversations do not move each other.`;
 
 const INSTRUCTIONS_POINTER = `Exeora's full coding-agent prompt is available as the \`${AGENT_PROMPT_NAME}\` prompt and the \`${AGENT_PROMPT_TOOL.name}\` tool.`;

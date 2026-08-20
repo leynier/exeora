@@ -1,6 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { setActiveProjectId } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { forgetOAuthClient, revokeClient } from "./ops.js";
@@ -79,28 +78,6 @@ clients.delete("/api/clients/:id/permanently", async (c) => {
     .delete(schema.projectClients)
     .where(eq(schema.projectClients.id, client.id))
     .run();
-
-  // The pointer outlives a revocation on purpose, so a call can be refused
-  // rather than quietly moved. It must not outlive *this*, which erases the
-  // client's record rather than closing its access: there is no agent left to
-  // protect, and the leftover row would meet the same client on its next
-  // authorization and refuse its very first call, naming a project chosen by a
-  // connection the user asked to forget.
-  const remainingAccount = await db(c.env)
-    .select({ id: schema.projectClients.id })
-    .from(schema.projectClients)
-    .where(
-      and(
-        eq(schema.projectClients.userId, userId),
-        eq(schema.projectClients.clientId, client.clientId),
-        eq(schema.projectClients.endpoint, "account"),
-      ),
-    )
-    .get();
-
-  if (!remainingAccount) {
-    await setActiveProjectId(c.env, { userId, clientId: client.clientId, projectId: null });
-  }
 
   await forgetOAuthClient(c.env, client.clientId);
 

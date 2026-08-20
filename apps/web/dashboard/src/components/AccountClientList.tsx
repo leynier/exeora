@@ -4,7 +4,6 @@ import { type AccountClient, api, type Project, relativeTime } from "../api.js";
 import { clientLabel, clientVersion } from "../format.js";
 import { keys } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { Select } from "./Select.js";
 import { useToast } from "./toast.js";
 import { Badge, Divided } from "./ui.js";
 
@@ -14,8 +13,8 @@ import { Badge, Divided } from "./ui.js";
  * A separate list from `ClientList` because it answers a different question.
  * There, a row is one client on one project and the only decision is whether to
  * keep it. Here a row is one connection covering several projects, and the
- * decisions are which projects it reaches and which of them it is working in,
- * neither of which fits a list that shows a project per row.
+ * the decision is which projects it reaches, which does not fit a list that
+ * shows a project per row.
  *
  * Removing the last project is how a connection is shut off, and it says so:
  * there is no separate revoke, because taking every project away is exactly
@@ -54,14 +53,7 @@ export function AccountClientList({
     onError: (error) => fail(error, "Could not update access."),
   });
 
-  const setActive = useMutation({
-    mutationFn: ({ clientId, projectId }: { clientId: string; projectId: string | null }) =>
-      api.setAccountClientActiveProject(clientId, projectId),
-    onSuccess: () => settle("Active project updated."),
-    onError: (error) => fail(error, "Could not change the active project."),
-  });
-
-  const busy = setProjects.isPending || setActive.isPending;
+  const busy = setProjects.isPending;
 
   return (
     <Divided>
@@ -74,7 +66,6 @@ export function AccountClientList({
           onSetProjects={(projectIds) =>
             setProjects.mutate({ clientId: client.clientId, projectIds })
           }
-          onSetActive={(projectId) => setActive.mutate({ clientId: client.clientId, projectId })}
         />
       ))}
     </Divided>
@@ -86,13 +77,11 @@ function AccountClientRow({
   projects,
   busy,
   onSetProjects,
-  onSetActive,
 }: {
   client: AccountClient;
   projects: Project[];
   busy: boolean;
   onSetProjects: (projectIds: string[]) => void;
-  onSetActive: (projectId: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -110,15 +99,9 @@ function AccountClientRow({
   const version = clientVersion(client);
   const nameOf = (id: string) => projects.find((project) => project.id === id)?.name ?? "removed";
 
-  // The pointer can name a project the client no longer reaches, since revoking
-  // access does not go looking for it. Falling back to "none" here matches what
-  // a tool call would do with it, which is ignore it.
-  const active =
-    client.activeProjectId && grantedSet.has(client.activeProjectId) ? client.activeProjectId : "";
-
   return (
     // Not `Row`, which centres a single line: this one stacks a header, the
-    // access list and the pointer, and each wants the full width.
+    // access list, and each wants the full width.
     <div className="flex flex-col gap-4 px-5 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -182,24 +165,6 @@ function AccountClientRow({
             ? "It cannot reach any project, and its token went with the last one. Giving it a project back here is not enough: it has to be authorized again from the client."
             : granted.map(nameOf).join(", ")}
         </p>
-      )}
-
-      {granted.length > 0 && (
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-body-md text-foreground-faint">Working in</span>
-          <Select
-            label={`Active project for ${clientLabel(client)}`}
-            value={active}
-            options={[
-              // Empty means the client has not chosen. With one project granted
-              // that reads the same as choosing it, because a call resolves to
-              // the only one there is.
-              { value: "", label: granted.length === 1 ? "the only project" : "not chosen" },
-              ...granted.map((id) => ({ value: id, label: nameOf(id) })),
-            ]}
-            onChange={(value) => onSetActive(value === "" ? null : value)}
-          />
-        </div>
       )}
 
       <ConfirmDialog

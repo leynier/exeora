@@ -26,8 +26,9 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     <code>https://exeora.dev/mcp</code> is the same for everyone and covers several projects at once.
     When you authorize a client on it, the consent screen lists your projects and you tick the ones
-    it may reach; it then moves between them itself with <code>list_projects</code> and{" "}
-    <code>set_active_project</code>. Add it once and it keeps working as projects come and go.
+    it may reach. The client uses <code>list_projects</code> to see them and names the project on each
+    tool call whenever more than one is available. Add it once and it keeps working as projects come
+    and go.
   </p>
 
   <p>

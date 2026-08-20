@@ -114,7 +114,7 @@ function toolsOf(body: Record<string, unknown>) {
 }
 
 describe("tools/list", () => {
-  it("offers the executor tools, the three that choose between projects, and the prompt", async () => {
+  it("offers the executor tools, the project list, and the prompt", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
 
     expect(
@@ -163,6 +163,14 @@ describe("tools/list", () => {
 
     expect(listProjects?.inputSchema.properties ?? {}).not.toHaveProperty("project");
   });
+
+  it("does not advertise the retired active-project tools", async () => {
+    const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
+    const names = toolsOf(body).map((tool) => tool.name);
+
+    expect(names).not.toContain("get_active_project");
+    expect(names).not.toContain("set_active_project");
+  });
 });
 
 /**
@@ -184,7 +192,9 @@ describe("the agent prompt", () => {
       }),
     );
 
-    expect((body.result as { instructions?: string }).instructions).toContain("set_active_project");
+    const instructions = (body.result as { instructions?: string }).instructions;
+    expect(instructions).toContain("every other tool call must name its `project`");
+    expect(instructions).toContain("conversations do not move each other");
   });
 
   it("serves the account variant on both the prompt and the tool", async () => {
@@ -390,8 +400,8 @@ describe("approval", () => {
   });
 });
 
-describe("the management tools", () => {
-  it("answers them without reaching a dispatcher", async () => {
+describe("the project list", () => {
+  it("answers without reaching a dispatcher", async () => {
     let dispatched = false;
 
     const body = await payload(
@@ -407,7 +417,7 @@ describe("the management tools", () => {
             dispatched = true;
             return { kind: "value", value: {} };
           },
-          manage: async () => ({ projects: [], activeProject: null }),
+          manage: async () => ({ projects: [] }),
         },
       ),
     );
@@ -415,76 +425,20 @@ describe("the management tools", () => {
     expect(dispatched).toBe(false);
     expect((body.result as { structuredContent: unknown }).structuredContent).toEqual({
       projects: [],
-      activeProject: null,
     });
   });
 
-  it("passes the project a switch names", async () => {
-    const seen: unknown[] = [];
-
-    await payload(
-      await post(
-        {
-          jsonrpc: "2.0",
-          id: 5,
-          method: "tools/call",
-          params: { name: "set_active_project", arguments: { project: "api" } },
-        },
-        {
-          manage: async (_call, _tool, args) => {
-            seen.push(args);
-            return { project: null };
-          },
-        },
-      ),
-    );
-
-    expect(seen).toEqual([{ project: "api" }]);
-  });
-});
-
-describe("switching project", () => {
-  const switchTo = (args: unknown) => ({
-    jsonrpc: "2.0",
-    id: 6,
-    method: "tools/call",
-    params: { name: "set_active_project", arguments: args },
-  });
-
-  it("hands the named project to the handler", async () => {
-    const seen: unknown[] = [];
-
-    await payload(
-      await post(switchTo({ project: "api" }), {
-        manage: async (_call, _tool, args) => {
-          seen.push(args);
-          return { project: null };
-        },
-      }),
-    );
-
-    expect(seen).toEqual([{ project: "api" }]);
-  });
-
-  // The schema is what turns this one away, before any handler sees it, which
-  // is what this asserts. The dispatcher refuses it a second time for a client
-  // that did not validate its own arguments; that guard sits in `index.ts`
-  // behind this one and is not reachable from here.
-  it("refuses a call that names nothing before it reaches a handler", async () => {
-    let reached = false;
-
+  it("rejects the retired switch tool as unknown", async () => {
     const body = await payload(
-      await post(switchTo({}), {
-        manage: async () => {
-          reached = true;
-          return { project: null };
-        },
+      await post({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "set_active_project", arguments: { project: "api" } },
       }),
     );
 
-    const result = body.result as { isError?: boolean; content?: Array<{ text?: string }> };
-    expect(body.error ?? result.isError).toBeTruthy();
-    expect(reached).toBe(false);
+    expect(body.error).toBeTruthy();
   });
 });
 

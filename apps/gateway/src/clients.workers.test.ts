@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { activeProjectChoice, resolveTarget, setActiveProjectId } from "./client-targets.js";
+import { resolveTarget } from "./client-targets.js";
 import {
   isMetadataDocumentClient,
   parsePolicy,
@@ -346,85 +346,5 @@ describe("telling a shared registration apart", () => {
   it("treats an opaque registration as the account's own", () => {
     expect(isMetadataDocumentClient("bXktY2xpZW50LWlk")).toBe(false);
     expect(isMetadataDocumentClient("")).toBe(false);
-  });
-});
-
-/**
- * Telling "never chose a project" from "chose one and lost it".
- *
- * The two must not be collapsed, because the account endpoint sends the first
- * to its only project and has to refuse the second. An agent whose project was
- * revoked still believes it is there, and nothing on a stateless endpoint has
- * told it otherwise, so resolving it somewhere else is how a write meant for
- * one repository lands in another.
- */
-describe("the choice a client last made", () => {
-  beforeEach(seed);
-
-  const entry = { userId: USER, clientId: CLIENT };
-
-  const grant = async () =>
-    rememberAuthorization(env, {
-      userId: USER,
-      projectId: "prj_u",
-      clientId: CLIENT,
-      endpoint: "account",
-      clientName: "Claude",
-      clientUri: undefined,
-    });
-
-  const revoke = async () =>
-    db(env)
-      .update(schema.projectClients)
-      .set({ revokedAt: new Date() })
-      .where(eq(schema.projectClients.projectId, "prj_u"))
-      .run();
-
-  it("is null when none was ever made", async () => {
-    await grant();
-    expect(await activeProjectChoice(env, entry)).toBeNull();
-  });
-
-  it("stands while the project is still reachable", async () => {
-    await grant();
-    await setActiveProjectId(env, { ...entry, projectId: "prj_u" });
-
-    expect(await activeProjectChoice(env, entry)).toEqual({
-      projectId: "prj_u",
-      reachable: true,
-    });
-  });
-
-  // The distinction the endpoint depends on: still a choice, no longer standing.
-  it("survives a revocation, marked as no longer reachable", async () => {
-    await grant();
-    await setActiveProjectId(env, { ...entry, projectId: "prj_u" });
-    await revoke();
-
-    expect(await activeProjectChoice(env, entry)).toEqual({
-      projectId: "prj_u",
-      reachable: false,
-    });
-  });
-
-  it("stands again once the project is granted back", async () => {
-    await grant();
-    await setActiveProjectId(env, { ...entry, projectId: "prj_u" });
-    await revoke();
-    await grant();
-
-    expect(await activeProjectChoice(env, entry)).toEqual({
-      projectId: "prj_u",
-      reachable: true,
-    });
-  });
-
-  it("goes with the project when the project itself is deleted", async () => {
-    await grant();
-    await setActiveProjectId(env, { ...entry, projectId: "prj_u" });
-
-    await db(env).delete(schema.projects).where(eq(schema.projects.id, "prj_u")).run();
-
-    expect(await activeProjectChoice(env, entry)).toBeNull();
   });
 });
