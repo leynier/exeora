@@ -115,16 +115,16 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   <h2 id="choosing-a-project">Choosing a project</h2>
 
   <p>
-    These three exist only on the account URL, where one connection covers several projects and
-    something has to say which one a call lands in. They are answered by the gateway and never reach
-    a machine, so no project policy applies to them.
+    <code>list_projects</code> exists only on the account URL, where one connection covers several
+    projects and a caller needs to see the valid targets. It is answered by the gateway and never
+    reaches a machine, so no project policy applies to it.
   </p>
 
   <p>
-    With one project granted, there is nothing to choose and calls go there. With more, the first
-    call that has not been told where to go is refused with <code>NO_ACTIVE_PROJECT</code>, which
-    names these tools. The choice belongs to the client rather than to a conversation, so it outlives
-    the one that made it and is shared with any other conversation open in the same client.
+    With one project granted, there is nothing to choose and calls may omit <code>project</code>. With
+    more, every executor tool call must carry a project slug or id. The target belongs to that call,
+    so two conversations in the same client can work in different projects without moving each
+    other.
   </p>
 
   {

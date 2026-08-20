@@ -98,8 +98,7 @@ export const useClients = () =>
  * The same clients seen through the account URL, grouped one row each.
  *
  * A separate query rather than a regrouping of `useClients`, because the server
- * is the side that knows which project each one is currently working in and
- * that is half of what this view shows.
+ * folds one account connection across all of its project rows.
  */
 export const useAccountClients = () =>
   useQuery({

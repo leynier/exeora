@@ -1,6 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { auditDeletionStatement } from "../audit-deletions.js";
-import { setActiveProjectId } from "../client-targets.js";
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
@@ -243,5 +242,3 @@ export async function forgetOAuthClient(env: Env, clientId: string): Promise<voi
     // in KV is not worth failing the deletion they asked for.
   }
 }
-
-export { setActiveProjectId };

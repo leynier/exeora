@@ -26,66 +26,23 @@ export const ProjectSummary = z.object({
   machine: z.string(),
   /** Whether that machine has checked in recently enough to answer a call. */
   online: z.boolean(),
-  /** True for the one this client is currently working in. */
-  active: z.boolean(),
 });
 
 export const ListProjectsInput = z.object({});
 
 export const ListProjectsOutput = z.object({
   projects: z.array(ProjectSummary),
-  /**
-   * The slug of the active project, or null when none is selected. Duplicated
-   * from the `active` flag on purpose: it is the answer to the question the
-   * caller usually has, and reading it should not mean scanning the list.
-   */
-  activeProject: z.string().nullable(),
-});
-
-export const GetActiveProjectInput = z.object({});
-
-export const GetActiveProjectOutput = z.object({
-  project: ProjectSummary.nullable(),
-});
-
-export const SetActiveProjectInput = z.object({ project: ProjectRef });
-
-export const SetActiveProjectOutput = z.object({
-  project: ProjectSummary,
 });
 
 export const ACCOUNT_TOOL_DEFINITIONS = {
   list_projects: {
     title: "List projects",
     description:
-      "List the projects this connection can reach, and say which one is active. The active " +
-      "project is where every other tool runs unless a call names another one.",
+      "List the projects this connection can reach. When more than one is listed, every other " +
+      "tool call must name its project by slug or id.",
     inputSchema: ListProjectsInput,
     outputSchema: ListProjectsOutput,
     readOnly: true,
-  },
-  get_active_project: {
-    title: "Get the active project",
-    description:
-      "The project every other tool works in right now, or null when none is selected. Use " +
-      "list_projects to see what else is available.",
-    inputSchema: GetActiveProjectInput,
-    outputSchema: GetActiveProjectOutput,
-    readOnly: true,
-  },
-  set_active_project: {
-    title: "Switch the active project",
-    description:
-      "Choose the project every other tool works in from now on, by slug or id. The choice " +
-      "belongs to this client rather than to a conversation, so it outlives this one and is " +
-      "shared with any other conversation open in the same client. To work somewhere else for a " +
-      "single call without moving it, pass that call a project argument instead.",
-    inputSchema: SetActiveProjectInput,
-    outputSchema: SetActiveProjectOutput,
-    // It changes which project the next call lands in, and nothing on any
-    // machine. Marked as changing something all the same: a client that hides
-    // non-read-only tools should hide the one that moves the target.
-    readOnly: false,
   },
 } as const;
 

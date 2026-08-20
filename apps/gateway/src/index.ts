@@ -165,8 +165,8 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
  * The account endpoint: one URL for every project a client was given.
  *
  * Which project a call lands in is state rather than path, so it is resolved
- * per call: the `project` argument if the call named one, then the client's
- * active project, then the only project it can reach if there is only one.
+ * per call: the `project` argument if the call named one, or the only project
+ * it can reach when there is exactly one.
  */
 authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
   const { signal } = c.req.raw;

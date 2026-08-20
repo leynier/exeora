@@ -2,7 +2,6 @@ import { env } from "cloudflare:test";
 import { ExeoraError } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { setActiveProjectId } from "./client-targets.js";
 import { rememberAuthorization } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import { resolveAccountProject } from "./index.js";
@@ -101,61 +100,52 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
 describe("resolving where a call lands", () => {
   beforeEach(seed);
 
-  it("uses the project the call named, over the one it chose", async () => {
+  it("uses the project the call names, by slug or id", async () => {
     await grant("prj_api", "prj_web");
-    await setActiveProjectId(env, { userId: USER, clientId: CLIENT, projectId: "prj_api" });
 
     expect((await resolve("web-r")).id).toBe("prj_web");
     expect((await resolve("prj_web")).id).toBe("prj_web");
   });
 
-  it("uses the choice when the call named nothing", async () => {
+  it("does not persist a choice between calls", async () => {
     await grant("prj_api", "prj_web");
-    await setActiveProjectId(env, { userId: USER, clientId: CLIENT, projectId: "prj_web" });
 
+    expect((await resolve("api-r")).id).toBe("prj_api");
+    expect((await resolve("web-r")).id).toBe("prj_web");
+    expect((await resolve("api-r")).id).toBe("prj_api");
+  });
+
+  it("uses the only project when there is one and the call omits it", async () => {
+    await grant("prj_api");
+
+    expect((await resolve()).id).toBe("prj_api");
+  });
+
+  it("requires a project rather than guessing between two", async () => {
+    await grant("prj_api", "prj_web");
+
+    expect(await codeOf(resolve())).toBe("INVALID_ARGUMENTS");
+  });
+
+  it("refuses a revoked named project and resolves the only one left when omitted", async () => {
+    await grant("prj_api", "prj_web");
+    await revoke("prj_api");
+
+    expect(await codeOf(resolve("api-r"))).toBe("UNKNOWN_PROJECT");
     expect((await resolve()).id).toBe("prj_web");
   });
 
-  it("uses the only project when there is one and nothing was ever chosen", async () => {
-    await grant("prj_api");
-
-    expect((await resolve()).id).toBe("prj_api");
-  });
-
-  it("asks rather than guesses between two, with nothing chosen", async () => {
+  it("requires an explicit project again once a second grant comes back", async () => {
     await grant("prj_api", "prj_web");
-
-    expect(await codeOf(resolve())).toBe("NO_ACTIVE_PROJECT");
-  });
-
-  /**
-   * The one that matters most. A choice taken away leaves an agent believing it
-   * is somewhere it can no longer reach, and falling through to the only
-   * project left would run its next `write_file` in a different repository
-   * without anything having said so.
-   */
-  it("refuses a choice that was revoked, even with exactly one left to fall back to", async () => {
-    await grant("prj_api", "prj_web");
-    await setActiveProjectId(env, { userId: USER, clientId: CLIENT, projectId: "prj_api" });
-    await revoke("prj_api");
-
-    expect(await codeOf(resolve())).toBe("NO_ACTIVE_PROJECT");
-    // ...and the fallback is what it refused, which is what makes it a refusal
-    // rather than an accident of there being nothing to fall back to.
-    expect((await resolve("web-r")).id).toBe("prj_web");
-  });
-
-  it("takes the choice again once that project comes back", async () => {
-    await grant("prj_api", "prj_web");
-    await setActiveProjectId(env, { userId: USER, clientId: CLIENT, projectId: "prj_api" });
     await revoke("prj_api");
     await grant("prj_api");
 
-    expect((await resolve()).id).toBe("prj_api");
+    expect(await codeOf(resolve())).toBe("INVALID_ARGUMENTS");
+    expect((await resolve("api-r")).id).toBe("prj_api");
   });
 
   it("refuses a connection that reaches nothing at all", async () => {
-    expect(await codeOf(resolve())).toBe("NO_ACTIVE_PROJECT");
+    expect(await codeOf(resolve())).toBe("FORBIDDEN");
   });
 
   /**

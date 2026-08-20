@@ -237,35 +237,6 @@ export const projectClients = sqliteTable(
 );
 
 /**
- * Which project a client is currently working in, on the account endpoint.
- *
- * One per user per client, which is the granularity the endpoint can actually
- * offer: `/mcp` is stateless, and the clients most people use still speak the
- * 2025 protocol and carry nothing across requests, so there is no session to
- * hang this on and it has to be stored. The cost is that two conversations open
- * in the same client share one selection and can move each other; the `project`
- * argument the account endpoint adds to every tool is the way out of that for a
- * single call.
- *
- * `onDelete: "cascade"` on the project matters: deleting a project must not
- * leave a client pointed at a row that is no longer there.
- */
-export const activeProjects = sqliteTable(
-  "active_projects",
-  {
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    clientId: text("client_id").notNull(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-  },
-  (table) => [uniqueIndex("active_projects_user_client").on(table.userId, table.clientId)],
-);
-
-/**
  * Daily rollup of tool calls per account.
  *
  * Survives the archive's retention: the row-level trail is retention-limited,
@@ -389,7 +360,6 @@ export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;
 export type ClientEndpoint = ProjectClient["endpoint"];
-export type ActiveProject = typeof activeProjects.$inferSelect;
 export type UsageDaily = typeof usageDaily.$inferSelect;
 export type AuditDeletion = typeof auditDeletions.$inferSelect;
 export type AuditDeletionScope = AuditDeletion["scope"];

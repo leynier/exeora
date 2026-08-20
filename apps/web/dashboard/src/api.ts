@@ -186,7 +186,8 @@ export interface AccountClientProject {
  * A client connected through the account URL.
  *
  * One entry per client rather than per project, because that is what it is: one
- * connection that reaches several projects and works in one of them at a time.
+ * connection that reaches several projects. Each call names its project when
+ * the connection reaches more than one.
  */
 export interface AccountClient {
   clientId: string;
@@ -196,7 +197,6 @@ export interface AccountClient {
   mcpVersion: string | null;
   authorizedAt: number;
   lastUsedAt: number | null;
-  activeProjectId: string | null;
   projects: AccountClientProject[];
 }
 
@@ -346,13 +346,6 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId, projectIds }),
-    }),
-
-  setAccountClientActiveProject: (clientId: string, projectId: string | null) =>
-    request<{ ok: true }>("/api/account-clients/active-project", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, projectId }),
     }),
 
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),

@@ -6,8 +6,8 @@ import "./env.js";
 import { isDeviceOnline, presenceCutoff } from "./presence.js";
 
 /**
- * Where a call lands: which machine serves a project, whether the caller may
- * reach it, and which project a connection to the account URL is working in.
+ * Where a call lands: which machine serves a project and whether the caller may
+ * reach it.
  *
  * Split from `clients.ts` because the questions are different ones. That file
  * records who a client is and what it was granted; this one answers, for a call
@@ -172,90 +172,4 @@ export async function accountProjects(
     machine: row.machine,
     online: isDeviceOnline(row, cutoff),
   }));
-}
-
-/**
- * The choice this client last made, and whether it still stands.
- *
- * Null means no choice was ever made. That is a different thing from a choice
- * whose project has since been revoked, and the two must not be collapsed: a
- * connection that never chose can be sent to its only project without surprising
- * anyone, while one that chose and lost it has an agent still believing it is
- * somewhere else. Sending that one anywhere silently is how a `write_file`
- * lands in the wrong repository.
- *
- * Keeping the row is what makes the difference knowable, which is why nothing
- * deletes it on revocation. Its cost is that re-granting the project makes the
- * choice stand again, and that is the right answer: it was the user's own last
- * explicit choice, and any call made while it was unreachable was refused, so
- * an agent that carried on has already been made to choose again.
- */
-export async function activeProjectChoice(
-  env: Pick<Env, "DB">,
-  entry: { userId: string; clientId: string },
-): Promise<{ projectId: string; reachable: boolean } | null> {
-  const row = await db(env)
-    .select({
-      projectId: schema.activeProjects.projectId,
-      grantedId: schema.projectClients.id,
-      deviceRevokedAt: schema.devices.revokedAt,
-    })
-    .from(schema.activeProjects)
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.activeProjects.projectId))
-    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
-    .leftJoin(
-      schema.projectClients,
-      and(
-        eq(schema.projectClients.projectId, schema.activeProjects.projectId),
-        eq(schema.projectClients.clientId, schema.activeProjects.clientId),
-        eq(schema.projectClients.endpoint, "account"),
-        isNull(schema.projectClients.revokedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(schema.activeProjects.userId, entry.userId),
-        eq(schema.activeProjects.clientId, entry.clientId),
-      ),
-    )
-    .get();
-
-  if (!row) return null;
-  return {
-    projectId: row.projectId,
-    reachable: row.grantedId !== null && row.deviceRevokedAt === null,
-  };
-}
-
-/** Points a client at a project, or clears the pointer when given null. */
-export async function setActiveProjectId(
-  env: Pick<Env, "DB">,
-  entry: { userId: string; clientId: string; projectId: string | null },
-): Promise<void> {
-  if (entry.projectId === null) {
-    await db(env)
-      .delete(schema.activeProjects)
-      .where(
-        and(
-          eq(schema.activeProjects.userId, entry.userId),
-          eq(schema.activeProjects.clientId, entry.clientId),
-        ),
-      )
-      .run();
-    return;
-  }
-
-  await db(env)
-    .insert(schema.activeProjects)
-    .values({
-      userId: entry.userId,
-      clientId: entry.clientId,
-      projectId: entry.projectId,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [schema.activeProjects.userId, schema.activeProjects.clientId],
-      set: { projectId: entry.projectId, updatedAt: new Date() },
-    })
-    .run();
 }

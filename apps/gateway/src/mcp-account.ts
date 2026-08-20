@@ -43,8 +43,8 @@ export interface AccountCall {
   userId: string;
   caller: CallerIdentity;
   /**
-   * The project named by this call, if it named one. The dispatcher resolves
-   * the rest: the active project, or the only one when there is only one.
+   * The project named by this call, if it named one. The dispatcher permits an
+   * omission only when the connection reaches exactly one project.
    */
   project: string | undefined;
   /** The project an approval on this round was given for, if any. */
@@ -69,7 +69,7 @@ export type AccountDispatcher = (
   args: unknown,
 ) => Promise<AccountDispatchResult>;
 
-/** Answers one of the three tools that never leave the gateway. */
+/** Answers the account tool that never leaves the gateway. */
 export type AccountToolHandler = (
   call: Pick<AccountCall, "userId" | "caller">,
   tool: AccountToolName,
@@ -85,8 +85,8 @@ export type AccountToolHandler = (
  */
 const projectArg = {
   project: ProjectRef.optional().describe(
-    "Run this one call in this project, by slug or id, without changing the active one. " +
-      "Omit to use the active project.",
+    "The project this call runs in, by slug or id. Required when this connection reaches more " +
+      "than one project; omit only when it reaches exactly one.",
   ),
 };
 
@@ -95,10 +95,8 @@ export function createAccountMcpHandler(
   answer: AccountToolHandler,
   env: Pick<Env, "REQUEST_STATE_SECRET">,
   /**
-   * The executor tools to advertise, or undefined to offer them all. The three
-   * management tools are always offered: with no project selected they are the
-   * only way out of that, and hiding them would leave the connection looking
-   * empty rather than unconfigured.
+   * The executor tools to advertise, or undefined to offer them all. The
+   * project-list tool is always offered so a caller can name a target.
    */
   advertised?: ReadonlySet<ToolName>,
 ) {
@@ -167,7 +165,7 @@ export function createAccountMcpHandler(
         return toolResult(result.value);
       };
 
-      /** One of the three, answered from the database without a relay. */
+      /** The project list, answered from the database without a relay. */
       const manage = async (tool: AccountToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
 
@@ -210,23 +208,6 @@ export function createAccountMcpHandler(
         },
         (args, ctx) => manage("list_projects", args, ctx),
       );
-      server.registerTool(
-        "get_active_project",
-        {
-          ...manageMeta("get_active_project"),
-          inputSchema: ACCOUNT_TOOL_DEFINITIONS.get_active_project.inputSchema,
-        },
-        (args, ctx) => manage("get_active_project", args, ctx),
-      );
-      server.registerTool(
-        "set_active_project",
-        {
-          ...manageMeta("set_active_project"),
-          inputSchema: ACCOUNT_TOOL_DEFINITIONS.set_active_project.inputSchema,
-        },
-        (args, ctx) => manage("set_active_project", args, ctx),
-      );
-
       if (offers("read_file")) {
         server.registerTool(
           "read_file",

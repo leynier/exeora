@@ -71,20 +71,19 @@ import Doc from "../../layouts/Doc.astro";
     gateway only advertises what the executor announced: update the CLI.
   </p>
 
-  <h2><code>NO_ACTIVE_PROJECT</code></h2>
+  <h2>A multi-project call does not name a project</h2>
 
   <p>
-    Only on the account URL, and only when nothing has said which project a call is for. Call{" "}
-    <code>list_projects</code> to see what the connection reaches, then <code>set_active_project</code>{" "}
-    to choose one. A connection given exactly one project never sees this: there is nothing to
-    choose between.
+    Only on the account URL, and only when a connection reaches several projects. Call{" "}
+    <code>list_projects</code> to see the valid targets, then pass a project slug or id on the tool
+    call. A connection given exactly one project may omit it because there is nothing to choose
+    between.
   </p>
 
   <p>
-    The message differs in the case worth telling apart. <em>"The project you were working in is no
-    longer available"</em> means access to the chosen project was revoked while the connection was
-    using it. It is refused rather than moved somewhere else on your behalf, even when one project
-    is left, because the agent still believes it is where it chose. Choose again and it continues.
+    Project selection is not stored on the client. Repeat the same <code>project</code> value on every
+    related call, including calls that read, write to or stop a process started earlier. This lets
+    separate conversations use separate projects at the same time.
   </p>
 
   <p>
@@ -97,10 +96,10 @@ import Doc from "../../layouts/Doc.astro";
   <h2>The account URL offers a tool a project cannot run</h2>
 
   <p>
-    <code>tools/list</code> is answered for the project the connection is currently working in, so a
-    client that listed its tools while pointed at one machine can be holding a list the next
-    project's machine does not serve. The call fails rather than doing something unexpected. Ask the
-    client to reconnect, or update the older machine's CLI.
+    With several reachable projects, <code>tools/list</code> cannot assume one target, so a client
+    can see a tool that one project's machine does not serve. A call naming that project fails
+    rather than doing something unexpected. Update the older machine's CLI if it should offer the
+    same tools.
   </p>
 
   <h2>A project the gateway does not know</h2>

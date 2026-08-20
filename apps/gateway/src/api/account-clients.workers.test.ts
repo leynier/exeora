@@ -32,15 +32,6 @@ describe("clients on the account URL", () => {
       .run();
   }
 
-  /** What the dashboard would draw as this client's active project. */
-  const activeShownFor = async (clientId: string) => {
-    const body = (await (await call("/api/account-clients")).json()) as Array<{
-      clientId: string;
-      activeProjectId: string | null;
-    }>;
-    return body.find((row) => row.clientId === clientId)?.activeProjectId ?? null;
-  };
-
   const accountRows = async () =>
     db(env)
       .select()
@@ -58,10 +49,26 @@ describe("clients on the account URL", () => {
     >;
 
     expect(body).toHaveLength(1);
-    expect(body[0]).toMatchObject({ clientId: "client_claude", activeProjectId: null });
+    expect(body[0]).toMatchObject({ clientId: "client_claude" });
+    expect(body[0]).not.toHaveProperty("activeProjectId");
 
     const reached = (body[0]?.projects ?? []) as Array<{ projectId: string }>;
     expect(reached.map((entry) => entry.projectId).sort()).toEqual(["prj_one", "prj_two"]);
+  });
+
+  it("has no active-project API or persistence left", async () => {
+    await seedAccount(["prj_one"]);
+
+    const response = await call("/api/account-clients/active-project", {
+      method: "PUT",
+      body: { clientId: "client_claude", projectId: "prj_one" },
+    });
+    const table = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'active_projects'",
+    ).first();
+
+    expect(response.status).toBe(404);
+    expect(table).toBeNull();
   });
 
   /**
@@ -208,57 +215,6 @@ describe("clients on the account URL", () => {
     expect(second.recorded.revoked).toEqual(["grant_acct"]);
   });
 
-  /**
-   * Revoking project by project ends the same way as emptying the list, so it
-   * has to leave the same state behind. A pointer left naming a project nobody
-   * may reach is invisible while the access is gone and comes back the moment
-   * that project is granted again.
-   */
-  it("stops naming a choice it can no longer reach, revoked one row at a time", async () => {
-    await seedAccount(["prj_one", "prj_two"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-
-    const { bindings } = provider([]);
-    await call("/api/clients/pcl_acct_0", { method: "DELETE", bindings });
-    await call("/api/clients/pcl_acct_1", { method: "DELETE", bindings });
-
-    expect(await activeShownFor("client_claude")).toBeNull();
-  });
-
-  it("points a client at a project it reaches, and refuses one it does not", async () => {
-    await seedAccount(["prj_one"]);
-
-    expect(
-      (
-        await call("/api/account-clients/active-project", {
-          method: "PUT",
-          body: { clientId: "client_claude", projectId: "prj_two" },
-        })
-      ).status,
-    ).toBe(404);
-
-    expect(
-      (
-        await call("/api/account-clients/active-project", {
-          method: "PUT",
-          body: { clientId: "client_claude", projectId: "prj_one" },
-        })
-      ).status,
-    ).toBe(200);
-
-    const row = await db(env)
-      .select()
-      .from(schema.activeProjects)
-      .where(eq(schema.activeProjects.userId, USER))
-      .get();
-
-    expect(row?.projectId).toBe("prj_one");
-  });
-
   it("takes the token too when the list is emptied from the dashboard", async () => {
     await seedAccount(["prj_one"]);
 
@@ -276,131 +232,6 @@ describe("clients on the account URL", () => {
     });
 
     expect(recorded.revoked).toEqual(["grant_acct"]);
-  });
-
-  it("stops naming a choice once the last project goes", async () => {
-    await seedAccount(["prj_one"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-    await call("/api/account-clients/projects", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectIds: [] },
-    });
-
-    expect(await activeShownFor("client_claude")).toBeNull();
-  });
-
-  /**
-   * The dashboard must not offer a choice the connection cannot act on, and the
-   * row itself must survive it: keeping the row is what lets a tool call tell a
-   * client that never chose from one whose choice was taken away, and refuse
-   * the second rather than quietly move it to whatever is left.
-   */
-  it("stops naming a revoked choice while keeping the record that one was made", async () => {
-    await seedAccount(["prj_one", "prj_two"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-    await call("/api/account-clients/projects", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectIds: ["prj_two"] },
-    });
-
-    expect(await activeShownFor("client_claude")).toBeNull();
-
-    const row = await db(env)
-      .select()
-      .from(schema.activeProjects)
-      .where(eq(schema.activeProjects.userId, USER))
-      .get();
-    expect(row?.projectId).toBe("prj_one");
-  });
-
-  it("does the same when that project is revoked one row at a time", async () => {
-    await seedAccount(["prj_one", "prj_two"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-
-    const { bindings } = provider([]);
-    await call("/api/clients/pcl_acct_0", { method: "DELETE", bindings });
-
-    expect(await activeShownFor("client_claude")).toBeNull();
-  });
-
-  it("names it again if that project is granted back", async () => {
-    await seedAccount(["prj_one", "prj_two"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-    await call("/api/account-clients/projects", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectIds: ["prj_two"] },
-    });
-    await call("/api/account-clients/projects", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectIds: ["prj_one", "prj_two"] },
-    });
-
-    expect(await activeShownFor("client_claude")).toBe("prj_one");
-  });
-
-  /**
-   * Revoking closes access and keeps the record, so a pointer left behind is
-   * what lets the next call be refused instead of moved. Deleting erases the
-   * record, and the pointer must go with it: the same client authorizing again
-   * later is a new connection that chose nothing, and meeting a choice made by
-   * the one the user asked to forget would refuse its first call.
-   */
-  it("takes the pointer with a client that is deleted for good", async () => {
-    await seedAccount(["prj_one"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_one" },
-    });
-
-    const { bindings } = provider([]);
-    await call("/api/clients/pcl_acct_0", { method: "DELETE", bindings });
-    await call("/api/clients/pcl_acct_0/permanently", { method: "DELETE", bindings });
-
-    const row = await db(env)
-      .select()
-      .from(schema.activeProjects)
-      .where(eq(schema.activeProjects.userId, USER))
-      .get();
-
-    expect(row).toBeUndefined();
-  });
-
-  it("leaves it alone while the client still holds another project", async () => {
-    await seedAccount(["prj_one", "prj_two"]);
-
-    await call("/api/account-clients/active-project", {
-      method: "PUT",
-      body: { clientId: "client_claude", projectId: "prj_two" },
-    });
-
-    const { bindings } = provider([]);
-    await call("/api/clients/pcl_acct_0", { method: "DELETE", bindings });
-    await call("/api/clients/pcl_acct_0/permanently", { method: "DELETE", bindings });
-
-    const row = await db(env)
-      .select()
-      .from(schema.activeProjects)
-      .where(eq(schema.activeProjects.userId, USER))
-      .get();
-
-    expect(row?.projectId).toBe("prj_two");
   });
 
   it("shows one account nothing of another's", async () => {

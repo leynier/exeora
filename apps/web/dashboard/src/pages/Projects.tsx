@@ -131,7 +131,7 @@ function AccountEndpointCard({ url }: { url: string }) {
   return (
     <Card
       title="One URL for everything"
-      subtitle="Add it once. The client picks a project, and switches between them itself."
+      subtitle="Add it once. Each tool call names its project when there is more than one."
       className="mb-6"
     >
       <div className="p-5">
