@@ -103,12 +103,12 @@
     "CLOUDFLARE_ACCOUNT_ID": "6df65be91ad130fd6aa8cb64ac017f22",
     "AUDIT_R2_BUCKET": "exeora-audit",
     "AUDIT_R2_WAREHOUSE": "6df65be91ad130fd6aa8cb64ac017f22_exeora-audit",
-    "AUDIT_R2_TABLE": "default.tool_calls",
+    "AUDIT_R2_TABLE": "default.tool_calls_v2",
+    "AUDIT_R2_LEGACY_TABLE": "default.tool_calls",
 
-    // The production binding above still targets the immutable v1 stream.
-    // Change this to "2" only in the same deploy that switches AUDIT_STREAM
-    // and AUDIT_R2_TABLE to their provisioned v2 resources.
-    "AUDIT_SCHEMA_VERSION": "1",
+    // The worktree-aware v2 producer and stream are switched together. The
+    // immutable v1 table remains readable through AUDIT_R2_LEGACY_TABLE.
+    "AUDIT_SCHEMA_VERSION": "2",
 
     // The first UTC day the Iceberg table can contain, which is the day dual
     // mode was switched on. Dating it earlier only makes the rollup query
@@ -122,7 +122,7 @@
   "pipelines": [
     {
       "binding": "AUDIT_STREAM",
-      "stream": "73d00047ba1f483482a3a85b4ce157eb"
+      "stream": "6dbd2c9ec6ac44d2a9b65aac2e992b7c"
     }
   ],
 

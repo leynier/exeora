@@ -42,8 +42,6 @@ declare global {
      * generated types describe this repository's config rather than theirs.
      */
     AUDIT_R2_SQL_TOKEN?: string;
-    /** Previous immutable audit table, queried alongside the v2 table during migration. */
-    AUDIT_R2_LEGACY_TABLE?: string;
     /**
      * Shared secret the archive maintenance job authenticates with.
      *
