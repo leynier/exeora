@@ -94,6 +94,13 @@ import Doc from "../../layouts/Doc.astro";
     </tbody>
   </table>
 
+  <p>
+    While <code>connect</code> is running, Exeora asks the operating system to keep both the machine
+    and its display awake. The request covers relay reconnects and is released when the command
+    exits. It does not override an explicit sleep request or closing a laptop lid. If the operating
+    system cannot create the request, Exeora warns once and continues connecting.
+  </p>
+
   <h2>gateway</h2>
 
   <p>
@@ -166,7 +173,9 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     On <code>connect</code>, which never finishes, it prints one JSON object per line as things
     happen, which is what a supervisor or a log collector can read as it arrives. In that mode there
-    is nobody at the terminal, so confirmations go to the dashboard instead.
+    is nobody at the terminal, so confirmations go to the dashboard instead. The{" "}
+    <code>awake</code> event reports whether system and display sleep prevention is active, with a{" "}
+    <code>reason</code> when the operating system rejected the request.
   </p>
 
   <h2>Where things are stored</h2>
