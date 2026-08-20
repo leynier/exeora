@@ -54,7 +54,9 @@ pub enum Commands {
         #[command(subcommand)]
         command: ProjectCommand,
     },
-    #[command(about = "Serve a directory to your AI clients (signs in and registers as needed)")]
+    #[command(
+        about = "Serve a directory to your AI clients and keep this machine awake (signs in and registers as needed)"
+    )]
     Connect(ConnectArgs),
     #[command(about = "Show this machine's registration and projects")]
     Status,

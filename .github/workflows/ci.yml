@@ -97,3 +97,22 @@ jobs:
 
       - name: Test
         run: bun run test
+
+  cli-platforms:
+    strategy:
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Check native CLI
+        run: cargo check --locked -p exeora-cli --all-targets

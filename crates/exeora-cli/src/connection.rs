@@ -33,6 +33,7 @@ pub async fn connect_forever(
     projects: Vec<ProjectEntry>,
     json_output: bool,
 ) -> Result<()> {
+    let _awake = acquire_keep_awake(json_output);
     let engine = Arc::new(ToolEngine::new()?);
     let project_map: Arc<HashMap<String, ProjectEntry>> = Arc::new(
         projects
@@ -93,6 +94,47 @@ pub async fn connect_forever(
         println!("Disconnected.");
     }
     Ok(())
+}
+
+fn acquire_keep_awake(json_output: bool) -> Option<keepawake::KeepAwake> {
+    match keepawake::Builder::default()
+        .idle(true)
+        .display(true)
+        .reason("Exeora is serving remote tool calls")
+        .app_name("Exeora")
+        .app_reverse_domain("dev.exeora.cli")
+        .create()
+    {
+        Ok(awake) => {
+            emit_event(json_output, "awake", awake_event(true, None));
+            if !json_output {
+                println!("✓ Keeping the system and display awake while connect runs.");
+            }
+            Some(awake)
+        }
+        Err(error) => {
+            let reason = error.to_string();
+            emit_event(json_output, "awake", awake_event(false, Some(&reason)));
+            if !json_output {
+                eprintln!(
+                    "warning: Could not keep the system and display awake: {reason}. Continuing to connect."
+                );
+            }
+            None
+        }
+    }
+}
+
+fn awake_event(active: bool, reason: Option<&str>) -> Value {
+    let mut fields = json!({
+        "active": active,
+        "system": active,
+        "display": active,
+    });
+    if let (Some(fields), Some(reason)) = (fields.as_object_mut(), reason) {
+        fields.insert("reason".to_owned(), json!(reason));
+    }
+    fields
 }
 
 enum ConnectOutcome {
@@ -493,7 +535,7 @@ fn platform() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{handshake_rejection, result_frame};
+    use super::{awake_event, handshake_rejection, result_frame};
     use crate::protocol::MAX_RESULT_BYTES;
     use serde_json::json;
 
@@ -518,6 +560,23 @@ mod tests {
         assert_eq!(
             message,
             "Relay rejected the connection (403): insufficient_scope; required scopes: executor:connect"
+        );
+    }
+
+    #[test]
+    fn reports_keep_awake_state_without_breaking_json_streams() {
+        assert_eq!(
+            awake_event(true, None),
+            json!({ "active": true, "system": true, "display": true })
+        );
+        assert_eq!(
+            awake_event(false, Some("not supported")),
+            json!({
+                "active": false,
+                "system": false,
+                "display": false,
+                "reason": "not supported",
+            })
         );
     }
 }

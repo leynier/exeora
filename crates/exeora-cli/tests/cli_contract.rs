@@ -32,7 +32,8 @@ fn exposes_the_command_surface_and_version_flag() {
                 .and(predicate::str::contains("init"))
                 .and(predicate::str::contains("prompt"))
                 .and(predicate::str::contains("sync"))
-                .and(predicate::str::contains("upgrade")),
+                .and(predicate::str::contains("upgrade"))
+                .and(predicate::str::contains("keep this machine awake")),
         );
 }
 
