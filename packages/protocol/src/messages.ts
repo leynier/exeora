@@ -2,6 +2,18 @@ import { z } from "zod";
 import { ERROR_CODES } from "./errors.js";
 import { CommandPolicy } from "./policy.js";
 import { TOOL_NAMES } from "./tools.js";
+import {
+  TerminalCloseMessage,
+  TerminalErrorMessage,
+  TerminalExitMessage,
+  TerminalInputMessage,
+  TerminalOpenedMessage,
+  TerminalOpenMessage,
+  TerminalOutputMessage,
+  TerminalResizeMessage,
+  WorkspaceAction,
+  WorkspaceValue,
+} from "./workspace.js";
 
 /**
  * Wire protocol for the WebSocket the CLI opens *outbound* to the relay
@@ -54,6 +66,8 @@ export const ExecutorCapabilities = z.object({
    * removes. Unknown names are ignored by whoever reads this.
    */
   tools: z.array(z.string().max(64)).max(64),
+  /** Additive non-MCP surfaces this executor understands. */
+  features: z.array(z.string().max(64)).max(32).optional(),
   /** Whether tool calls can target a registered Git worktree by stable id. */
   worktreeRouting: z.boolean().optional(),
 });
@@ -127,6 +141,16 @@ export const ToolResultMessage = z.object({
   ]),
 });
 
+export const WorkspaceResultMessage = z.object({
+  type: z.literal("workspace.result"),
+  requestId: z.string(),
+  durationMs: z.number().int(),
+  result: z.discriminatedUnion("ok", [
+    z.object({ ok: z.literal(true), value: WorkspaceValue }),
+    z.object({ ok: z.literal(false), error: errorShape }),
+  ]),
+});
+
 /**
  * The person at this machine answering an `approval.request`.
  *
@@ -144,13 +168,19 @@ export const ExecutorMessage = z.discriminatedUnion("type", [
   HeartbeatMessage,
   PresenceMessage,
   ToolResultMessage,
+  WorkspaceResultMessage,
   ApprovalAnswerMessage,
+  TerminalOpenedMessage,
+  TerminalOutputMessage,
+  TerminalExitMessage,
+  TerminalErrorMessage,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessage>;
 export type HeartbeatMessage = z.infer<typeof HeartbeatMessage>;
 export type PresenceMessage = z.infer<typeof PresenceMessage>;
 export type ToolResultMessage = z.infer<typeof ToolResultMessage>;
+export type WorkspaceResultMessage = z.infer<typeof WorkspaceResultMessage>;
 export type ApprovalAnswerMessage = z.infer<typeof ApprovalAnswerMessage>;
 export type ExecutorMessage = z.infer<typeof ExecutorMessage>;
 
@@ -227,6 +257,17 @@ export const CancelMessage = z.object({
   requestId: z.string(),
 });
 
+export const WorkspaceCallMessage = z.object({
+  type: z.literal("workspace.call"),
+  requestId: z.string(),
+  projectId: z.string(),
+  worktreeId: z.string().optional(),
+  worktreeSlug: z.string().optional(),
+  action: WorkspaceAction,
+  issuedAt: z.number().int(),
+  expiresAt: z.number().int(),
+});
+
 /** Sent when the device is revoked or the protocol version is rejected. */
 export const ShutdownMessage = z.object({
   type: z.literal("shutdown"),
@@ -281,15 +322,21 @@ export const RelayMessage = z.discriminatedUnion("type", [
   HelloAckMessage,
   HeartbeatAckMessage,
   ToolCallMessage,
+  WorkspaceCallMessage,
   CancelMessage,
   ShutdownMessage,
   ApprovalRequestMessage,
   ApprovalResolvedMessage,
+  TerminalOpenMessage,
+  TerminalInputMessage,
+  TerminalResizeMessage,
+  TerminalCloseMessage,
 ]);
 
 export type HelloAckMessage = z.infer<typeof HelloAckMessage>;
 export type HeartbeatAckMessage = z.infer<typeof HeartbeatAckMessage>;
 export type ToolCallMessage = z.infer<typeof ToolCallMessage>;
+export type WorkspaceCallMessage = z.infer<typeof WorkspaceCallMessage>;
 export type CancelMessage = z.infer<typeof CancelMessage>;
 export type ShutdownMessage = z.infer<typeof ShutdownMessage>;
 export type ApprovalRequestMessage = z.infer<typeof ApprovalRequestMessage>;

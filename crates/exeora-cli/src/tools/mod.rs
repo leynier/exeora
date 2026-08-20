@@ -1,5 +1,5 @@
 mod files;
-mod path;
+pub(crate) mod path;
 mod processes;
 
 pub use processes::ProcessRegistry;

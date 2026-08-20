@@ -19,6 +19,7 @@ path = "src/main.rs"
 aho-corasick = "1.1.5"
 anyhow = "1.0.100"
 atomic-write-file = "0.3.0"
+base64 = "0.22.1"
 axum = { version = "0.8.6", default-features = false, features = ["http1", "tokio", "query"] }
 cap-std = "4.0.2"
 clap = { version = "4.5.51", features = ["derive", "wrap_help"] }
@@ -36,6 +37,7 @@ memchr = "2.7.6"
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
 open = "5.3.2"
 process-wrap = { version = "9.1.0", default-features = false, features = ["tokio1", "kill-on-drop", "process-group", "process-session", "job-object", "creation-flags"] }
+portable-pty = "0.9.0"
 regex-syntax = "0.8.11"
 regress = { version = "0.11.1", features = ["utf16"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "form", "rustls", "system-proxy"] }

@@ -3,6 +3,8 @@ import {
   ERROR_CODES,
   MAX_APPROVAL_PROMPT_LENGTH,
   TOOL_NAMES,
+  WorkspaceAction,
+  WorkspaceValue,
 } from "@exeora/protocol";
 import { z } from "zod";
 
@@ -50,11 +52,28 @@ export const CallerRequest = z.discriminatedUnion("type", [
     requestedAt: z.number().int(),
     expiresAt: z.number().int(),
   }),
+  z.object({
+    type: z.literal("workspace.start"),
+    requestId: z.string(),
+    projectId: z.string(),
+    worktreeId: z.string().optional(),
+    worktreeSlug: z.string().optional(),
+    action: WorkspaceAction,
+    issuedAt: z.number().int(),
+    expiresAt: z.number().int(),
+  }),
   z.object({ type: z.literal("cancel") }),
 ]);
 
 export const CallerResponse = z.discriminatedUnion("type", [
   z.object({ type: z.literal("tool.result"), result: toolResult }),
+  z.object({
+    type: z.literal("workspace.result"),
+    result: z.discriminatedUnion("ok", [
+      z.object({ ok: z.literal(true), value: WorkspaceValue }),
+      z.object({ ok: z.literal(false), error: wireError }),
+    ]),
+  }),
   z.object({ type: z.literal("error"), error: wireError }),
   z.object({
     type: z.literal("approval.result"),

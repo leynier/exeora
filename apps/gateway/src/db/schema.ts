@@ -318,7 +318,7 @@ export const auditOutbox = sqliteTable(
     errorCode: text("error_code"),
     clientId: text("client_id"),
     clientName: text("client_name"),
-    endpoint: text("endpoint", { enum: ["project", "account"] }).notNull(),
+    endpoint: text("endpoint", { enum: ["project", "account", "dashboard"] }).notNull(),
     readyAt: integer("ready_at", { mode: "timestamp_ms" }),
     acceptedAt: integer("accepted_at", { mode: "timestamp_ms" }),
     attempts: integer("attempts").notNull().default(0),

@@ -77,6 +77,71 @@ export interface Worktree {
   updatedAt: number;
 }
 
+export interface WorkspaceCapabilities {
+  online: boolean;
+  sourceControl: boolean;
+  terminal: boolean;
+  worktreeRouting: boolean;
+}
+
+export interface GitFileState {
+  path: string;
+  originalPath?: string;
+  index: string;
+  worktree: string;
+  kind: "tracked" | "untracked" | "conflict";
+  submodule: boolean;
+}
+
+export interface GitBranch {
+  name: string;
+  shortOid: string;
+  upstream: string | null;
+  remote: boolean;
+  current: boolean;
+}
+
+export interface GitStatus {
+  kind: "status";
+  repository: boolean;
+  head: string | null;
+  oid: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  operation: "merge" | "rebase" | "cherry-pick" | "revert" | "bisect" | null;
+  files: GitFileState[];
+  branches: GitBranch[];
+  remotes: string[];
+}
+
+export interface GitDiff {
+  kind: "diff";
+  path: string;
+  area: "working" | "staged";
+  patch: string;
+  binary: boolean;
+  truncated: boolean;
+}
+
+export type WorkspaceAction =
+  | { action: "stage" | "unstage" | "discard" | "delete_untracked"; paths: string[] }
+  | { action: "commit"; message: string }
+  | { action: "fetch"; remote?: string; all?: boolean }
+  | { action: "pull"; remote?: string; branch?: string }
+  | { action: "push"; remote?: string; setUpstream?: boolean }
+  | { action: "branch_create"; name: string; startPoint?: string }
+  | { action: "branch_switch"; name: string }
+  | { action: "branch_track"; name: string; remoteBranch: string }
+  | { action: "branch_delete"; name: string };
+
+export interface WorkspaceMutationResult {
+  kind: "mutation";
+  stdout: string;
+  stderr: string;
+  status: GitStatus;
+}
+
 export interface ToolCall {
   id: string;
   projectId: string;
@@ -304,6 +369,31 @@ export const api = {
   devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
   worktrees: (projectId: string) => request<Worktree[]>(`/api/projects/${projectId}/worktrees`),
+  workspaceCapabilities: (id: string, worktree?: string) =>
+    request<WorkspaceCapabilities>(
+      `/api/projects/${id}/workspace/capabilities${workspaceTarget(worktree)}`,
+    ),
+  gitStatus: (id: string, worktree?: string) =>
+    request<GitStatus>(`/api/projects/${id}/workspace/status${workspaceTarget(worktree)}`),
+  gitDiff: (id: string, path: string, area: "working" | "staged", worktree?: string) => {
+    const query = new URLSearchParams({ path, area });
+    if (worktree) query.set("worktree", worktree);
+    return request<GitDiff>(`/api/projects/${id}/workspace/diff?${query}`);
+  },
+  workspaceAction: (id: string, action: WorkspaceAction, worktree?: string) =>
+    request<WorkspaceMutationResult>(
+      `/api/projects/${id}/workspace/actions${workspaceTarget(worktree)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action),
+      },
+    ),
+  terminalTicket: (id: string, worktree?: string) =>
+    request<{ url: string; expiresInMs: number }>(
+      `/api/projects/${id}/terminal-ticket${workspaceTarget(worktree)}`,
+      { method: "POST" },
+    ),
 
   toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
     const query = new URLSearchParams();
@@ -386,6 +476,10 @@ export const api = {
   adminDeleteUser: (userId: string) =>
     request<{ ok: true }>(`/api/admin/users/${userId}`, { method: "DELETE" }),
 };
+
+function workspaceTarget(worktree?: string): string {
+  return worktree ? `?${new URLSearchParams({ worktree })}` : "";
+}
 
 /** The gateway's answer, from a connection and a disconnection it recorded. */
 export function isOnline(device: Device): boolean {

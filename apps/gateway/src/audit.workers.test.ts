@@ -123,7 +123,7 @@ describe("audit pipeline event", () => {
       worktreeId: "wkt_1",
       worktreeSlug: "feature-one",
       tool: "read_file",
-      endpoint: "project",
+      endpoint: "dashboard",
       caller: { clientId: undefined, clientName: undefined, mcp: undefined },
     });
 
@@ -133,6 +133,7 @@ describe("audit pipeline event", () => {
       schema_version: 2,
       worktree_id: "wkt_1",
       worktree_slug: "feature-one",
+      endpoint: "dashboard",
     });
   });
 

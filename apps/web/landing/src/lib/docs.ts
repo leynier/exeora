@@ -11,6 +11,7 @@ export const DOC_PAGES = [
   { href: "/docs/tools/", label: "Tools" },
   { href: "/docs/agent-prompt/", label: "The agent prompt" },
   { href: "/docs/policy/", label: "What a project allows" },
+  { href: "/docs/workspace/", label: "Source Control and terminal" },
   { href: "/docs/cli/", label: "CLI reference" },
   { href: "/docs/plans/", label: "Plans and limits" },
   { href: "/docs/self-hosting/", label: "Self-hosting" },

@@ -5,3 +5,4 @@ export * from "./policy.js";
 export * from "./prompt.js";
 export * from "./tools.js";
 export * from "./tools-account.js";
+export * from "./workspace.js";

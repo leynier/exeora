@@ -73,9 +73,14 @@ export function ProjectDetail() {
         title={project.name}
         subtitle={`Added ${formatDate(project.createdAt)}.`}
         action={
-          <Link to="/projects" className="btn">
-            All projects
-          </Link>
+          <div className="flex gap-2">
+            <Link to={`/projects/${project.id}/workspace`} className="btn btn-primary">
+              Open workspace
+            </Link>
+            <Link to="/projects" className="btn">
+              All projects
+            </Link>
+          </div>
         }
       />
 
@@ -131,9 +136,17 @@ export function ProjectDetail() {
                       {worktree.branch ? ` · ${worktree.branch}` : " · detached HEAD"}
                     </p>
                   </div>
-                  <Badge tone={worktree.managed ? "success" : "neutral"}>
-                    {worktree.managed ? "managed" : "attached"}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={worktree.managed ? "success" : "neutral"}>
+                      {worktree.managed ? "managed" : "attached"}
+                    </Badge>
+                    <Link
+                      className="btn"
+                      to={`/projects/${project.id}/workspace?worktree=${encodeURIComponent(worktree.slug)}`}
+                    >
+                      Open workspace
+                    </Link>
+                  </div>
                 </Row>
               ))}
             </Divided>

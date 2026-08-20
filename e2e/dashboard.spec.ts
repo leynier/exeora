@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, type Request, test } from "@playwright/test";
 
 const user = {
   id: "usr_e2e",
@@ -23,6 +23,51 @@ const project = {
   createdAt: Date.now(),
 };
 
+const worktree = {
+  id: "wtr_feature",
+  projectId: project.id,
+  slug: "feature-trees",
+  name: "Feature trees",
+  branch: "feature/trees",
+  localPath: "/work/e2e/.worktrees/feature-trees",
+  managed: true,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+};
+
+function gitStatus(target: "main" | "worktree") {
+  const feature = target === "worktree";
+  return {
+    kind: "status",
+    repository: true,
+    head: feature ? "feature/trees" : "main",
+    oid: feature ? "feature123" : "main123",
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    operation: null,
+    files: [
+      {
+        path: feature ? "feature-tree.txt" : "main.txt",
+        index: ".",
+        worktree: "M",
+        kind: "tracked",
+        submodule: false,
+      },
+    ],
+    branches: [
+      {
+        name: feature ? "feature/trees" : "main",
+        shortOid: feature ? "feature" : "main123",
+        upstream: null,
+        remote: false,
+        current: true,
+      },
+    ],
+    remotes: [],
+  };
+}
+
 async function signedIn(page: Page) {
   await page.addInitScript(() => {
     if (!window.location.pathname.startsWith("/dashboard")) return;
@@ -31,9 +76,15 @@ async function signedIn(page: Page) {
   });
 }
 
-async function mockApi(page: Page, options: { failDevices?: () => boolean } = {}) {
+async function mockApi(
+  page: Page,
+  options: { failDevices?: () => boolean; onRequest?: (request: Request) => void } = {},
+) {
   await page.route("**/api/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    options.onRequest?.(request);
     if (path === "/api/devices" && options.failDevices?.()) {
       await route.fulfill({ status: 503, json: { error: "unavailable" } });
       return;
@@ -46,9 +97,51 @@ async function mockApi(page: Page, options: { failDevices?: () => boolean } = {}
       "/api/clients": [],
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
+      [`/api/projects/${project.id}/worktrees`]: [worktree],
     };
     const body = bodies[path];
-    await route.fulfill(body === undefined ? { status: 404 } : { status: 200, json: body });
+    if (body !== undefined) {
+      await route.fulfill({ status: 200, json: body });
+      return;
+    }
+
+    const workspace = `/api/projects/${project.id}/workspace`;
+    const target = url.searchParams.get("worktree") === worktree.id ? "worktree" : "main";
+    if (path === `${workspace}/capabilities`) {
+      await route.fulfill({
+        status: 200,
+        json: { online: true, sourceControl: true, terminal: true, worktreeRouting: true },
+      });
+      return;
+    }
+    if (path === `${workspace}/status`) {
+      await route.fulfill({ status: 200, json: gitStatus(target) });
+      return;
+    }
+    if (path === `${workspace}/diff`) {
+      const file = target === "worktree" ? "feature-tree.txt" : "main.txt";
+      await route.fulfill({
+        status: 200,
+        json: {
+          kind: "diff",
+          path: file,
+          area: "working",
+          patch: `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-old\n+new`,
+          binary: false,
+          truncated: false,
+        },
+      });
+      return;
+    }
+    if (path === `${workspace}/actions`) {
+      await route.fulfill({
+        status: 200,
+        json: { kind: "mutation", stdout: "", stderr: "", status: gitStatus(target) },
+      });
+      return;
+    }
+
+    await route.fulfill({ status: 404 });
   });
 }
 
@@ -95,4 +188,55 @@ test("clipboard denial is visible on the project list", async ({ page }) => {
   await page.getByRole("button", { name: "Copy URL" }).click();
   await expect(page.getByRole("alert")).toContainText("Clipboard access was refused");
   await expect(page.getByRole("button", { name: "Copy failed" })).toBeVisible();
+});
+
+test("keeps source control and terminal bound to the selected worktree", async ({ page }) => {
+  const requests: Request[] = [];
+  await signedIn(page);
+  await mockApi(page, { onRequest: (request) => requests.push(request) });
+  await page.goto("/dashboard/");
+  await page.getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("link", { name: project.name }).click();
+  await expect(page.getByText(worktree.name, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open workspace" }).nth(1).click();
+  await expect(page).toHaveURL(
+    `/dashboard/projects/${project.id}/workspace?worktree=${worktree.slug}`,
+  );
+
+  await expect(page.getByRole("combobox", { name: "Workspace root" })).toHaveValue(worktree.slug);
+  await expect(
+    page.locator("span").filter({ hasText: /^feature-trees · feature\/trees$/ }),
+  ).toBeVisible();
+  const featureFile = page.getByRole("button", { name: /feature-tree\.txt/ });
+  await expect(featureFile).toBeVisible();
+  await expect(page.getByRole("button", { name: /main\.txt/ })).toHaveCount(0);
+
+  await featureFile.hover();
+  await page.getByRole("button", { name: "Stage" }).click();
+  await expect
+    .poll(() =>
+      requests.some((request) => {
+        const url = new URL(request.url());
+        return (
+          request.method() === "POST" &&
+          url.pathname.endsWith("/workspace/actions") &&
+          url.searchParams.get("worktree") === worktree.id
+        );
+      }),
+    )
+    .toBe(true);
+
+  await page.getByRole("button", { name: "Terminal" }).click();
+  await expect(page.getByText("Start an interactive shell in feature-trees")).toBeVisible();
+  await page.getByRole("button", { name: "Open terminal" }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Commands run directly on your connected machine in feature-trees",
+  );
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("combobox", { name: "Workspace root" }).selectOption("main");
+  await expect(page).toHaveURL(`/dashboard/projects/${project.id}/workspace`);
+  await page.getByRole("button", { name: "Source Control" }).click();
+  await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toHaveCount(0);
 });

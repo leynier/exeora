@@ -1,0 +1,73 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Source Control and web terminal"
+  description="Inspect and change Git state or open a shell on a connected project from the private dashboard."
+  canonicalPath="/docs/workspace/"
+>
+  <p>
+    Open a project in the dashboard and choose <strong>Open workspace</strong>. The Source Control
+    view and terminal are available only to the signed-in owner of that project, while its Exeora
+    CLI is connected. Use the root selector to work in <code>main</code> or any worktree connected
+    through <code>exeora worktree</code>.
+  </p>
+
+  <h2>Source Control</h2>
+
+  <p>
+    The dashboard reads Git's porcelain status from the project directory and renders staged and
+    working-tree diffs. You can stage, unstage, commit staged changes, discard tracked changes,
+    delete individual untracked files, fetch, pull, push, and create or switch local branches.
+  </p>
+
+  <p>
+    Exeora invokes the installed <code>git</code> executable directly, without passing these actions
+    through a shell. Credentials stay on the connected machine, and interactive credential prompts
+    are disabled so an unattended operation fails instead of hanging.
+  </p>
+
+  <p>
+    For projects registered from a repository subdirectory, status, diffs, staging and destructive
+    actions stay inside that subdirectory. A commit is refused while the Git index contains staged
+    files outside the selected project root.
+  </p>
+
+  <p>
+    Force push, hard reset, remote branch deletion, forced local branch deletion, and exposed rebase
+    controls are intentionally absent. Pull uses that repository's own Git configuration.
+  </p>
+
+  <h2>Web terminal</h2>
+
+  <p>
+    Opening a terminal requires an explicit confirmation. It starts the machine's default shell in a
+    real pseudo-terminal at the project's local path. Closing the browser, losing the relay, revoking
+    the machine, or reaching the session limit terminates the local process.
+  </p>
+
+  <p>
+    A terminal connection uses a one-time ticket that expires after 30 seconds and is bound to this
+    site's origin and selected worktree. One web terminal may be open per worktree, so
+    <code>main</code> and multiple connected worktrees can each have one. Idle sessions end after 30
+    minutes and every session ends after eight hours; sessions cannot be reattached in this version.
+  </p>
+
+  <h2>What is recorded</h2>
+
+  <p>
+    Source Control mutations and terminal session openings appear in the audit stream. Exeora does
+    <strong>not</strong> record command text, keystrokes, terminal output, file diffs, or commit
+    messages.
+  </p>
+
+  <h2>Project policy</h2>
+
+  <p>
+    Source Control and the web terminal are owner-operated workspace features. They do not travel
+    through an MCP client and are therefore separate from the project's MCP command policy. Opening
+    the terminal grants the same authority as opening a local shell as the user running the CLI;
+    review the confirmation accordingly.
+  </p>
+</Doc>
