@@ -42,10 +42,22 @@ export interface ExecutorSocketState {
 }
 
 export interface ToolCallerState {
-  role: "tool";
+  role: "tool" | "workspace";
   id: string;
   settled: boolean;
   issuedAt?: number;
+}
+
+export interface TerminalCallerState {
+  role: "terminal";
+  id: string;
+  projectId: string;
+  worktreeId?: string;
+  worktreeSlug?: string;
+  targetKey: string;
+  settled: boolean;
+  startedAt: number;
+  lastActivityAt: number;
 }
 
 export interface ApprovalCallerState {
@@ -55,14 +67,21 @@ export interface ApprovalCallerState {
   view?: ApprovalView;
 }
 
-export type SocketState = ExecutorSocketState | ToolCallerState | ApprovalCallerState;
+export type SocketState =
+  | ExecutorSocketState
+  | ToolCallerState
+  | ApprovalCallerState
+  | TerminalCallerState;
 
 export function attachmentOf(socket: WebSocket): SocketState | null {
   const attachment = socket.deserializeAttachment();
   return attachment ? (attachment as SocketState) : null;
 }
 
-export function callerTag(role: "tool" | "approval", id: string): string {
+export function callerTag(
+  role: "tool" | "workspace" | "approval" | "terminal",
+  id: string,
+): string {
   return `${role}:${id}`;
 }
 
@@ -81,6 +100,15 @@ export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
   return ctx.getWebSockets("executor")[0];
 }
 
+/** Best-effort cancellation for a caller that is no longer listening. */
+export function sendCancel(ctx: DurableObjectState, requestId: string): void {
+  try {
+    executorSocket(ctx)?.send(encodeMessage({ type: "cancel", requestId }));
+  } catch {
+    // A disconnected executor has already lost the work.
+  }
+}
+
 /**
  * Whether a socket other than this one is still attached as the executor.
  *
@@ -96,7 +124,7 @@ export function hasOtherExecutor(ctx: DurableObjectState, closing: WebSocket): b
 
 export function callerSocket(
   ctx: DurableObjectState,
-  role: "tool" | "approval",
+  role: "tool" | "workspace" | "approval" | "terminal",
   id: string,
 ): WebSocket | undefined {
   return ctx.getWebSockets(callerTag(role, id)).find((socket) => {
@@ -120,6 +148,22 @@ export function settleCaller(socket: WebSocket, response: CallerResponse): void 
 export function failCallers(ctx: DurableObjectState, reason: string): void {
   for (const socket of ctx.getWebSockets("tool")) {
     settleCaller(socket, offline(reason));
+  }
+  for (const socket of ctx.getWebSockets("workspace")) {
+    settleCaller(socket, offline(reason));
+  }
+  for (const socket of ctx.getWebSockets("terminal")) {
+    const state = attachmentOf(socket);
+    if (state?.role === "terminal") {
+      try {
+        socket.send(
+          JSON.stringify({ type: "terminal.error", sessionId: state.id, message: reason }),
+        );
+      } catch {
+        // Browser is already gone.
+      }
+      socket.close(1011, "executor offline");
+    }
   }
   for (const socket of ctx.getWebSockets("approval")) {
     const state = attachmentOf(socket);

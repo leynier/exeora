@@ -92,7 +92,7 @@ export async function dial() {
   return socket;
 }
 
-export async function dialCaller(kind: "tool" | "approval", id: string) {
+export async function dialCaller(kind: "tool" | "workspace" | "approval", id: string) {
   const response = await relay().fetch(
     new Request(`https://relay/caller/${kind}?id=${id}`, {
       headers: { Upgrade: "websocket" },
@@ -125,6 +125,12 @@ export async function attachFakeExecutor(
   const socket = await dial();
 
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
+  const workspaceSeen: Array<{
+    requestId: string;
+    worktreeId?: string;
+    worktreeSlug?: string;
+    action: unknown;
+  }> = [];
   /** Request ids the relay asked us to stop working on. */
   const cancelled: string[] = [];
   /** Questions the relay put to this terminal. */
@@ -164,6 +170,41 @@ export async function attachFakeExecutor(
       return;
     }
 
+    if (message?.type === "workspace.call") {
+      workspaceSeen.push({
+        requestId: message.requestId,
+        ...(message.worktreeId ? { worktreeId: message.worktreeId } : {}),
+        ...(message.worktreeSlug ? { worktreeSlug: message.worktreeSlug } : {}),
+        action: message.action,
+      });
+      if (!options.silent) {
+        socket.send(
+          encodeMessage({
+            type: "workspace.result",
+            requestId: message.requestId,
+            durationMs: 1,
+            result: {
+              ok: true,
+              value: {
+                kind: "status",
+                repository: true,
+                head: "main",
+                oid: "abc123",
+                upstream: null,
+                ahead: 0,
+                behind: 0,
+                operation: null,
+                files: [],
+                branches: [],
+                remotes: [],
+              },
+            },
+          }),
+        );
+      }
+      return;
+    }
+
     if (message?.type !== "tool.call") return;
 
     const call = { requestId: message.requestId, tool: message.tool, args: message.arguments };
@@ -192,7 +233,7 @@ export async function attachFakeExecutor(
     }),
   );
 
-  return { socket, seen, cancelled, asked, resolved, ack };
+  return { socket, seen, workspaceSeen, cancelled, asked, resolved, ack };
 }
 
 /** A machine with a terminal someone could be asked at. */

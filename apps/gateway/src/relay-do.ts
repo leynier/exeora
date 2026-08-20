@@ -27,10 +27,23 @@ import {
   relayError,
   resolveTerminalApproval,
   type SocketState,
+  sendCancel,
   settleApproval,
   settleCaller,
+  type TerminalCallerState,
   type ToolCallerState,
 } from "./relay-do-callers.js";
+import {
+  acceptTerminalSocket,
+  closeTerminalSession,
+  consumeTerminalTicket,
+  expireWorkspaceSessions,
+  forwardTerminalMessage,
+  handleTerminalCallerMessage,
+  issueTerminalTicket,
+  scheduleWorkspaceAlarm,
+} from "./relay-do-terminal.js";
+import { handleWorkspaceCallerMessage } from "./relay-do-workspace.js";
 import { decodeCallerRequest } from "./relay-internal.js";
 
 /**
@@ -77,12 +90,23 @@ export class DeviceRelay extends DurableObject<Env> {
     const url = new URL(request.url);
     const { 0: client, 1: server } = new WebSocketPair();
 
-    if (url.pathname === "/caller/tool" || url.pathname === "/caller/approval") {
+    if (
+      url.pathname === "/caller/tool" ||
+      url.pathname === "/caller/workspace" ||
+      url.pathname === "/caller/approval"
+    ) {
       const id = url.searchParams.get("id");
       if (!id) return new Response("Missing caller id.", { status: 400 });
-      const role = url.pathname === "/caller/tool" ? "tool" : "approval";
+      const role =
+        url.pathname === "/caller/tool"
+          ? "tool"
+          : url.pathname === "/caller/workspace"
+            ? "workspace"
+            : "approval";
       this.ctx.acceptWebSocket(server, ["caller", role, callerTag(role, id)]);
       server.serializeAttachment({ role, id, settled: false } satisfies SocketState);
+    } else if (url.pathname === "/caller/terminal") {
+      return acceptTerminalSocket(this.ctx, url, client, server);
     } else {
       const deviceId = url.searchParams.get("deviceId") ?? "";
       this.ctx.acceptWebSocket(server, ["executor"]);
@@ -196,6 +220,20 @@ export class DeviceRelay extends DurableObject<Env> {
         settleCaller(caller, { type: "tool.result", result: message.result });
         return;
       }
+
+      case "workspace.result": {
+        const caller = callerSocket(this.ctx, "workspace", message.requestId);
+        if (caller) settleCaller(caller, { type: "workspace.result", result: message.result });
+        return;
+      }
+
+      case "terminal.opened":
+      case "terminal.output":
+      case "terminal.exit":
+      case "terminal.error": {
+        forwardTerminalMessage(this.ctx, message);
+        return;
+      }
     }
   }
 
@@ -212,9 +250,11 @@ export class DeviceRelay extends DurableObject<Env> {
       return;
     }
     if (!state.settled) {
-      if (state.role === "tool") this.sendCancel(state.id);
+      if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
+      else if (state.role === "terminal") closeTerminalSession(this.ctx, state.id);
       else resolveTerminalApproval(this.ctx, state.id);
     }
+    if (state.role === "terminal") await scheduleWorkspaceAlarm(this.ctx);
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
@@ -225,8 +265,12 @@ export class DeviceRelay extends DurableObject<Env> {
       const replaced = hasOtherExecutor(this.ctx, socket);
       await touchDevice(this.env, state.deviceId, { force: true, connected: replaced });
       if (!replaced) failCallers(this.ctx, "The connection to the device failed.");
-    } else if (state?.role === "tool" && !state.settled) this.sendCancel(state.id);
-    else if (state?.role === "approval" && !state.settled)
+    } else if ((state?.role === "tool" || state?.role === "workspace") && !state.settled)
+      sendCancel(this.ctx, state.id);
+    else if (state?.role === "terminal" && !state.settled) {
+      closeTerminalSession(this.ctx, state.id);
+      await scheduleWorkspaceAlarm(this.ctx);
+    } else if (state?.role === "approval" && !state.settled)
       resolveTerminalApproval(this.ctx, state.id);
   }
 
@@ -261,6 +305,29 @@ export class DeviceRelay extends DurableObject<Env> {
     if (!socket) return null;
     const state = attachmentOf(socket);
     return state?.role === "executor" ? (state.capabilities ?? BASELINE_CAPABILITIES) : null;
+  }
+
+  async createTerminalTicket(
+    projectId: string,
+    worktreeId: string | undefined,
+    worktreeSlug: string | undefined,
+    origin: string,
+  ): Promise<string | null> {
+    return issueTerminalTicket(this.ctx, projectId, worktreeId, worktreeSlug, origin);
+  }
+
+  async consumeTerminalTicket(
+    token: string,
+    projectId: string,
+    worktreeId: string | undefined,
+    worktreeSlug: string | undefined,
+    origin: string,
+  ): Promise<boolean> {
+    return consumeTerminalTicket(this.ctx, token, projectId, worktreeId, worktreeSlug, origin);
+  }
+
+  override async alarm(): Promise<void> {
+    await expireWorkspaceSessions(this.ctx);
   }
 
   /** Every question currently waiting, for the dashboard to show and answer. */
@@ -300,17 +367,26 @@ export class DeviceRelay extends DurableObject<Env> {
 
   private handleCallerMessage(
     socket: WebSocket,
-    state: ToolCallerState | ApprovalCallerState,
+    state: ToolCallerState | ApprovalCallerState | TerminalCallerState,
     raw: string,
   ): void {
+    if (state.role === "terminal") {
+      handleTerminalCallerMessage(this.ctx, socket, state, raw);
+      return;
+    }
     const message = decodeCallerRequest(raw);
     if (!message || state.settled) return;
 
     if (message.type === "cancel") {
       socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
-      if (state.role === "tool") this.sendCancel(state.id);
+      if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
       else resolveTerminalApproval(this.ctx, state.id);
       socket.close(1000, "cancelled");
+      return;
+    }
+
+    if (state.role === "workspace" && message.type === "workspace.start") {
+      handleWorkspaceCallerMessage(this.ctx, socket, state, message);
       return;
     }
 
@@ -415,24 +491,6 @@ export class DeviceRelay extends DurableObject<Env> {
           // The dashboard can still answer while the caller socket is alive.
         }
       }
-    }
-  }
-
-  /**
-   * Asks the executor to stop working on one request.
-   *
-   * Best effort by design: a device that disconnected between the call and the
-   * cancellation has already lost the work, so a failure here is not worth
-   * surfacing to a caller who is no longer listening either.
-   */
-  private sendCancel(requestId: string): void {
-    const socket = executorSocket(this.ctx);
-    if (!socket) return;
-
-    try {
-      socket.send(encodeMessage({ type: "cancel", requestId }));
-    } catch {
-      // The socket went away; the call is lost regardless.
     }
   }
 }

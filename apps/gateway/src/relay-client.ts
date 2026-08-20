@@ -5,6 +5,8 @@ import {
   MAX_APPROVAL_PROMPT_LENGTH,
   RELAY_TIMEOUT_MS,
   type ToolName,
+  type WorkspaceAction,
+  type WorkspaceValue,
 } from "@exeora/protocol";
 import { observeRelayTermination } from "./cost-metrics.js";
 import type { DeviceRelay } from "./relay-do.js";
@@ -12,6 +14,82 @@ import type { ApprovalOutcome } from "./relay-do-callers.js";
 import { type CallerRequest, decodeCallerResponse } from "./relay-internal.js";
 
 type RelayStub = DurableObjectStub<DeviceRelay>;
+
+export async function callRelayWorkspace(
+  relay: RelayStub,
+  options: {
+    requestId: string;
+    projectId: string;
+    worktreeId?: string | undefined;
+    worktreeSlug?: string | undefined;
+    action: WorkspaceAction;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<WorkspaceValue> {
+  if (options.signal?.aborted) throw cancelled();
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + RELAY_TIMEOUT_MS;
+  const socket = await dial(relay, "workspace", options.requestId);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (answer: { value: WorkspaceValue } | { error: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+      close(socket);
+      if ("error" in answer) reject(answer.error);
+      else resolve(answer.value);
+    };
+    const abort = () => {
+      send(socket, { type: "cancel" });
+      finish({ error: cancelled() });
+    };
+    const timer = setTimeout(
+      () => {
+        send(socket, { type: "cancel" });
+        finish({
+          error: new ExeoraError("TOOL_TIMEOUT", "The device did not answer before the deadline."),
+        });
+      },
+      Math.max(0, expiresAt - Date.now()),
+    );
+    socket.addEventListener("message", (event) => {
+      const response = decodeCallerResponse(String(event.data));
+      if (response?.type === "workspace.result") {
+        if (response.result.ok) finish({ value: response.result.value });
+        else {
+          finish({
+            error: new ExeoraError(response.result.error.code, response.result.error.message),
+          });
+        }
+      } else if (response?.type === "error") {
+        finish({ error: new ExeoraError(response.error.code, response.error.message) });
+      }
+    });
+    socket.addEventListener("close", () =>
+      finish(newError("The workspace relay closed before it answered.")),
+    );
+    socket.addEventListener("error", () =>
+      finish(newError("The workspace relay connection failed.")),
+    );
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
+    send(socket, {
+      type: "workspace.start",
+      requestId: options.requestId,
+      projectId: options.projectId,
+      worktreeId: options.worktreeId,
+      worktreeSlug: options.worktreeSlug,
+      action: options.action,
+      issuedAt,
+      expiresAt,
+    });
+  });
+}
 
 export async function callRelayTool(
   relay: RelayStub,
@@ -226,7 +304,11 @@ export async function requestRelayApproval(
   });
 }
 
-async function dial(relay: RelayStub, kind: "tool" | "approval", id: string): Promise<WebSocket> {
+async function dial(
+  relay: RelayStub,
+  kind: "tool" | "workspace" | "approval",
+  id: string,
+): Promise<WebSocket> {
   const response = await relay.fetch(
     new Request(`https://relay/caller/${kind}?id=${encodeURIComponent(id)}`, {
       headers: { Upgrade: "websocket" },

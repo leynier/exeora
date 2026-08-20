@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, StrictMode } from "react";
+import { lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { storedToken } from "./auth.js";
@@ -18,6 +18,10 @@ import { Settings } from "./pages/Settings.js";
 import { SignIn } from "./pages/SignIn.js";
 import { useMe } from "./queries.js";
 import "./index.css";
+
+const Workspace = lazy(() =>
+  import("./pages/Workspace.js").then((module) => ({ default: module.Workspace })),
+);
 
 /**
  * The dashboard.
@@ -91,6 +95,14 @@ createRoot(root).render(
               <Route path="machines" element={<Machines />} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:projectId" element={<ProjectDetail />} />
+              <Route
+                path="projects/:projectId/workspace"
+                element={
+                  <Suspense fallback={null}>
+                    <Workspace />
+                  </Suspense>
+                }
+              />
               <Route path="clients" element={<Clients />} />
               <Route path="activity" element={<Activity />} />
               <Route path="settings" element={<Settings />} />

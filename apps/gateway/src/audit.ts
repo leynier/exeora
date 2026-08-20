@@ -15,7 +15,7 @@ interface AuditEventBase extends Record<string, unknown> {
   error_code?: string;
   client_id?: string;
   client_name?: string;
-  endpoint: "project" | "account";
+  endpoint: "project" | "account" | "dashboard";
   created_at: string;
 }
 
@@ -58,7 +58,7 @@ export async function beginAudit(
     worktreeId?: string;
     worktreeSlug?: string;
     tool: string;
-    endpoint: "project" | "account";
+    endpoint: "project" | "account" | "dashboard";
     caller: CallerIdentity;
   },
 ): Promise<AuditHandle> {
@@ -230,7 +230,7 @@ export function auditEvent(
     status: "ok" | "error";
     durationMs: number;
     errorCode?: string;
-    endpoint?: "project" | "account";
+    endpoint?: "project" | "account" | "dashboard";
     caller: CallerIdentity;
   },
   schemaVersion: 1 | 2 = 1,
@@ -266,7 +266,7 @@ interface OutboxRow {
   error_code: string | null;
   client_id: string | null;
   client_name: string | null;
-  endpoint: "project" | "account";
+  endpoint: "project" | "account" | "dashboard";
   created_at: number;
   attempts: number;
 }

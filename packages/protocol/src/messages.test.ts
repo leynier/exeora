@@ -35,6 +35,32 @@ describe("executor → relay framing", () => {
       durationMs: 3,
       result: { ok: false, error: { code: "PATH_ESCAPE", message: "outside project root" } },
     },
+    {
+      type: "workspace.result",
+      requestId: "workspace_1",
+      durationMs: 7,
+      result: {
+        ok: true,
+        value: {
+          kind: "status",
+          repository: true,
+          head: "feature/trees",
+          oid: "abc123",
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          operation: null,
+          files: [],
+          branches: [],
+          remotes: [],
+        },
+      },
+    },
+    {
+      type: "terminal.output",
+      sessionId: "term_1",
+      data: "aGVsbG8=",
+    },
   ];
 
   it.each(cases)("round-trips $type", (message) => {
@@ -54,6 +80,25 @@ describe("relay → executor framing", () => {
       arguments: { command: "bun test" },
       issuedAt: 1_754_400_000_000,
       expiresAt: 1_754_400_060_000,
+    },
+    {
+      type: "workspace.call",
+      requestId: "workspace_1",
+      projectId: "prj_1",
+      worktreeId: "wtr_1",
+      worktreeSlug: "feature-trees",
+      action: { action: "status" },
+      issuedAt: 1_754_400_000_000,
+      expiresAt: 1_754_400_060_000,
+    },
+    {
+      type: "terminal.open",
+      sessionId: "term_1",
+      projectId: "prj_1",
+      worktreeId: "wtr_1",
+      worktreeSlug: "feature-trees",
+      cols: 120,
+      rows: 36,
     },
     { type: "cancel", requestId: "req_1" },
     { type: "shutdown", reason: "device revoked" },
@@ -95,6 +140,32 @@ describe("malformed frames", () => {
       result: { ok: true, error: { code: "TOOL_FAILED", message: "x" } },
     });
     expect(decodeExecutorMessage(frame)).toBeNull();
+  });
+});
+
+describe("additive executor capabilities", () => {
+  it("keeps old hello frames valid and preserves new workspace features", () => {
+    const legacy = {
+      type: "hello",
+      protocolVersion: PROTOCOL_VERSION,
+      deviceId: "dev_legacy",
+      cliVersion: "0.8.4",
+      platform: "linux",
+      projects: [{ id: "prj_1", slug: "exeora" }],
+    } as const;
+    expect(decodeExecutorMessage(JSON.stringify(legacy))).toEqual(legacy);
+
+    const current = {
+      ...legacy,
+      deviceId: "dev_current",
+      capabilities: {
+        prompt: true,
+        tools: [...BASELINE_CAPABILITIES.tools],
+        features: ["source-control-v1", "terminal-v1"],
+        worktreeRouting: true,
+      },
+    } as const;
+    expect(decodeExecutorMessage(JSON.stringify(current))).toEqual(current);
   });
 });
 

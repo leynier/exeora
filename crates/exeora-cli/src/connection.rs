@@ -10,13 +10,15 @@ use crate::{
         PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
     },
     tools::ToolEngine,
+    workspace::WorkspaceEngine,
 };
 use anyhow::{Context, Result, anyhow};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -33,6 +35,13 @@ struct ActiveCall {
     root: PathBuf,
 }
 
+#[derive(Debug)]
+struct ResolvedTarget {
+    project: ProjectEntry,
+    root: PathBuf,
+    worktree_slug: Option<String>,
+}
+
 type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
 
 pub async fn connect_forever(
@@ -45,6 +54,7 @@ pub async fn connect_forever(
 ) -> Result<()> {
     let _awake = acquire_keep_awake(json_output);
     let engine = Arc::new(ToolEngine::new()?);
+    let workspace = Arc::new(WorkspaceEngine::new());
     let config_path = config.path().to_path_buf();
     let gateway = config.gateway_url();
     let mut delay = Duration::from_secs(1);
@@ -59,18 +69,22 @@ pub async fn connect_forever(
         if stop.is_cancelled() {
             break;
         }
-        match connect_once(
+        let outcome = connect_once(
             &gateway,
             &device_id,
             &projects,
             config_path.clone(),
             auth.clone(),
             engine.clone(),
+            workspace.clone(),
             stop.clone(),
             json_output,
         )
-        .await
-        {
+        .await;
+        // Local work must never outlive the authenticated relay that opened it.
+        workspace.kill_all().await;
+        engine.kill_all().await;
+        match outcome {
             Ok(ConnectOutcome::Stopped) => break,
             Ok(ConnectOutcome::Rejected(reason)) => return Err(anyhow!(reason)),
             Ok(ConnectOutcome::Disconnected) => {
@@ -94,6 +108,7 @@ pub async fn connect_forever(
         }
     }
     engine.kill_all().await;
+    workspace.kill_all().await;
     if !json_output {
         println!("Disconnected.");
     }
@@ -188,6 +203,7 @@ async fn connect_once(
     config_path: PathBuf,
     auth: Arc<AuthManager>,
     engine: Arc<ToolEngine>,
+    workspace: Arc<WorkspaceEngine>,
     stop: CancellationToken,
     json_output: bool,
 ) -> Result<ConnectOutcome> {
@@ -219,7 +235,12 @@ async fn connect_once(
         "type": "hello", "protocolVersion": PROTOCOL_VERSION, "deviceId": device_id,
         "cliVersion": CLI_VERSION, "platform": platform(),
         "projects": projects.iter().map(|project| json!({ "id": project.id, "slug": project.slug })).collect::<Vec<_>>(),
-        "capabilities": { "prompt": can_prompt, "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(), "worktreeRouting": true },
+        "capabilities": {
+            "prompt": can_prompt,
+            "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "features": ["source-control-v1", "terminal-v1"],
+            "worktreeRouting": true,
+        },
     }))?.into())).await?;
     emit_event(json_output, "open", json!({}));
     if !json_output {
@@ -227,6 +248,7 @@ async fn connect_once(
     }
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
+    let (terminal_tx, mut terminal_rx) = mpsc::channel::<Value>(256);
     let in_flight: InFlight = Arc::new(Mutex::new(HashMap::new()));
     let mut tick = tokio::time::interval(Duration::from_millis(HEARTBEAT_INTERVAL_MS));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -243,6 +265,7 @@ async fn connect_once(
                 let _ = socket.close(None).await;
                 cancel_all(&in_flight).await;
                 engine.kill_all().await;
+                workspace.kill_all().await;
                 return Ok(ConnectOutcome::Stopped);
             }
             _ = tick.tick() => {
@@ -259,6 +282,9 @@ async fn connect_once(
                 }
             }
             Some(outgoing) = out_rx.recv() => {
+                socket.send(Message::Text(outgoing.to_string().into())).await?;
+            }
+            Some(outgoing) = terminal_rx.recv() => {
                 socket.send(Message::Text(outgoing.to_string().into())).await?;
             }
             incoming = socket.next() => {
@@ -293,10 +319,17 @@ async fn connect_once(
                                 let reason = message.get("reason").and_then(Value::as_str).unwrap_or("The gateway closed the connection.");
                                 cancel_all(&in_flight).await;
                                 engine.kill_all().await;
+                                workspace.kill_all().await;
                                 return Ok(ConnectOutcome::Rejected(reason.to_owned()));
                             }
                             Some("tool.call") => {
                                 spawn_tool_call(message, config_path.clone(), engine.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                            }
+                            Some("workspace.call") => {
+                                spawn_workspace_call(message, config_path.clone(), workspace.clone(), in_flight.clone(), out_tx.clone()).await;
+                            }
+                            Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
+                                handle_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone()).await;
                             }
                             _ => {}
                         }
@@ -313,12 +346,13 @@ async fn connect_once(
                 }
             }
             _ = roots_tick.tick() => {
-                reconcile_roots(&config_path, &engine, &in_flight, &mut known_roots).await;
+                reconcile_roots(&config_path, &engine, &workspace, &in_flight, &mut known_roots).await;
             }
         }
     }
     cancel_all(&in_flight).await;
     engine.kill_all().await;
+    workspace.kill_all().await;
     Ok(ConnectOutcome::Disconnected)
 }
 
@@ -359,44 +393,23 @@ async fn spawn_tool_call(
         );
         return;
     }
-    let Ok(config) = ConfigStore::load_from(config_path) else {
-        send_error(
-            ErrorCode::InternalError,
-            "Could not reload the local Exeora configuration.",
-        );
-        return;
+    let target = match resolve_target(
+        &config_path,
+        project_id,
+        message.get("worktreeId").and_then(Value::as_str),
+        message.get("worktreeSlug").and_then(Value::as_str),
+    ) {
+        Ok(target) => target,
+        Err(error) => {
+            send_error(error.code, &error.message);
+            return;
+        }
     };
-    let Some(project) = config.find_project(project_id).cloned() else {
-        send_error(
-            ErrorCode::UnknownProject,
-            "This machine does not serve that project. Run `exeora project add` there.",
-        );
-        return;
-    };
-    let (root, worktree_slug) =
-        if let Some(worktree_id) = message.get("worktreeId").and_then(Value::as_str) {
-            let Some(worktree) = config.data().worktrees.iter().find(|entry| {
-                entry.id == worktree_id
-                    && entry.project_id == project.id
-                    && entry.sync_state == WorktreeSyncState::Active
-            }) else {
-                send_error(
-                    ErrorCode::WorktreeUnavailable,
-                    "That worktree is no longer connected or available on this machine.",
-                );
-                return;
-            };
-            if !worktree.root.is_dir() {
-                send_error(
-                    ErrorCode::WorktreeUnavailable,
-                    "That worktree is registered but its directory is unavailable.",
-                );
-                return;
-            }
-            (worktree.root.clone(), Some(worktree.slug.clone()))
-        } else {
-            (project.root.clone(), None)
-        };
+    let ResolvedTarget {
+        project,
+        root,
+        worktree_slug,
+    } = target;
     let Some(tool_name) = message
         .get("tool")
         .and_then(Value::as_str)
@@ -510,6 +523,265 @@ async fn handle_approval(
     let _ = outgoing.send(json!({ "type": "approval.answer", "id": id, "approved": approved }));
 }
 
+async fn spawn_workspace_call(
+    message: Value,
+    config_path: PathBuf,
+    workspace: Arc<WorkspaceEngine>,
+    in_flight: InFlight,
+    outgoing: mpsc::UnboundedSender<Value>,
+) {
+    let Some(request_id) = message
+        .get("requestId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let Some(project_id) = message.get("projectId").and_then(Value::as_str) else {
+        return;
+    };
+    let started = now_ms();
+    let send_error = |error: ExeoraError| {
+        let _ = outgoing.send(workspace_result_frame(&request_id, started, Err(error)));
+    };
+    if message
+        .get("expiresAt")
+        .and_then(Value::as_u64)
+        .is_some_and(|expires| started > expires)
+    {
+        send_error(ExeoraError::new(
+            ErrorCode::ToolTimeout,
+            "The workspace request expired before it was received.",
+        ));
+        return;
+    }
+    let target = match resolve_target(
+        &config_path,
+        project_id,
+        message.get("worktreeId").and_then(Value::as_str),
+        message.get("worktreeSlug").and_then(Value::as_str),
+    ) {
+        Ok(target) => target,
+        Err(error) => {
+            send_error(error);
+            return;
+        }
+    };
+    let action = message.get("action").cloned().unwrap_or_else(|| json!({}));
+    let cancel = CancellationToken::new();
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: target.root.clone(),
+        },
+    );
+    tokio::spawn(async move {
+        let result = workspace.execute(&target.root, action, cancel).await;
+        in_flight.lock().await.remove(&request_id);
+        let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
+    });
+}
+
+async fn handle_terminal_message(
+    message: Value,
+    config_path: PathBuf,
+    workspace: Arc<WorkspaceEngine>,
+    outgoing: mpsc::Sender<Value>,
+) {
+    let Some(kind) = message.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(session_id) = message
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let result = match kind {
+        "terminal.open" => {
+            let Some(project_id) = message.get("projectId").and_then(Value::as_str) else {
+                send_terminal_error(&outgoing, &session_id, "A terminal project is required.")
+                    .await;
+                return;
+            };
+            let target = match resolve_target(
+                &config_path,
+                project_id,
+                message.get("worktreeId").and_then(Value::as_str),
+                message.get("worktreeSlug").and_then(Value::as_str),
+            ) {
+                Ok(target) => target,
+                Err(error) => {
+                    send_terminal_error(&outgoing, &session_id, &error.message).await;
+                    return;
+                }
+            };
+            let cols = message
+                .get("cols")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok());
+            let rows = message
+                .get("rows")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok());
+            match (cols, rows) {
+                (Some(cols), Some(rows)) => {
+                    workspace
+                        .terminal_open(
+                            session_id.clone(),
+                            &target.root,
+                            cols,
+                            rows,
+                            outgoing.clone(),
+                        )
+                        .await
+                }
+                _ => Err(ExeoraError::new(
+                    ErrorCode::InvalidArguments,
+                    "Invalid terminal size.",
+                )),
+            }
+        }
+        "terminal.input" => match message
+            .get("data")
+            .and_then(Value::as_str)
+            .and_then(|data| STANDARD.decode(data).ok())
+        {
+            Some(data) => workspace.terminal_input(&session_id, &data).await,
+            None => Err(ExeoraError::new(
+                ErrorCode::InvalidArguments,
+                "Invalid terminal input encoding.",
+            )),
+        },
+        "terminal.resize" => {
+            let cols = message
+                .get("cols")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok());
+            let rows = message
+                .get("rows")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok());
+            match (cols, rows) {
+                (Some(cols), Some(rows)) => {
+                    workspace.terminal_resize(&session_id, cols, rows).await
+                }
+                _ => Err(ExeoraError::new(
+                    ErrorCode::InvalidArguments,
+                    "Invalid terminal size.",
+                )),
+            }
+        }
+        "terminal.close" => {
+            workspace.terminal_close(&session_id).await;
+            Ok(())
+        }
+        _ => return,
+    };
+    if let Err(error) = result {
+        send_terminal_error(&outgoing, &session_id, &error.message).await;
+    }
+}
+
+async fn send_terminal_error(outgoing: &mpsc::Sender<Value>, session_id: &str, message: &str) {
+    let _ = outgoing
+        .send(json!({ "type": "terminal.error", "sessionId": session_id, "message": message }))
+        .await;
+}
+
+fn resolve_target(
+    config_path: &Path,
+    project_id: &str,
+    worktree_id: Option<&str>,
+    worktree_slug: Option<&str>,
+) -> Result<ResolvedTarget, ExeoraError> {
+    let config = ConfigStore::load_from(config_path.to_path_buf()).map_err(|_| {
+        ExeoraError::new(
+            ErrorCode::InternalError,
+            "Could not reload the local Exeora configuration.",
+        )
+    })?;
+    let project = config.find_project(project_id).cloned().ok_or_else(|| {
+        ExeoraError::new(
+            ErrorCode::UnknownProject,
+            "This machine does not serve that project. Run `exeora project add` there.",
+        )
+    })?;
+    let Some(worktree_id) = worktree_id else {
+        if worktree_slug.is_some() {
+            return Err(ExeoraError::new(
+                ErrorCode::WorktreeUnavailable,
+                "The worktree target is incomplete.",
+            ));
+        }
+        if !project.root.is_dir() {
+            return Err(ExeoraError::new(
+                ErrorCode::PathNotFound,
+                "The project directory is unavailable on this machine.",
+            ));
+        }
+        return Ok(ResolvedTarget {
+            root: std::fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone()),
+            project,
+            worktree_slug: None,
+        });
+    };
+    let worktree = config
+        .data()
+        .worktrees
+        .iter()
+        .find(|entry| {
+            entry.id == worktree_id
+                && entry.project_id == project.id
+                && entry.sync_state == WorktreeSyncState::Active
+                && worktree_slug.is_none_or(|slug| slug == entry.slug)
+        })
+        .ok_or_else(|| {
+            ExeoraError::new(
+                ErrorCode::WorktreeUnavailable,
+                "That worktree is no longer connected or available on this machine.",
+            )
+        })?;
+    if !worktree.root.is_dir() {
+        return Err(ExeoraError::new(
+            ErrorCode::WorktreeUnavailable,
+            "That worktree is registered but its directory is unavailable.",
+        ));
+    }
+    Ok(ResolvedTarget {
+        project,
+        root: std::fs::canonicalize(&worktree.root).unwrap_or_else(|_| worktree.root.clone()),
+        worktree_slug: Some(worktree.slug.clone()),
+    })
+}
+
+fn workspace_result_frame(
+    request_id: &str,
+    started: u64,
+    result: Result<Value, ExeoraError>,
+) -> Value {
+    let result = match result {
+        Ok(value)
+            if serde_json::to_vec(&value).is_ok_and(|bytes| bytes.len() <= MAX_RESULT_BYTES) =>
+        {
+            json!({ "ok": true, "value": value })
+        }
+        Ok(_) => json!({
+            "ok": false,
+            "error": {
+                "code": ErrorCode::ToolFailed.as_str(),
+                "message": "Workspace result exceeded the protocol limit.",
+            }
+        }),
+        Err(error) => {
+            json!({ "ok": false, "error": { "code": error.code.as_str(), "message": error.message } })
+        }
+    };
+    json!({ "type": "workspace.result", "requestId": request_id, "durationMs": now_ms().saturating_sub(started), "result": result })
+}
+
 fn result_frame(request_id: &str, started: u64, result: Result<Value, ExeoraError>) -> Value {
     let result = match result {
         Ok(value)
@@ -563,6 +835,7 @@ fn served_roots(config_path: &std::path::Path) -> HashSet<PathBuf> {
 async fn reconcile_roots(
     config_path: &std::path::Path,
     engine: &ToolEngine,
+    workspace: &WorkspaceEngine,
     in_flight: &InFlight,
     known_roots: &mut HashSet<PathBuf>,
 ) {
@@ -591,6 +864,7 @@ async fn reconcile_roots(
     }
     for root in removed {
         engine.kill_root(&root).await;
+        workspace.kill_root(&root).await;
     }
 }
 
@@ -640,9 +914,15 @@ fn platform() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{awake_event, handshake_rejection, result_frame};
-    use crate::protocol::MAX_RESULT_BYTES;
+    use super::{awake_event, handshake_rejection, resolve_target, result_frame};
+    use crate::{
+        config::{ConfigStore, ProjectEntry, WorktreeEntry, WorktreeSyncState},
+        error::ErrorCode,
+        protocol::MAX_RESULT_BYTES,
+    };
     use serde_json::json;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn rejects_an_oversized_tool_result_before_it_reaches_the_socket() {
@@ -683,5 +963,65 @@ mod tests {
                 "reason": "not supported",
             })
         );
+    }
+
+    #[test]
+    fn resolves_only_the_active_worktree_with_the_matching_stable_identity() {
+        let directory = tempdir().unwrap();
+        let main = directory.path().join("main");
+        let feature = directory.path().join("feature");
+        let pending = directory.path().join("pending");
+        fs::create_dir_all(&main).unwrap();
+        fs::create_dir_all(&feature).unwrap();
+        fs::create_dir_all(&pending).unwrap();
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.upsert_project(ProjectEntry {
+            id: "prj_1".to_owned(),
+            slug: "project".to_owned(),
+            name: "Project".to_owned(),
+            root: main.clone(),
+        });
+        for (id, slug, root, sync_state) in [
+            (
+                "wtr_active",
+                "feature",
+                feature.clone(),
+                WorktreeSyncState::Active,
+            ),
+            (
+                "wtr_pending",
+                "pending",
+                pending,
+                WorktreeSyncState::PendingUpsert,
+            ),
+        ] {
+            config.upsert_worktree(WorktreeEntry {
+                id: id.to_owned(),
+                project_id: "prj_1".to_owned(),
+                slug: slug.to_owned(),
+                name: slug.to_owned(),
+                branch: Some(slug.to_owned()),
+                git_root: main.clone(),
+                root,
+                managed: true,
+                sync_state,
+            });
+        }
+        config.save().unwrap();
+
+        let resolved =
+            resolve_target(&config_path, "prj_1", Some("wtr_active"), Some("feature")).unwrap();
+        assert_eq!(resolved.root, fs::canonicalize(feature).unwrap());
+        assert_eq!(resolved.worktree_slug.as_deref(), Some("feature"));
+
+        for (id, slug) in [
+            ("wtr_active", Some("renamed")),
+            ("wtr_pending", Some("pending")),
+            ("wtr_missing", None),
+        ] {
+            let error = resolve_target(&config_path, "prj_1", Some(id), slug).unwrap_err();
+            assert_eq!(error.code, ErrorCode::WorktreeUnavailable);
+        }
     }
 }

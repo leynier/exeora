@@ -14,6 +14,9 @@ export const keys = {
   devices: ["devices"] as const,
   projects: ["projects"] as const,
   worktrees: (projectId: string) => ["projects", projectId, "worktrees"] as const,
+  workspaceCapabilities: (id: string, target: string) =>
+    ["workspace", id, target, "capabilities"] as const,
+  gitStatus: (id: string, target: string) => ["workspace", id, target, "status"] as const,
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
@@ -98,6 +101,30 @@ export const useWorktrees = (projectId: string | undefined) =>
     enabled: Boolean(projectId),
     refetchInterval: LIVE,
   });
+
+export const useWorkspaceCapabilities = (
+  id: string,
+  worktree: string | undefined,
+  enabled = true,
+) => {
+  const target = worktree ?? "main";
+  return useQuery({
+    queryKey: keys.workspaceCapabilities(id, target),
+    queryFn: () => api.workspaceCapabilities(id, worktree),
+    enabled: enabled && id.length > 0,
+    refetchInterval: LIVE,
+  });
+};
+
+export const useGitStatus = (id: string, worktree: string | undefined, enabled = true) => {
+  const target = worktree ?? "main";
+  return useQuery({
+    queryKey: keys.gitStatus(id, target),
+    queryFn: () => api.gitStatus(id, worktree),
+    enabled: enabled && id.length > 0,
+    refetchInterval: LIVE,
+  });
+};
 
 /** Polled too: "last used" is the only sign a client is still talking to us. */
 export const useClients = () =>

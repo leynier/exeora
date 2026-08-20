@@ -1,6 +1,9 @@
+import { and, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { internal } from "./api/internal.js";
+import { relayName } from "./api/ops.js";
 import { serveAssets } from "./assets.js";
+import { db, schema } from "./db/client.js";
 import "./env.js";
 import { installers } from "./installers.js";
 import {
@@ -52,6 +55,84 @@ site.get("/oauth/dashboard-client", async (c) =>
     scopes: DASHBOARD_SCOPES,
   }),
 );
+
+site.get("/terminal/connect", async (c) => {
+  if (c.req.header("Upgrade") !== "websocket") {
+    return c.text("Expected a WebSocket upgrade.", 426);
+  }
+  const expectedOrigin = new URL(c.env.EXEORA_BASE_URL).origin;
+  if (c.req.header("Origin") !== expectedOrigin) return c.text("Invalid origin.", 403);
+  const projectId = c.req.query("projectId");
+  const deviceId = c.req.query("deviceId");
+  const worktreeId = c.req.query("worktreeId");
+  const worktreeSlug = c.req.query("worktreeSlug");
+  const ticket = c.req.query("ticket");
+  const cols = Number(c.req.query("cols"));
+  const rows = Number(c.req.query("rows"));
+  if (
+    !projectId ||
+    !deviceId ||
+    !ticket ||
+    !/^[0-9a-f]{64}$/.test(ticket) ||
+    Boolean(worktreeId) !== Boolean(worktreeSlug) ||
+    !Number.isInteger(cols) ||
+    cols < 20 ||
+    cols > 500 ||
+    !Number.isInteger(rows) ||
+    rows < 5 ||
+    rows > 300
+  ) {
+    return c.text("Invalid terminal request.", 400);
+  }
+  const project = await db(c.env)
+    .select({ userId: schema.projects.userId })
+    .from(schema.projects)
+    .innerJoin(schema.devices, eq(schema.projects.deviceId, schema.devices.id))
+    .where(
+      and(
+        eq(schema.projects.id, projectId),
+        eq(schema.projects.deviceId, deviceId),
+        eq(schema.devices.userId, schema.projects.userId),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
+    .get();
+  if (!project) return c.text("Project not found.", 404);
+  if (worktreeId && worktreeSlug) {
+    const worktree = await db(c.env)
+      .select({ id: schema.worktrees.id })
+      .from(schema.worktrees)
+      .where(
+        and(
+          eq(schema.worktrees.id, worktreeId),
+          eq(schema.worktrees.projectId, projectId),
+          eq(schema.worktrees.slug, worktreeSlug),
+        ),
+      )
+      .get();
+    if (!worktree) return c.text("Worktree not found.", 404);
+  }
+  const relay = c.env.DEVICE_RELAY.getByName(relayName(project.userId, deviceId));
+  if (
+    !(await relay.consumeTerminalTicket(
+      ticket,
+      projectId,
+      worktreeId,
+      worktreeSlug,
+      expectedOrigin,
+    ))
+  ) {
+    return c.text("Terminal ticket is invalid or expired.", 403);
+  }
+  const url = new URL("https://relay/caller/terminal");
+  url.searchParams.set("id", crypto.randomUUID());
+  url.searchParams.set("projectId", projectId);
+  if (worktreeId) url.searchParams.set("worktreeId", worktreeId);
+  if (worktreeSlug) url.searchParams.set("worktreeSlug", worktreeSlug);
+  url.searchParams.set("cols", String(cols));
+  url.searchParams.set("rows", String(rows));
+  return relay.fetch(new Request(url, { headers: { Upgrade: "websocket" } }));
+});
 
 // Registered last, so it only sees paths no OAuth route claimed.
 site.all("*", (c) => serveAssets(c.req.raw, c.env));
