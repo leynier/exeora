@@ -4,6 +4,8 @@
     { "name": "id", "type": "string", "required": true },
     { "name": "user_id", "type": "string", "required": true },
     { "name": "project_id", "type": "string", "required": true },
+    { "name": "worktree_id", "type": "string", "required": false },
+    { "name": "worktree_slug", "type": "string", "required": false },
     { "name": "tool", "type": "string", "required": true },
     { "name": "status", "type": "string", "required": true },
     { "name": "duration_ms", "type": "int64", "required": true },

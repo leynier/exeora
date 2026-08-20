@@ -54,6 +54,8 @@ export const ExecutorCapabilities = z.object({
    * removes. Unknown names are ignored by whoever reads this.
    */
   tools: z.array(z.string().max(64)).max(64),
+  /** Whether tool calls can target a registered Git worktree by stable id. */
+  worktreeRouting: z.boolean().optional(),
 });
 
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
@@ -181,6 +183,8 @@ export const ToolCallMessage = z.object({
   type: z.literal("tool.call"),
   requestId: z.string(),
   projectId: z.string(),
+  worktreeId: z.string().optional(),
+  worktreeSlug: z.string().optional(),
   tool: z.enum(TOOL_NAMES),
   arguments: z.unknown(),
   /**
@@ -246,6 +250,8 @@ export const ApprovalRequestMessage = z.object({
   type: z.literal("approval.request"),
   id: z.string(),
   projectId: z.string(),
+  worktreeId: z.string().optional(),
+  worktreeSlug: z.string().optional(),
   tool: z.enum(TOOL_NAMES),
   /** One line, already written for a person: "Run `npm test`?" */
   prompt: z.string(),

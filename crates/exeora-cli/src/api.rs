@@ -29,6 +29,20 @@ pub struct ProjectView {
     pub created_at: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeView {
+    pub id: String,
+    pub project_id: String,
+    pub slug: String,
+    pub name: String,
+    pub branch: Option<String>,
+    pub local_path: String,
+    pub managed: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserView {
@@ -45,6 +59,8 @@ pub struct UserView {
 pub struct ToolCallView {
     pub id: String,
     pub project_id: String,
+    pub worktree_id: Option<String>,
+    pub worktree_slug: Option<String>,
     pub tool: String,
     pub status: String,
     pub duration_ms: u64,
@@ -159,6 +175,44 @@ impl ApiClient {
         self.request(
             reqwest::Method::DELETE,
             &format!("/api/projects/{id}"),
+            None,
+        )
+        .await
+    }
+    pub async fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeView>> {
+        self.request(
+            reqwest::Method::GET,
+            &format!("/api/projects/{project_id}/worktrees"),
+            None,
+        )
+        .await
+    }
+    pub async fn put_worktree(
+        &self,
+        project_id: &str,
+        worktree: &crate::config::WorktreeEntry,
+    ) -> Result<WorktreeView> {
+        self.request(
+            reqwest::Method::PUT,
+            &format!("/api/projects/{project_id}/worktrees/{}", worktree.id),
+            Some(serde_json::json!({
+                "slug": worktree.slug,
+                "name": worktree.name,
+                "branch": worktree.branch,
+                "localPath": worktree.root,
+                "managed": worktree.managed,
+            })),
+        )
+        .await
+    }
+    pub async fn remove_worktree(
+        &self,
+        project_id: &str,
+        worktree_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/api/projects/{project_id}/worktrees/{worktree_id}"),
             None,
         )
         .await

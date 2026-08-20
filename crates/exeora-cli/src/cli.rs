@@ -4,9 +4,10 @@ use crate::{
     auth::{
         AuthManager, clear_credentials, discover_client, load_credentials, using_file_fallback,
     },
-    config::{ConfigStore, DEFAULT_GATEWAY, ProjectEntry},
+    config::{ConfigStore, DEFAULT_GATEWAY, ProjectEntry, WorktreeEntry, WorktreeSyncState},
     connection::connect_forever,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
+    worktrees::{self, CreateWorktree},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Args, Parser, Subcommand};
@@ -53,6 +54,16 @@ pub enum Commands {
     Project {
         #[command(subcommand)]
         command: ProjectCommand,
+    },
+    #[command(about = "Manage Git worktrees connected to Exeora projects")]
+    Worktree {
+        #[command(subcommand)]
+        command: WorktreeCommand,
+    },
+    #[command(about = "Show or change local Exeora settings")]
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
     },
     #[command(
         about = "Serve a directory to your AI clients and keep this machine awake (signs in and registers as needed)"
@@ -133,6 +144,61 @@ pub enum ProjectCommand {
     Remove { slug: String },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum WorktreeCommand {
+    #[command(about = "Create a Git worktree and connect it to an Exeora project")]
+    Create {
+        branch: String,
+        #[arg(long = "from")]
+        from_ref: Option<String>,
+        #[arg(long)]
+        #[arg(conflicts_with = "from_ref")]
+        reuse_existing_branch: bool,
+        #[arg(short, long)]
+        project: Option<String>,
+        #[arg(short, long)]
+        name: Option<String>,
+        #[arg(short, long)]
+        slug: Option<String>,
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
+    #[command(about = "Connect an existing Git worktree to an Exeora project")]
+    Attach {
+        path: PathBuf,
+        #[arg(short, long)]
+        project: Option<String>,
+        #[arg(short, long)]
+        name: Option<String>,
+        #[arg(short, long)]
+        slug: Option<String>,
+    },
+    #[command(about = "List worktrees connected to Exeora")]
+    List {
+        #[arg(short, long, conflicts_with = "all")]
+        project: Option<String>,
+        #[arg(long)]
+        all: bool,
+    },
+    #[command(about = "Disconnect a worktree from Exeora without deleting it")]
+    Detach { selector: String },
+    #[command(about = "Disconnect and remove a Git worktree")]
+    Remove {
+        selector: String,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        delete_branch: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommand {
+    Get { key: String },
+    Set { key: String, value: PathBuf },
+    Unset { key: String },
+}
+
 #[derive(Debug, Args)]
 pub struct ConnectArgs {
     path: Option<PathBuf>,
@@ -156,6 +222,8 @@ pub struct LogsArgs {
     limit: usize,
     #[arg(short, long)]
     project: Option<String>,
+    #[arg(short, long)]
+    worktree: Option<String>,
     #[arg(short, long)]
     client: Option<String>,
     #[arg(long)]
@@ -184,6 +252,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         return crate::upgrade::run(cli.json).await;
     }
     let mut config = ConfigStore::load()?;
+    if let Commands::Config { command } = &cli.command {
+        return config_command(&mut config, command, cli.json);
+    }
     if let Commands::Gateway { command } = &cli.command {
         return gateway_command(&mut config, command, cli.json).await;
     }
@@ -232,14 +303,302 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Project { command } => {
             project_command(&mut config, &api, command, cli.json).await
         }
+        Commands::Worktree { command } => {
+            worktree_command(&mut config, &api, command, cli.json).await
+        }
         Commands::Connect(args) => connect_command(&mut config, &api, auth, args, cli.json).await,
         Commands::Status => status_command(&config, &api, cli.json).await,
         Commands::Logs(args) => logs_command(&api, args, cli.json).await,
         Commands::Sync => sync_command(&mut config, &api).await,
         Commands::Gateway { .. }
+        | Commands::Config { .. }
         | Commands::Prompt { .. }
         | Commands::Init(_)
         | Commands::Upgrade => unreachable!(),
+    }
+}
+
+fn config_command(
+    config: &mut ConfigStore,
+    command: &ConfigCommand,
+    json_output: bool,
+) -> Result<()> {
+    match command {
+        ConfigCommand::Get { key } if key == "worktree-root" => {
+            let value = config.worktree_root()?;
+            if json_output {
+                emit(json!({ "key": key, "value": value, "source": config.worktree_root_source() }))
+            } else {
+                println!("{}", value.display());
+                Ok(())
+            }
+        }
+        ConfigCommand::Set { key, value } if key == "worktree-root" => {
+            let value = if value.is_absolute() {
+                value.clone()
+            } else {
+                env::current_dir()?.join(value)
+            };
+            config.data_mut().worktree_root = Some(value.clone());
+            config.save()?;
+            if json_output {
+                emit(json!({ "key": key, "value": value }))
+            } else {
+                println!("Set {key} to {}.", value.display());
+                Ok(())
+            }
+        }
+        ConfigCommand::Unset { key } if key == "worktree-root" => {
+            config.data_mut().worktree_root = None;
+            config.save()?;
+            if json_output {
+                emit(
+                    json!({ "key": key, "value": config.worktree_root()?, "source": config.worktree_root_source() }),
+                )
+            } else {
+                println!("Unset {key}.");
+                Ok(())
+            }
+        }
+        ConfigCommand::Get { key }
+        | ConfigCommand::Set { key, .. }
+        | ConfigCommand::Unset { key } => {
+            bail!("Unknown setting {key}. Available settings: worktree-root")
+        }
+    }
+}
+
+async fn worktree_command(
+    config: &mut ConfigStore,
+    api: &ApiClient,
+    command: WorktreeCommand,
+    json_output: bool,
+) -> Result<()> {
+    match command {
+        WorktreeCommand::Create {
+            branch,
+            from_ref,
+            reuse_existing_branch,
+            project,
+            name,
+            slug,
+            path,
+        } => {
+            let project = worktrees::resolve_project(config, project.as_deref())?;
+            let entry = worktrees::create(
+                config,
+                &project,
+                CreateWorktree {
+                    branch,
+                    from: from_ref,
+                    reuse_existing_branch,
+                    name,
+                    slug,
+                    path,
+                },
+            )?;
+            persist_worktree(config, api, entry, json_output).await
+        }
+        WorktreeCommand::Attach {
+            path,
+            project,
+            name,
+            slug,
+        } => {
+            let project = worktrees::resolve_project(config, project.as_deref())?;
+            let entry = worktrees::attach(config, &project, &path, name, slug)?;
+            persist_worktree(config, api, entry, json_output).await
+        }
+        WorktreeCommand::List { project, all } => {
+            let project_id = if all {
+                None
+            } else {
+                Some(worktrees::resolve_project(config, project.as_deref())?.id)
+            };
+            let entries: Vec<_> = config
+                .data()
+                .worktrees
+                .iter()
+                .filter(|entry| project_id.as_ref().is_none_or(|id| &entry.project_id == id))
+                .collect();
+            if json_output {
+                return emit(serde_json::to_value(entries)?);
+            }
+            if entries.is_empty() {
+                println!("No connected worktrees.");
+            }
+            for entry in entries {
+                let project = config
+                    .data()
+                    .projects
+                    .iter()
+                    .find(|project| project.id == entry.project_id)
+                    .map_or("removed", |project| project.slug.as_str());
+                println!(
+                    "{:<20} {:<18} {:<14} {}",
+                    entry.slug,
+                    project,
+                    format!("{:?}", entry.sync_state).to_lowercase(),
+                    entry.root.display()
+                );
+            }
+            Ok(())
+        }
+        WorktreeCommand::Detach { selector } => {
+            let mut entry = find_worktree(config, &selector)?;
+            entry.sync_state = WorktreeSyncState::Disabled;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            match api.remove_worktree(&entry.project_id, &entry.id).await {
+                Ok(_) => {
+                    config.remove_worktree(&entry.id);
+                    config.save()?;
+                    if json_output {
+                        emit(json!({ "worktree": entry, "outcome": "detached" }))
+                    } else {
+                        println!("Detached {}. The Git worktree was not changed.", entry.slug);
+                        Ok(())
+                    }
+                }
+                Err(error) => {
+                    entry.sync_state = WorktreeSyncState::PendingDelete;
+                    config.upsert_worktree(entry.clone());
+                    config.save()?;
+                    if json_output {
+                        emit(
+                            json!({ "worktree": entry, "outcome": "pendingDelete", "warning": error.to_string() }),
+                        )
+                    } else {
+                        println!(
+                            "Detached {} locally. Gateway deletion is pending; run `exeora sync`.",
+                            entry.slug
+                        );
+                        Ok(())
+                    }
+                }
+            }
+        }
+        WorktreeCommand::Remove {
+            selector,
+            force,
+            delete_branch,
+        } => {
+            let mut entry = find_worktree(config, &selector)?;
+            let project = config
+                .data()
+                .projects
+                .iter()
+                .find(|project| project.id == entry.project_id)
+                .cloned()
+                .context("The parent project is no longer registered")?;
+            if worktrees::is_dirty(&entry)? && !force {
+                bail!(
+                    "{} has uncommitted changes. Pass --force to remove it anyway.",
+                    entry.slug
+                );
+            }
+            entry.sync_state = WorktreeSyncState::Removing;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            if let Err(error) = worktrees::remove_git_worktree(&project, &entry, force) {
+                entry.sync_state = WorktreeSyncState::Active;
+                config.upsert_worktree(entry);
+                config.save()?;
+                return Err(error);
+            }
+            let branch = entry.branch.clone();
+            entry.sync_state = WorktreeSyncState::PendingDelete;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            let remote_removed = api
+                .remove_worktree(&entry.project_id, &entry.id)
+                .await
+                .is_ok();
+            if remote_removed {
+                config.remove_worktree(&entry.id);
+                config.save()?;
+            }
+            if delete_branch {
+                let branch = branch
+                    .context("The worktree was detached at HEAD, so it has no branch to delete")?;
+                worktrees::delete_branch(&project, &branch)?;
+            }
+            if json_output {
+                emit(
+                    json!({ "worktree": entry, "outcome": if remote_removed { "removed" } else { "pendingDelete" }, "branchDeleted": delete_branch }),
+                )
+            } else {
+                println!(
+                    "Removed {}.{}",
+                    entry.slug,
+                    if remote_removed {
+                        ""
+                    } else {
+                        " Gateway deletion is pending; run `exeora sync`."
+                    }
+                );
+                Ok(())
+            }
+        }
+    }
+}
+
+async fn persist_worktree(
+    config: &mut ConfigStore,
+    api: &ApiClient,
+    mut entry: WorktreeEntry,
+    json_output: bool,
+) -> Result<()> {
+    config.upsert_worktree(entry.clone());
+    config.save()?;
+    let outcome = match api.put_worktree(&entry.project_id, &entry).await {
+        Ok(_) => {
+            entry.sync_state = WorktreeSyncState::Active;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            "active"
+        }
+        Err(_) => "pendingUpsert",
+    };
+    if json_output {
+        emit(json!({ "worktree": entry, "outcome": outcome }))
+    } else {
+        println!(
+            "Connected {} at {}.{}",
+            entry.slug,
+            entry.root.display(),
+            if outcome == "active" {
+                ""
+            } else {
+                " Gateway sync is pending; run `exeora sync`."
+            }
+        );
+        Ok(())
+    }
+}
+
+fn find_worktree(config: &ConfigStore, selector: &str) -> Result<WorktreeEntry> {
+    if let Some(entry) = config
+        .data()
+        .worktrees
+        .iter()
+        .find(|entry| entry.id == selector)
+    {
+        return Ok(entry.clone());
+    }
+    let matches: Vec<_> = config
+        .data()
+        .worktrees
+        .iter()
+        .filter(|entry| entry.slug.eq_ignore_ascii_case(selector))
+        .cloned()
+        .collect();
+    match matches.as_slice() {
+        [] => Err(anyhow!("No worktree called {selector} on this machine.")),
+        [entry] => Ok(entry.clone()),
+        _ => bail!(
+            "Several projects have a worktree called {selector}. Use its wtr_ id from `exeora worktree list --all`."
+        ),
     }
 }
 
@@ -565,6 +924,14 @@ async fn logs_command(api: &ApiClient, args: LogsArgs, json_output: bool) -> Res
                         .get(call.project_id.as_str())
                         .is_some_and(|entry| entry.slug.eq_ignore_ascii_case(slug))
                 })
+                && args.worktree.as_ref().is_none_or(|selector| {
+                    call.worktree_id.as_deref() == Some(selector)
+                        || call
+                            .worktree_slug
+                            .as_deref()
+                            .is_some_and(|slug| slug.eq_ignore_ascii_case(selector))
+                        || (selector.eq_ignore_ascii_case("main") && call.worktree_id.is_none())
+                })
                 && args.client.as_ref().is_none_or(|name| {
                     client_name(call)
                         .to_lowercase()
@@ -590,12 +957,13 @@ async fn logs_command(api: &ApiClient, args: LogsArgs, json_output: bool) -> Res
     }
     for call in rows.iter().rev() {
         println!(
-            "{} {:<12} {:<16} {:<20} {}ms",
+            "{} {:<12} {:<16} {:<16} {:<20} {}ms",
             if call.status == "ok" { "✓" } else { "✗" },
             call.tool,
             by_id
                 .get(call.project_id.as_str())
                 .map_or("removed", |entry| entry.slug.as_str()),
+            call.worktree_slug.as_deref().unwrap_or("main"),
             client_name(call),
             call.duration_ms
         );
@@ -699,12 +1067,67 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
             root: PathBuf::from(entry.local_path),
         })
         .collect();
-    if next == config.data().projects {
-        println!("Already up to date.");
-    } else {
+    let projects_changed = next != config.data().projects;
+    if projects_changed {
         config.data_mut().projects = next;
         config.save()?;
-        println!("Updated local projects from the gateway.");
+    }
+    let pending = config.data().worktrees.clone();
+    let mut synced = 0usize;
+    let mut recovered = 0usize;
+    for mut entry in pending {
+        match entry.sync_state {
+            WorktreeSyncState::PendingUpsert => {
+                if api.put_worktree(&entry.project_id, &entry).await.is_ok() {
+                    entry.sync_state = WorktreeSyncState::Active;
+                    config.upsert_worktree(entry);
+                    synced += 1;
+                }
+            }
+            WorktreeSyncState::PendingDelete | WorktreeSyncState::Disabled => {
+                if api
+                    .remove_worktree(&entry.project_id, &entry.id)
+                    .await
+                    .is_ok()
+                {
+                    config.remove_worktree(&entry.id);
+                    synced += 1;
+                }
+            }
+            WorktreeSyncState::Removing => {
+                recovered += 1;
+                if entry.git_root.exists() {
+                    // The process stopped before Git removed the worktree. Make
+                    // it routable again instead of leaving it permanently
+                    // hidden behind the transient Removing state.
+                    entry.sync_state = WorktreeSyncState::Active;
+                    config.upsert_worktree(entry);
+                } else {
+                    // Git removal completed, but the process stopped before the
+                    // gateway deletion. Resume that half of the operation.
+                    entry.sync_state = WorktreeSyncState::PendingDelete;
+                    if api
+                        .remove_worktree(&entry.project_id, &entry.id)
+                        .await
+                        .is_ok()
+                    {
+                        config.remove_worktree(&entry.id);
+                        synced += 1;
+                    } else {
+                        config.upsert_worktree(entry);
+                    }
+                }
+            }
+            WorktreeSyncState::Active => {}
+        }
+    }
+    config.save()?;
+    if projects_changed || synced > 0 || recovered > 0 {
+        println!(
+            "Synchronized projects and {synced} pending worktrees with the gateway; recovered {recovered} interrupted removals."
+        );
+    } else {
+        println!("Already up to date.");
     }
     Ok(())
 }

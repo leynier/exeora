@@ -47,11 +47,17 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
   if (method === "GET") {
     return (
       ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path) ||
+      /^\/api\/projects\/[^/]+\/worktrees$/.test(path) ||
       /^\/api\/relay\/[^/]+$/.test(path)
     );
   }
   if (method === "POST") return path === "/api/devices" || path === "/api/projects";
-  return method === "DELETE" && /^\/api\/projects\/[^/]+$/.test(path);
+  if (method === "PUT") return /^\/api\/projects\/[^/]+\/worktrees\/[^/]+$/.test(path);
+  return (
+    method === "DELETE" &&
+    (/^\/api\/projects\/[^/]+$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/worktrees\/[^/]+$/.test(path))
+  );
 }
 
 /**

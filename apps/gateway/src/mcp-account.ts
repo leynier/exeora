@@ -6,6 +6,7 @@ import {
   serverInstructions,
   TOOL_DEFINITIONS,
   type ToolName,
+  WorktreeRef,
 } from "@exeora/protocol";
 import { McpServer, type ServerContext } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
@@ -47,8 +48,11 @@ export interface AccountCall {
    * omission only when the connection reaches exactly one project.
    */
   project: string | undefined;
+  /** Optional worktree selector for this call; omitted means the project's main root. */
+  worktree?: string | undefined;
   /** The project an approval on this round was given for, if any. */
   approvedProjectId: string | undefined;
+  approvedWorktreeId?: string | undefined;
   canElicit: boolean;
 }
 
@@ -60,7 +64,7 @@ export type AccountDispatchResult =
    * the person being asked has to be told, in words, which project the call
    * would land in. The dispatcher is the only side that knows either.
    */
-  | { kind: "needs-approval"; projectId: string; project: string };
+  | { kind: "needs-approval"; projectId: string; project: string; worktreeId?: string };
 
 /** Runs one of the ten tools, wherever the account endpoint decides that is. */
 export type AccountDispatcher = (
@@ -89,6 +93,12 @@ const projectArg = {
       "than one project; omit only when it reaches exactly one.",
   ),
 };
+const routingArgs = {
+  ...projectArg,
+  worktree: WorktreeRef.optional().describe(
+    "Run this call in a connected Git worktree by slug or id. Omit it, or use main, for the project root.",
+  ),
+};
 
 export function createAccountMcpHandler(
   dispatch: AccountDispatcher,
@@ -96,7 +106,7 @@ export function createAccountMcpHandler(
   env: Pick<Env, "REQUEST_STATE_SECRET">,
   /**
    * The executor tools to advertise, or undefined to offer them all. The
-   * project-list tool is always offered so a caller can name a target.
+   * gateway-only list tools are always offered so a caller can name a target.
    */
   advertised?: ReadonlySet<ToolName>,
 ) {
@@ -128,7 +138,7 @@ export function createAccountMcpHandler(
        */
       const run = async (tool: ToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
-        const { project, rest } = splitProject(args);
+        const { project, worktree, rest } = splitRouting(args);
         const approval = await approvalFor(ctx, tool, args);
 
         const result = await dispatch(
@@ -140,7 +150,9 @@ export function createAccountMcpHandler(
               mcp: mcpClientInfo(ctx),
             },
             project,
+            worktree,
             approvedProjectId: approval?.projectId,
+            approvedWorktreeId: approval?.worktreeId,
             canElicit: request.era === "modern",
           },
           tool,
@@ -159,7 +171,15 @@ export function createAccountMcpHandler(
           // included, because that is what the next round will carry and what
           // the hash has to match. The question names the project as well: this
           // URL reaches several, and the arguments alone do not say which.
-          return askToConfirm(codec, ctx, result.projectId, tool, args, result.project);
+          return askToConfirm(
+            codec,
+            ctx,
+            result.projectId,
+            tool,
+            args,
+            result.project,
+            result.worktreeId,
+          );
         }
 
         return toolResult(result.value);
@@ -201,6 +221,14 @@ export function createAccountMcpHandler(
       });
 
       server.registerTool(
+        "list_worktrees",
+        {
+          ...manageMeta("list_worktrees"),
+          inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.inputSchema,
+        },
+        (args, ctx) => manage("list_worktrees", args, ctx),
+      );
+      server.registerTool(
         "list_projects",
         {
           ...manageMeta("list_projects"),
@@ -213,7 +241,7 @@ export function createAccountMcpHandler(
           "read_file",
           {
             ...meta("read_file"),
-            inputSchema: TOOL_DEFINITIONS.read_file.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.read_file.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("read_file", args, ctx),
         );
@@ -223,7 +251,7 @@ export function createAccountMcpHandler(
           "list_files",
           {
             ...meta("list_files"),
-            inputSchema: TOOL_DEFINITIONS.list_files.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.list_files.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("list_files", args, ctx),
         );
@@ -231,7 +259,7 @@ export function createAccountMcpHandler(
       if (offers("grep")) {
         server.registerTool(
           "grep",
-          { ...meta("grep"), inputSchema: TOOL_DEFINITIONS.grep.inputSchema.extend(projectArg) },
+          { ...meta("grep"), inputSchema: TOOL_DEFINITIONS.grep.inputSchema.extend(routingArgs) },
           (args, ctx) => run("grep", args, ctx),
         );
       }
@@ -240,7 +268,7 @@ export function createAccountMcpHandler(
           "edit_file",
           {
             ...meta("edit_file"),
-            inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("edit_file", args, ctx),
         );
@@ -250,7 +278,7 @@ export function createAccountMcpHandler(
           "write_file",
           {
             ...meta("write_file"),
-            inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("write_file", args, ctx),
         );
@@ -260,7 +288,7 @@ export function createAccountMcpHandler(
           "run_command",
           {
             ...meta("run_command"),
-            inputSchema: TOOL_DEFINITIONS.run_command.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.run_command.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("run_command", args, ctx),
         );
@@ -270,7 +298,7 @@ export function createAccountMcpHandler(
           "start_command",
           {
             ...meta("start_command"),
-            inputSchema: TOOL_DEFINITIONS.start_command.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.start_command.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("start_command", args, ctx),
         );
@@ -280,7 +308,7 @@ export function createAccountMcpHandler(
           "get_command_output",
           {
             ...meta("get_command_output"),
-            inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("get_command_output", args, ctx),
         );
@@ -290,7 +318,7 @@ export function createAccountMcpHandler(
           "send_command_input",
           {
             ...meta("send_command_input"),
-            inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("send_command_input", args, ctx),
         );
@@ -300,7 +328,7 @@ export function createAccountMcpHandler(
           "kill_command",
           {
             ...meta("kill_command"),
-            inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema.extend(projectArg),
+            inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("kill_command", args, ctx),
         );
@@ -312,10 +340,20 @@ export function createAccountMcpHandler(
   );
 }
 
-/** Lifts `project` out of the arguments, leaving what the executor expects. */
-function splitProject(args: unknown): { project: string | undefined; rest: unknown } {
-  if (!args || typeof args !== "object") return { project: undefined, rest: args };
+/** Lifts gateway-only routing fields out, leaving the canonical executor input. */
+function splitRouting(args: unknown): {
+  project: string | undefined;
+  worktree: string | undefined;
+  rest: unknown;
+} {
+  if (!args || typeof args !== "object") {
+    return { project: undefined, worktree: undefined, rest: args };
+  }
 
-  const { project, ...rest } = args as Record<string, unknown>;
-  return { project: typeof project === "string" ? project : undefined, rest };
+  const { project, worktree, ...rest } = args as Record<string, unknown>;
+  return {
+    project: typeof project === "string" ? project : undefined,
+    worktree: typeof worktree === "string" ? worktree : undefined,
+    rest,
+  };
 }

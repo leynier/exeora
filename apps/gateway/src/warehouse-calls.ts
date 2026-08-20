@@ -1,5 +1,6 @@
 import "./env.js";
 import {
+  auditSource,
   epochMsWithin,
   runQuery,
   sqlString,
@@ -24,6 +25,8 @@ import {
 export interface WarehouseCall {
   id: string;
   projectId: string;
+  worktreeId: string | null;
+  worktreeSlug: string | null;
   tool: string;
   status: "ok" | "error";
   durationMs: number;
@@ -47,11 +50,13 @@ export async function queryWarehouseCalls(
     | "AUDIT_R2_WAREHOUSE"
     | "AUDIT_R2_SQL_TOKEN"
     | "AUDIT_R2_TABLE"
+    | "AUDIT_R2_LEGACY_TABLE"
     | "AUDIT_WAREHOUSE_START_DAY"
   >,
   filter: {
     userId: string;
     projectId?: string | undefined;
+    worktreeId?: string | undefined;
     status?: "ok" | "error" | undefined;
     clientId?: string | undefined;
     cursor?: { createdAt: number; id: string } | undefined;
@@ -68,6 +73,7 @@ export async function queryWarehouseCalls(
   // is a fact about today's call sites, not about this function.
   const conditions = [`user_id = ${sqlString(filter.userId)}`];
   if (filter.projectId) conditions.push(`project_id = ${sqlString(filter.projectId)}`);
+  if (filter.worktreeId) conditions.push(`worktree_id = ${sqlString(filter.worktreeId)}`);
   if (filter.status) conditions.push(`status = ${sqlString(filter.status)}`);
   if (filter.clientId) conditions.push(`client_id = ${sqlString(filter.clientId)}`);
 
@@ -88,10 +94,10 @@ export async function queryWarehouseCalls(
 
   // One more than the page, so the caller learns whether a next page exists
   // without a second, separately billed query.
-  const query = `SELECT id, project_id, tool, status, duration_ms, error_code, client_id, client_name, created_at
-	FROM ${config.table}
+  const query = `SELECT id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, created_at
+	FROM ${auditSource(config, true)}
 	WHERE ${conditions.join("\n  AND ")}
-	GROUP BY id, project_id, tool, status, duration_ms, error_code, client_id, client_name, created_at
+	GROUP BY id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, created_at
 	ORDER BY created_at DESC, id DESC
 LIMIT ${filter.pageSize + 1}`;
 
@@ -127,6 +133,8 @@ function toCall(row: Record<string, unknown>, from: number, to: number): Warehou
   return {
     id,
     projectId,
+    worktreeId: optionalString(row.worktree_id),
+    worktreeSlug: optionalString(row.worktree_slug),
     tool,
     status,
     durationMs,

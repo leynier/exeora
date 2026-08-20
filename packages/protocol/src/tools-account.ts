@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * The three tools that exist only on the account endpoint, `exeora.dev/mcp`.
+ * The tools that exist only on the account endpoint, `exeora.dev/mcp`.
  *
  * A per-project URL carries its project in the path, so there is nothing here
  * for it to say: naming a project would be the one thing that endpoint refuses
@@ -19,6 +19,13 @@ export const ProjectRef = z
   .min(1)
   .describe("The project's slug, or its id. Slugs are unique within an account.");
 
+export const WorktreeRef = z
+  .string()
+  .min(1)
+  .describe(
+    "A connected worktree's slug or stable id. Use main, or omit it, for the project root.",
+  );
+
 export const ProjectSummary = z.object({
   slug: z.string(),
   name: z.string(),
@@ -34,7 +41,28 @@ export const ListProjectsOutput = z.object({
   projects: z.array(ProjectSummary),
 });
 
+export const ListWorktreesInput = z.object({ project: ProjectRef.optional() });
+export const ListWorktreesOutput = z.object({
+  project: z.string(),
+  worktrees: z.array(
+    z.object({
+      slug: z.string(),
+      name: z.string(),
+      branch: z.string().nullable(),
+      managed: z.boolean(),
+    }),
+  ),
+});
+
 export const ACCOUNT_TOOL_DEFINITIONS = {
+  list_worktrees: {
+    title: "List worktrees",
+    description:
+      "List the Git worktrees connected under a project. Pass a project slug or id when this connection reaches more than one project.",
+    inputSchema: ListWorktreesInput,
+    outputSchema: ListWorktreesOutput,
+    readOnly: true,
+  },
   list_projects: {
     title: "List projects",
     description:

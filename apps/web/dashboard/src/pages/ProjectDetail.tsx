@@ -14,7 +14,7 @@ import {
   StatusDot,
 } from "../components/ui.js";
 import { formatDate, formatDuration } from "../format.js";
-import { useClients, useDevices, useProjects, useToolCalls } from "../queries.js";
+import { useClients, useDevices, useProjects, useToolCalls, useWorktrees } from "../queries.js";
 
 /**
  * One project: where to point a client, which machine serves it, and what has
@@ -28,10 +28,17 @@ export function ProjectDetail() {
   // Narrowed by the server, so this is the project's most recent calls rather
   // than whichever of them happen to fall inside the account's most recent.
   const calls = useToolCalls(projectId ? { projectId } : {});
+  const worktrees = useWorktrees(projectId);
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
 
-  if (projects.isError || devices.isError || clients.isError || calls.isError) {
+  if (
+    projects.isError ||
+    devices.isError ||
+    clients.isError ||
+    calls.isError ||
+    worktrees.isError
+  ) {
     return <PageHeader title="Project" subtitle="Project data is temporarily unavailable." />;
   }
 
@@ -106,6 +113,34 @@ export function ProjectDetail() {
         <CommandPolicyCard project={project} />
       </div>
 
+      <div className="mt-6">
+        <Card title="Connected worktrees">
+          {(worktrees.data ?? []).length === 0 ? (
+            <EmptyState title="No worktrees connected">
+              Create one with <code className="font-mono">exeora worktree create</code> or attach an
+              existing Git worktree.
+            </EmptyState>
+          ) : (
+            <Divided>
+              {(worktrees.data ?? []).map((worktree) => (
+                <Row key={worktree.id}>
+                  <div className="min-w-0">
+                    <p className="text-title-md truncate">{worktree.name}</p>
+                    <p className="text-body-md text-foreground-faint truncate font-mono">
+                      {worktree.slug}
+                      {worktree.branch ? ` · ${worktree.branch}` : " · detached HEAD"}
+                    </p>
+                  </div>
+                  <Badge tone={worktree.managed ? "success" : "neutral"}>
+                    {worktree.managed ? "managed" : "attached"}
+                  </Badge>
+                </Row>
+              ))}
+            </Divided>
+          )}
+        </Card>
+      </div>
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[20rem_1fr]">
         {/* `self-start` so it keeps its own height instead of stretching to
             match however long the activity list happens to be. */}
@@ -159,6 +194,9 @@ export function ProjectDetail() {
                   <div className="flex min-w-0 items-center gap-3">
                     <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
                     <code className="text-body-md truncate font-mono">{call.tool}</code>
+                    <span className="text-body-md text-foreground-faint truncate font-mono">
+                      {call.worktreeSlug ?? "main"}
+                    </span>
                     {call.errorCode && (
                       <span className="text-body-md text-error truncate">{call.errorCode}</span>
                     )}

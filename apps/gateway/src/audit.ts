@@ -5,9 +5,7 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import { newId } from "./ids.js";
 
-/** Versioned record written to the durable analytics stream. */
-export interface AuditEvent extends Record<string, unknown> {
-  schema_version: 1;
+interface AuditEventBase extends Record<string, unknown> {
   id: string;
   user_id: string;
   project_id: string;
@@ -21,12 +19,24 @@ export interface AuditEvent extends Record<string, unknown> {
   created_at: string;
 }
 
+/** Versioned record written to the durable analytics stream. */
+export type AuditEvent =
+  | (AuditEventBase & { schema_version: 1 })
+  | (AuditEventBase & {
+      schema_version: 2;
+      worktree_id?: string;
+      worktree_slug?: string;
+    });
+
 export interface AuditHandle {
   id: string;
   startedAt: number;
 }
 
-type AuditEnv = Pick<Env, "DB"> & { AUDIT_STREAM?: Env["AUDIT_STREAM"] };
+type AuditEnv = Pick<Env, "DB"> & {
+  AUDIT_STREAM?: Env["AUDIT_STREAM"];
+  AUDIT_SCHEMA_VERSION?: string;
+};
 
 const DELIVERY_BATCH = 25;
 const LEASE_MS = 60_000;
@@ -45,6 +55,8 @@ export async function beginAudit(
   entry: {
     userId: string;
     projectId: string;
+    worktreeId?: string;
+    worktreeSlug?: string;
     tool: string;
     endpoint: "project" | "account";
     caller: CallerIdentity;
@@ -60,6 +72,8 @@ export async function beginAudit(
       id,
       userId: entry.userId,
       projectId: entry.projectId,
+      worktreeId: entry.worktreeId,
+      worktreeSlug: entry.worktreeSlug,
       tool: entry.tool,
       endpoint: entry.endpoint,
       clientId: entry.caller.clientId,
@@ -105,6 +119,7 @@ export async function finishAudit(
  * and warehouse reads deduplicate that id.
  */
 export async function flushAuditOutbox(env: AuditEnv): Promise<number> {
+  const schemaVersion = auditSchemaVersion(env);
   const now = Date.now();
   const leaseToken = newId("lsh");
   const claimed = await env.DB.prepare(
@@ -121,7 +136,7 @@ export async function flushAuditOutbox(env: AuditEnv): Promise<number> {
         ORDER BY ready_at, id
         LIMIT ?4
      )
-     RETURNING id, user_id, project_id, tool, status, duration_ms, error_code,
+     RETURNING id, user_id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code,
                client_id, client_name, endpoint, created_at, attempts`,
   )
     .bind(leaseToken, now + LEASE_MS, now, DELIVERY_BATCH)
@@ -129,7 +144,7 @@ export async function flushAuditOutbox(env: AuditEnv): Promise<number> {
 
   if (claimed.results.length === 0) return 0;
 
-  const events = claimed.results.map(eventFromOutbox);
+  const events = claimed.results.map((row) => eventFromOutbox(row, schemaVersion));
   try {
     if (!env.AUDIT_STREAM) throw new Error("AUDIT_STREAM is not configured");
     await env.AUDIT_STREAM.send(events);
@@ -209,6 +224,8 @@ export function auditEvent(
   entry: {
     userId: string;
     projectId: string;
+    worktreeId?: string;
+    worktreeSlug?: string;
     tool: string;
     status: "ok" | "error";
     durationMs: number;
@@ -216,13 +233,16 @@ export function auditEvent(
     endpoint?: "project" | "account";
     caller: CallerIdentity;
   },
+  schemaVersion: 1 | 2 = 1,
 ): AuditEvent {
   const clientName = entry.caller.clientName ?? entry.caller.mcp?.name;
   return {
-    schema_version: 1,
+    schema_version: schemaVersion,
     id,
     user_id: entry.userId,
     project_id: entry.projectId,
+    ...(schemaVersion === 2 && entry.worktreeId ? { worktree_id: entry.worktreeId } : {}),
+    ...(schemaVersion === 2 && entry.worktreeSlug ? { worktree_slug: entry.worktreeSlug } : {}),
     tool: entry.tool,
     status: entry.status,
     duration_ms: entry.durationMs,
@@ -238,6 +258,8 @@ interface OutboxRow {
   id: string;
   user_id: string;
   project_id: string;
+  worktree_id: string | null;
+  worktree_slug: string | null;
   tool: string;
   status: "ok" | "error";
   duration_ms: number;
@@ -249,12 +271,14 @@ interface OutboxRow {
   attempts: number;
 }
 
-function eventFromOutbox(row: OutboxRow): AuditEvent {
+function eventFromOutbox(row: OutboxRow, schemaVersion: 1 | 2): AuditEvent {
   return {
-    schema_version: 1,
+    schema_version: schemaVersion,
     id: row.id,
     user_id: row.user_id,
     project_id: row.project_id,
+    ...(schemaVersion === 2 && row.worktree_id ? { worktree_id: row.worktree_id } : {}),
+    ...(schemaVersion === 2 && row.worktree_slug ? { worktree_slug: row.worktree_slug } : {}),
     tool: row.tool,
     status: row.status,
     duration_ms: row.duration_ms,
@@ -264,6 +288,12 @@ function eventFromOutbox(row: OutboxRow): AuditEvent {
     endpoint: row.endpoint,
     created_at: new Date(row.created_at).toISOString(),
   };
+}
+
+function auditSchemaVersion(env: Pick<AuditEnv, "AUDIT_SCHEMA_VERSION">): 1 | 2 {
+  const configured = env.AUDIT_SCHEMA_VERSION ?? "1";
+  if (configured === "1" || configured === "2") return Number(configured) as 1 | 2;
+  throw new Error("AUDIT_SCHEMA_VERSION must be 1 or 2");
 }
 
 function retryDelay(attempts: number): number {

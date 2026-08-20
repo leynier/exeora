@@ -65,9 +65,23 @@ export interface Project {
   createdAt: number;
 }
 
+export interface Worktree {
+  id: string;
+  projectId: string;
+  slug: string;
+  name: string;
+  branch: string | null;
+  localPath: string;
+  managed: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ToolCall {
   id: string;
   projectId: string;
+  worktreeId: string | null;
+  worktreeSlug: string | null;
   tool: string;
   status: "ok" | "error";
   durationMs: number;
@@ -249,6 +263,7 @@ function apiError(body: Record<string, unknown> | null): string {
  */
 export interface ToolCallFilters {
   projectId?: string;
+  worktreeId?: string;
   status?: "ok" | "error";
   clientId?: string;
 }
@@ -271,6 +286,8 @@ export interface Approval {
   deviceId: string;
   deviceName: string;
   projectId: string;
+  worktreeId?: string;
+  worktreeSlug?: string;
   tool: string;
   /** Already written for a person: "Run `npm test`?" */
   prompt: string;
@@ -286,10 +303,12 @@ export const api = {
   me: () => request<User>("/api/me"),
   devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
+  worktrees: (projectId: string) => request<Worktree[]>(`/api/projects/${projectId}/worktrees`),
 
   toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
     const query = new URLSearchParams();
     if (filters.projectId) query.set("projectId", filters.projectId);
+    if (filters.worktreeId) query.set("worktreeId", filters.worktreeId);
     if (filters.status) query.set("status", filters.status);
     if (filters.clientId) query.set("clientId", filters.clientId);
     if (cursor) query.set("cursor", cursor);

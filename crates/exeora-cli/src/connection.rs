@@ -2,7 +2,7 @@ use crate::{
     CLI_VERSION,
     api::ApiClient,
     auth::AuthManager,
-    config::{ConfigStore, ProjectEntry},
+    config::{ConfigStore, ProjectEntry, WorktreeSyncState},
     error::{ErrorCode, ExeoraError},
     policy::{CommandPolicy, effective_policy, policy_allows},
     protocol::{
@@ -14,7 +14,12 @@ use crate::{
 use anyhow::{Context, Result, anyhow};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::sync::{Mutex, mpsc};
 use tokio_tungstenite::{
     connect_async,
@@ -23,7 +28,12 @@ use tokio_tungstenite::{
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-type InFlight = Arc<Mutex<HashMap<String, CancellationToken>>>;
+struct ActiveCall {
+    cancel: CancellationToken,
+    root: PathBuf,
+}
+
+type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
 
 pub async fn connect_forever(
     config: &ConfigStore,
@@ -35,13 +45,7 @@ pub async fn connect_forever(
 ) -> Result<()> {
     let _awake = acquire_keep_awake(json_output);
     let engine = Arc::new(ToolEngine::new()?);
-    let project_map: Arc<HashMap<String, ProjectEntry>> = Arc::new(
-        projects
-            .iter()
-            .cloned()
-            .map(|project| (project.id.clone(), project))
-            .collect(),
-    );
+    let config_path = config.path().to_path_buf();
     let gateway = config.gateway_url();
     let mut delay = Duration::from_secs(1);
     let stop = CancellationToken::new();
@@ -59,7 +63,7 @@ pub async fn connect_forever(
             &gateway,
             &device_id,
             &projects,
-            project_map.clone(),
+            config_path.clone(),
             auth.clone(),
             engine.clone(),
             stop.clone(),
@@ -181,7 +185,7 @@ async fn connect_once(
     gateway: &str,
     device_id: &str,
     projects: &[ProjectEntry],
-    project_map: Arc<HashMap<String, ProjectEntry>>,
+    config_path: PathBuf,
     auth: Arc<AuthManager>,
     engine: Arc<ToolEngine>,
     stop: CancellationToken,
@@ -215,7 +219,7 @@ async fn connect_once(
         "type": "hello", "protocolVersion": PROTOCOL_VERSION, "deviceId": device_id,
         "cliVersion": CLI_VERSION, "platform": platform(),
         "projects": projects.iter().map(|project| json!({ "id": project.id, "slug": project.slug })).collect::<Vec<_>>(),
-        "capabilities": { "prompt": can_prompt, "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>() },
+        "capabilities": { "prompt": can_prompt, "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(), "worktreeRouting": true },
     }))?.into())).await?;
     emit_event(json_output, "open", json!({}));
     if !json_output {
@@ -229,6 +233,9 @@ async fn connect_once(
     let mut heartbeat_auto = false;
     let mut last_ack = now_ms();
     let mut last_presence = now_ms();
+    let mut roots_tick = tokio::time::interval(Duration::from_secs(1));
+    roots_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut known_roots = served_roots(&config_path);
 
     loop {
         tokio::select! {
@@ -273,8 +280,8 @@ async fn connect_once(
                             }
                             Some("cancel") => {
                                 if let Some(id) = message.get("requestId").and_then(Value::as_str)
-                                    && let Some(token) = in_flight.lock().await.get(id) {
-                                    token.cancel();
+                                    && let Some(call) = in_flight.lock().await.get(id) {
+                                    call.cancel.cancel();
                                 }
                             }
                             Some("approval.request") => {
@@ -289,7 +296,7 @@ async fn connect_once(
                                 return Ok(ConnectOutcome::Rejected(reason.to_owned()));
                             }
                             Some("tool.call") => {
-                                spawn_tool_call(message, project_map.clone(), engine.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                                spawn_tool_call(message, config_path.clone(), engine.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             _ => {}
                         }
@@ -305,6 +312,9 @@ async fn connect_once(
                     _ => {}
                 }
             }
+            _ = roots_tick.tick() => {
+                reconcile_roots(&config_path, &engine, &in_flight, &mut known_roots).await;
+            }
         }
     }
     cancel_all(&in_flight).await;
@@ -314,7 +324,7 @@ async fn connect_once(
 
 async fn spawn_tool_call(
     message: Value,
-    projects: Arc<HashMap<String, ProjectEntry>>,
+    config_path: PathBuf,
     engine: Arc<ToolEngine>,
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
@@ -349,13 +359,44 @@ async fn spawn_tool_call(
         );
         return;
     }
-    let Some(project) = projects.get(project_id).cloned() else {
+    let Ok(config) = ConfigStore::load_from(config_path) else {
+        send_error(
+            ErrorCode::InternalError,
+            "Could not reload the local Exeora configuration.",
+        );
+        return;
+    };
+    let Some(project) = config.find_project(project_id).cloned() else {
         send_error(
             ErrorCode::UnknownProject,
             "This machine does not serve that project. Run `exeora project add` there.",
         );
         return;
     };
+    let (root, worktree_slug) =
+        if let Some(worktree_id) = message.get("worktreeId").and_then(Value::as_str) {
+            let Some(worktree) = config.data().worktrees.iter().find(|entry| {
+                entry.id == worktree_id
+                    && entry.project_id == project.id
+                    && entry.sync_state == WorktreeSyncState::Active
+            }) else {
+                send_error(
+                    ErrorCode::WorktreeUnavailable,
+                    "That worktree is no longer connected or available on this machine.",
+                );
+                return;
+            };
+            if !worktree.root.is_dir() {
+                send_error(
+                    ErrorCode::WorktreeUnavailable,
+                    "That worktree is registered but its directory is unavailable.",
+                );
+                return;
+            }
+            (worktree.root.clone(), Some(worktree.slug.clone()))
+        } else {
+            (project.root.clone(), None)
+        };
     let Some(tool_name) = message
         .get("tool")
         .and_then(Value::as_str)
@@ -376,7 +417,7 @@ async fn spawn_tool_call(
         .get("policy")
         .cloned()
         .and_then(|value| serde_json::from_value::<CommandPolicy>(value).ok());
-    let (policy, problem) = effective_policy(&project.root, remote);
+    let (policy, problem) = effective_policy(&root, remote);
     if let Some(problem) = problem {
         emit_event(json_output, "error", json!({ "message": problem }));
     }
@@ -393,20 +434,29 @@ async fn spawn_tool_call(
     }
 
     let cancel = CancellationToken::new();
-    in_flight
-        .lock()
-        .await
-        .insert(request_id.clone(), cancel.clone());
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: root.clone(),
+        },
+    );
     emit_event(
         json_output,
         "call",
-        json!({ "tool": tool_name, "project": project.slug, "client": describe_client(message.get("client")) }),
+        json!({ "tool": tool_name, "project": project.slug, "worktree": worktree_slug, "client": describe_client(message.get("client")) }),
     );
     if !json_output {
-        println!("→ {tool_name} ({})", project.slug);
+        println!(
+            "→ {tool_name} ({}/{})",
+            project.slug,
+            worktree_slug.as_deref().unwrap_or("main")
+        );
     }
     tokio::spawn(async move {
-        let result = engine.execute(&project.root, tool, arguments, cancel).await;
+        let result = engine
+            .execute_for_project(&root, &project.id, tool, arguments, cancel)
+            .await;
         in_flight.lock().await.remove(&request_id);
         let elapsed = now_ms().saturating_sub(started);
         let frame = result_frame(&request_id, started, result);
@@ -483,10 +533,65 @@ fn result_frame(request_id: &str, started: u64, result: Result<Value, ExeoraErro
 
 async fn cancel_all(in_flight: &InFlight) {
     let mut calls = in_flight.lock().await;
-    for token in calls.values() {
-        token.cancel();
+    for call in calls.values() {
+        call.cancel.cancel();
     }
     calls.clear();
+}
+
+fn served_roots(config_path: &std::path::Path) -> HashSet<PathBuf> {
+    let Ok(config) = ConfigStore::load_from(config_path.to_path_buf()) else {
+        return HashSet::new();
+    };
+    let mut allowed: HashSet<PathBuf> = config
+        .data()
+        .projects
+        .iter()
+        .filter_map(|entry| std::fs::canonicalize(&entry.root).ok())
+        .collect();
+    allowed.extend(
+        config
+            .data()
+            .worktrees
+            .iter()
+            .filter(|entry| entry.sync_state == WorktreeSyncState::Active)
+            .filter_map(|entry| std::fs::canonicalize(&entry.root).ok()),
+    );
+    allowed
+}
+
+async fn reconcile_roots(
+    config_path: &std::path::Path,
+    engine: &ToolEngine,
+    in_flight: &InFlight,
+    known_roots: &mut HashSet<PathBuf>,
+) {
+    let allowed = served_roots(config_path);
+    let mut removed: HashSet<PathBuf> = known_roots.difference(&allowed).cloned().collect();
+    removed.extend({
+        let calls = in_flight.lock().await;
+        calls
+            .values()
+            .map(|call| std::fs::canonicalize(&call.root).unwrap_or_else(|_| call.root.clone()))
+            .filter(|root| !allowed.contains(root))
+            .collect::<Vec<_>>()
+    });
+    *known_roots = allowed;
+    if removed.is_empty() {
+        return;
+    }
+    {
+        let calls = in_flight.lock().await;
+        for call in calls.values() {
+            let root = std::fs::canonicalize(&call.root).unwrap_or_else(|_| call.root.clone());
+            if removed.contains(&root) {
+                call.cancel.cancel();
+            }
+        }
+    }
+    for root in removed {
+        engine.kill_root(&root).await;
+    }
 }
 
 fn describe_client(value: Option<&Value>) -> Option<String> {

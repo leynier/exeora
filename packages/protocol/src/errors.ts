@@ -28,6 +28,10 @@ export const ERROR_CODES = [
   "UNKNOWN_TOOL",
   /** The project id is not registered on this executor. */
   "UNKNOWN_PROJECT",
+  /** The requested worktree is not registered under the resolved project. */
+  "UNKNOWN_WORKTREE",
+  /** The worktree exists but this connected executor cannot currently serve it. */
+  "WORKTREE_UNAVAILABLE",
   /** Reserved for protocol-v1 compatibility; the gateway no longer emits it. */
   "NO_ACTIVE_PROJECT",
   /** The caller is authenticated but not allowed to reach this project. */

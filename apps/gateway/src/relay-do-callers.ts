@@ -25,6 +25,8 @@ export interface ApprovalView {
   id: string;
   deviceId: string;
   projectId: string;
+  worktreeId?: string;
+  worktreeSlug?: string;
   tool: ToolName;
   prompt: string;
   clientName?: string;
@@ -64,7 +66,10 @@ export function callerTag(role: "tool" | "approval", id: string): string {
   return `${role}:${id}`;
 }
 
-export function relayError(code: "TOOL_TIMEOUT", message: string): CallerResponse {
+export function relayError(
+  code: "TOOL_TIMEOUT" | "WORKTREE_UNAVAILABLE",
+  message: string,
+): CallerResponse {
   return { type: "error", error: { code, message } };
 }
 

@@ -4,6 +4,7 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import {
   addUtcDays,
+  auditSource,
   epochMsWithin,
   R2_SQL_PAGE_SIZE,
   runQuery,
@@ -59,11 +60,18 @@ export async function rollupUsageDailyFromWarehouse(
   const source = sourceKey(config);
   const now = options.now ?? new Date();
   const yesterday = addUtcDays(utcDay(now), -1);
-  const checkpoint = await db(env)
+  let checkpoint = await db(env)
     .select({ day: schema.usageRollupState.lastCompleteDay })
     .from(schema.usageRollupState)
     .where(eq(schema.usageRollupState.source, source))
     .get();
+  if (!checkpoint && config.legacyTable) {
+    checkpoint = await db(env)
+      .select({ day: schema.usageRollupState.lastCompleteDay })
+      .from(schema.usageRollupState)
+      .where(eq(schema.usageRollupState.source, legacySourceKey(config)))
+      .get();
+  }
 
   const days = daysToProcess(config.startDay, checkpoint?.day, yesterday);
   let rowsWritten = 0;
@@ -134,11 +142,18 @@ export async function warehouseRollupStatus(
 ): Promise<WarehouseRollupStatus> {
   const config = options.config ?? warehouseConfig(env as Env);
   const targetDay = addUtcDays(utcDay(options.now ?? new Date()), -1);
-  const checkpoint = await db(env)
+  let checkpoint = await db(env)
     .select({ day: schema.usageRollupState.lastCompleteDay })
     .from(schema.usageRollupState)
     .where(eq(schema.usageRollupState.source, sourceKey(config)))
     .get();
+  if (!checkpoint && config.legacyTable) {
+    checkpoint = await db(env)
+      .select({ day: schema.usageRollupState.lastCompleteDay })
+      .from(schema.usageRollupState)
+      .where(eq(schema.usageRollupState.source, legacySourceKey(config)))
+      .get();
+  }
   const lastCompleteDay = checkpoint?.day ?? null;
   const neededStart = lastCompleteDay ? addUtcDays(lastCompleteDay, 1) : config.startDay;
   return {
@@ -191,7 +206,7 @@ async function queryDayPage(
   COUNT(DISTINCT id) AS tool_calls,
   COUNT(DISTINCT CASE WHEN status = 'error' THEN id END) AS errors,
   MAX(created_at) AS last_activity_at
-FROM ${config.table}
+FROM ${auditSource(config, false)}
 WHERE created_at >= '${day}T00:00:00.000Z'
   AND created_at < '${end}T00:00:00.000Z'${afterClause}
 GROUP BY user_id
@@ -249,7 +264,12 @@ function daysToProcess(
 }
 
 function sourceKey(config: WarehouseConfig): string {
-  return `r2-sql:${config.accountId}:${config.bucket}:${config.warehouse}:${config.table}`;
+  const current = `r2-sql:${config.accountId}:${config.bucket}:${config.warehouse}:${config.table}`;
+  return config.legacyTable ? `${current}:${config.legacyTable}` : current;
+}
+
+function legacySourceKey(config: WarehouseConfig): string {
+  return `r2-sql:${config.accountId}:${config.bucket}:${config.warehouse}:${config.legacyTable}`;
 }
 
 function dayDistance(from: string, to: string): number {

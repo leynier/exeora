@@ -167,6 +167,7 @@ export function Activity() {
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
                       {nameFor(call.projectId)}
+                      {call.worktreeSlug ? ` / ${call.worktreeSlug}` : " / main"}
                       {call.clientName ? ` · ${call.clientName}` : ""}
                     </p>
                   </div>

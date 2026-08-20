@@ -20,24 +20,32 @@ const sender = () =>
 
 describe("audit pipeline event", () => {
   it("emits the versioned, argument-free warehouse schema", () => {
-    const event = auditEvent("call_1", {
-      userId: "usr_1",
-      projectId: "prj_1",
-      tool: "read_file",
-      status: "ok",
-      durationMs: 12,
-      caller: {
-        clientId: "client_1",
-        clientName: "Claude",
-        mcp: { name: "claude-code", version: "2.0" },
+    const event = auditEvent(
+      "call_1",
+      {
+        userId: "usr_1",
+        projectId: "prj_1",
+        worktreeId: "wkt_1",
+        worktreeSlug: "feature-one",
+        tool: "read_file",
+        status: "ok",
+        durationMs: 12,
+        caller: {
+          clientId: "client_1",
+          clientName: "Claude",
+          mcp: { name: "claude-code", version: "2.0" },
+        },
       },
-    });
+      2,
+    );
 
     expect(event).toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       id: "call_1",
       user_id: "usr_1",
       project_id: "prj_1",
+      worktree_id: "wkt_1",
+      worktree_slug: "feature-one",
       duration_ms: 12,
       client_id: "client_1",
       client_name: "Claude",
@@ -70,6 +78,8 @@ describe("audit pipeline event", () => {
     const handle = await beginAudit(auditEnv, {
       userId: "usr_1",
       projectId: "prj_1",
+      worktreeId: "wkt_1",
+      worktreeSlug: "feature-one",
       tool: "read_file",
       endpoint: "project",
       caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
@@ -85,13 +95,45 @@ describe("audit pipeline event", () => {
     await finishAudit(auditEnv, handle, { status: "ok" });
 
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0]?.[0]?.[0]).toMatchObject({ id: handle.id, status: "ok" });
+    expect(send.mock.calls[0]?.[0]?.[0]).toMatchObject({
+      schema_version: 1,
+      id: handle.id,
+      status: "ok",
+    });
+    expect(send.mock.calls[0]?.[0]?.[0]).not.toHaveProperty("worktree_id");
+    expect(send.mock.calls[0]?.[0]?.[0]).not.toHaveProperty("worktree_slug");
     const accepted = await db(env)
       .select()
       .from(schema.auditOutbox)
       .where(eq(schema.auditOutbox.id, handle.id))
       .get();
     expect(accepted?.acceptedAt).not.toBeNull();
+  });
+
+  it("includes worktree identity only after the v2 stream is configured", async () => {
+    const send = sender();
+    const auditEnv = {
+      DB: env.DB,
+      AUDIT_STREAM: { send },
+      AUDIT_SCHEMA_VERSION: "2",
+    };
+    const handle = await beginAudit(auditEnv, {
+      userId: "usr_1",
+      projectId: "prj_1",
+      worktreeId: "wkt_1",
+      worktreeSlug: "feature-one",
+      tool: "read_file",
+      endpoint: "project",
+      caller: { clientId: undefined, clientName: undefined, mcp: undefined },
+    });
+
+    await finishAudit(auditEnv, handle, { status: "ok" });
+
+    expect(send.mock.calls[0]?.[0]?.[0]).toMatchObject({
+      schema_version: 2,
+      worktree_id: "wkt_1",
+      worktree_slug: "feature-one",
+    });
   });
 
   it("retries a failed Pipeline send without changing the event id", async () => {

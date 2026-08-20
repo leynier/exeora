@@ -59,6 +59,9 @@
                     "type": "string",
                     "maxLength": 64
                   }
+                },
+                "worktreeRouting": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -169,6 +172,8 @@
                             "INVALID_ARGUMENTS",
                             "UNKNOWN_TOOL",
                             "UNKNOWN_PROJECT",
+                            "UNKNOWN_WORKTREE",
+                            "WORKTREE_UNAVAILABLE",
                             "NO_ACTIVE_PROJECT",
                             "FORBIDDEN",
                             "APPROVAL_DECLINED",
@@ -286,6 +291,12 @@
               "type": "string"
             },
             "projectId": {
+              "type": "string"
+            },
+            "worktreeId": {
+              "type": "string"
+            },
+            "worktreeSlug": {
               "type": "string"
             },
             "tool": {
@@ -453,6 +464,12 @@
               "type": "string"
             },
             "projectId": {
+              "type": "string"
+            },
+            "worktreeId": {
+              "type": "string"
+            },
+            "worktreeSlug": {
               "type": "string"
             },
             "tool": {

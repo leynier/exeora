@@ -61,10 +61,18 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
-    On the account URL, <code>https://exeora.dev/mcp</code>, every tool below also takes an optional
-    <code>project</code>, naming the project to run that one call in without changing the active one.
+    On the account URL, <code>https://exeora.dev/mcp</code>, every tool below also takes an optional{" "}
+    <code>project</code>, naming the project to run that one call without changing shared state.
     A project's own URL has no such argument: it carries its project in the path, and offering a way
     to name another is exactly what it does not do.
+  </p>
+
+  <p>
+    Every executor tool also accepts <code>worktree</code>, naming a connected Git worktree by slug
+    or id. Omit it, or pass <code>main</code>, to use the project's primary root. The gateway resolves
+    the selector to a stable id and removes it before the executor validates the canonical tool
+    input. <code>list_worktrees</code> is answered by the gateway and works while the machine is
+    offline. A worktree error never falls back to main.
   </p>
 
   {

@@ -21,6 +21,10 @@ pub enum ErrorCode {
     UnknownTool,
     #[serde(rename = "UNKNOWN_PROJECT")]
     UnknownProject,
+    #[serde(rename = "UNKNOWN_WORKTREE")]
+    UnknownWorktree,
+    #[serde(rename = "WORKTREE_UNAVAILABLE")]
+    WorktreeUnavailable,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
     NoActiveProject,
     #[serde(rename = "FORBIDDEN")]
@@ -45,6 +49,8 @@ impl ErrorCode {
             Self::InvalidArguments => "INVALID_ARGUMENTS",
             Self::UnknownTool => "UNKNOWN_TOOL",
             Self::UnknownProject => "UNKNOWN_PROJECT",
+            Self::UnknownWorktree => "UNKNOWN_WORKTREE",
+            Self::WorktreeUnavailable => "WORKTREE_UNAVAILABLE",
             Self::NoActiveProject => "NO_ACTIVE_PROJECT",
             Self::Forbidden => "FORBIDDEN",
             Self::ApprovalDeclined => "APPROVAL_DECLINED",
