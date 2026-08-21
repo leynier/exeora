@@ -173,6 +173,51 @@ test("sign out clears the tab token and reaches the server logout endpoint", asy
   expect(await page.evaluate(() => sessionStorage.getItem("exeora.access_token"))).toBeNull();
 });
 
+test("uses a collapsible sidebar and a full-width content pane", async ({ page }) => {
+  await signedIn(page);
+  await mockApi(page);
+  await page.goto("/dashboard/");
+
+  const sidebar = page.locator("#dashboard-sidebar");
+  const main = page.locator("main");
+  const expanded = await sidebar.boundingBox();
+  const content = await main.boundingBox();
+  expect(expanded?.width).toBeGreaterThan(200);
+  expect(content?.width).toBeGreaterThan(900);
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  const collapsed = await sidebar.boundingBox();
+  expect(collapsed?.width).toBeLessThan(80);
+
+  await page.getByRole("link", { name: "Projects" }).click();
+  await expect(page).toHaveURL("/dashboard/projects");
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+});
+
+test.describe("mobile dashboard", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("opens the sidebar drawer and closes it with Escape", async ({ page }) => {
+    await signedIn(page);
+    await mockApi(page);
+    await page.goto("/dashboard/");
+
+    const toggle = page.locator("#dashboard-menu-toggle");
+    await expect(toggle).toBeVisible();
+    await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("link", { name: "Projects" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+    await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
+  });
+});
+
 test("clipboard denial is visible on the project list", async ({ page }) => {
   await signedIn(page);
   await mockApi(page);
