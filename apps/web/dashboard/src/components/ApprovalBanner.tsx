@@ -12,7 +12,7 @@ import { useToast } from "./toast.js";
  * client speaking 2026-07-28, which today is neither claude.ai nor ChatGPT;
  * everything else is asked here, or in the terminal running `exeora connect`.
  *
- * Above the navigation rather than on a screen of its own, because there is an
+ * In the sticky chrome rather than on a screen of its own, because there is an
  * AI client holding a request open at the other end and ninety seconds to
  * answer in. A question you have to go and look for is one that expires.
  */
@@ -28,7 +28,7 @@ export function ApprovalBanner() {
 
   return (
     <div className="border-accent/40 bg-accent-subtle border-b">
-      <div className="mx-auto max-w-5xl space-y-3 px-5 py-4">
+      <div className="space-y-3 px-4 py-4 lg:px-6">
         {pending.map((approval) => (
           <ApprovalRow key={approval.id} approval={approval} project={nameOf(approval.projectId)} />
         ))}
