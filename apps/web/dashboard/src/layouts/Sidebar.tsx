@@ -154,6 +154,7 @@ const icons: Record<NavIconName, ReactNode> = {
     </>
   ),
   activity: <path d="M22 12h-4l-3 7L9 3l-3 9H2" />,
+  workspace: <path d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
   settings: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
   admin: <path d="M12 3 4 6v5c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6Z" />,
 };

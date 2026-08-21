@@ -1,39 +1,61 @@
 import { Link } from "react-router";
-import type { Worktree } from "../api.js";
+import type { Project, Worktree } from "../api.js";
+import { Select } from "./Select.js";
 
+/**
+ * Project, then worktree. The Workspace tab is reachable without walking into
+ * a project first, so both choices live here rather than being implied by the
+ * URL the visitor arrived from.
+ */
 export function WorkspaceRootSelector({
+  projects,
   projectId,
   worktrees,
   selectedSlug,
-  onSelect,
+  onSelectProject,
+  onSelectWorktree,
 }: {
+  projects: Project[];
   projectId: string;
   worktrees: Worktree[];
   selectedSlug: string | null;
-  onSelect: (slug: string | null) => void;
+  onSelectProject: (id: string) => void;
+  onSelectWorktree: (slug: string | null) => void;
 }) {
+  const projectOptions = projects.map((project) => ({
+    value: project.id,
+    label: project.name,
+  }));
+  const worktreeOptions = [
+    { value: "main", label: "main", hint: "project root" },
+    ...worktrees.map((worktree) => ({
+      value: worktree.slug,
+      label: worktree.slug,
+      hint: worktree.branch ?? "detached HEAD",
+    })),
+  ];
+
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <label className="border-border bg-surface flex items-center gap-2 rounded-lg border px-3 py-2">
-        <span className="text-label-md text-foreground-faint font-mono uppercase">Root</span>
-        <select
-          aria-label="Workspace root"
-          className="bg-transparent font-mono text-sm outline-none"
-          value={selectedSlug ?? "main"}
-          onChange={(event) => onSelect(event.target.value === "main" ? null : event.target.value)}
-        >
-          <option value="main">main</option>
-          {worktrees.map((worktree) => (
-            <option key={worktree.id} value={worktree.slug}>
-              {worktree.slug}
-              {worktree.branch ? ` · ${worktree.branch}` : " · detached HEAD"}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Link className="btn" to={`/projects/${projectId}`}>
-        Project details
-      </Link>
+      <Select
+        label="Project"
+        value={projectId}
+        options={projectOptions}
+        placeholder="Select a project"
+        onChange={onSelectProject}
+      />
+      <Select
+        label="Worktree"
+        value={selectedSlug ?? "main"}
+        options={worktreeOptions}
+        disabled={!projectId}
+        onChange={(value) => onSelectWorktree(value === "main" ? null : value)}
+      />
+      {projectId ? (
+        <Link className="btn" to={`/projects/${projectId}`}>
+          Project details
+        </Link>
+      ) : null}
     </div>
   );
 }

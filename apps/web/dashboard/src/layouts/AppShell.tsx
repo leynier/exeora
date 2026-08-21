@@ -24,10 +24,15 @@ const COLLAPSED_KEY = "exeora.sidebar_collapsed";
  * It subscribes to every query so a token that expired while the tab was open
  * signs out from anywhere, not only from whichever page happened to be
  * fetching.
+ *
+ * Height is the viewport, and the page scroll lives on `<main>`. The Workspace
+ * screen is a git client: it needs the leftover height as a pane, not a
+ * document that grows under a terminal.
  */
 export function AppShell() {
   const me = useMe();
   const location = useLocation();
+  const workspace = location.pathname === "/workspace";
   const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
   const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
   const failed = queries.find((query) => query.isError && !(query.error instanceof Unauthorized));
@@ -61,7 +66,7 @@ export function AppShell() {
   const links = shellLinks(me.data?.isAdmin === true);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-full">
       {mobileOpen && (
         <button
           type="button"
@@ -78,8 +83,8 @@ export function AppShell() {
         onToggleCollapsed={() => setCollapsed((current) => persistCollapsed(!current))}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="sticky top-0 z-30">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="shrink-0">
           <header className="border-border-subtle bg-bg/80 flex h-14 items-center justify-between gap-4 border-b px-4 backdrop-blur-xl lg:px-6">
             <div className="flex min-w-0 items-center gap-2">
               <button
@@ -114,15 +119,21 @@ export function AppShell() {
               </button>
             </div>
           </header>
-          {/* Inside the sticky chrome, so it stays on screen. A question that
-              scrolls away is one someone answers late, and late is the same as
-              never when there is a client holding a request open. It renders
-              nothing at all when there is nothing to answer, which is almost
-              always, so the header keeps its usual height. */}
+          {/* In the chrome above the scrolling pane, so it stays on screen. A
+              question that scrolls away is one someone answers late, and late
+              is the same as never when there is a client holding a request
+              open. It renders nothing at all when there is nothing to answer,
+              which is almost always, so the header keeps its usual height. */}
           <ApprovalBanner />
         </div>
 
-        <main className="min-w-0 flex-1 px-4 py-8 lg:px-6">
+        <main
+          className={
+            workspace
+              ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-4 lg:px-6"
+              : "min-h-0 w-full flex-1 overflow-y-auto px-4 py-8 lg:px-6"
+          }
+        >
           {failed && (
             <ErrorBanner
               error={failed.error}

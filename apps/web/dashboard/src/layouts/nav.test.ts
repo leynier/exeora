@@ -19,6 +19,10 @@ describe("sectionTitle", () => {
     expect(sectionTitle("/admin/users/usr_1", links)).toBe("Admin");
   });
 
+  it("names the git client Workspace", () => {
+    expect(sectionTitle("/workspace", links)).toBe("Workspace");
+  });
+
   it("does not treat a prefix of another path as a match", () => {
     expect(sectionTitle("/machines", links)).toBe("Machines");
     expect(sectionTitle("/settings", links)).toBe("Settings");
@@ -29,5 +33,10 @@ describe("shellLinks", () => {
   it("hides Admin from ordinary accounts", () => {
     expect(shellLinks(false).map((link) => link.to)).not.toContain("/admin");
     expect(shellLinks(true).map((link) => link.to)).toContain("/admin");
+  });
+
+  it("places Workspace after Activity", () => {
+    const destinations = shellLinks(false).map((link) => link.to);
+    expect(destinations.indexOf("/workspace")).toBeGreaterThan(destinations.indexOf("/activity"));
   });
 });

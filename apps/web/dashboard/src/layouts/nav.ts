@@ -3,7 +3,8 @@
  *
  * The sidebar draws them as a list and the topbar as the current section. Both
  * have to agree on what a path belongs to, including the nested ones: a
- * project workspace is still Projects, an admin user is still Admin.
+ * project detail is still Projects, an admin user is still Admin. The git
+ * client lives at `/workspace`, not under a project.
  */
 
 export type NavIconName =
@@ -12,6 +13,7 @@ export type NavIconName =
   | "projects"
   | "clients"
   | "activity"
+  | "workspace"
   | "settings"
   | "admin";
 
@@ -29,6 +31,7 @@ export function shellLinks(isAdmin: boolean): ShellLink[] {
     { to: "/projects", label: "Projects", icon: "projects" },
     { to: "/clients", label: "Clients", icon: "clients" },
     { to: "/activity", label: "Activity", icon: "activity" },
+    { to: "/workspace", label: "Workspace", icon: "workspace" },
     { to: "/settings", label: "Settings", icon: "settings" },
     ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: "admin" as const }] : []),
   ];
