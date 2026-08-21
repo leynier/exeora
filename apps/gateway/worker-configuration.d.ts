@@ -9,7 +9,7 @@ interface __BaseEnv_Env {
 	RL_MCP: RateLimit;
 	ASSETS: Fetcher;
 	AUDIT_STREAM: import("cloudflare:pipelines").Pipeline<Cloudflare.ExeoraAuditV2StreamRecord>;
-	LATEST_CLI_VERSION: "0.8.4";
+	LATEST_CLI_VERSION: "0.9.0";
 	CLOUDFLARE_ACCOUNT_ID: "6df65be91ad130fd6aa8cb64ac017f22";
 	AUDIT_R2_BUCKET: "exeora-audit";
 	AUDIT_R2_WAREHOUSE: "6df65be91ad130fd6aa8cb64ac017f22_exeora-audit";

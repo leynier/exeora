@@ -94,7 +94,7 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.8.4",
+    "LATEST_CLI_VERSION": "0.9.0",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds
     // `usage_daily` out of R2 SQL. Not secret: the account id is in every
