@@ -107,6 +107,7 @@
   .popover-panel {
     opacity: 0;
     transform: translateY(-4px);
+    pointer-events: none;
     transition:
       opacity var(--transition-duration-fast) ease,
       transform var(--transition-duration-fast) ease,
@@ -117,6 +118,7 @@
   .popover-panel:popover-open {
     opacity: 1;
     transform: translateY(0);
+    pointer-events: auto;
   }
 
   @starting-style {
