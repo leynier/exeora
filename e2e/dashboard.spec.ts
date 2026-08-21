@@ -232,7 +232,7 @@ test("keeps source control and terminal bound to the selected worktree", async (
   await expect(page.getByRole("button", { name: /main\.txt/ })).toHaveCount(0);
 
   await featureFile.hover();
-  await page.getByRole("button", { name: "Stage" }).click();
+  await page.getByRole("button", { name: "Stage", exact: true }).click();
   await expect
     .poll(() =>
       requests.some((request) => {
@@ -265,7 +265,12 @@ test("keeps source control and terminal bound to the selected worktree", async (
 test("redirects legacy project workspace URLs onto the workspace tab", async ({ page }) => {
   await signedIn(page);
   await mockApi(page);
-  await page.goto(`/dashboard/projects/${project.id}/workspace?worktree=${worktree.slug}`);
+  await page.goto("/dashboard/");
+  await expect(page.getByRole("link", { name: "Workspace", exact: true })).toBeVisible();
+  await page.evaluate((href) => {
+    window.history.pushState({}, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/dashboard/projects/${project.id}/workspace?worktree=${worktree.slug}`);
   await expect(page).toHaveURL(
     `/dashboard/workspace?project=${project.id}&worktree=${worktree.slug}`,
   );
