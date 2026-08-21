@@ -24,6 +24,7 @@
   html {
     font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
     height: 100%;
+    color-scheme: dark;
   }
 
   body,
@@ -146,6 +147,17 @@
 
   .web-terminal-surface .xterm-viewport {
     overflow-y: auto !important;
+  }
+
+  /*
+   * Pierre follows the OS colour scheme unless both sides name a dark theme.
+   * The dashboard has no light mode, so the diff chrome has to stay on this
+   * surface even when the laptop is set to light.
+   */
+  .git-diff {
+    color-scheme: dark;
+    background: var(--color-bg);
+    min-height: 100%;
   }
 }
 

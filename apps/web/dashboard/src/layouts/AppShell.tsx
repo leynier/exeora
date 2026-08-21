@@ -43,9 +43,9 @@ export function AppShell() {
     { to: "/", label: "Overview", end: true },
     { to: "/machines", label: "Machines" },
     { to: "/projects", label: "Projects" },
-    { to: "/workspace", label: "Workspace" },
     { to: "/clients", label: "Clients" },
     { to: "/activity", label: "Activity" },
+    { to: "/workspace", label: "Workspace" },
     { to: "/settings", label: "Settings" },
     ...(me.data?.isAdmin ? [{ to: "/admin", label: "Admin", end: false }] : []),
   ];

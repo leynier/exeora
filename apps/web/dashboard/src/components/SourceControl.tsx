@@ -4,13 +4,14 @@ import { useMemo, useState } from "react";
 import { api, type GitStatus, type WorkspaceAction } from "../api.js";
 import { keys } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { SourceControlBranches } from "./SourceControlBranches.js";
+import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
 import { useToast } from "./toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "./ui.js";
 import {
   defaultWorkspaceSelection,
   fileStatusClass,
   fileStatusCode,
+  selectionAfterStatus,
   WorkspaceFileGroup,
   type WorkspaceSelection,
   workspaceActionLabel,
@@ -69,6 +70,8 @@ export function SourceControl({
       client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
       await client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] });
       if (action.action === "commit") setCommitMessage("");
+      if (action.action.startsWith("branch_")) setSelected(null);
+      else setSelected((current) => selectionAfterStatus(current, result.status));
       toast(workspaceActionLabel(action));
     } catch (runError) {
       toast(
@@ -104,12 +107,22 @@ export function SourceControl({
       <header className="border-border-subtle flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           <span className="bg-success size-2 shrink-0 rounded-full" aria-hidden="true" />
-          <p className="text-title-md min-w-0 truncate">
-            {status.head ?? "detached HEAD"}
-            {targetLabel !== "main" ? (
-              <span className="text-foreground-faint font-normal"> · {targetLabel}</span>
-            ) : null}
-          </p>
+          <SourceControlBranchPicker
+            status={status}
+            pending={pending}
+            onRun={run}
+            onConfirmDelete={(name) =>
+              setConfirm({
+                action: { action: "branch_delete", name },
+                title: "Delete local branch?",
+                body: `Git will only delete ${name} if it is fully merged. Remote branches are never deleted here.`,
+                label: "Delete branch",
+              })
+            }
+          />
+          {targetLabel !== "main" ? (
+            <span className="text-body-md text-foreground-faint truncate">{targetLabel}</span>
+          ) : null}
           {status.upstream && (
             <span className="text-body-md text-foreground-faint hidden truncate font-mono sm:inline">
               {status.upstream}
@@ -208,6 +221,7 @@ export function SourceControl({
                 void run({ action: "unstage", paths: staged.map((file) => file.path) })
               }
               actionAllLabel="Unstage all"
+              disabled={pending}
             />
             <WorkspaceFileGroup
               title="Changes"
@@ -221,19 +235,7 @@ export function SourceControl({
                 void run({ action: "stage", paths: changes.map((file) => file.path) })
               }
               actionAllLabel="Stage all"
-            />
-            <SourceControlBranches
-              status={status}
-              pending={pending}
-              onRun={run}
-              onConfirmDelete={(name) =>
-                setConfirm({
-                  action: { action: "branch_delete", name },
-                  title: "Delete local branch?",
-                  body: `Git will only delete ${name} if it is fully merged. Remote branches are never deleted here.`,
-                  label: "Delete branch",
-                })
-              }
+              disabled={pending}
             />
           </div>
         </aside>
@@ -300,16 +302,20 @@ export function SourceControl({
           ) : null}
           <div className="min-h-0 flex-1 overflow-auto">
             {chosen && diff.data?.patch ? (
-              <PatchDiff
-                patch={diff.data.patch}
-                disableWorkerPool
-                options={{
-                  theme: { dark: "github-dark", light: "github-light" },
-                  diffStyle: "unified",
-                  overflow: "scroll",
-                  stickyHeader: true,
-                }}
-              />
+              <div className="git-diff h-full">
+                <PatchDiff
+                  patch={diff.data.patch}
+                  disableWorkerPool
+                  options={{
+                    // Both sides are dark: Pierre otherwise follows the OS and
+                    // paints a light diff on this always-dark dashboard.
+                    theme: { dark: "pierre-dark", light: "pierre-dark" },
+                    diffStyle: "unified",
+                    overflow: "scroll",
+                    stickyHeader: true,
+                  }}
+                />
+              </div>
             ) : chosen && diff.isLoading ? (
               <Skeleton className="m-5 h-64 w-[calc(100%-2.5rem)]" />
             ) : (
