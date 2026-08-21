@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router";
 import type { NavIconName, ShellLink } from "./nav.js";
 
@@ -21,17 +21,13 @@ export function Sidebar({
   mobileOpen: boolean;
   onToggleCollapsed: () => void;
 }) {
-  const desktop = useMinWidth("(min-width: 1024px)");
-  const drawerHidden = !desktop && !mobileOpen;
-
   return (
     <aside
       id="dashboard-sidebar"
       aria-label="Dashboard"
-      inert={drawerHidden}
-      className={`border-border-subtle bg-surface fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform] duration-mid lg:static lg:z-auto lg:translate-x-0 ${
-        mobileOpen ? "translate-x-0" : "-translate-x-full"
-      } ${collapsed ? "w-60 lg:w-16" : "w-60"}`}
+      className={`border-border-subtle bg-surface fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-mid lg:static lg:z-auto lg:translate-x-0 ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible"
+      } ${collapsed ? "w-60 lg:w-16 lg:min-w-16" : "w-60"}`}
     >
       <div
         className={`border-border-subtle flex h-14 shrink-0 items-center border-b ${
@@ -99,22 +95,6 @@ export function Sidebar({
       </div>
     </aside>
   );
-}
-
-/**
- * Tailwind's `lg` breakpoint, kept as a string because `matchMedia` cannot
- * read the stylesheet. If the rail's `lg:` classes move, this has to move too.
- */
-function useMinWidth(query: string): boolean {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const onChange = () => setMatches(media.matches);
-    onChange();
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, [query]);
-  return matches;
 }
 
 function NavIcon({ name }: { name: NavIconName }) {

@@ -187,8 +187,7 @@ test("uses a collapsible sidebar and a full-width content pane", async ({ page }
 
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
-  const collapsed = await sidebar.boundingBox();
-  expect(collapsed?.width).toBeLessThan(80);
+  await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeLessThan(80);
 
   await page.getByRole("link", { name: "Projects" }).click();
   await expect(page).toHaveURL("/dashboard/projects");
