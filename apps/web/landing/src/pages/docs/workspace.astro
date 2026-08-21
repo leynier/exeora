@@ -8,18 +8,21 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/workspace/"
 >
   <p>
-    Open a project in the dashboard and choose <strong>Open workspace</strong>. The Source Control
-    view and terminal are available only to the signed-in owner of that project, while its Exeora
-    CLI is connected. Use the root selector to work in <code>main</code> or any worktree connected
-    through <code>exeora worktree</code>.
+    Open the <strong>Workspace</strong> tab in the dashboard. Choose a project, then a worktree,
+    from the dropdowns at the top of that page. Source Control and the terminal are available only
+    to the signed-in owner of that project, while its Exeora CLI is connected. <code>main</code> is
+    the project root; any other option is a worktree connected through <code>exeora worktree</code>.
+    Project pages still offer <strong>Open workspace</strong>, which lands on the same tab.
   </p>
 
   <h2>Source Control</h2>
 
   <p>
-    The dashboard reads Git's porcelain status from the project directory and renders staged and
-    working-tree diffs. You can stage, unstage, commit staged changes, discard tracked changes,
-    delete individual untracked files, fetch, pull, push, and create or switch local branches.
+    The dashboard reads Git's porcelain status from the project directory and presents it as a git
+    client: branch and sync in the toolbar, a commit composer above staged and unstaged files, and
+    the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
+    changes, delete individual untracked files, fetch, pull, push, and create or switch local
+    branches.
   </p>
 
   <p>

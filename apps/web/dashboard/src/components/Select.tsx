@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-export type SelectOption = { value: string; label: string };
+export type SelectOption = { value: string; label: string; hint?: string };
 
 /**
  * A dropdown we draw ourselves.
@@ -22,12 +22,19 @@ export function Select({
   value,
   options,
   onChange,
+  disabled = false,
+  placeholder = "",
+  wide = false,
 }: {
   /** Names the control for screen readers; the button itself shows the value. */
   label: string;
   value: string;
   options: readonly SelectOption[];
   onChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+  /** Stretch to the parent width, for toolbars that are a column rather than a chip. */
+  wide?: boolean;
 }) {
   const panelId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -87,26 +94,37 @@ export function Select({
     };
   }, [open, place]);
 
+  useEffect(() => {
+    if (disabled) panel.current?.hidePopover();
+  }, [disabled]);
+
   return (
     <>
       <button
         ref={trigger}
         type="button"
-        popoverTarget={panelId}
+        popoverTarget={disabled ? undefined : panelId}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-disabled={disabled || undefined}
+        disabled={disabled}
         className={`border-border text-body-md duration-fast flex items-center gap-1.5 rounded-lg border py-1.5 pr-2 pl-2.5 transition-colors ${
+          wide ? "w-full" : ""
+        } ${
           open ? "bg-surface-variant text-foreground" : "bg-surface text-foreground-muted"
-        } hover:bg-surface-variant hover:text-foreground`}
+        } hover:bg-surface-variant hover:text-foreground disabled:pointer-events-none disabled:opacity-50`}
         onKeyDown={(event) => {
-          if (open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+          if (disabled || open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
           event.preventDefault();
           panel.current?.showPopover();
         }}
       >
         <span className="sr-only">{label}</span>
-        {/* Capped, because a project is free to have a paragraph for a name. */}
-        <span className="max-w-44 truncate">{selected?.label ?? ""}</span>
+        {/* Capped, because a project is free to have a paragraph for a name.
+            A wide trigger is a column, so the cap would leave a hollow button. */}
+        <span className={`truncate text-left ${wide ? "min-w-0 flex-1" : "max-w-44"}`}>
+          {selected?.label ?? placeholder}
+        </span>
         <Chevron open={open} />
       </button>
 
@@ -137,30 +155,39 @@ export function Select({
           }
         }}
       >
-        {options.map((option) => {
-          const active = option.value === value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="option"
-              aria-selected={active}
-              // The focus ring is pulled inwards: arrowing through the list
-              // moves focus, and at the default offset the ring would sit on
-              // top of the panel's own border.
-              className={`text-body-md duration-fast flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
-                active ? "text-foreground" : "text-foreground-muted"
-              } hover:bg-surface-variant hover:text-foreground focus-visible:bg-surface-variant focus-visible:text-foreground focus-visible:-outline-offset-2`}
-              onClick={() => {
-                onChange(option.value);
-                panel.current?.hidePopover();
-              }}
-            >
-              <Check shown={active} />
-              <span className="truncate">{option.label}</span>
-            </button>
-          );
-        })}
+        {options.length === 0 ? (
+          <p className="text-body-md text-foreground-faint px-2 py-1.5">{placeholder || "None"}</p>
+        ) : (
+          options.map((option) => {
+            const active = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                // The focus ring is pulled inwards: arrowing through the list
+                // moves focus, and at the default offset the ring would sit on
+                // top of the panel's own border.
+                className={`text-body-md duration-fast flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                  active ? "text-foreground" : "text-foreground-muted"
+                } hover:bg-surface-variant hover:text-foreground focus-visible:bg-surface-variant focus-visible:text-foreground focus-visible:-outline-offset-2`}
+                onClick={() => {
+                  onChange(option.value);
+                  panel.current?.hidePopover();
+                }}
+              >
+                <Check shown={active} />
+                <span className="min-w-0 flex-1 truncate">
+                  {option.label}
+                  {option.hint ? (
+                    <span className="text-foreground-faint"> · {option.hint}</span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })
+        )}
       </div>
     </>
   );

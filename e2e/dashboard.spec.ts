@@ -190,6 +190,27 @@ test("clipboard denial is visible on the project list", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Copy failed" })).toBeVisible();
 });
 
+test("opens workspace from the tab with custom project and worktree dropdowns", async ({
+  page,
+}) => {
+  await signedIn(page);
+  await mockApi(page);
+  await page.goto("/dashboard/");
+  await page.getByRole("link", { name: "Workspace", exact: true }).click();
+  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
+  await expect(page.locator("select")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: `Project ${project.name}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Worktree main" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Worktree main" }).click();
+  await page.getByRole("option", { name: /feature-trees/ }).click();
+  await expect(page).toHaveURL(
+    `/dashboard/workspace?project=${project.id}&worktree=${worktree.slug}`,
+  );
+  await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toBeVisible();
+});
+
 test("keeps source control and terminal bound to the selected worktree", async ({ page }) => {
   const requests: Request[] = [];
   await signedIn(page);
@@ -200,13 +221,12 @@ test("keeps source control and terminal bound to the selected worktree", async (
   await expect(page.getByText(worktree.name, { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Open workspace" }).nth(1).click();
   await expect(page).toHaveURL(
-    `/dashboard/projects/${project.id}/workspace?worktree=${worktree.slug}`,
+    `/dashboard/workspace?project=${project.id}&worktree=${worktree.slug}`,
   );
 
-  await expect(page.getByRole("combobox", { name: "Workspace root" })).toHaveValue(worktree.slug);
-  await expect(
-    page.locator("span").filter({ hasText: /^feature-trees · feature\/trees$/ }),
-  ).toBeVisible();
+  await expect(page.locator("select")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: `Worktree ${worktree.slug}` })).toBeVisible();
+  await expect(page.getByText("feature/trees", { exact: true })).toBeVisible();
   const featureFile = page.getByRole("button", { name: /feature-tree\.txt/ });
   await expect(featureFile).toBeVisible();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toHaveCount(0);
@@ -234,9 +254,20 @@ test("keeps source control and terminal bound to the selected worktree", async (
   );
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await page.getByRole("combobox", { name: "Workspace root" }).selectOption("main");
-  await expect(page).toHaveURL(`/dashboard/projects/${project.id}/workspace`);
+  await page.getByRole("button", { name: `Worktree ${worktree.slug}` }).click();
+  await page.getByRole("option", { name: /^main/ }).click();
+  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toHaveCount(0);
+});
+
+test("redirects legacy project workspace URLs onto the workspace tab", async ({ page }) => {
+  await signedIn(page);
+  await mockApi(page);
+  await page.goto(`/dashboard/projects/${project.id}/workspace?worktree=${worktree.slug}`);
+  await expect(page).toHaveURL(
+    `/dashboard/workspace?project=${project.id}&worktree=${worktree.slug}`,
+  );
+  await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toBeVisible();
 });

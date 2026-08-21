@@ -23,6 +23,7 @@ export function WebTerminal({
   const fit = useRef<FitAddon | null>(null);
   const sessionId = useRef<string | null>(null);
   const attempt = useRef(0);
+  const size = useRef({ cols: 0, rows: 0 });
   const [confirming, setConfirming] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -82,6 +83,7 @@ export function WebTerminal({
       if (!host.current) throw new Error("Terminal surface is unavailable.");
       term.open(host.current);
       fitAddon.fit();
+      size.current = { cols: term.cols, rows: term.rows };
       terminal.current = term;
       fit.current = fitAddon;
 
@@ -137,6 +139,8 @@ export function WebTerminal({
       const observer = new ResizeObserver(() => {
         if (attempt.current !== opening) return;
         fitAddon.fit();
+        if (term.cols === size.current.cols && term.rows === size.current.rows) return;
+        size.current = { cols: term.cols, rows: term.rows };
         if (ws.readyState === WebSocket.OPEN && sessionId.current) {
           ws.send(
             JSON.stringify({
@@ -159,9 +163,11 @@ export function WebTerminal({
     }
   };
 
+  const idle = !connected && !connecting;
+
   return (
-    <section className="border-border overflow-hidden rounded-xl border bg-[#0b0d10]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0b0d10]">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="flex items-center gap-2 font-mono text-xs text-gray-400">
           <span className={`size-2 rounded-full ${connected ? "bg-emerald-400" : "bg-gray-600"}`} />
           {connected ? "live shell" : connecting ? "connecting" : "terminal stopped"}
@@ -185,9 +191,10 @@ export function WebTerminal({
           </button>
         )}
       </header>
-      <div className="min-h-[28rem] p-3" ref={host}>
-        {!connected && !connecting && !terminal.current && (
-          <div className="grid min-h-[26rem] place-items-center text-center font-mono text-sm text-gray-500">
+      <div className="relative min-h-0 flex-1">
+        <div className="web-terminal-surface absolute inset-0" ref={host} />
+        {idle && (
+          <div className="absolute inset-0 grid place-items-center text-center font-mono text-sm text-gray-500">
             <p>
               {available
                 ? `Start an interactive shell in ${targetLabel}.`

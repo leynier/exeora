@@ -23,10 +23,17 @@
 @layer base {
   html {
     font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    height: 100%;
+  }
+
+  body,
+  #root {
+    height: 100%;
   }
 
   body {
     @apply bg-bg text-foreground antialiased;
+    overflow: hidden;
   }
 
   a,
@@ -40,6 +47,41 @@
   :focus-visible {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
+  }
+
+  /*
+   * Scrollbars are drawn by us, not the OS. A native thumb on this palette is
+   * a light grey slab on near-black, and it is the first thing a git client
+   * view would get wrong. Thin, rounded, and the same border colour as the
+   * rest of the chrome.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-foreground-faint);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -81,6 +123,29 @@
       opacity: 0;
       transform: translateY(-4px);
     }
+  }
+
+  /*
+   * xterm paints an absolutely positioned viewport inside `.xterm`. If that
+   * host is allowed to grow with the buffer, FitAddon and ResizeObserver
+   * chase each other and the page scroll grows without end. Pin both to the
+   * pane we sized, and let only the viewport scroll.
+   */
+  .web-terminal-surface {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .web-terminal-surface .xterm {
+    position: absolute;
+    inset: 0;
+    padding: 8px;
+    height: 100%;
+  }
+
+  .web-terminal-surface .xterm-viewport {
+    overflow-y: auto !important;
   }
 }
 
