@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
 import { ApprovalBanner } from "../components/ApprovalBanner.js";
@@ -19,8 +19,15 @@ import {
  * It subscribes to every query so a token that expired while the tab was open
  * signs out from anywhere, not only from whichever page happened to be
  * fetching.
+ *
+ * Height is the viewport, and the page scroll lives on `<main>`. The Workspace
+ * screen is a git client: it needs the leftover height as a pane, not a
+ * document that grows under a terminal.
  */
 export function AppShell() {
+  const location = useLocation();
+  const workspace = location.pathname === "/workspace";
+  const shellWidth = workspace ? "max-w-7xl" : "max-w-5xl";
   const me = useMe();
   const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
   const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
@@ -38,14 +45,15 @@ export function AppShell() {
     { to: "/projects", label: "Projects" },
     { to: "/clients", label: "Clients" },
     { to: "/activity", label: "Activity" },
+    { to: "/workspace", label: "Workspace" },
     { to: "/settings", label: "Settings" },
     ...(me.data?.isAdmin ? [{ to: "/admin", label: "Admin", end: false }] : []),
   ];
 
   return (
-    <div className="min-h-screen">
-      <header className="border-border-subtle bg-bg/80 sticky top-0 z-40 border-b backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-5">
+    <div className="flex h-full flex-col">
+      <header className="border-border-subtle bg-bg/80 z-40 shrink-0 border-b backdrop-blur-xl">
+        <div className={`mx-auto flex h-14 ${shellWidth} items-center justify-between gap-4 px-5`}>
           <a href="/" className="flex items-center gap-2" aria-label="Exeora, home">
             {/* Three tiles, 24 wide on a pitch of 20 with a radius of 4, the
                 same numbers the landing and the OAuth screens draw. */}
@@ -81,7 +89,7 @@ export function AppShell() {
           </div>
         </div>
 
-        <nav className="mx-auto max-w-5xl px-5">
+        <nav className={`mx-auto ${shellWidth} px-5`}>
           <ul className="-mb-px flex gap-1 overflow-x-auto">
             {links.map((link) => (
               <li key={link.to}>
@@ -110,7 +118,13 @@ export function AppShell() {
         <ApprovalBanner />
       </header>
 
-      <main className="mx-auto max-w-5xl px-5 py-8">
+      <main
+        className={
+          workspace
+            ? "mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-5 py-4"
+            : "mx-auto min-h-0 w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8"
+        }
+      >
         {failed && (
           <ErrorBanner
             error={failed.error}

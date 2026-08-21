@@ -22,6 +22,9 @@ import "./index.css";
 const Workspace = lazy(() =>
   import("./pages/Workspace.js").then((module) => ({ default: module.Workspace })),
 );
+const WorkspaceRedirect = lazy(() =>
+  import("./pages/Workspace.js").then((module) => ({ default: module.WorkspaceRedirect })),
+);
 
 /**
  * The dashboard.
@@ -96,10 +99,18 @@ createRoot(root).render(
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:projectId" element={<ProjectDetail />} />
               <Route
-                path="projects/:projectId/workspace"
+                path="workspace"
                 element={
                   <Suspense fallback={null}>
                     <Workspace />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="projects/:projectId/workspace"
+                element={
+                  <Suspense fallback={null}>
+                    <WorkspaceRedirect />
                   </Suspense>
                 }
               />

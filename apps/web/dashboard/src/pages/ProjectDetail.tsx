@@ -74,7 +74,7 @@ export function ProjectDetail() {
         subtitle={`Added ${formatDate(project.createdAt)}.`}
         action={
           <div className="flex gap-2">
-            <Link to={`/projects/${project.id}/workspace`} className="btn btn-primary">
+            <Link to={`/workspace?project=${project.id}`} className="btn btn-primary">
               Open workspace
             </Link>
             <Link to="/projects" className="btn">
@@ -142,7 +142,7 @@ export function ProjectDetail() {
                     </Badge>
                     <Link
                       className="btn"
-                      to={`/projects/${project.id}/workspace?worktree=${encodeURIComponent(worktree.slug)}`}
+                      to={`/workspace?project=${project.id}&worktree=${encodeURIComponent(worktree.slug)}`}
                     >
                       Open workspace
                     </Link>
