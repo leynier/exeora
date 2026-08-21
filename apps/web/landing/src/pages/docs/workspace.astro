@@ -19,10 +19,11 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     The dashboard reads Git's porcelain status from the project directory and presents it as a git
-    client: branch and sync in the toolbar, a commit composer above staged and unstaged files, and
+    client: the current branch in the toolbar, a commit composer above staged and unstaged files, and
     the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
-    changes, delete individual untracked files, fetch, pull, and push. Switch, create, track, or
-    delete a local branch from the branch picker in the toolbar.
+    changes, delete individual untracked files, fetch, pull, and push. The branch control lists the
+    current branch, other local branches, and remotes you can check out. Type a name there to create
+    a branch from HEAD, or delete a merged local branch.
   </p>
 
   <p>

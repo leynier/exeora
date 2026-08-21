@@ -106,7 +106,6 @@ export function SourceControl({
     <div className="border-border bg-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
       <header className="border-border-subtle flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="bg-success size-2 shrink-0 rounded-full" aria-hidden="true" />
           <SourceControlBranchPicker
             status={status}
             pending={pending}
@@ -123,16 +122,6 @@ export function SourceControl({
           {targetLabel !== "main" ? (
             <span className="text-body-md text-foreground-faint truncate">{targetLabel}</span>
           ) : null}
-          {status.upstream && (
-            <span className="text-body-md text-foreground-faint hidden truncate font-mono sm:inline">
-              {status.upstream}
-            </span>
-          )}
-          {(status.ahead > 0 || status.behind > 0) && (
-            <span className="text-label-md text-brand font-mono tabular-nums">
-              ↑{status.ahead} ↓{status.behind}
-            </span>
-          )}
           {status.operation && (
             <span className="text-label-md text-error font-mono uppercase">{status.operation}</span>
           )}
@@ -307,12 +296,15 @@ export function SourceControl({
                   patch={diff.data.patch}
                   disableWorkerPool
                   options={{
-                    // Both sides are dark: Pierre otherwise follows the OS and
-                    // paints a light diff on this always-dark dashboard.
+                    // Pierre still follows the OS unless themeType is dark.
+                    // Naming both slots pierre-dark is not enough on a light laptop.
                     theme: { dark: "pierre-dark", light: "pierre-dark" },
+                    themeType: "dark",
+                    disableFileHeader: true,
                     diffStyle: "unified",
                     overflow: "scroll",
                     stickyHeader: true,
+                    unsafeCSS: `:host { color-scheme: dark; background: var(--color-bg, #0d0f11); }`,
                   }}
                 />
               </div>

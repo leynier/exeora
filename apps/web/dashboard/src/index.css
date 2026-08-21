@@ -161,6 +161,13 @@
     background: var(--color-bg);
     min-height: 100%;
   }
+
+  .git-diff diffs-container {
+    display: block;
+    min-height: 100%;
+    color-scheme: dark;
+    background: var(--color-bg);
+  }
 }
 
 @utility skeleton {

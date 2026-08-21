@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GitBranch, GitStatus, WorkspaceAction } from "../api.js";
 
 /**
  * Branch switching belongs in the toolbar, the way GitHub Desktop and Fork
- * put it: one control that lists locals, remotes, and creating a branch.
- * A form of dropdowns at the bottom of the file list buried the thing you
- * reach for most often and looked like settings rather than a git client.
+ * put it: one control that names the current branch, then a picker for locals,
+ * remotes, and creating a branch from HEAD. A form of dropdowns under the
+ * file list buried the thing you reach for most often and looked like settings.
  */
 export function SourceControlBranchPicker({
   status,
@@ -25,17 +25,33 @@ export function SourceControlBranchPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  const local = status.branches.filter((branch) => !branch.remote);
-  const remote = status.branches.filter((branch) => branch.remote);
+  const head = status.head ?? "detached HEAD";
   const needle = query.trim().toLowerCase();
+  const local = useMemo(
+    () => status.branches.filter((branch) => !branch.remote),
+    [status.branches],
+  );
+  const remote = useMemo(
+    () => status.branches.filter((branch) => branch.remote),
+    [status.branches],
+  );
+  const current = local.find((branch) => branch.current || branch.name === status.head) ?? null;
   const locals = useMemo(
-    () => local.filter((branch) => branch.name.toLowerCase().includes(needle)),
-    [local, needle],
+    () =>
+      local
+        .filter((branch) => branch !== current)
+        .filter((branch) => !needle || branch.name.toLowerCase().includes(needle))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [current, local, needle],
   );
   const remotes = useMemo(
-    () => remote.filter((branch) => branch.name.toLowerCase().includes(needle)),
-    [remote, needle],
+    () =>
+      remote
+        .filter((branch) => !needle || branch.name.toLowerCase().includes(needle))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [needle, remote],
   );
+  const showCurrent = Boolean(current && (!needle || current.name.toLowerCase().includes(needle)));
   const canCreate =
     query.trim().length > 0 &&
     !local.some((branch) => branch.name.toLowerCase() === query.trim().toLowerCase());
@@ -45,7 +61,7 @@ export function SourceControlBranchPicker({
     const menu = panel.current;
     if (!button || !menu) return;
     const anchor = button.getBoundingClientRect();
-    menu.style.minWidth = `${Math.max(anchor.width, 288)}px`;
+    menu.style.minWidth = `${Math.max(anchor.width, 320)}px`;
     const gap = 6;
     const menuRect = menu.getBoundingClientRect();
     const below = window.innerHeight - anchor.bottom;
@@ -86,6 +102,12 @@ export function SourceControlBranchPicker({
   }, [pending]);
 
   const close = () => panel.current?.hidePopover();
+  const create = () =>
+    void onRun({
+      action: "branch_create",
+      name: query.trim(),
+      startPoint: status.head ?? undefined,
+    }).then(close);
 
   return (
     <>
@@ -95,13 +117,21 @@ export function SourceControlBranchPicker({
         popoverTarget={pending ? undefined : panelId}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Current branch ${status.head ?? "detached HEAD"}`}
+        aria-label={`Current branch ${head}`}
         disabled={pending}
-        className={`border-border text-title-md duration-fast flex max-w-56 items-center gap-1.5 rounded-lg border py-1 pr-2 pl-2.5 transition-colors ${
+        className={`border-border duration-fast flex max-w-72 items-center gap-2 rounded-lg border py-1 pr-2 pl-2 transition-colors ${
           open ? "bg-surface-variant text-foreground" : "bg-surface text-foreground"
         } hover:bg-surface-variant disabled:pointer-events-none disabled:opacity-50`}
       >
-        <span className="truncate">{status.head ?? "detached HEAD"}</span>
+        <BranchIcon />
+        <span className="text-title-md min-w-0 truncate font-mono">{head}</span>
+        {(status.ahead > 0 || status.behind > 0) && (
+          <span className="text-label-md text-foreground-faint shrink-0 font-mono tabular-nums">
+            {status.ahead > 0 ? `↑${status.ahead}` : null}
+            {status.ahead > 0 && status.behind > 0 ? " " : null}
+            {status.behind > 0 ? `↓${status.behind}` : null}
+          </span>
+        )}
         <Chevron open={open} />
       </button>
 
@@ -111,7 +141,7 @@ export function SourceControlBranchPicker({
         popover="auto"
         role="dialog"
         aria-label="Branches"
-        className="popover-panel border-border bg-surface-elevated fixed inset-auto m-0 flex max-h-96 w-80 flex-col overflow-hidden rounded-lg border shadow-xl shadow-black/40"
+        className="popover-panel border-border bg-surface-elevated fixed inset-auto m-0 flex max-h-[28rem] w-80 flex-col overflow-hidden rounded-lg border shadow-xl shadow-black/40"
         onBlur={(event) => {
           if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) {
             close();
@@ -128,7 +158,7 @@ export function SourceControlBranchPicker({
             onKeyDown={(event) => {
               if (event.key === "Enter" && canCreate) {
                 event.preventDefault();
-                void onRun({ action: "branch_create", name: query.trim() }).then(close);
+                create();
               }
             }}
           />
@@ -137,43 +167,65 @@ export function SourceControlBranchPicker({
           {canCreate && (
             <button
               type="button"
-              className="text-body-md text-foreground hover:bg-surface-variant w-full rounded-md px-2 py-1.5 text-left"
-              onClick={() =>
-                void onRun({ action: "branch_create", name: query.trim() }).then(close)
-              }
+              className="hover:bg-surface-variant w-full rounded-md px-2 py-1.5 text-left"
+              onClick={create}
             >
-              Create <span className="font-mono">{query.trim()}</span>
+              <span className="text-body-md text-foreground block">
+                Create branch <span className="font-mono">{query.trim()}</span>
+              </span>
+              <span className="text-label-md text-foreground-faint mt-0.5 block">from {head}</span>
             </button>
           )}
-          <BranchGroup
-            title="Local"
-            branches={locals}
-            empty={needle ? "No local matches" : "No local branches"}
-            currentName={status.head}
-            onPick={(name) => {
-              if (name === status.head) {
-                close();
-                return;
-              }
-              void onRun({ action: "branch_switch", name }).then(close);
-            }}
-            onDelete={onConfirmDelete}
-          />
-          {remote.length > 0 && (
-            <BranchGroup
-              title="Remote"
-              branches={remotes}
-              empty={needle ? "No remote matches" : "No remote branches"}
-              onPick={(name) =>
-                void onRun({
-                  action: "branch_track",
-                  remoteBranch: name,
-                  name: name.split("/").slice(1).join("/"),
-                }).then(close)
-              }
-            />
-          )}
+          {showCurrent && current ? (
+            <BranchGroup title="Current">
+              <BranchRow branch={current} current hint={syncHint(status, current)} onPick={close} />
+            </BranchGroup>
+          ) : null}
+          {locals.length > 0 ? (
+            <BranchGroup title="Local">
+              {locals.map((branch) => (
+                <BranchRow
+                  key={branch.name}
+                  branch={branch}
+                  hint={branch.upstream ?? branch.shortOid}
+                  onPick={() =>
+                    void onRun({ action: "branch_switch", name: branch.name }).then(close)
+                  }
+                  onDelete={onConfirmDelete}
+                />
+              ))}
+            </BranchGroup>
+          ) : needle && !showCurrent ? (
+            <BranchGroup title="Local" empty="No local matches" />
+          ) : !current ? (
+            <BranchGroup title="Local" empty="No local branches" />
+          ) : null}
+          {remotes.length > 0 ? (
+            <BranchGroup title="Remote">
+              {remotes.map((branch) => (
+                <BranchRow
+                  key={branch.name}
+                  branch={branch}
+                  hint="Checkout"
+                  onPick={() =>
+                    void onRun({
+                      action: "branch_track",
+                      remoteBranch: branch.name,
+                      name: localNameForRemote(branch.name),
+                    }).then(close)
+                  }
+                />
+              ))}
+            </BranchGroup>
+          ) : needle && remote.length > 0 ? (
+            <BranchGroup title="Remote" empty="No remote matches" />
+          ) : null}
         </div>
+        {!canCreate && (
+          <p className="text-label-md text-foreground-faint border-border-subtle shrink-0 border-t px-3 py-2">
+            Type a name to create a branch from {head}.
+          </p>
+        )}
       </div>
     </>
   );
@@ -181,62 +233,98 @@ export function SourceControlBranchPicker({
 
 function BranchGroup({
   title,
-  branches,
   empty,
-  currentName,
-  onPick,
-  onDelete,
+  children,
 }: {
   title: string;
-  branches: GitBranch[];
-  empty: string;
-  currentName?: string | null;
-  onPick: (name: string) => void;
-  onDelete?: (name: string) => void;
+  empty?: string | null;
+  children?: ReactNode;
 }) {
   return (
     <section className="py-1">
       <h3 className="text-label-md text-foreground-faint px-2 py-1 font-mono tracking-wide uppercase">
         {title}
       </h3>
-      {branches.length === 0 ? (
-        <p className="text-body-md text-foreground-faint px-2 py-1">{empty}</p>
-      ) : (
-        branches.map((branch) => {
-          const current = branch.current || branch.name === currentName;
-          return (
-            <div
-              key={branch.name}
-              className="group hover:bg-surface-variant flex items-center gap-1 rounded-md"
-            >
-              <button
-                type="button"
-                role="option"
-                aria-selected={current}
-                className="text-body-md min-w-0 flex-1 px-2 py-1.5 text-left"
-                onClick={() => onPick(branch.name)}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${current ? "bg-success" : "bg-transparent"}`}
-                  />
-                  <span className="truncate font-mono text-xs">{branch.name}</span>
-                </span>
-              </button>
-              {onDelete && !current ? (
-                <button
-                  type="button"
-                  className="text-label-md text-error hover:bg-error/10 invisible shrink-0 rounded px-1.5 py-1 group-hover:visible group-focus-within:visible"
-                  onClick={() => onDelete(branch.name)}
-                >
-                  Delete
-                </button>
-              ) : null}
-            </div>
-          );
-        })
-      )}
+      {children}
+      {empty ? <p className="text-body-md text-foreground-faint px-2 py-1">{empty}</p> : null}
     </section>
+  );
+}
+
+function BranchRow({
+  branch,
+  current = false,
+  hint,
+  onPick,
+  onDelete,
+}: {
+  branch: GitBranch;
+  current?: boolean;
+  hint?: string | null;
+  onPick: () => void;
+  onDelete?: (name: string) => void;
+}) {
+  return (
+    <div className="group hover:bg-surface-variant flex items-center gap-1 rounded-md">
+      <button
+        type="button"
+        role="option"
+        aria-selected={current}
+        className="min-w-0 flex-1 px-2 py-1.5 text-left"
+        onClick={onPick}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <Check shown={current} />
+          <span className="min-w-0 truncate font-mono text-xs">{branch.name}</span>
+        </span>
+        {hint ? (
+          <span className="text-label-md text-foreground-faint mt-0.5 ml-5 block truncate">
+            {hint}
+          </span>
+        ) : null}
+      </button>
+      {onDelete && !current ? (
+        <button
+          type="button"
+          className="text-label-md text-error hover:bg-error/10 invisible shrink-0 rounded px-1.5 py-1 group-hover:visible group-focus-within:visible"
+          onClick={() => onDelete(branch.name)}
+        >
+          Delete
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function syncHint(status: GitStatus, branch: GitBranch): string {
+  const parts: string[] = [];
+  if (branch.upstream) parts.push(branch.upstream);
+  if (status.ahead > 0) parts.push(`↑${status.ahead}`);
+  if (status.behind > 0) parts.push(`↓${status.behind}`);
+  return parts.join(" · ") || branch.shortOid;
+}
+
+function localNameForRemote(name: string): string {
+  const slash = name.indexOf("/");
+  return slash >= 0 ? name.slice(slash + 1) : name;
+}
+
+function BranchIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      className="text-foreground-muted size-3.5 shrink-0"
+    >
+      <circle cx="4.5" cy="3.5" r="1.6" />
+      <circle cx="4.5" cy="12.5" r="1.6" />
+      <circle cx="11.5" cy="8" r="1.6" />
+      <path d="M4.5 5.1v5.8M4.5 8h5.4" />
+    </svg>
   );
 }
 
@@ -250,9 +338,26 @@ function Chevron({ open }: { open: boolean }) {
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`duration-fast size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+      className={`text-foreground-faint duration-fast size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
     >
       <path d="M3 4.5 6 7.5 9 4.5" />
+    </svg>
+  );
+}
+
+function Check({ shown }: { shown: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`size-3 shrink-0 ${shown ? "text-foreground" : "invisible"}`}
+    >
+      <path d="M2.5 6.5 5 9l4.5-5.5" />
     </svg>
   );
 }

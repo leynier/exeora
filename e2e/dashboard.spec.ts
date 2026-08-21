@@ -101,7 +101,7 @@ function gitStatus(target: "main" | "worktree") {
 
 function applyWorkspaceAction(
   status: ReturnType<typeof gitStatus>,
-  action: { action?: string; paths?: string[] },
+  action: { action?: string; paths?: string[]; name?: string; remoteBranch?: string },
 ) {
   if (action.action === "stage" && Array.isArray(action.paths)) {
     return {
@@ -130,6 +130,56 @@ function applyWorkspaceAction(
           kind: added ? ("untracked" as const) : file.kind,
         };
       }),
+    };
+  }
+  if (action.action === "branch_switch" && action.name) {
+    return {
+      ...status,
+      head: action.name,
+      branches: status.branches.map((branch) => ({
+        ...branch,
+        current: !branch.remote && branch.name === action.name,
+      })),
+    };
+  }
+  if (action.action === "branch_create" && action.name) {
+    return {
+      ...status,
+      head: action.name,
+      branches: [
+        ...status.branches.map((branch) => ({ ...branch, current: false })),
+        {
+          name: action.name,
+          shortOid: "new",
+          upstream: null,
+          remote: false,
+          current: true,
+        },
+      ],
+    };
+  }
+  if (action.action === "branch_track" && action.name) {
+    const exists = status.branches.some((branch) => !branch.remote && branch.name === action.name);
+    return {
+      ...status,
+      head: action.name,
+      branches: [
+        ...status.branches.map((branch) => ({
+          ...branch,
+          current: !branch.remote && branch.name === action.name,
+        })),
+        ...(exists
+          ? []
+          : [
+              {
+                name: action.name,
+                shortOid: "new",
+                upstream: action.remoteBranch ?? null,
+                remote: false,
+                current: true,
+              },
+            ]),
+      ],
     };
   }
   return status;
@@ -390,7 +440,10 @@ test("switches branches from the toolbar picker", async ({ page }) => {
   await page.goto("/dashboard/");
   await page.getByRole("link", { name: "Workspace", exact: true }).click();
   await page.getByRole("button", { name: "Current branch main" }).click();
-  await expect(page.getByRole("option", { name: /feature\/trees/ })).toBeVisible();
   await expect(page.getByPlaceholder("Find or create a branch")).toBeVisible();
-  await page.getByRole("option", { name: /origin\/main/ }).click();
+  await expect(page.getByRole("heading", { name: "Current" })).toBeVisible();
+  await expect(page.getByRole("option", { name: /feature\/trees/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: "origin/main Checkout" })).toBeVisible();
+  await page.getByRole("option", { name: /feature\/trees/ }).click();
+  await expect(page.getByRole("button", { name: "Current branch feature/trees" })).toBeVisible();
 });
