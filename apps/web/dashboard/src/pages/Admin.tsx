@@ -1,42 +1,28 @@
 import { Link } from "react-router";
-import { relativeTime } from "../api.js";
-import {
-  Badge,
-  Card,
-  Divided,
-  EmptyState,
-  ErrorBanner,
-  PageHeader,
-  Row,
-  SkeletonRows,
-  Stat,
-} from "../components/ui.js";
-import { formatDate } from "../format.js";
-import { useAdminOverview, useAdminUsers } from "../queries.js";
+import { Card, ErrorBanner, PageHeader, Stat } from "../components/ui.js";
+import { useAdminOverview } from "../queries.js";
 
 /**
- * Cross-account administration.
+ * Cross-account administration, at a glance.
  *
  * Only people on the fixed email allow-list ever reach this screen. The server
  * is the real gate; the route guard is only so ordinary accounts never see an
- * empty shell.
+ * empty shell. The user list is a destination of its own, because the rail
+ * inside Admin is a set of screens rather than one page with everything on it.
  */
 export function Admin() {
   const overview = useAdminOverview();
-  const users = useAdminUsers();
-
   const totals = overview.data;
-  const list = users.data ?? [];
 
-  if (overview.isError || users.isError) {
+  if (overview.isError) {
     return (
       <>
         <PageHeader title="Administration" />
         <ErrorBanner
-          error={overview.error ?? users.error}
+          error={overview.error}
           title="Could not load administration data"
           onRetry={() => {
-            void Promise.all([overview.refetch(), users.refetch()]);
+            void overview.refetch();
           }}
         />
       </>
@@ -48,6 +34,11 @@ export function Admin() {
       <PageHeader
         title="Administration"
         subtitle="Every account on this gateway, and the machines and projects hanging off each one."
+        action={
+          <Link to="/admin/users" className="btn">
+            Users
+          </Link>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -85,63 +76,16 @@ export function Admin() {
         />
       </div>
 
-      <Card title="Users" className="mt-6">
-        {users.isError ? null : users.isLoading ? (
-          <SkeletonRows count={4} />
-        ) : list.length === 0 ? (
-          <EmptyState title="No users yet">Accounts appear here as people sign in.</EmptyState>
-        ) : (
-          <Divided>
-            {list.map((user) => (
-              <Row key={user.id}>
-                <div className="flex min-w-0 items-center gap-3">
-                  {user.avatarUrl ? (
-                    <img
-                      src={user.avatarUrl}
-                      alt=""
-                      width={32}
-                      height={32}
-                      className="border-border size-8 shrink-0 rounded-full border"
-                    />
-                  ) : (
-                    <span className="bg-accent-subtle text-foreground-muted flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium">
-                      {(user.name ?? user.email).slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
-                  <div className="min-w-0">
-                    <Link
-                      to={`/admin/users/${user.id}`}
-                      className="text-title-md hover:text-accent truncate block"
-                    >
-                      {user.name ?? user.email}
-                    </Link>
-                    <p className="text-body-md text-foreground-faint truncate">
-                      {user.name ? user.email : `joined ${formatDate(user.createdAt)}`}
-                      {user.lastActivityAt
-                        ? ` · active ${relativeTime(user.lastActivityAt)}`
-                        : " · no activity yet"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  <Badge tone={user.devicesOnline > 0 ? "success" : "neutral"}>
-                    {user.devicesOnline}/{user.devices} online
-                  </Badge>
-                  <Badge>
-                    {user.projects} {user.projects === 1 ? "project" : "projects"}
-                  </Badge>
-                  <Badge>
-                    {user.clients} {user.clients === 1 ? "client" : "clients"}
-                  </Badge>
-                  <Badge tone="brand">
-                    {user.toolCalls} {user.toolCalls === 1 ? "call" : "calls"}
-                  </Badge>
-                </div>
-              </Row>
-            ))}
-          </Divided>
-        )}
+      <Card title="Accounts" className="mt-6">
+        <div className="px-5 py-5">
+          <p className="text-body-md text-foreground-muted">
+            Open Users to inspect an account: its machines, projects, clients and recent tool calls,
+            and to revoke or delete from there.
+          </p>
+          <Link to="/admin/users" className="btn mt-4">
+            Open users
+          </Link>
+        </div>
       </Card>
     </>
   );

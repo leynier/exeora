@@ -12,7 +12,7 @@ import {
   useProjects,
   useToolCalls,
 } from "../queries.js";
-import { sectionTitle, shellLinks } from "./nav.js";
+import { adminShellLinks, isAdminSection, sectionTitle, shellLinks } from "./nav.js";
 import { Sidebar } from "./Sidebar.js";
 
 const COLLAPSED_KEY = "exeora.sidebar_collapsed";
@@ -33,6 +33,7 @@ export function AppShell() {
   const me = useMe();
   const location = useLocation();
   const workspace = location.pathname === "/workspace";
+  const adminSection = isAdminSection(location.pathname);
   const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
   const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
   const failed = queries.find((query) => query.isError && !(query.error instanceof Unauthorized));
@@ -63,7 +64,7 @@ export function AppShell() {
 
   if (unauthorized) return null;
 
-  const links = shellLinks(me.data?.isAdmin === true);
+  const links = adminSection ? adminShellLinks() : shellLinks(me.data?.isAdmin === true);
 
   return (
     <div className="flex h-full">
@@ -81,6 +82,8 @@ export function AppShell() {
         collapsed={collapsed}
         mobileOpen={mobileOpen}
         onToggleCollapsed={() => setCollapsed((current) => persistCollapsed(!current))}
+        back={adminSection ? { to: "/", label: "Dashboard" } : undefined}
+        heading={adminSection ? "Admin" : undefined}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

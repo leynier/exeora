@@ -3,7 +3,7 @@
  *
  * The sidebar draws them as a list and the topbar as the current section. Both
  * have to agree on what a path belongs to, including the nested ones: a
- * project detail is still Projects, an admin user is still Admin. The git
+ * project detail is still Projects, an admin user is still Users. The git
  * client lives at `/workspace`, not under a project.
  */
 
@@ -15,7 +15,8 @@ export type NavIconName =
   | "activity"
   | "workspace"
   | "settings"
-  | "admin";
+  | "admin"
+  | "users";
 
 export type ShellLink = {
   to: string;
@@ -35,6 +36,24 @@ export function shellLinks(isAdmin: boolean): ShellLink[] {
     { to: "/settings", label: "Settings", icon: "settings" },
     ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: "admin" as const }] : []),
   ];
+}
+
+/**
+ * Destinations inside the administration panel.
+ *
+ * Entering Admin swaps the rail: the owner dashboard goes away and these take
+ * its place, with a way back. `/admin` is Overview and must not stay lit on
+ * `/admin/users`.
+ */
+export function adminShellLinks(): ShellLink[] {
+  return [
+    { to: "/admin", label: "Overview", icon: "overview", end: true },
+    { to: "/admin/users", label: "Users", icon: "users" },
+  ];
+}
+
+export function isAdminSection(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
 export function sectionTitle(pathname: string, links: readonly ShellLink[]): string {

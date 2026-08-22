@@ -15,16 +15,20 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   onToggleCollapsed,
+  back,
+  heading,
 }: {
   links: readonly ShellLink[];
   collapsed: boolean;
   mobileOpen: boolean;
   onToggleCollapsed: () => void;
+  back?: { to: string; label: string };
+  heading?: string;
 }) {
   return (
     <aside
       id="dashboard-sidebar"
-      aria-label="Dashboard"
+      aria-label={heading ?? "Dashboard"}
       className={`border-border-subtle bg-surface fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-mid lg:static lg:z-auto lg:translate-x-0 ${
         mobileOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible"
       } ${collapsed ? "w-60 lg:w-16 lg:min-w-16" : "w-60"}`}
@@ -52,6 +56,27 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto p-2">
+        {back && (
+          <NavLink
+            to={back.to}
+            title={collapsed ? back.label : undefined}
+            className={`text-foreground-muted hover:bg-surface-variant hover:text-foreground mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-title-md transition-colors duration-fast ${
+              collapsed ? "lg:justify-center lg:px-0" : ""
+            }`}
+          >
+            <BackIcon />
+            <span className={collapsed ? "lg:sr-only" : undefined}>{back.label}</span>
+          </NavLink>
+        )}
+        {heading && (
+          <p
+            className={`text-label-md text-foreground-faint px-3 pt-1 pb-2 font-mono uppercase ${
+              collapsed ? "lg:sr-only" : ""
+            }`}
+          >
+            {heading}
+          </p>
+        )}
         <ul className="space-y-0.5">
           {links.map((link) => (
             <li key={link.to}>
@@ -94,6 +119,23 @@ export function Sidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
   );
 }
 
@@ -157,4 +199,11 @@ const icons: Record<NavIconName, ReactNode> = {
   workspace: <path d="M7 8l-4 4 4 4M17 8l4 4-4 4M14 4l-4 16" />,
   settings: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
   admin: <path d="M12 3 4 6v5c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6Z" />,
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
 };
