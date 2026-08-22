@@ -204,7 +204,7 @@ function ResizeHandle({
       aria-valuemax={MAX_SIDEBAR_WIDTH}
       aria-valuenow={width}
       tabIndex={0}
-      className="hover:bg-foreground-faint/30 active:bg-foreground-faint/50 absolute inset-y-0 right-0 m-0 hidden w-2 cursor-col-resize border-0 touch-none lg:block"
+      className="hover:bg-foreground-faint/30 active:bg-foreground-faint/50 absolute inset-y-0 right-0 m-0 hidden h-auto w-2 cursor-col-resize border-0 touch-none lg:block"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
