@@ -1,37 +1,53 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, PointerEvent, ReactNode } from "react";
+import { useRef, useState } from "react";
 import { NavLink } from "react-router";
 import type { NavIconName, ShellLink } from "./nav.js";
+import { clampSidebarWidth, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./sidebarPrefs.js";
 
 /**
  * The left-hand navigation.
  *
- * On a wide screen it sits in the flow and can collapse to icons, which is the
- * usual console layout. Below `lg` it is a drawer instead: the same list, but
- * over the page, because a persistent rail would leave no room for the work.
+ * On a wide screen it sits in the flow, can collapse to icons, and when it is
+ * open the right edge can be dragged to a remembered width. Below `lg` it is a
+ * drawer instead: the same list, but over the page, because a persistent rail
+ * would leave no room for the work.
  */
 
 export function Sidebar({
   links,
   collapsed,
   mobileOpen,
+  width,
+  onWidthChange,
   onToggleCollapsed,
   back,
   heading,
+  inside,
 }: {
   links: readonly ShellLink[];
   collapsed: boolean;
   mobileOpen: boolean;
+  width: number;
+  onWidthChange: (width: number) => void;
   onToggleCollapsed: () => void;
   back?: { to: string; label: string };
   heading?: string;
+  inside?: { parentTo: string; parentLabel: string; kindLabel: string; name: string };
 }) {
+  const [resizing, setResizing] = useState(false);
+
   return (
     <aside
       id="dashboard-sidebar"
       aria-label={heading ?? "Dashboard"}
-      className={`border-border-subtle bg-surface fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-mid lg:static lg:z-auto lg:translate-x-0 ${
+      style={{ "--sidebar-width": `${width}px` } as CSSProperties}
+      className={`border-border-subtle bg-surface fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r lg:relative lg:z-auto lg:translate-x-0 ${
         mobileOpen ? "translate-x-0" : "-translate-x-full max-lg:invisible"
-      } ${collapsed ? "w-60 lg:w-16 lg:min-w-16" : "w-60"}`}
+      } ${
+        collapsed
+          ? "w-60 lg:w-16 lg:min-w-16"
+          : "w-60 lg:w-[var(--sidebar-width)] lg:min-w-[var(--sidebar-width)]"
+      } ${resizing ? "lg:transition-none" : "transition-[width,transform] duration-mid"}`}
     >
       <div
         className={`border-border-subtle flex h-14 shrink-0 items-center border-b ${
@@ -77,6 +93,7 @@ export function Sidebar({
             {heading}
           </p>
         )}
+        {inside && <InsideCard inside={inside} collapsed={collapsed} />}
         <ul className="space-y-0.5">
           {links.map((link) => (
             <li key={link.to}>
@@ -118,7 +135,115 @@ export function Sidebar({
           {!collapsed && <span>Collapse</span>}
         </button>
       </div>
+
+      {!collapsed && (
+        <ResizeHandle width={width} onWidthChange={onWidthChange} onResizingChange={setResizing} />
+      )}
     </aside>
+  );
+}
+
+function InsideCard({
+  inside,
+  collapsed,
+}: {
+  inside: { parentTo: string; parentLabel: string; kindLabel: string; name: string };
+  collapsed: boolean;
+}) {
+  return (
+    <div
+      className={`border-border-subtle bg-accent-subtle mb-2 rounded-lg border-y border-r border-l-2 border-l-foreground ${
+        collapsed ? "lg:border-0 lg:bg-transparent lg:border-l-0" : ""
+      }`}
+    >
+      <NavLink
+        to={inside.parentTo}
+        title={collapsed ? `Back to ${inside.parentLabel}` : undefined}
+        className={`text-foreground-muted hover:text-foreground flex items-center gap-3 px-3 py-2 text-title-md transition-colors duration-fast ${
+          collapsed ? "lg:justify-center lg:px-0" : ""
+        }`}
+      >
+        <BackIcon />
+        <span className={collapsed ? "lg:sr-only" : undefined}>Back to {inside.parentLabel}</span>
+      </NavLink>
+      <div className={`border-border-subtle border-t px-3 py-2 ${collapsed ? "lg:hidden" : ""}`}>
+        <p className="text-label-md text-foreground-faint font-mono uppercase">
+          Inside {inside.kindLabel}
+        </p>
+        <p className="text-title-md mt-0.5 truncate">{inside.name}</p>
+      </div>
+    </div>
+  );
+}
+
+function ResizeHandle({
+  width,
+  onWidthChange,
+  onResizingChange,
+}: {
+  width: number;
+  onWidthChange: (width: number) => void;
+  onResizingChange: (resizing: boolean) => void;
+}) {
+  const drag = useRef<{ x: number; width: number } | null>(null);
+
+  const finish = (event: PointerEvent<HTMLHRElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    drag.current = null;
+    onResizingChange(false);
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+  };
+
+  return (
+    <hr
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuemin={MIN_SIDEBAR_WIDTH}
+      aria-valuemax={MAX_SIDEBAR_WIDTH}
+      aria-valuenow={width}
+      tabIndex={0}
+      className="hover:bg-foreground-faint/30 active:bg-foreground-faint/50 absolute inset-y-0 right-0 m-0 hidden w-2 cursor-col-resize border-0 touch-none lg:block"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.current = { x: event.clientX, width };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        onResizingChange(true);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      }}
+      onPointerMove={(event) => {
+        const origin = drag.current;
+        if (!origin || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        onWidthChange(clampSidebarWidth(origin.width + event.clientX - origin.x));
+      }}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+      onLostPointerCapture={() => {
+        drag.current = null;
+        onResizingChange(false);
+        document.body.style.removeProperty("cursor");
+        document.body.style.removeProperty("user-select");
+      }}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 32 : 16;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onWidthChange(clampSidebarWidth(width - step));
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onWidthChange(clampSidebarWidth(width + step));
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          onWidthChange(MIN_SIDEBAR_WIDTH);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          onWidthChange(MAX_SIDEBAR_WIDTH);
+        }
+      }}
+    />
   );
 }
 

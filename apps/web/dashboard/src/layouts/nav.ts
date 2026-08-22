@@ -67,3 +67,40 @@ export function sectionTitle(pathname: string, links: readonly ShellLink[]): str
   }
   return "Dashboard";
 }
+
+/**
+ * A screen that is one record, not a list. The shell treats these as nested:
+ * a trail back to the list, and a mark that you are inside that record.
+ */
+export type DetailPlace = {
+  parentTo: string;
+  parentLabel: string;
+  kind: "project" | "user";
+  id: string;
+};
+
+export function detailPlace(pathname: string): DetailPlace | null {
+  const project = /^\/projects\/([^/]+)$/.exec(pathname);
+  if (project?.[1]) {
+    return {
+      parentTo: "/projects",
+      parentLabel: "Projects",
+      kind: "project",
+      id: project[1],
+    };
+  }
+  const user = /^\/admin\/users\/([^/]+)$/.exec(pathname);
+  if (user?.[1]) {
+    return {
+      parentTo: "/admin/users",
+      parentLabel: "Users",
+      kind: "user",
+      id: user[1],
+    };
+  }
+  return null;
+}
+
+export function detailKindLabel(kind: DetailPlace["kind"]): string {
+  return kind === "project" ? "Project" : "User";
+}

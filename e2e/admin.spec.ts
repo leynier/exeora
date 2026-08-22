@@ -103,10 +103,18 @@ test("entering Admin swaps the rail for Overview and Users", async ({ page }) =>
   await page.getByRole("link", { name: "Subject" }).click();
   await expect(page).toHaveURL(`/dashboard/admin/users/${subject.id}`);
   await expect(page.getByRole("heading", { name: "Subject" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Users");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Subject");
+  await expect(page.getByText("Inside User")).toBeVisible();
   await expect(page.getByRole("button", { name: "Machines" })).toBeVisible();
   await expect(page.getByText("subject-box")).toBeVisible();
 
   await page.getByRole("button", { name: "Projects" }).click();
   await expect(page.getByText("Nothing registered yet.")).toBeVisible();
   await expect(page.getByText("subject-box")).toHaveCount(0);
+
+  await sidebar.getByRole("link", { name: "Back to Users" }).click();
+  await expect(page).toHaveURL("/dashboard/admin/users");
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(page.getByText("Inside User")).toHaveCount(0);
 });

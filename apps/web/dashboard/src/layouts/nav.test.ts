@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminShellLinks, isAdminSection, sectionTitle, shellLinks } from "./nav.js";
+import { adminShellLinks, detailPlace, isAdminSection, sectionTitle, shellLinks } from "./nav.js";
 
 describe("sectionTitle", () => {
   const links = shellLinks(true);
@@ -57,5 +57,32 @@ describe("isAdminSection", () => {
     expect(isAdminSection("/admin/users/usr_1")).toBe(true);
     expect(isAdminSection("/")).toBe(false);
     expect(isAdminSection("/settings")).toBe(false);
+  });
+});
+
+describe("detailPlace", () => {
+  it("names a project detail and the list it came from", () => {
+    expect(detailPlace("/projects/prj_1")).toEqual({
+      parentTo: "/projects",
+      parentLabel: "Projects",
+      kind: "project",
+      id: "prj_1",
+    });
+  });
+
+  it("names an admin account and the user list", () => {
+    expect(detailPlace("/admin/users/usr_1")).toEqual({
+      parentTo: "/admin/users",
+      parentLabel: "Users",
+      kind: "user",
+      id: "usr_1",
+    });
+  });
+
+  it("ignores lists and the git-client redirect", () => {
+    expect(detailPlace("/projects")).toBeNull();
+    expect(detailPlace("/projects/prj_1/workspace")).toBeNull();
+    expect(detailPlace("/admin/users")).toBeNull();
+    expect(detailPlace("/workspace")).toBeNull();
   });
 });

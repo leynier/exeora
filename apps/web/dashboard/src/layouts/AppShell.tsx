@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
 import { ApprovalBanner } from "../components/ApprovalBanner.js";
 import { ErrorBanner } from "../components/ui.js";
 import {
+  useAdminUsers,
   useApprovals,
   useClients,
   useDevices,
@@ -12,10 +13,21 @@ import {
   useProjects,
   useToolCalls,
 } from "../queries.js";
-import { adminShellLinks, isAdminSection, sectionTitle, shellLinks } from "./nav.js";
+import {
+  adminShellLinks,
+  detailKindLabel,
+  detailPlace,
+  isAdminSection,
+  sectionTitle,
+  shellLinks,
+} from "./nav.js";
 import { Sidebar } from "./Sidebar.js";
-
-const COLLAPSED_KEY = "exeora.sidebar_collapsed";
+import {
+  persistCollapsed,
+  persistSidebarWidth,
+  readCollapsed,
+  readSidebarWidth,
+} from "./sidebarPrefs.js";
 
 /**
  * The frame every signed-in screen sits in: a collapsible rail, a top bar, and
@@ -34,11 +46,15 @@ export function AppShell() {
   const location = useLocation();
   const workspace = location.pathname === "/workspace";
   const adminSection = isAdminSection(location.pathname);
-  const queries = [me, useDevices(), useProjects(), useClients(), useToolCalls(), useApprovals()];
+  const projects = useProjects();
+  const adminUsers = useAdminUsers();
+  const queries = [me, useDevices(), projects, useClients(), useToolCalls(), useApprovals()];
   const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
   const failed = queries.find((query) => query.isError && !(query.error instanceof Unauthorized));
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const [width, setWidth] = useState(readSidebarWidth);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const place = detailPlace(location.pathname);
 
   useEffect(() => {
     if (unauthorized) signOut();
@@ -65,6 +81,14 @@ export function AppShell() {
   if (unauthorized) return null;
 
   const links = adminSection ? adminShellLinks() : shellLinks(me.data?.isAdmin === true);
+  const inside = place
+    ? {
+        parentTo: place.parentTo,
+        parentLabel: place.parentLabel,
+        kindLabel: detailKindLabel(place.kind),
+        name: resolveDetailName(place.kind, place.id, projects.data, adminUsers.data),
+      }
+    : undefined;
 
   return (
     <div className="flex h-full">
@@ -81,9 +105,12 @@ export function AppShell() {
         links={links}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
+        width={width}
+        onWidthChange={(next) => setWidth(persistSidebarWidth(next))}
         onToggleCollapsed={() => setCollapsed((current) => persistCollapsed(!current))}
         back={adminSection ? { to: "/", label: "Dashboard" } : undefined}
         heading={adminSection ? "Admin" : undefined}
+        inside={inside}
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -101,7 +128,15 @@ export function AppShell() {
               >
                 <MenuIcon open={mobileOpen} />
               </button>
-              <p className="text-title-md truncate">{sectionTitle(location.pathname, links)}</p>
+              {inside && place ? (
+                <DetailTrail
+                  parentTo={place.parentTo}
+                  parentLabel={place.parentLabel}
+                  name={inside.name}
+                />
+              ) : (
+                <p className="text-title-md truncate">{sectionTitle(location.pathname, links)}</p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -152,6 +187,58 @@ export function AppShell() {
   );
 }
 
+function DetailTrail({
+  parentTo,
+  parentLabel,
+  name,
+}: {
+  parentTo: string;
+  parentLabel: string;
+  name: string;
+}) {
+  return (
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1">
+      <Link
+        to={parentTo}
+        aria-label={`Back to ${parentLabel}`}
+        className="text-foreground-muted hover:bg-surface-variant hover:text-foreground inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-fast"
+      >
+        <BackIcon />
+      </Link>
+      <ol className="text-title-md flex min-w-0 items-center gap-2">
+        <li className="text-foreground-muted shrink-0">
+          <Link to={parentTo} className="hover:text-foreground">
+            {parentLabel}
+          </Link>
+        </li>
+        <li className="text-foreground-faint shrink-0" aria-hidden="true">
+          /
+        </li>
+        <li className="text-foreground truncate" aria-current="page">
+          {name}
+        </li>
+      </ol>
+    </nav>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
 function MenuIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -168,19 +255,15 @@ function MenuIcon({ open }: { open: boolean }) {
   );
 }
 
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
+function resolveDetailName(
+  kind: "project" | "user",
+  id: string,
+  projects: { id: string; name: string }[] | undefined,
+  users: { id: string; name: string | null; email: string }[] | undefined,
+): string {
+  if (kind === "project") {
+    return projects?.find((item) => item.id === id)?.name ?? "Project";
   }
-}
-
-function persistCollapsed(collapsed: boolean): boolean {
-  try {
-    localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
-  } catch {
-    // Private mode, or a full quota: the preference just does not survive a reload.
-  }
-  return collapsed;
+  const user = users?.find((item) => item.id === id);
+  return user?.name ?? user?.email ?? "User";
 }
