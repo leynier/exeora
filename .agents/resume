@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+for prerequisite in "$HOME/.bun/bin/bun" "$HOME/.cargo/bin/cargo" node_modules; do
+  if [[ ! -e "$prerequisite" ]]; then
+    echo "Missing $prerequisite; run .agents/setup to repair this orb." >&2
+    exit 1
+  fi
+done
+
+echo "Orb prerequisites are ready; this repository has no persistent services to resume."

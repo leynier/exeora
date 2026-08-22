@@ -18,6 +18,7 @@ __pycache__/
 apps/web/public/
 playwright-report/
 test-results/
+.amp/portals/*
 
 # Working notes kept locally, not published with the source tree.
 context.md

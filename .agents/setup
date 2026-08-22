@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+step() {
+  local label="$1"
+  shift
+  local started=$SECONDS
+  echo "==> $label"
+  "$@"
+  echo "<== $label ($((SECONDS - started))s)"
+}
+
+missing_packages=()
+command -v curl >/dev/null || missing_packages+=(curl)
+command -v cc >/dev/null || missing_packages+=(build-essential)
+command -v pkg-config >/dev/null || missing_packages+=(pkg-config)
+command -v unzip >/dev/null || missing_packages+=(unzip)
+if ((${#missing_packages[@]})); then
+  step "Update apt metadata" sudo apt-get update
+  step "Install system packages" sudo apt-get install -y "${missing_packages[@]}"
+fi
+
+bun_version="1.3.14"
+if [[ ! -x "$HOME/.bun/bin/bun" ]] || [[ "$("$HOME/.bun/bin/bun" --version)" != "$bun_version" ]]; then
+  echo "==> Install Bun $bun_version"
+  curl -fsSL https://bun.com/install | bash -s -- "bun-v$bun_version"
+fi
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
+  echo "==> Install rustup"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain none
+fi
+# shellcheck disable=SC1091
+source "$HOME/.cargo/env"
+step "Install pinned Rust toolchain" \
+  rustup toolchain install 1.97.1 --profile minimal --component clippy,rustfmt
+step "Fetch Rust dependencies" cargo fetch --locked
+
+profile_marker="# exeora orb toolchains"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >>"$HOME/.bash_profile" <<'EOF'
+
+# exeora orb toolchains
+export BUN_INSTALL="$HOME/.bun"
+case ":$PATH:" in
+  *":$BUN_INSTALL/bin:"*) ;;
+  *) export PATH="$BUN_INSTALL/bin:$PATH" ;;
+esac
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+EOF
+fi
+
+node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+if ((node_major < 22)); then
+  echo "Node.js 22 or newer is required; found $(node --version)." >&2
+  exit 1
+fi
+
+step "Install JavaScript dependencies" bun install --frozen-lockfile
+step "Install Playwright Chromium" bunx playwright install chromium
+
+if [[ ! -f apps/gateway/.dev.vars ]]; then
+  cat >apps/gateway/.dev.vars <<'EOF'
+EXEORA_BASE_URL=http://localhost:8787
+GITHUB_CLIENT_ID=orb-placeholder
+GITHUB_CLIENT_SECRET=orb-placeholder
+GOOGLE_CLIENT_ID=orb-placeholder
+GOOGLE_CLIENT_SECRET=orb-placeholder
+COOKIE_SECRET=orb-placeholder-cookie-secret
+REQUEST_STATE_SECRET=orb-placeholder-request-state-secret-32-bytes
+EOF
+fi
+
+step "Apply local D1 migrations" bun run db:migrate:local
+
+echo "Orb setup complete. Add real OAuth credentials to apps/gateway/.dev.vars to test sign-in."
