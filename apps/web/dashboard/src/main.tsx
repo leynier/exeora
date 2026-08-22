@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import { storedToken } from "./auth.js";
 import { ToastProvider } from "./components/toast.js";
 import { AppShell } from "./layouts/AppShell.js";
 import { Activity } from "./pages/Activity.js";
 import { Admin } from "./pages/Admin.js";
 import { AdminUser } from "./pages/AdminUser.js";
+import { AdminUsers } from "./pages/AdminUsers.js";
 import { Callback } from "./pages/Callback.js";
 import { Clients } from "./pages/Clients.js";
 import { Machines } from "./pages/Machines.js";
@@ -121,18 +122,14 @@ createRoot(root).render(
                 path="admin"
                 element={
                   <RequireAdmin>
-                    <Admin />
+                    <Outlet />
                   </RequireAdmin>
                 }
-              />
-              <Route
-                path="admin/users/:userId"
-                element={
-                  <RequireAdmin>
-                    <AdminUser />
-                  </RequireAdmin>
-                }
-              />
+              >
+                <Route index element={<Admin />} />
+                <Route path="users" element={<AdminUsers />} />
+                <Route path="users/:userId" element={<AdminUser />} />
+              </Route>
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

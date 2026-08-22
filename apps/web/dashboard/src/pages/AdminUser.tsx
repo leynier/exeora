@@ -19,6 +19,15 @@ import {
 import { clientLabel, formatDate, formatDuration, shortenPath } from "../format.js";
 import { keys, useAdminUser } from "../queries.js";
 
+type AccountTab = "machines" | "projects" | "clients" | "activity";
+
+const ACCOUNT_TABS: { id: AccountTab; label: string }[] = [
+  { id: "machines", label: "Machines" },
+  { id: "projects", label: "Projects" },
+  { id: "clients", label: "Clients" },
+  { id: "activity", label: "Activity" },
+];
+
 /**
  * One account, seen by an administrator.
  *
@@ -37,6 +46,7 @@ export function AdminUser() {
   const [pendingClient, setPendingClient] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteWorking, setDeleteWorking] = useState(false);
+  const [tab, setTab] = useState<AccountTab>("machines");
 
   const user = detail.data;
 
@@ -78,7 +88,7 @@ export function AdminUser() {
       await api.adminDeleteUser(userId);
       toast(`${user?.email ?? "User"} was deleted.`);
       invalidate();
-      navigate("/admin");
+      navigate("/admin/users");
     } catch (error) {
       setDeleteWorking(false);
       setDeleting(false);
@@ -118,7 +128,7 @@ export function AdminUser() {
         title="User"
         subtitle="That account is gone, or the id never pointed at one."
         action={
-          <Link to="/admin" className="btn">
+          <Link to="/admin/users" className="btn">
             Back
           </Link>
         }
@@ -136,7 +146,7 @@ export function AdminUser() {
         title={user.name ?? user.email}
         subtitle={`${user.email} · joined ${formatDate(user.createdAt)}`}
         action={
-          <Link to="/admin" className="btn">
+          <Link to="/admin/users" className="btn">
             All users
           </Link>
         }
@@ -166,7 +176,24 @@ export function AdminUser() {
         <Stat label="Calls" value={`${user.toolCalls}`} />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 mb-4 flex items-center gap-1 border-b border-border">
+        {ACCOUNT_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTab(item.id)}
+            className={`text-title-md border-b-2 px-4 py-2.5 ${
+              tab === item.id
+                ? "border-brand text-foreground"
+                : "text-foreground-faint border-transparent"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "machines" && (
         <Card title="Machines">
           {machines.length === 0 ? (
             <EmptyState title="No machines">None registered on this account.</EmptyState>
@@ -209,7 +236,9 @@ export function AdminUser() {
             </Divided>
           )}
         </Card>
+      )}
 
+      {tab === "clients" && (
         <Card title="Clients">
           {clients.length === 0 ? (
             <EmptyState title="No clients">No authorizations on this account.</EmptyState>
@@ -243,57 +272,61 @@ export function AdminUser() {
             </Divided>
           )}
         </Card>
-      </div>
+      )}
 
-      <Card title="Projects" className="mt-6">
-        {user.projectList.length === 0 ? (
-          <EmptyState title="No projects">Nothing registered yet.</EmptyState>
-        ) : (
-          <Divided>
-            {user.projectList.map((project) => (
-              <Row key={project.id}>
-                <div className="min-w-0">
-                  <p className="text-title-md truncate">{project.name}</p>
-                  <p className="text-body-md text-foreground-faint truncate font-mono">
-                    {shortenPath(project.localPath)}
-                  </p>
-                </div>
-                <span className="text-body-md text-foreground-faint shrink-0">
-                  {formatDate(project.createdAt)}
-                </span>
-              </Row>
-            ))}
-          </Divided>
-        )}
-      </Card>
+      {tab === "projects" && (
+        <Card title="Projects">
+          {user.projectList.length === 0 ? (
+            <EmptyState title="No projects">Nothing registered yet.</EmptyState>
+          ) : (
+            <Divided>
+              {user.projectList.map((project) => (
+                <Row key={project.id}>
+                  <div className="min-w-0">
+                    <p className="text-title-md truncate">{project.name}</p>
+                    <p className="text-body-md text-foreground-faint truncate font-mono">
+                      {shortenPath(project.localPath)}
+                    </p>
+                  </div>
+                  <span className="text-body-md text-foreground-faint shrink-0">
+                    {formatDate(project.createdAt)}
+                  </span>
+                </Row>
+              ))}
+            </Divided>
+          )}
+        </Card>
+      )}
 
-      <Card title="Recent activity" className="mt-6">
-        {user.recentCalls.length === 0 ? (
-          <EmptyState title="No tool calls yet">
-            Nothing has been recorded for this account.
-          </EmptyState>
-        ) : (
-          <Divided>
-            {user.recentCalls.map((call) => (
-              <Row key={call.id}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
-                  <code className="text-body-md truncate font-mono">{call.tool}</code>
-                  {call.clientName && (
-                    <span className="text-body-md text-foreground-faint hidden truncate sm:inline">
-                      {call.clientName}
-                    </span>
-                  )}
-                </div>
-                <div className="text-body-md text-foreground-faint flex shrink-0 items-center gap-3">
-                  <span>{formatDuration(call.durationMs)}</span>
-                  <span>{relativeTime(call.createdAt)}</span>
-                </div>
-              </Row>
-            ))}
-          </Divided>
-        )}
-      </Card>
+      {tab === "activity" && (
+        <Card title="Recent activity">
+          {user.recentCalls.length === 0 ? (
+            <EmptyState title="No tool calls yet">
+              Nothing has been recorded for this account.
+            </EmptyState>
+          ) : (
+            <Divided>
+              {user.recentCalls.map((call) => (
+                <Row key={call.id}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
+                    <code className="text-body-md truncate font-mono">{call.tool}</code>
+                    {call.clientName && (
+                      <span className="text-body-md text-foreground-faint hidden truncate sm:inline">
+                        {call.clientName}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-body-md text-foreground-faint flex shrink-0 items-center gap-3">
+                    <span>{formatDuration(call.durationMs)}</span>
+                    <span>{relativeTime(call.createdAt)}</span>
+                  </div>
+                </Row>
+              ))}
+            </Divided>
+          )}
+        </Card>
+      )}
 
       <section className="border-error/30 bg-surface mt-6 rounded-xl border p-5">
         <h2 className="text-title-lg text-error">Danger</h2>
