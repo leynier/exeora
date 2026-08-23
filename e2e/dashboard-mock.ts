@@ -228,6 +228,13 @@ export async function mockApi(
     failDevices?: () => boolean;
     onRequest?: (request: Request) => void;
     projects?: Array<typeof project>;
+    terminals?: Array<{
+      sessionId: string;
+      projectId: string;
+      worktreeId?: string;
+      worktreeSlug?: string;
+      startedAt: number;
+    }>;
   } = {},
 ) {
   const state = {
@@ -253,6 +260,7 @@ export async function mockApi(
       "/api/clients": [],
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
+      "/api/terminals": { items: options.terminals ?? [] },
       [`/api/projects/${project.id}/worktrees`]: connectedWorktrees,
       [`/api/projects/${otherProject.id}/worktrees`]: [],
     };

@@ -51,10 +51,11 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     Opening a terminal requires an explicit confirmation. It starts the machine's default shell in a
-    real pseudo-terminal at the selected worktree's local path. Switching project or worktree in the
-    dashboard keeps that session running: open terminals stay listed so you can close them or return
-    to them. Closing the browser, losing the relay, revoking the machine, or reaching the session
-    limit terminates the local process.
+    real pseudo-terminal at the selected worktree's local path. Open terminals belong to the
+    dashboard as a whole: the list stays in the chrome when you leave Workspace, switch project, or
+    reload the tab. Closing the browser detaches the dashboard; the local process keeps running
+    until you close that terminal, the CLI disconnects, the machine is revoked, or the session
+    reaches its idle or maximum lifetime. Reopening the dashboard reconnects to the same shell.
   </p>
 
   <p>

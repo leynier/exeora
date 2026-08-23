@@ -13,6 +13,7 @@ use tokio::sync::{Mutex, mpsc};
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
 
 struct TerminalSession {
+    id: Arc<StdMutex<String>>,
     root: PathBuf,
     master: StdMutex<Box<dyn MasterPty + Send>>,
     writer: StdMutex<Box<dyn Write + Send>>,
@@ -46,17 +47,11 @@ impl TerminalRegistry {
         let root = std::fs::canonicalize(root).map_err(|_| {
             ExeoraError::new(ErrorCode::PathNotFound, "Project root was not found.")
         })?;
+        if self
+            .attach(&session_id, &root, cols, rows, outgoing.clone())
+            .await?
         {
-            let sessions = self.sessions.lock().await;
-            if sessions.contains_key(&session_id) {
-                return Err(invalid("That terminal session is already open."));
-            }
-            if sessions.values().any(|session| session.root == root) {
-                return Err(ExeoraError::new(
-                    ErrorCode::Forbidden,
-                    "Only one web terminal may be open for this worktree.",
-                ));
-            }
+            return Ok(());
         }
 
         let open_root = root.clone();
@@ -90,7 +85,10 @@ impl TerminalRegistry {
         .map_err(|error| ExeoraError::tool(format!("PTY startup failed: {error}")))??;
 
         let (master, mut reader, writer, killer, mut child) = opened;
+        let session_key = Arc::new(StdMutex::new(session_id.clone()));
+        let wait_id = session_key.clone();
         let session = Arc::new(TerminalSession {
+            id: session_key.clone(),
             root,
             master: StdMutex::new(master),
             writer: StdMutex::new(writer),
@@ -112,7 +110,6 @@ impl TerminalRegistry {
             ));
         }
 
-        let read_id = session_id.clone();
         let read_outgoing = outgoing.clone();
         tokio::task::spawn_blocking(move || {
             let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
@@ -120,10 +117,11 @@ impl TerminalRegistry {
                 match reader.read(&mut buffer) {
                     Ok(0) | Err(_) => break,
                     Ok(count) => {
+                        let id = session_key.lock().map(|id| id.clone()).unwrap_or_default();
                         if read_outgoing
                             .blocking_send(json!({
                                 "type": "terminal.output",
-                                "sessionId": read_id,
+                                "sessionId": id,
                                 "data": STANDARD.encode(&buffer[..count]),
                             }))
                             .is_err()
@@ -135,21 +133,57 @@ impl TerminalRegistry {
             }
         });
 
-        let wait_id = session_id;
         let wait_outgoing = outgoing;
         let sessions = self.sessions.clone();
         tokio::task::spawn_blocking(move || {
             let exit_code = child.wait().ok().map(|status| status.exit_code());
+            let session_id = wait_id.lock().map(|id| id.clone()).unwrap_or_default();
             let _ = wait_outgoing.blocking_send(json!({
                 "type": "terminal.exit",
-                "sessionId": wait_id,
+                "sessionId": session_id,
                 "exitCode": exit_code,
             }));
             tokio::runtime::Handle::current().spawn(async move {
-                sessions.lock().await.remove(&wait_id);
+                sessions.lock().await.remove(&session_id);
             });
         });
         Ok(())
+    }
+
+    async fn attach(
+        &self,
+        session_id: &str,
+        root: &Path,
+        cols: u16,
+        rows: u16,
+        outgoing: mpsc::Sender<Value>,
+    ) -> Result<bool, ExeoraError> {
+        let mut sessions = self.sessions.lock().await;
+        let existing_id = sessions
+            .iter()
+            .find(|(_, session)| session.root == root)
+            .map(|(id, _)| id.clone());
+        let Some(existing_id) = existing_id else {
+            if sessions.contains_key(session_id) {
+                return Err(invalid("That terminal session is already open."));
+            }
+            return Ok(false);
+        };
+        let session = sessions
+            .remove(&existing_id)
+            .expect("the matched terminal session exists");
+        if existing_id != session_id
+            && let Ok(mut id) = session.id.lock()
+        {
+            *id = session_id.to_owned();
+        }
+        sessions.insert(session_id.to_owned(), session);
+        drop(sessions);
+        let _ = self.resize(session_id, cols, rows).await;
+        let _ = outgoing
+            .send(json!({ "type": "terminal.opened", "sessionId": session_id }))
+            .await;
+        Ok(true)
     }
 
     pub async fn input(&self, session_id: &str, data: &[u8]) -> Result<(), ExeoraError> {
@@ -313,6 +347,32 @@ mod tests {
         assert_eq!(incoming.recv().await.unwrap()["type"], "terminal.opened");
 
         registry.kill_root(first.path()).await;
+        assert!(registry.input("first", b"pwd\n").await.is_err());
+        assert!(registry.input("second", b"printf ok\n").await.is_ok());
+        registry.kill_all().await;
+    }
+
+    #[tokio::test]
+    async fn attaches_a_second_open_for_the_same_root() {
+        let directory = tempdir().unwrap();
+        let registry = TerminalRegistry::new();
+        let (outgoing, mut incoming) = mpsc::channel(32);
+        registry
+            .open(
+                "first".to_owned(),
+                directory.path(),
+                80,
+                24,
+                outgoing.clone(),
+            )
+            .await
+            .unwrap();
+        registry
+            .open("second".to_owned(), directory.path(), 100, 30, outgoing)
+            .await
+            .unwrap();
+        assert_eq!(incoming.recv().await.unwrap()["type"], "terminal.opened");
+        assert_eq!(incoming.recv().await.unwrap()["type"], "terminal.opened");
         assert!(registry.input("first", b"pwd\n").await.is_err());
         assert!(registry.input("second", b"printf ok\n").await.is_ok());
         registry.kill_all().await;

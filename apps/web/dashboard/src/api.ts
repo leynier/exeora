@@ -397,6 +397,8 @@ export const api = {
       `/api/projects/${id}/terminal-ticket${workspaceTarget(worktree)}`,
       { method: "POST" },
     ),
+  terminals: () =>
+    request<{ items: import("./workspacePaths.js").ListedTerminal[] }>("/api/terminals"),
 
   toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
     const query = new URLSearchParams();

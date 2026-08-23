@@ -74,7 +74,7 @@ test("keeps source control and terminal bound to the selected worktree", async (
 
   await page.getByRole("button", { name: `Worktree ${worktree.slug}` }).click();
   await page.getByRole("option", { name: /project root/ }).click();
-  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
+  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toHaveCount(0);
@@ -143,6 +143,40 @@ test("keeps an open terminal listed when switching worktrees", async ({ page }) 
   );
 });
 
+test("keeps an open terminal listed on other dashboard pages", async ({ page }) => {
+  await signedIn(page);
+  await mockApi(page);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
+  await page.getByRole("button", { name: "Terminal" }).click();
+  await page.getByRole("button", { name: "Open terminal" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
+  await page.getByRole("link", { name: "Machines" }).click();
+  await expect(page).toHaveURL("/dashboard/machines");
+  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / project root" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/workspace\?project=/);
+  await expect(page).toHaveURL(/view=terminal/);
+});
+
+test("lists terminals that outlived a reload on every dashboard page", async ({ page }) => {
+  const chip = page.getByRole("button", { name: "E2E project / project root" });
+  await signedIn(page);
+  await mockApi(page, {
+    terminals: [{ sessionId: "term_live", projectId: project.id, startedAt: Date.now() }],
+  });
+  await page.goto("/dashboard/");
+  await expect(chip).toBeVisible();
+  await page.reload();
+  await expect(chip).toBeVisible();
+  await page.getByRole("link", { name: "Machines" }).click();
+  await expect(page).toHaveURL("/dashboard/machines");
+  await expect(chip).toBeVisible();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page).toHaveURL("/dashboard/settings");
+  await expect(chip).toBeVisible();
+});
+
 test("keeps an open terminal listed when switching projects", async ({ page }) => {
   await signedIn(page);
   await mockApi(page, { projects: [project, otherProject] });
@@ -155,7 +189,7 @@ test("keeps an open terminal listed when switching projects", async ({ page }) =
   await page.getByRole("option", { name: otherProject.name }).click();
   await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
   await page.getByRole("button", { name: "E2E project / project root" }).click();
-  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
+  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
 });
 
 test("redirects legacy project workspace URLs onto the workspace tab", async ({ page }) => {

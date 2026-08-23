@@ -15,11 +15,24 @@ import {
   executorSocket,
   type TerminalCallerState,
 } from "./relay-do-callers.js";
-
-const TERMINAL_IDLE_MS = 30 * 60_000;
-const TERMINAL_MAX_DURATION_MS = 8 * 60 * 60_000;
-const TERMINAL_TICKET_MS = 30_000;
-const TERMINAL_TICKET_PREFIX = "terminal-ticket:";
+import {
+  destroyTerminalSession,
+  forgetStoredTerminal,
+  listStoredTerminals,
+  liveTerminalForSession,
+  liveTerminalForTarget,
+  putStoredTerminal,
+  recordSocketReplay,
+  scheduleWorkspaceAlarm,
+  seedSocketReplay,
+  storedTerminalByTarget,
+  TERMINAL_IDLE_MS,
+  TERMINAL_MAX_DURATION_MS,
+  TERMINAL_TICKET_MS,
+  TERMINAL_TICKET_PREFIX,
+  terminalTargetKey,
+  touchDetachedSession,
+} from "./relay-do-terminal-sessions.js";
 
 type TerminalExecutorMessage =
   | TerminalOpenedMessage
@@ -33,14 +46,14 @@ export async function acceptTerminalSocket(
   client: WebSocket,
   server: WebSocket,
 ): Promise<Response> {
-  const id = url.searchParams.get("id");
+  const requestedId = url.searchParams.get("id");
   const projectId = url.searchParams.get("projectId");
   const worktreeId = url.searchParams.get("worktreeId") ?? undefined;
   const worktreeSlug = url.searchParams.get("worktreeSlug") ?? undefined;
   const cols = Number(url.searchParams.get("cols"));
   const rows = Number(url.searchParams.get("rows"));
   if (
-    !id ||
+    !requestedId ||
     !projectId ||
     !Number.isInteger(cols) ||
     cols < 20 ||
@@ -66,18 +79,17 @@ export async function acceptTerminalSocket(
     return new Response("The connected CLI does not support web terminals.", { status: 409 });
   }
 
-  const targetKey = `${projectId}:${worktreeId ?? "main"}`;
-  const alreadyOpen = ctx
-    .getWebSockets("terminal")
-    .map(attachmentOf)
-    .some((state) => state?.role === "terminal" && !state.settled && state.targetKey === targetKey);
-  if (alreadyOpen) {
+  const targetKey = terminalTargetKey(projectId, worktreeId);
+  if (liveTerminalForTarget(ctx, targetKey)) {
     return new Response("A terminal is already open for this worktree.", { status: 409 });
   }
 
+  const stored = await storedTerminalByTarget(ctx, targetKey);
+  const id = stored?.sessionId ?? requestedId;
   const now = Date.now();
+  const startedAt = stored?.startedAt ?? now;
   ctx.acceptWebSocket(server, ["caller", "terminal", callerTag("terminal", id)]);
-  server.serializeAttachment({
+  const state: TerminalCallerState = {
     role: "terminal",
     id,
     projectId,
@@ -85,20 +97,49 @@ export async function acceptTerminalSocket(
     ...(worktreeSlug ? { worktreeSlug } : {}),
     targetKey,
     settled: false,
-    startedAt: now,
+    startedAt,
     lastActivityAt: now,
-  } satisfies TerminalCallerState);
-  executor.send(
-    encodeMessage({
-      type: "terminal.open",
-      sessionId: id,
-      projectId,
-      worktreeId,
-      worktreeSlug,
-      cols,
-      rows,
-    }),
-  );
+  };
+  server.serializeAttachment(state);
+
+  const session = stored ?? {
+    sessionId: id,
+    projectId,
+    ...(worktreeId ? { worktreeId } : {}),
+    ...(worktreeSlug ? { worktreeSlug } : {}),
+    targetKey,
+    startedAt,
+    lastActivityAt: now,
+    replay: [],
+    replayBytes: 0,
+  };
+  session.lastActivityAt = now;
+  await putStoredTerminal(ctx, session);
+  seedSocketReplay(server, session);
+
+  if (stored) {
+    try {
+      server.send(encodeMessage({ type: "terminal.opened", sessionId: id }));
+      for (const data of session.replay) {
+        server.send(encodeMessage({ type: "terminal.output", sessionId: id, data }));
+      }
+      executor.send(encodeMessage({ type: "terminal.resize", sessionId: id, cols, rows }));
+    } catch {
+      // The browser or executor dropped during attach; the PTY stays for retry.
+    }
+  } else {
+    executor.send(
+      encodeMessage({
+        type: "terminal.open",
+        sessionId: id,
+        projectId,
+        worktreeId,
+        worktreeSlug,
+        cols,
+        rows,
+      }),
+    );
+  }
   await scheduleWorkspaceAlarm(ctx);
   return new Response(null, { status: 101, webSocket: client });
 }
@@ -108,27 +149,31 @@ export function forwardTerminalMessage(
   message: TerminalExecutorMessage,
 ): void {
   const caller = callerSocket(ctx, "terminal", message.sessionId);
-  if (!caller) return;
-  try {
-    caller.send(encodeMessage(message));
-  } catch {
-    closeTerminalSession(ctx, message.sessionId);
-    return;
+  if (caller) {
+    try {
+      caller.send(encodeMessage(message));
+    } catch {
+      // The browser is gone; keep the PTY until they reconnect or the session expires.
+    }
+    const state = attachmentOf(caller);
+    if (state?.role === "terminal") {
+      caller.serializeAttachment({
+        ...state,
+        lastActivityAt: Date.now(),
+        ...(message.type === "terminal.exit" || message.type === "terminal.error"
+          ? { settled: true }
+          : {}),
+      } satisfies TerminalCallerState);
+    }
+    if (message.type === "terminal.output") recordSocketReplay(caller, message.data);
+  } else if (message.type === "terminal.output") {
+    void touchDetachedSession(ctx, message.sessionId, message.data);
   }
 
-  const state = attachmentOf(caller);
-  if (state?.role === "terminal") {
-    caller.serializeAttachment({
-      ...state,
-      lastActivityAt: Date.now(),
-      ...(message.type === "terminal.exit" || message.type === "terminal.error"
-        ? { settled: true }
-        : {}),
-    } satisfies TerminalCallerState);
-  }
   if (message.type === "terminal.exit" || message.type === "terminal.error") {
-    if (message.type === "terminal.error") closeTerminalSession(ctx, message.sessionId);
-    caller.close(message.type === "terminal.exit" ? 1000 : 1011, message.type);
+    void forgetStoredTerminal(ctx, message.sessionId);
+    if (message.type === "terminal.error") void destroyTerminalSession(ctx, message.sessionId);
+    caller?.close(message.type === "terminal.exit" ? 1000 : 1011, message.type);
   }
 }
 
@@ -170,9 +215,11 @@ export function handleTerminalCallerMessage(
     executor.send(encodeMessage(message));
   } catch {
     socket.close(1011, "executor offline");
+    return;
   }
   if (message.type === "terminal.close") {
     socket.serializeAttachment({ ...state, settled: true } satisfies TerminalCallerState);
+    void forgetStoredTerminal(ctx, state.id);
     socket.close(1000, "terminal closed");
   }
 }
@@ -249,55 +296,42 @@ export async function expireWorkspaceSessions(ctx: DurableObjectState): Promise<
     .map(([key]) => key);
   if (expired.length > 0) await ctx.storage.delete(expired);
 
-  for (const socket of ctx.getWebSockets("terminal")) {
-    const state = attachmentOf(socket);
+  for (const session of await listStoredTerminals(ctx)) {
     if (
-      state?.role === "terminal" &&
-      (now - state.lastActivityAt >= TERMINAL_IDLE_MS ||
-        now - state.startedAt >= TERMINAL_MAX_DURATION_MS)
+      now - session.lastActivityAt < TERMINAL_IDLE_MS &&
+      now - session.startedAt < TERMINAL_MAX_DURATION_MS
     ) {
+      continue;
+    }
+    const socket = liveTerminalForSession(ctx, session.sessionId);
+    if (socket) {
+      const state = attachmentOf(socket);
       try {
         socket.send(
           JSON.stringify({
             type: "terminal.error",
-            sessionId: state.id,
+            sessionId: session.sessionId,
             message: "Terminal session expired.",
           }),
         );
       } catch {
         // Already disconnected.
       }
-      closeTerminalSession(ctx, state.id);
+      if (state?.role === "terminal") {
+        socket.serializeAttachment({ ...state, settled: true } satisfies TerminalCallerState);
+      }
       socket.close(1000, "terminal expired");
     }
+    await destroyTerminalSession(ctx, session.sessionId);
   }
   await scheduleWorkspaceAlarm(ctx);
 }
 
-export function closeTerminalSession(ctx: DurableObjectState, sessionId: string): void {
-  try {
-    executorSocket(ctx)?.send(encodeMessage({ type: "terminal.close", sessionId }));
-  } catch {
-    // Executor is already gone.
-  }
-}
-
-export async function scheduleWorkspaceAlarm(ctx: DurableObjectState): Promise<void> {
-  const deadlines = ctx
-    .getWebSockets("terminal")
-    .map(attachmentOf)
-    .filter((state): state is TerminalCallerState => state?.role === "terminal" && !state.settled)
-    .flatMap((state) => [
-      state.lastActivityAt + TERMINAL_IDLE_MS,
-      state.startedAt + TERMINAL_MAX_DURATION_MS,
-    ]);
-  const tickets = await ctx.storage.list<{ expiresAt: number }>({
-    prefix: TERMINAL_TICKET_PREFIX,
-  });
-  deadlines.push(...[...tickets.values()].map((ticket) => ticket.expiresAt));
-  if (deadlines.length === 0) {
-    await ctx.storage.deleteAlarm();
-    return;
-  }
-  await ctx.storage.setAlarm(Math.max(Date.now() + 1_000, Math.min(...deadlines)));
-}
+export {
+  dropExecutor,
+  forgetAllStoredTerminals,
+  type ListedTerminal,
+  listTerminalSummaries,
+  persistDetachedTerminal,
+  scheduleWorkspaceAlarm,
+} from "./relay-do-terminal-sessions.js";

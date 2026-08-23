@@ -73,6 +73,15 @@ describe("workspace ownership and availability", () => {
     expect(response.status).toBe(404);
   });
 
+  it("lists no terminals while none are open", async () => {
+    const response = await call("/api/terminals");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [] });
+    const other = await call("/api/terminals", OTHER);
+    expect(other.status).toBe(200);
+    expect(await other.json()).toEqual({ items: [] });
+  });
+
   it("resolves only worktrees that belong to the owner's project", async () => {
     await db(env)
       .insert(schema.worktrees)
