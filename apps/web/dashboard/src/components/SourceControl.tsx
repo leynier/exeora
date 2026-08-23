@@ -1,9 +1,10 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { api, type GitStatus, type WorkspaceAction } from "../api.js";
+import { api, type GitStatus, type WorkspaceAction, type Worktree } from "../api.js";
 import { keys } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
+import { CreateWorktreeDialog } from "./CreateWorktreeDialog.js";
 import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
 import { useToast } from "./toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "./ui.js";
@@ -20,19 +21,25 @@ import {
 export function SourceControl({
   projectId,
   worktree,
+  worktrees,
+  projectLocalPath,
   targetKey,
   targetLabel,
   status,
   loading,
   error,
+  onSelectWorktree,
 }: {
   projectId: string;
   worktree?: string;
+  worktrees: Worktree[];
+  projectLocalPath: string;
   targetKey: string;
   targetLabel: string;
   status?: GitStatus;
   loading: boolean;
   error: unknown;
+  onSelectWorktree: (slug: string | null) => void;
 }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -45,6 +52,7 @@ export function SourceControl({
     body: string;
     label: string;
   } | null>(null);
+  const [creatingWorktree, setCreatingWorktree] = useState(false);
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
   const chosenArea = chosen?.area ?? "working";
@@ -70,7 +78,11 @@ export function SourceControl({
       client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
       await client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] });
       if (action.action === "commit") setCommitMessage("");
-      if (action.action.startsWith("branch_")) setSelected(null);
+      if (action.action === "worktree_create" && result.worktree) {
+        await client.invalidateQueries({ queryKey: keys.worktrees(projectId) });
+        onSelectWorktree(result.worktree.slug);
+        setCreatingWorktree(false);
+      } else if (action.action.startsWith("branch_")) setSelected(null);
       else setSelected((current) => selectionAfterStatus(current, result.status));
       toast(workspaceActionLabel(action));
     } catch (runError) {
@@ -109,7 +121,11 @@ export function SourceControl({
           <SourceControlBranchPicker
             status={status}
             pending={pending}
+            projectLocalPath={projectLocalPath}
+            worktrees={worktrees}
             onRun={run}
+            onSelectWorktree={onSelectWorktree}
+            onCreateWorktree={() => setCreatingWorktree(true)}
             onConfirmDelete={(name) =>
               setConfirm({
                 action: { action: "branch_delete", name },
@@ -119,7 +135,7 @@ export function SourceControl({
               })
             }
           />
-          {targetLabel !== "main" ? (
+          {targetLabel !== "project root" ? (
             <span className="text-body-md text-foreground-faint truncate">{targetLabel}</span>
           ) : null}
           {status.operation && (
@@ -320,6 +336,21 @@ export function SourceControl({
           </div>
         </main>
       </div>
+      <CreateWorktreeDialog
+        open={creatingWorktree}
+        pending={pending}
+        defaultBranch=""
+        fromHead={status.head}
+        onCancel={() => setCreatingWorktree(false)}
+        onSubmit={({ branch, reuseExistingBranch }) =>
+          void run({
+            action: "worktree_create",
+            branch,
+            reuseExistingBranch,
+            from: reuseExistingBranch ? undefined : (status.head ?? undefined),
+          })
+        }
+      />
       <ConfirmDialog
         open={confirm !== null}
         title={confirm?.title ?? "Confirm action"}

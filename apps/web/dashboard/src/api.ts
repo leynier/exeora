@@ -11,34 +11,16 @@ export interface Device {
   createdAt: number;
 }
 
-/**
- * What an agent may do in a project.
- *
- * Mirrors `CommandPolicy` from `@exeora/protocol`. Restated here rather than
- * imported because the dashboard is a browser bundle and that package pulls in
- * zod, which is 40 kB it would carry for one type.
- */
+/** Restated from `@exeora/protocol` so the dashboard bundle does not pull in zod. */
 export interface CommandPolicy {
   mode: "allow_all" | "allow_list" | "read_only";
   allow: string[];
   deny: string[];
   shell: boolean;
   approve: boolean;
-  /** Null is every tool, which is not the same as naming them all. */
   tools: ToolName[] | null;
 }
 
-/**
- * The tools, restated for the same reason `CommandPolicy` is.
- *
- * Ordered as the policy screen reads them: what only looks, then what changes
- * something, which is the order someone deciding what to permit thinks in.
- *
- * **Adding a tool to `@exeora/protocol` means adding it here too.** A tool
- * missing from this list is one the policy screen cannot offer, so a project
- * restricting its tools would have no way to permit it. The failure is visible
- * rather than dangerous, which is the only reason a second list is tolerable.
- */
 export const TOOL_NAMES = [
   "read_file",
   "list_files",
@@ -101,6 +83,11 @@ export interface GitBranch {
   current: boolean;
 }
 
+export interface GitWorktreeCheckout {
+  path: string;
+  branch: string | null;
+}
+
 export interface GitStatus {
   kind: "status";
   repository: boolean;
@@ -113,6 +100,7 @@ export interface GitStatus {
   files: GitFileState[];
   branches: GitBranch[];
   remotes: string[];
+  gitWorktrees?: GitWorktreeCheckout[];
 }
 
 export interface GitDiff {
@@ -133,13 +121,28 @@ export type WorkspaceAction =
   | { action: "branch_create"; name: string; startPoint?: string }
   | { action: "branch_switch"; name: string }
   | { action: "branch_track"; name: string; remoteBranch: string }
-  | { action: "branch_delete"; name: string };
+  | { action: "branch_delete"; name: string }
+  | {
+      action: "worktree_create";
+      branch: string;
+      from?: string;
+      reuseExistingBranch?: boolean;
+      name?: string;
+      slug?: string;
+    };
 
 export interface WorkspaceMutationResult {
   kind: "mutation";
   stdout: string;
   stderr: string;
   status: GitStatus;
+  worktree?: {
+    id: string;
+    slug: string;
+    name: string;
+    branch: string | null;
+    localPath: string;
+  };
 }
 
 export interface ToolCall {
@@ -449,7 +452,6 @@ export const api = {
   clients: () => request<Client[]>("/api/clients"),
   accountClients: () => request<AccountClient[]>("/api/account-clients"),
 
-  /** The whole access list, not a delta: what is missing is revoked. */
   setAccountClientProjects: (clientId: string, projectIds: string[]) =>
     request<{ ok: true }>("/api/account-clients/projects", {
       method: "PUT",

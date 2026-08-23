@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
-import { WebTerminal } from "../components/WebTerminal.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
+import { WorkspaceTerminals } from "../components/WorkspaceTerminals.js";
 import { useGitStatus, useProjects, useWorkspaceCapabilities, useWorktrees } from "../queries.js";
+import { projectRootBranch } from "../workspacePaths.js";
 
 const LAST_KEY = "exeora.last_workspace";
 
@@ -58,7 +59,7 @@ export function Workspace() {
   const ready = Boolean(project) && targetReady;
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
   const status = useGitStatus(projectId, targetId, ready);
-  const targetLabel = selectedWorktree?.slug ?? "main";
+  const targetLabel = selectedWorktree?.slug ?? "project root";
 
   const restored = useMemo(() => {
     if (projectId || !projects.data) return null;
@@ -105,6 +106,11 @@ export function Workspace() {
           projectId={project?.id ?? ""}
           worktrees={worktrees.data ?? []}
           selectedSlug={worktreeSlug}
+          projectRootBranch={projectRootBranch(
+            status.data?.gitWorktrees,
+            project?.localPath ?? "",
+            worktrees.data ?? [],
+          )}
           onSelectProject={(id) => select(id, null)}
           onSelectWorktree={(slug) => select(projectId, slug)}
         />
@@ -116,20 +122,6 @@ export function Workspace() {
             {projects.data?.length
               ? "The dropdowns above switch project and worktree without leaving this tab."
               : "Add one from the CLI, then it will appear in the project selector."}
-          </EmptyState>
-        </div>
-      ) : worktrees.isLoading ? (
-        <Skeleton className="h-full w-full rounded-xl" />
-      ) : worktrees.isError ? (
-        <ErrorBanner error={worktrees.error} onRetry={() => worktrees.refetch()} />
-      ) : !targetReady ? (
-        <div className="border-border bg-surface flex-1 rounded-xl border">
-          <EmptyState title="That worktree is unavailable">
-            Worktree {worktreeSlug} is no longer connected.{" "}
-            <button type="button" className="underline" onClick={() => select(project.id, null)}>
-              Open the main worktree
-            </button>
-            .
           </EmptyState>
         </div>
       ) : (
@@ -150,14 +142,37 @@ export function Workspace() {
               </button>
             ))}
           </div>
-          {tab === "terminal" ? (
-            <WebTerminal
-              key={targetKey}
-              projectId={projectId}
-              worktree={targetId}
-              targetLabel={targetLabel}
-              available={capabilities.data?.terminal === true}
-            />
+          <WorkspaceTerminals
+            projectId={projectId}
+            worktreeId={targetId}
+            worktreeSlug={worktreeSlug}
+            targetLabel={targetLabel}
+            available={capabilities.data?.terminal === true}
+            visible={tab === "terminal"}
+            projects={projects.data ?? []}
+            onFocusSession={(nextProject, nextWorktree) => {
+              select(nextProject, nextWorktree);
+              setTab("terminal");
+            }}
+          />
+          {tab === "terminal" ? null : worktrees.isLoading ? (
+            <Skeleton className="h-full w-full rounded-xl" />
+          ) : worktrees.isError ? (
+            <ErrorBanner error={worktrees.error} onRetry={() => worktrees.refetch()} />
+          ) : !targetReady ? (
+            <div className="border-border bg-surface flex-1 rounded-xl border">
+              <EmptyState title="That worktree is unavailable">
+                Worktree {worktreeSlug} is no longer connected.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => select(project.id, null)}
+                >
+                  Open the project root
+                </button>
+                .
+              </EmptyState>
+            </div>
           ) : capabilities.isError ? (
             <ErrorBanner error={capabilities.error} onRetry={() => capabilities.refetch()} />
           ) : capabilities.data && !capabilities.data.sourceControl ? (
@@ -175,11 +190,14 @@ export function Workspace() {
               key={targetKey}
               projectId={projectId}
               worktree={targetId}
+              worktrees={worktrees.data ?? []}
+              projectLocalPath={project.localPath}
               targetKey={targetKey}
               targetLabel={targetLabel}
               status={status.data}
               loading={status.isLoading}
               error={status.error}
+              onSelectWorktree={(slug) => select(projectId, slug)}
             />
           )}
         </>

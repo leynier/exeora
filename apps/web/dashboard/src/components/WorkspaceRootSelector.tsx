@@ -12,6 +12,7 @@ export function WorkspaceRootSelector({
   projectId,
   worktrees,
   selectedSlug,
+  projectRootBranch,
   onSelectProject,
   onSelectWorktree,
 }: {
@@ -19,6 +20,7 @@ export function WorkspaceRootSelector({
   projectId: string;
   worktrees: Worktree[];
   selectedSlug: string | null;
+  projectRootBranch?: string | null;
   onSelectProject: (id: string) => void;
   onSelectWorktree: (slug: string | null) => void;
 }) {
@@ -27,7 +29,11 @@ export function WorkspaceRootSelector({
     label: project.name,
   }));
   const worktreeOptions = [
-    { value: "main", label: "main", hint: "project root" },
+    {
+      value: "main",
+      label: "project root",
+      hint: projectRootBranch ?? "primary checkout",
+    },
     ...worktrees.map((worktree) => ({
       value: worktree.slug,
       label: worktree.slug,

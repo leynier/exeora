@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { GitBranch, GitStatus, WorkspaceAction } from "../api.js";
+import type { GitBranch, GitStatus, WorkspaceAction, Worktree } from "../api.js";
+import { worktreeSlugForBranch } from "../workspacePaths.js";
 
 /**
  * Branch switching belongs in the toolbar, the way GitHub Desktop and Fork
@@ -10,12 +11,20 @@ import type { GitBranch, GitStatus, WorkspaceAction } from "../api.js";
 export function SourceControlBranchPicker({
   status,
   pending,
+  projectLocalPath,
+  worktrees,
   onRun,
+  onSelectWorktree,
+  onCreateWorktree,
   onConfirmDelete,
 }: {
   status: GitStatus;
   pending: boolean;
+  projectLocalPath: string;
+  worktrees: Worktree[];
   onRun: (action: WorkspaceAction) => Promise<void>;
+  onSelectWorktree: (slug: string | null) => void;
+  onCreateWorktree: () => void;
   onConfirmDelete: (name: string) => void;
 }) {
   const panelId = useId();
@@ -102,6 +111,15 @@ export function SourceControlBranchPicker({
   }, [pending]);
 
   const close = () => panel.current?.hidePopover();
+  const openBranch = (name: string) => {
+    const slug = worktreeSlugForBranch(name, status.gitWorktrees, projectLocalPath, worktrees);
+    if (slug !== undefined) {
+      onSelectWorktree(slug);
+      close();
+      return;
+    }
+    void onRun({ action: "branch_switch", name }).then(close);
+  };
   const create = () =>
     void onRun({
       action: "branch_create",
@@ -188,9 +206,7 @@ export function SourceControlBranchPicker({
                   key={branch.name}
                   branch={branch}
                   hint={branch.upstream ?? branch.shortOid}
-                  onPick={() =>
-                    void onRun({ action: "branch_switch", name: branch.name }).then(close)
-                  }
+                  onPick={() => openBranch(branch.name)}
                   onDelete={onConfirmDelete}
                 />
               ))}
@@ -221,11 +237,24 @@ export function SourceControlBranchPicker({
             <BranchGroup title="Remote" empty="No remote matches" />
           ) : null}
         </div>
-        {!canCreate && (
-          <p className="text-label-md text-foreground-faint border-border-subtle shrink-0 border-t px-3 py-2">
-            Type a name to create a branch from {head}.
-          </p>
-        )}
+        <div className="border-border-subtle shrink-0 space-y-2 border-t px-3 py-2">
+          {!canCreate ? (
+            <p className="text-label-md text-foreground-faint">
+              Type a name to create a branch from {head}, or open a separate Git worktree.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="btn w-full"
+            disabled={pending}
+            onClick={() => {
+              close();
+              onCreateWorktree();
+            }}
+          >
+            Create worktree
+          </button>
+        </div>
       </div>
     </>
   );
