@@ -13,6 +13,7 @@ export function WebTerminal({
   available,
   active,
   autoConnect = false,
+  kill = false,
   onExit,
 }: {
   projectId: string;
@@ -21,6 +22,7 @@ export function WebTerminal({
   available: boolean;
   active: boolean;
   autoConnect?: boolean;
+  kill?: boolean;
   onExit?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -37,13 +39,13 @@ export function WebTerminal({
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
 
-  const closeTerminal = useCallback(() => {
+  const closeTerminal = useCallback((destroy = false) => {
     attempt.current += 1;
     const openSocket = socket.current;
-    if (openSocket?.readyState === WebSocket.OPEN && sessionId.current) {
+    if (destroy && openSocket?.readyState === WebSocket.OPEN && sessionId.current) {
       openSocket.send(JSON.stringify({ type: "terminal.close", sessionId: sessionId.current }));
     }
-    openSocket?.close(1000, "terminal closed");
+    openSocket?.close(1000, destroy ? "terminal closed" : "terminal detached");
     socket.current = null;
     sessionId.current = null;
     terminal.current?.dispose();
@@ -53,7 +55,13 @@ export function WebTerminal({
     setConnecting(false);
   }, []);
 
-  useEffect(() => () => closeTerminal(), [closeTerminal]);
+  useEffect(() => () => closeTerminal(false), [closeTerminal]);
+
+  useEffect(() => {
+    if (!kill) return;
+    closeTerminal(true);
+    onExitRef.current?.();
+  }, [kill, closeTerminal]);
 
   const openTerminal = async () => {
     setConfirming(false);
@@ -215,7 +223,7 @@ export function WebTerminal({
             type="button"
             className="btn border-white/15 text-gray-300"
             onClick={() => {
-              closeTerminal();
+              closeTerminal(true);
               onExit?.();
             }}
           >

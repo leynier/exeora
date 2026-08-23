@@ -12,19 +12,21 @@ export function OpenTerminals({
   sessions,
   activeKey,
   projects,
+  className = "mb-3",
   onSelect,
   onClose,
 }: {
   sessions: OpenTerminalSession[];
   activeKey: string;
   projects: Project[];
+  className?: string;
   onSelect: (session: OpenTerminalSession) => void;
   onClose: (session: OpenTerminalSession) => void;
 }) {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="mb-3 flex min-h-0 shrink-0 flex-wrap items-center gap-2">
+    <div className={`flex min-h-0 shrink-0 flex-wrap items-center gap-2 ${className}`}>
       <span className="text-label-md text-foreground-faint font-mono tracking-wide uppercase">
         Terminals
       </span>

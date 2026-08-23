@@ -190,7 +190,73 @@ describe("workspace relay", () => {
     worktreeResponse.webSocket?.close(1000, "done");
 
     browser.close(1000, "done");
+    await eventually(async () => {
+      expect(executorFrames).not.toContain("terminal.close");
+      expect(await relay().listTerminals()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ sessionId: "term_test", projectId: "prj_test" }),
+        ]),
+      );
+    });
+    executor.socket.close(1000, "done");
+  });
+
+  it("reattaches a detached terminal instead of opening a second PTY", async () => {
+    const executor = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    await executor.ack;
+    const executorFrames: string[] = [];
+    executor.socket.addEventListener("message", (event: MessageEvent) => {
+      const message = decodeRelayMessage(String(event.data));
+      if (!message?.type.startsWith("terminal.")) return;
+      executorFrames.push(message.type);
+      if (message.type === "terminal.open") {
+        executor.socket.send(
+          encodeMessage({ type: "terminal.opened", sessionId: message.sessionId }),
+        );
+      }
+    });
+
+    const first = await relay().fetch(
+      new Request("https://relay/caller/terminal?id=term_keep&projectId=prj_test&cols=80&rows=24", {
+        headers: { Upgrade: "websocket" },
+      }),
+    );
+    const browser = first.webSocket;
+    if (!browser) throw new Error("terminal socket was not returned");
+    const firstFrames: string[] = [];
+    browser.accept();
+    browser.addEventListener("message", (event: MessageEvent) => {
+      firstFrames.push(JSON.parse(String(event.data)).type as string);
+    });
+    await eventually(() => expect(firstFrames).toContain("terminal.opened"));
+    browser.close(1000, "reload");
+    await eventually(async () => {
+      expect(await relay().listTerminals()).toEqual([
+        expect.objectContaining({ sessionId: "term_keep", projectId: "prj_test" }),
+      ]);
+    });
+
+    const second = await relay().fetch(
+      new Request(
+        "https://relay/caller/terminal?id=term_other&projectId=prj_test&cols=100&rows=30",
+        { headers: { Upgrade: "websocket" } },
+      ),
+    );
+    expect(second.status).toBe(101);
+    const attached = second.webSocket;
+    if (!attached) throw new Error("reattach socket was not returned");
+    const attachedFrames: string[] = [];
+    attached.accept();
+    attached.addEventListener("message", (event: MessageEvent) => {
+      attachedFrames.push(JSON.parse(String(event.data)).type as string);
+    });
+    await eventually(() => expect(attachedFrames).toContain("terminal.opened"));
+    expect(executorFrames.filter((type) => type === "terminal.open")).toHaveLength(1);
+    await eventually(() => expect(executorFrames).toContain("terminal.resize"));
+
+    attached.send(encodeMessage({ type: "terminal.close", sessionId: "term_keep" }));
     await eventually(() => expect(executorFrames).toContain("terminal.close"));
+    await eventually(async () => expect(await relay().listTerminals()).toEqual([]));
     executor.socket.close(1000, "done");
   });
 });

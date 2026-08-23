@@ -42,3 +42,11 @@ export function projectRootBranch(
 export function terminalSessionKey(projectId: string, worktreeId?: string): string {
   return `${projectId}:${worktreeId ?? "main"}`;
 }
+
+export type ListedTerminal = {
+  sessionId: string;
+  projectId: string;
+  worktreeId?: string;
+  worktreeSlug?: string;
+  startedAt: number;
+};

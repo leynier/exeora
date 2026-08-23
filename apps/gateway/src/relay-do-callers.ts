@@ -145,6 +145,21 @@ export function settleCaller(socket: WebSocket, response: CallerResponse): void 
   socket.close(1000, "settled");
 }
 
+/** Drop dashboard terminal viewers without leaving them marked as live. */
+export function failTerminalViewers(ctx: DurableObjectState, reason: string): void {
+  for (const socket of ctx.getWebSockets("terminal")) {
+    const state = attachmentOf(socket);
+    if (state?.role !== "terminal") continue;
+    socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
+    try {
+      socket.send(JSON.stringify({ type: "terminal.error", sessionId: state.id, message: reason }));
+    } catch {
+      // Browser is already gone.
+    }
+    socket.close(1011, "executor offline");
+  }
+}
+
 export function failCallers(ctx: DurableObjectState, reason: string): void {
   for (const socket of ctx.getWebSockets("tool")) {
     settleCaller(socket, offline(reason));
@@ -152,19 +167,7 @@ export function failCallers(ctx: DurableObjectState, reason: string): void {
   for (const socket of ctx.getWebSockets("workspace")) {
     settleCaller(socket, offline(reason));
   }
-  for (const socket of ctx.getWebSockets("terminal")) {
-    const state = attachmentOf(socket);
-    if (state?.role === "terminal") {
-      try {
-        socket.send(
-          JSON.stringify({ type: "terminal.error", sessionId: state.id, message: reason }),
-        );
-      } catch {
-        // Browser is already gone.
-      }
-      socket.close(1011, "executor offline");
-    }
-  }
+  failTerminalViewers(ctx, reason);
   for (const socket of ctx.getWebSockets("approval")) {
     const state = attachmentOf(socket);
     if (state?.role === "approval") {

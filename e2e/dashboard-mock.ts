@@ -253,6 +253,7 @@ export async function mockApi(
       "/api/clients": [],
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
+      "/api/terminals": { items: [] },
       [`/api/projects/${project.id}/worktrees`]: connectedWorktrees,
       [`/api/projects/${otherProject.id}/worktrees`]: [],
     };

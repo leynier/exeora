@@ -17,6 +17,7 @@ export const keys = {
   workspaceCapabilities: (id: string, target: string) =>
     ["workspace", id, target, "capabilities"] as const,
   gitStatus: (id: string, target: string) => ["workspace", id, target, "status"] as const,
+  terminals: ["terminals"] as const,
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
@@ -125,6 +126,9 @@ export const useGitStatus = (id: string, worktree: string | undefined, enabled =
     refetchInterval: LIVE,
   });
 };
+
+export const useOpenTerminals = () =>
+  useQuery({ queryKey: keys.terminals, queryFn: api.terminals, refetchInterval: LIVE });
 
 /** Polled too: "last used" is the only sign a client is still talking to us. */
 export const useClients = () =>

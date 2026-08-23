@@ -35,12 +35,15 @@ import {
 } from "./relay-do-callers.js";
 import {
   acceptTerminalSocket,
-  closeTerminalSession,
   consumeTerminalTicket,
+  dropExecutor,
   expireWorkspaceSessions,
+  forgetAllStoredTerminals,
   forwardTerminalMessage,
   handleTerminalCallerMessage,
   issueTerminalTicket,
+  listTerminalSummaries,
+  persistDetachedTerminal,
   scheduleWorkspaceAlarm,
 } from "./relay-do-terminal.js";
 import { handleWorkspaceCallerMessage } from "./relay-do-workspace.js";
@@ -241,20 +244,15 @@ export class DeviceRelay extends DurableObject<Env> {
     const state = attachmentOf(socket);
     if (!state) return;
     if (state.role === "executor") {
-      const replaced = hasOtherExecutor(this.ctx, socket);
-      await touchDevice(this.env, state.deviceId, { force: true, connected: replaced });
-      // Only when nothing is left to answer. A close that arrives after the CLI
-      // has already redialled belongs to the old socket, and failing every
-      // caller for it would kill the calls just dispatched on the new one.
-      if (!replaced) failCallers(this.ctx, "The device disconnected while the call was in flight.");
+      // biome-ignore format: keep DeviceRelay under the file-length budget
+      await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The device disconnected while the call was in flight.");
       return;
     }
     if (!state.settled) {
       if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
-      else if (state.role === "terminal") closeTerminalSession(this.ctx, state.id);
+      else if (state.role === "terminal") await persistDetachedTerminal(this.ctx, socket, state);
       else resolveTerminalApproval(this.ctx, state.id);
-    }
-    if (state.role === "terminal") await scheduleWorkspaceAlarm(this.ctx);
+    } else if (state.role === "terminal") await scheduleWorkspaceAlarm(this.ctx);
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
@@ -262,15 +260,13 @@ export class DeviceRelay extends DurableObject<Env> {
     if (state?.role === "executor") {
       // A failed socket is gone whether or not a close frame follows, and the
       // runtime does not promise one. Recording it here as well is idempotent.
-      const replaced = hasOtherExecutor(this.ctx, socket);
-      await touchDevice(this.env, state.deviceId, { force: true, connected: replaced });
-      if (!replaced) failCallers(this.ctx, "The connection to the device failed.");
+      // biome-ignore format: keep DeviceRelay under the file-length budget
+      await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The connection to the device failed.");
     } else if ((state?.role === "tool" || state?.role === "workspace") && !state.settled)
       sendCancel(this.ctx, state.id);
-    else if (state?.role === "terminal" && !state.settled) {
-      closeTerminalSession(this.ctx, state.id);
-      await scheduleWorkspaceAlarm(this.ctx);
-    } else if (state?.role === "approval" && !state.settled)
+    else if (state?.role === "terminal" && !state.settled)
+      await persistDetachedTerminal(this.ctx, socket, state);
+    else if (state?.role === "approval" && !state.settled)
       resolveTerminalApproval(this.ctx, state.id);
   }
 
@@ -326,6 +322,10 @@ export class DeviceRelay extends DurableObject<Env> {
     return consumeTerminalTicket(this.ctx, token, projectId, worktreeId, worktreeSlug, origin);
   }
 
+  async listTerminals() {
+    return listTerminalSummaries(this.ctx);
+  }
+
   override async alarm(): Promise<void> {
     await expireWorkspaceSessions(this.ctx);
   }
@@ -361,6 +361,7 @@ export class DeviceRelay extends DurableObject<Env> {
       socket.close(1008, "device revoked");
     }
     failCallers(this.ctx, "This device was revoked.");
+    await forgetAllStoredTerminals(this.ctx);
   }
 
   // ---------------------------------------------------------------------

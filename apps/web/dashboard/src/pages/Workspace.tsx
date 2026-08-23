@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
 import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
@@ -49,7 +49,13 @@ export function Workspace() {
   const projectId = search.get("project") ?? "";
   const worktreeSlug = search.get("worktree");
   const worktrees = useWorktrees(projectId || undefined);
-  const [tab, setTab] = useState<"source" | "terminal">("source");
+  const tab = search.get("view") === "terminal" ? "terminal" : "source";
+  const setTab = (value: "source" | "terminal") => {
+    const params = new URLSearchParams(search);
+    if (value === "terminal") params.set("view", "terminal");
+    else params.delete("view");
+    setSearch(params, { replace: true });
+  };
 
   const project = projects.data?.find((item) => item.id === projectId);
   const selectedWorktree = worktrees.data?.find((item) => item.slug === worktreeSlug);
@@ -82,6 +88,7 @@ export function Workspace() {
     const params = new URLSearchParams();
     if (nextProject) params.set("project", nextProject);
     if (nextWorktree) params.set("worktree", nextWorktree);
+    if (tab === "terminal") params.set("view", "terminal");
     setSearch(params, { replace: true });
     if (nextProject) writeLast({ projectId: nextProject, worktree: nextWorktree });
   };
@@ -149,11 +156,6 @@ export function Workspace() {
             targetLabel={targetLabel}
             available={capabilities.data?.terminal === true}
             visible={tab === "terminal"}
-            projects={projects.data ?? []}
-            onFocusSession={(nextProject, nextWorktree) => {
-              select(nextProject, nextWorktree);
-              setTab("terminal");
-            }}
           />
           {tab === "terminal" ? null : worktrees.isLoading ? (
             <Skeleton className="h-full w-full rounded-xl" />

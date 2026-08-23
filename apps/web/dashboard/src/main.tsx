@@ -3,6 +3,7 @@ import { lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import { storedToken } from "./auth.js";
+import { TerminalsProvider } from "./components/Terminals.js";
 import { ToastProvider } from "./components/toast.js";
 import { AppShell } from "./layouts/AppShell.js";
 import { Activity } from "./pages/Activity.js";
@@ -91,7 +92,9 @@ createRoot(root).render(
             <Route
               element={
                 <RequireAuth>
-                  <AppShell />
+                  <TerminalsProvider>
+                    <AppShell />
+                  </TerminalsProvider>
                 </RequireAuth>
               }
             >
