@@ -213,6 +213,15 @@ export async function signedIn(page: Page) {
   });
 }
 
+/** Preview only has /dashboard/index.html, so client routes are pushed. */
+export async function openWorkspace(page: Page, href: string) {
+  await page.goto("/dashboard/");
+  await page.evaluate((next) => {
+    window.history.pushState({}, "", next);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, href);
+}
+
 export async function mockApi(
   page: Page,
   options: {

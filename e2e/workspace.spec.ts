@@ -1,5 +1,12 @@
 import { expect, type Request, test } from "@playwright/test";
-import { mockApi, otherProject, project, signedIn, worktree } from "./dashboard-mock.js";
+import {
+  mockApi,
+  openWorkspace,
+  otherProject,
+  project,
+  signedIn,
+  worktree,
+} from "./dashboard-mock.js";
 
 test("opens workspace from the tab with custom project and worktree dropdowns", async ({
   page,
@@ -85,7 +92,7 @@ test("opens a branch from its existing worktree instead of switching in place", 
       if (body.action === "branch_switch") switched.push(body.action);
     },
   });
-  await page.goto(`/dashboard/workspace?project=${project.id}`);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Current branch main" }).click();
   await page.getByRole("option", { name: /feature\/trees/ }).click();
   await expect(page).toHaveURL(
@@ -104,12 +111,13 @@ test("creates a worktree from Source Control", async ({ page }) => {
       if (body.action === "worktree_create") created.push(body.branch ?? "");
     },
   });
-  await page.goto(`/dashboard/workspace?project=${project.id}`);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Current branch main" }).click();
   await page.getByRole("button", { name: "Create worktree" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Create a Git worktree?");
-  await page.getByRole("dialog").getByRole("textbox").fill("from-source-control");
-  await page.getByRole("dialog").getByRole("button", { name: "Create worktree" }).click();
+  const create = page.getByRole("dialog", { name: "Create a Git worktree?" });
+  await expect(create).toBeVisible();
+  await create.getByRole("textbox").fill("from-source-control");
+  await create.getByRole("button", { name: "Create worktree" }).click();
   await expect.poll(() => created).toEqual(["from-source-control"]);
   await expect(page).toHaveURL(
     `/dashboard/workspace?project=${project.id}&worktree=from-source-control`,
@@ -119,7 +127,7 @@ test("creates a worktree from Source Control", async ({ page }) => {
 test("keeps an open terminal listed when switching worktrees", async ({ page }) => {
   await signedIn(page);
   await mockApi(page);
-  await page.goto(`/dashboard/workspace?project=${project.id}`);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
@@ -130,13 +138,15 @@ test("keeps an open terminal listed when switching worktrees", async ({ page }) 
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
   await page.getByRole("button", { name: "E2E project / project root" }).click();
-  await expect(page.getByRole("button", { name: "Terminal" })).toHaveClass(/border-brand/);
+  await expect(page.getByRole("button", { name: "Terminal", exact: true })).toHaveClass(
+    /border-brand/,
+  );
 });
 
 test("keeps an open terminal listed when switching projects", async ({ page }) => {
   await signedIn(page);
   await mockApi(page, { projects: [project, otherProject] });
-  await page.goto(`/dashboard/workspace?project=${project.id}`);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();

@@ -248,7 +248,7 @@ export function SourceControlBranchPicker({
             className="btn w-full"
             disabled={pending}
             onClick={() => {
-              close();
+              panel.current?.hidePopover();
               onCreateWorktree();
             }}
           >
