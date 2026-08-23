@@ -54,7 +54,6 @@ describe("workspace relay", () => {
     const current = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
     await current.ack;
 
-    await eventually(() => expect(stale.socket.readyState).toBe(WebSocket.CLOSED));
     const value = await callRelayWorkspace(relay(), {
       requestId: "req_after_reconnect",
       projectId: "prj_test",
@@ -69,6 +68,7 @@ describe("workspace relay", () => {
         action: { action: "status" },
       },
     ]);
+    await eventually(() => expect(stale.socket.readyState).toBe(WebSocket.CLOSED));
     current.socket.close(1000, "done");
   });
 
