@@ -37,6 +37,8 @@ export interface ApprovalView {
 export interface ExecutorSocketState {
   role: "executor";
   deviceId: string;
+  /** True only for the executor whose validated hello most recently arrived. */
+  active?: boolean;
   /** Absent for an executor that predates the field; read as the baseline. */
   capabilities?: ExecutorCapabilities;
 }
@@ -97,7 +99,17 @@ export function offline(message: string): CallerResponse {
 }
 
 export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
-  return ctx.getWebSockets("executor")[0];
+  const sockets = ctx.getWebSockets("executor");
+  return (
+    sockets.find((socket) => {
+      const state = attachmentOf(socket);
+      return state?.role === "executor" && state.active === true;
+    }) ??
+    sockets.find((socket) => {
+      const state = attachmentOf(socket);
+      return state?.role === "executor" && state.active !== false;
+    })
+  );
 }
 
 /**
@@ -107,6 +119,10 @@ export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
 export function replaceOtherExecutors(ctx: DurableObjectState, current: WebSocket): void {
   for (const socket of ctx.getWebSockets("executor")) {
     if (socket === current) continue;
+    const state = attachmentOf(socket);
+    if (state?.role === "executor") {
+      socket.serializeAttachment({ ...state, active: false } satisfies ExecutorSocketState);
+    }
     try {
       socket.send(
         encodeMessage({
