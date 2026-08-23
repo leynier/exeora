@@ -74,7 +74,7 @@ test("keeps source control and terminal bound to the selected worktree", async (
 
   await page.getByRole("button", { name: `Worktree ${worktree.slug}` }).click();
   await page.getByRole("option", { name: /project root/ }).click();
-  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
+  await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toHaveCount(0);

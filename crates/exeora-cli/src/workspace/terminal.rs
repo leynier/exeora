@@ -172,10 +172,10 @@ impl TerminalRegistry {
         let session = sessions
             .remove(&existing_id)
             .expect("the matched terminal session exists");
-        if existing_id != session_id {
-            if let Ok(mut id) = session.id.lock() {
-                *id = session_id.to_owned();
-            }
+        if existing_id != session_id
+            && let Ok(mut id) = session.id.lock()
+        {
+            *id = session_id.to_owned();
         }
         sessions.insert(session_id.to_owned(), session);
         drop(sessions);
