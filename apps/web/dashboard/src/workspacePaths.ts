@@ -3,10 +3,8 @@ export function normalizeLocalPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/\/+$/, "");
 }
 
-export function pathsRelated(left: string, right: string): boolean {
-  const a = normalizeLocalPath(left);
-  const b = normalizeLocalPath(right);
-  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+export function sameLocalPath(left: string, right: string): boolean {
+  return normalizeLocalPath(left) === normalizeLocalPath(right);
 }
 
 /**
@@ -23,9 +21,9 @@ export function worktreeSlugForBranch(
 ): string | null | undefined {
   const checkout = gitWorktrees?.find((entry) => entry.branch === branch);
   if (!checkout) return undefined;
-  const match = worktrees.find((entry) => pathsRelated(entry.localPath, checkout.path));
+  const match = worktrees.find((entry) => sameLocalPath(entry.localPath, checkout.path));
   if (match) return match.slug;
-  if (pathsRelated(projectLocalPath, checkout.path)) return null;
+  if (sameLocalPath(projectLocalPath, checkout.path)) return null;
   return undefined;
 }
 
@@ -35,8 +33,8 @@ export function projectRootBranch(
   worktrees: { slug: string; localPath: string }[],
 ): string | null {
   const root = gitWorktrees?.find((entry) => {
-    if (worktrees.some((worktree) => pathsRelated(worktree.localPath, entry.path))) return false;
-    return pathsRelated(projectLocalPath, entry.path);
+    if (worktrees.some((worktree) => sameLocalPath(worktree.localPath, entry.path))) return false;
+    return sameLocalPath(projectLocalPath, entry.path);
   });
   return root?.branch ?? null;
 }

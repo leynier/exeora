@@ -19,6 +19,10 @@ describe("worktreeSlugForBranch", () => {
     );
   });
 
+  it("does not treat a nested worktree path as the project root", () => {
+    expect(worktreeSlugForBranch("develop", gitWorktrees, `${project}/`, worktrees)).toBeNull();
+  });
+
   it("leaves unknown branches for an in-place switch", () => {
     expect(worktreeSlugForBranch("experiment", gitWorktrees, project, worktrees)).toBeUndefined();
   });
