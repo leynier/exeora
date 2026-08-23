@@ -100,6 +100,31 @@ export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
   return ctx.getWebSockets("executor")[0];
 }
 
+/**
+ * Keep one routable CLI socket after a reconnect. Workerd may still list the
+ * dead connection first, which would otherwise swallow calls until timeout.
+ */
+export function replaceOtherExecutors(ctx: DurableObjectState, current: WebSocket): void {
+  for (const socket of ctx.getWebSockets("executor")) {
+    if (socket === current) continue;
+    try {
+      socket.send(
+        encodeMessage({
+          type: "shutdown",
+          reason: "This device connected through a newer Exeora CLI session.",
+        }),
+      );
+    } catch {
+      // A stale socket is exactly what this cleanup expects to find.
+    }
+    try {
+      socket.close(1008, "executor replaced");
+    } catch {
+      // It may have finished closing between the list and this call.
+    }
+  }
+}
+
 /** Best-effort cancellation for a caller that is no longer listening. */
 export function sendCancel(ctx: DurableObjectState, requestId: string): void {
   try {

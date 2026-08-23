@@ -45,6 +45,33 @@ describe("workspace relay", () => {
     expect(executor.seen).toEqual([]);
   });
 
+  it("replaces a stale executor before routing source-control work", async () => {
+    const stale = await attachFakeExecutor({
+      capabilities: WORKSPACE_CAPABILITIES,
+      silent: true,
+    });
+    await stale.ack;
+    const current = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    await current.ack;
+
+    await eventually(() => expect(stale.socket.readyState).toBe(WebSocket.CLOSED));
+    const value = await callRelayWorkspace(relay(), {
+      requestId: "req_after_reconnect",
+      projectId: "prj_test",
+      action: { action: "status" },
+    });
+
+    expect(value).toMatchObject({ kind: "status", repository: true });
+    expect(stale.workspaceSeen).toEqual([]);
+    expect(current.workspaceSeen).toEqual([
+      {
+        requestId: "req_after_reconnect",
+        action: { action: "status" },
+      },
+    ]);
+    current.socket.close(1000, "done");
+  });
+
   it("requires a current CLI before dispatching source-control work", async () => {
     await attachFakeExecutor({ capabilities: BASELINE_CAPABILITIES });
     const error = await failureOf(() =>
