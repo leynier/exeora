@@ -25,6 +25,7 @@ import {
   hasOtherExecutor,
   offline,
   relayError,
+  replaceOtherExecutors,
   resolveTerminalApproval,
   type SocketState,
   sendCancel,
@@ -161,6 +162,8 @@ export class DeviceRelay extends DurableObject<Env> {
           socket.close(1008, "protocol version mismatch");
           return;
         }
+
+        replaceOtherExecutors(this.ctx, socket);
 
         socket.serializeAttachment({
           role: "executor",
