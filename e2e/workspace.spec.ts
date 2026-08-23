@@ -159,6 +159,24 @@ test("keeps an open terminal listed on other dashboard pages", async ({ page }) 
   await expect(page).toHaveURL(/view=terminal/);
 });
 
+test("lists terminals that outlived a reload on every dashboard page", async ({ page }) => {
+  const chip = page.getByRole("button", { name: "E2E project / project root" });
+  await signedIn(page);
+  await mockApi(page, {
+    terminals: [{ sessionId: "term_live", projectId: project.id, startedAt: Date.now() }],
+  });
+  await page.goto("/dashboard/");
+  await expect(chip).toBeVisible();
+  await page.reload();
+  await expect(chip).toBeVisible();
+  await page.getByRole("link", { name: "Machines" }).click();
+  await expect(page).toHaveURL("/dashboard/machines");
+  await expect(chip).toBeVisible();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page).toHaveURL("/dashboard/settings");
+  await expect(chip).toBeVisible();
+});
+
 test("keeps an open terminal listed when switching projects", async ({ page }) => {
   await signedIn(page);
   await mockApi(page, { projects: [project, otherProject] });
