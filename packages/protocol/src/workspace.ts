@@ -23,6 +23,13 @@ export const GitBranch = z.object({
   current: z.boolean(),
 });
 
+export const GitWorktreeCheckout = z.object({
+  path: z.string(),
+  branch: z.string().nullable(),
+});
+
+export type GitWorktreeCheckout = z.infer<typeof GitWorktreeCheckout>;
+
 export const GitStatus = z.object({
   kind: z.literal("status"),
   repository: z.boolean(),
@@ -35,6 +42,8 @@ export const GitStatus = z.object({
   files: z.array(GitFileState),
   branches: z.array(GitBranch),
   remotes: z.array(z.string()),
+  /** Every Git worktree of this repository, including the project root. */
+  gitWorktrees: z.array(GitWorktreeCheckout).default([]),
 });
 
 export type GitStatus = z.infer<typeof GitStatus>;
@@ -77,15 +86,39 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
     remoteBranch: z.string().min(1).max(512),
   }),
   z.object({ action: z.literal("branch_delete"), name: z.string().min(1).max(255) }),
+  z.object({
+    action: z.literal("worktree_create"),
+    branch: z.string().min(1).max(255),
+    from: optionalRef,
+    reuseExistingBranch: z.boolean().default(false),
+    name: z.string().min(1).max(100).optional(),
+    slug: z
+      .string()
+      .min(1)
+      .max(60)
+      .regex(/^[a-z0-9][a-z0-9-]*$/)
+      .optional(),
+  }),
 ]);
 
 export type WorkspaceAction = z.infer<typeof WorkspaceAction>;
+
+export const CreatedWorktree = z.object({
+  id: z.string().min(1),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  branch: z.string().nullable(),
+  localPath: z.string().min(1),
+});
+
+export type CreatedWorktree = z.infer<typeof CreatedWorktree>;
 
 export const WorkspaceMutationResult = z.object({
   kind: z.literal("mutation"),
   stdout: z.string(),
   stderr: z.string(),
   status: GitStatus,
+  worktree: CreatedWorktree.optional(),
 });
 
 export type WorkspaceMutationResult = z.infer<typeof WorkspaceMutationResult>;
