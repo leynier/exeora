@@ -734,7 +734,7 @@ fn invalid(message: impl Into<String>) -> ExeoraError {
 mod tests {
     use super::{GitWorkspace, parse_status, parse_worktree_list};
     use crate::error::ErrorCode;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::{fs, process::Command};
     use tempfile::tempdir;
     use tokio_util::sync::CancellationToken;

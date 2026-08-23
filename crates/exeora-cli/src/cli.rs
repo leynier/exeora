@@ -613,7 +613,9 @@ async fn login_command(
             "No system keychain available, so the session is stored in a 0600 file under {parent}."
         ))?;
     }
-    cliclack::outro("Run `exeora connect` to bring this machine online, then `exeora project add` in a directory to serve it.")?;
+    cliclack::outro(
+        "Run `exeora connect` to bring this machine online, then `exeora project add` in a directory to serve it.",
+    )?;
     Ok(())
 }
 
