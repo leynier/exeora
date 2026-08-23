@@ -14,6 +14,9 @@ pub struct CreateWorktree {
     pub name: Option<String>,
     pub slug: Option<String>,
     pub path: Option<PathBuf>,
+    /// Directory to run `git worktree add` from. Defaults to the current
+    /// checkout of this repository, then the registered project root.
+    pub source: Option<PathBuf>,
 }
 
 pub fn resolve_project(config: &ConfigStore, selector: Option<&str>) -> Result<ProjectEntry> {
@@ -93,7 +96,11 @@ pub fn create(
         args.push(destination.to_string_lossy().into_owned());
         args.push(input.from.unwrap_or_else(|| "HEAD".to_owned()));
     }
-    let source = current_repository_for(project).unwrap_or_else(|| project.root.clone());
+    let source = input
+        .source
+        .filter(|path| path.is_dir())
+        .or_else(|| current_repository_for(project))
+        .unwrap_or_else(|| project.root.clone());
     git_checked(&source, &args)?;
 
     match entry_for_path(
@@ -429,6 +436,7 @@ mod tests {
                 name: None,
                 slug: None,
                 path: Some(destination),
+                source: None,
             },
         )
         .expect("worktree");

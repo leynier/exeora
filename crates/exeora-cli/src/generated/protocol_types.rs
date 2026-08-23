@@ -362,6 +362,7 @@ pub mod error {
 ///                            "behind",
 ///                            "branches",
 ///                            "files",
+///                            "gitWorktrees",
 ///                            "head",
 ///                            "kind",
 ///                            "oid",
@@ -461,6 +462,33 @@ pub mod error {
 ///                                    "type": "string",
 ///                                    "maxLength": 1,
 ///                                    "minLength": 1
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "gitWorktrees": {
+///                              "default": [],
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "branch",
+///                                  "path"
+///                                ],
+///                                "properties": {
+///                                  "branch": {
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "string"
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
 ///                                  }
 ///                                },
 ///                                "additionalProperties": false
@@ -588,6 +616,7 @@ pub mod error {
 ///                                "behind",
 ///                                "branches",
 ///                                "files",
+///                                "gitWorktrees",
 ///                                "head",
 ///                                "kind",
 ///                                "oid",
@@ -692,6 +721,33 @@ pub mod error {
 ///                                    "additionalProperties": false
 ///                                  }
 ///                                },
+///                                "gitWorktrees": {
+///                                  "default": [],
+///                                  "type": "array",
+///                                  "items": {
+///                                    "type": "object",
+///                                    "required": [
+///                                      "branch",
+///                                      "path"
+///                                    ],
+///                                    "properties": {
+///                                      "branch": {
+///                                        "anyOf": [
+///                                          {
+///                                            "type": "string"
+///                                          },
+///                                          {
+///                                            "type": "null"
+///                                          }
+///                                        ]
+///                                      },
+///                                      "path": {
+///                                        "type": "string"
+///                                      }
+///                                    },
+///                                    "additionalProperties": false
+///                                  }
+///                                },
 ///                                "head": {
 ///                                  "anyOf": [
 ///                                    {
@@ -760,6 +816,45 @@ pub mod error {
 ///                            },
 ///                            "stdout": {
 ///                              "type": "string"
+///                            },
+///                            "worktree": {
+///                              "type": "object",
+///                              "required": [
+///                                "branch",
+///                                "id",
+///                                "localPath",
+///                                "name",
+///                                "slug"
+///                              ],
+///                              "properties": {
+///                                "branch": {
+///                                  "anyOf": [
+///                                    {
+///                                      "type": "string"
+///                                    },
+///                                    {
+///                                      "type": "null"
+///                                    }
+///                                  ]
+///                                },
+///                                "id": {
+///                                  "type": "string",
+///                                  "minLength": 1
+///                                },
+///                                "localPath": {
+///                                  "type": "string",
+///                                  "minLength": 1
+///                                },
+///                                "name": {
+///                                  "type": "string",
+///                                  "minLength": 1
+///                                },
+///                                "slug": {
+///                                  "type": "string",
+///                                  "minLength": 1
+///                                }
+///                              },
+///                              "additionalProperties": false
 ///                            }
 ///                          },
 ///                          "additionalProperties": false
@@ -1506,6 +1601,46 @@ pub mod error {
 ///                      "type": "string",
 ///                      "maxLength": 255,
 ///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "branch",
+///                    "reuseExistingBranch"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "worktree_create"
+///                    },
+///                    "branch": {
+///                      "type": "string",
+///                      "maxLength": 255,
+///                      "minLength": 1
+///                    },
+///                    "from": {
+///                      "type": "string",
+///                      "maxLength": 512,
+///                      "minLength": 1
+///                    },
+///                    "name": {
+///                      "type": "string",
+///                      "maxLength": 100,
+///                      "minLength": 1
+///                    },
+///                    "reuseExistingBranch": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "slug": {
+///                      "type": "string",
+///                      "maxLength": 60,
+///                      "minLength": 1,
+///                      "pattern": "^[a-z0-9][a-z0-9-]*$"
 ///                    }
 ///                  },
 ///                  "additionalProperties": false
@@ -2326,6 +2461,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "behind",
 ///                        "branches",
 ///                        "files",
+///                        "gitWorktrees",
 ///                        "head",
 ///                        "kind",
 ///                        "oid",
@@ -2425,6 +2561,33 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                "type": "string",
 ///                                "maxLength": 1,
 ///                                "minLength": 1
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "gitWorktrees": {
+///                          "default": [],
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "branch",
+///                              "path"
+///                            ],
+///                            "properties": {
+///                              "branch": {
+///                                "anyOf": [
+///                                  {
+///                                    "type": "string"
+///                                  },
+///                                  {
+///                                    "type": "null"
+///                                  }
+///                                ]
+///                              },
+///                              "path": {
+///                                "type": "string"
 ///                              }
 ///                            },
 ///                            "additionalProperties": false
@@ -2552,6 +2715,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            "behind",
 ///                            "branches",
 ///                            "files",
+///                            "gitWorktrees",
 ///                            "head",
 ///                            "kind",
 ///                            "oid",
@@ -2656,6 +2820,33 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                "additionalProperties": false
 ///                              }
 ///                            },
+///                            "gitWorktrees": {
+///                              "default": [],
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "branch",
+///                                  "path"
+///                                ],
+///                                "properties": {
+///                                  "branch": {
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "string"
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
 ///                            "head": {
 ///                              "anyOf": [
 ///                                {
@@ -2724,6 +2915,45 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        },
 ///                        "stdout": {
 ///                          "type": "string"
+///                        },
+///                        "worktree": {
+///                          "type": "object",
+///                          "required": [
+///                            "branch",
+///                            "id",
+///                            "localPath",
+///                            "name",
+///                            "slug"
+///                          ],
+///                          "properties": {
+///                            "branch": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "id": {
+///                              "type": "string",
+///                              "minLength": 1
+///                            },
+///                            "localPath": {
+///                              "type": "string",
+///                              "minLength": 1
+///                            },
+///                            "name": {
+///                              "type": "string",
+///                              "minLength": 1
+///                            },
+///                            "slug": {
+///                              "type": "string",
+///                              "minLength": 1
+///                            }
+///                          },
+///                          "additionalProperties": false
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
@@ -3450,6 +3680,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "behind",
 ///        "branches",
 ///        "files",
+///        "gitWorktrees",
 ///        "head",
 ///        "kind",
 ///        "oid",
@@ -3549,6 +3780,33 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                "type": "string",
 ///                "maxLength": 1,
 ///                "minLength": 1
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "gitWorktrees": {
+///          "default": [],
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "branch",
+///              "path"
+///            ],
+///            "properties": {
+///              "branch": {
+///                "anyOf": [
+///                  {
+///                    "type": "string"
+///                  },
+///                  {
+///                    "type": "null"
+///                  }
+///                ]
+///              },
+///              "path": {
+///                "type": "string"
 ///              }
 ///            },
 ///            "additionalProperties": false
@@ -3676,6 +3934,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "behind",
 ///            "branches",
 ///            "files",
+///            "gitWorktrees",
 ///            "head",
 ///            "kind",
 ///            "oid",
@@ -3780,6 +4039,33 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                "additionalProperties": false
 ///              }
 ///            },
+///            "gitWorktrees": {
+///              "default": [],
+///              "type": "array",
+///              "items": {
+///                "type": "object",
+///                "required": [
+///                  "branch",
+///                  "path"
+///                ],
+///                "properties": {
+///                  "branch": {
+///                    "anyOf": [
+///                      {
+///                        "type": "string"
+///                      },
+///                      {
+///                        "type": "null"
+///                      }
+///                    ]
+///                  },
+///                  "path": {
+///                    "type": "string"
+///                  }
+///                },
+///                "additionalProperties": false
+///              }
+///            },
 ///            "head": {
 ///              "anyOf": [
 ///                {
@@ -3848,6 +4134,45 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        },
 ///        "stdout": {
 ///          "type": "string"
+///        },
+///        "worktree": {
+///          "type": "object",
+///          "required": [
+///            "branch",
+///            "id",
+///            "localPath",
+///            "name",
+///            "slug"
+///          ],
+///          "properties": {
+///            "branch": {
+///              "anyOf": [
+///                {
+///                  "type": "string"
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "id": {
+///              "type": "string",
+///              "minLength": 1
+///            },
+///            "localPath": {
+///              "type": "string",
+///              "minLength": 1
+///            },
+///            "name": {
+///              "type": "string",
+///              "minLength": 1
+///            },
+///            "slug": {
+///              "type": "string",
+///              "minLength": 1
+///            }
+///          },
+///          "additionalProperties": false
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -3866,6 +4191,9 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         branches:
             ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueBranchesItem>,
         files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        #[serde(rename = "gitWorktrees")]
+        git_worktrees:
+            ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem>,
         head: ::std::option::Option<::std::string::String>,
         oid: ::std::option::Option<::std::string::String>,
         operation:
@@ -3887,6 +4215,9 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         status: ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus,
         stderr: ::std::string::String,
         stdout: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        worktree:
+            ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree>,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea`
@@ -4513,6 +4844,42 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "branch",
+///    "path"
+///  ],
+///  "properties": {
+///    "branch": {
+///      "anyOf": [
+///        {
+///          "type": "string"
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "path": {
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem {
+    pub branch: ::std::option::Option<::std::string::String>,
+    pub path: ::std::string::String,
+}
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueOperation`
 ///
 /// <details><summary>JSON schema</summary>
@@ -4696,6 +5063,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///    "behind",
 ///    "branches",
 ///    "files",
+///    "gitWorktrees",
 ///    "head",
 ///    "kind",
 ///    "oid",
@@ -4800,6 +5168,33 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///        "additionalProperties": false
 ///      }
 ///    },
+///    "gitWorktrees": {
+///      "default": [],
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "branch",
+///          "path"
+///        ],
+///        "properties": {
+///          "branch": {
+///            "anyOf": [
+///              {
+///                "type": "string"
+///              },
+///              {
+///                "type": "null"
+///              }
+///            ]
+///          },
+///          "path": {
+///            "type": "string"
+///          }
+///        },
+///        "additionalProperties": false
+///      }
+///    },
 ///    "head": {
 ///      "anyOf": [
 ///        {
@@ -4874,6 +5269,10 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
         ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusBranchesItem>,
     pub files:
         ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusFilesItem>,
+    #[serde(rename = "gitWorktrees")]
+    pub git_worktrees: ::std::vec::Vec<
+        ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem,
+    >,
     pub head: ::std::option::Option<::std::string::String>,
     pub kind: ::std::string::String,
     pub oid: ::std::option::Option<::std::string::String>,
@@ -5454,6 +5853,42 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "branch",
+///    "path"
+///  ],
+///  "properties": {
+///    "branch": {
+///      "anyOf": [
+///        {
+///          "type": "string"
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "path": {
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem {
+    pub branch: ::std::option::Option<::std::string::String>,
+    pub path: ::std::string::String,
+}
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusOperation`
 ///
 /// <details><summary>JSON schema</summary>
@@ -5545,6 +5980,378 @@ impl ::std::convert::TryFrom<::std::string::String>
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "branch",
+///    "id",
+///    "localPath",
+///    "name",
+///    "slug"
+///  ],
+///  "properties": {
+///    "branch": {
+///      "anyOf": [
+///        {
+///          "type": "string"
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "localPath": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "name": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "slug": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree {
+    pub branch: ::std::option::Option<::std::string::String>,
+    pub id: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId,
+    #[serde(rename = "localPath")]
+    pub local_path: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath,
+    pub name: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName,
+    pub slug: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug,
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+{
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant1Error`
@@ -6609,6 +7416,46 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                }
 ///              },
 ///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "branch",
+///                "reuseExistingBranch"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "worktree_create"
+///                },
+///                "branch": {
+///                  "type": "string",
+///                  "maxLength": 255,
+///                  "minLength": 1
+///                },
+///                "from": {
+///                  "type": "string",
+///                  "maxLength": 512,
+///                  "minLength": 1
+///                },
+///                "name": {
+///                  "type": "string",
+///                  "maxLength": 100,
+///                  "minLength": 1
+///                },
+///                "reuseExistingBranch": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "slug": {
+///                  "type": "string",
+///                  "maxLength": 60,
+///                  "minLength": 1,
+///                  "pattern": "^[a-z0-9][a-z0-9-]*$"
+///                }
+///              },
+///              "additionalProperties": false
 ///            }
 ///          ]
 ///        },
@@ -7344,6 +8191,46 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "branch",
+///        "reuseExistingBranch"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "worktree_create"
+///        },
+///        "branch": {
+///          "type": "string",
+///          "maxLength": 255,
+///          "minLength": 1
+///        },
+///        "from": {
+///          "type": "string",
+///          "maxLength": 512,
+///          "minLength": 1
+///        },
+///        "name": {
+///          "type": "string",
+///          "maxLength": 100,
+///          "minLength": 1
+///        },
+///        "reuseExistingBranch": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "slug": {
+///          "type": "string",
+///          "maxLength": 60,
+///          "minLength": 1,
+///          "pattern": "^[a-z0-9][a-z0-9-]*$"
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -7422,6 +8309,18 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
     #[serde(rename = "branch_delete")]
     BranchDelete {
         name: ExeoraProtocolTypesRelayMessageActionName,
+    },
+    #[serde(rename = "worktree_create")]
+    WorktreeCreate {
+        branch: ExeoraProtocolTypesRelayMessageActionBranch,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        from: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionFrom>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        name: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionName>,
+        #[serde(rename = "reuseExistingBranch")]
+        reuse_existing_branch: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        slug: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionSlug>,
     },
 }
 ///`ExeoraProtocolTypesRelayMessageActionArea`
@@ -7561,6 +8460,78 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionBranch {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionFrom`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 512,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionFrom(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionFrom {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionFrom> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionFrom) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionFrom {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionFrom {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionFrom {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionFrom {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionFrom {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -8013,6 +8984,84 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRemoteBranch {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionSlug`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 60,
+///  "minLength": 1,
+///  "pattern": "^[a-z0-9][a-z0-9-]*$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionSlug(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionSlug {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionSlug> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionSlug) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionSlug {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 60usize {
+            return Err("longer than 60 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-z0-9][a-z0-9-]*$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9-]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionSlug {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionSlug {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionSlug {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionSlug {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,

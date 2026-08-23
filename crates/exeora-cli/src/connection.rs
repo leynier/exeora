@@ -46,7 +46,7 @@ type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
 
 pub async fn connect_forever(
     config: &ConfigStore,
-    _api: &ApiClient,
+    api: &ApiClient,
     auth: Arc<AuthManager>,
     device_id: String,
     projects: Vec<ProjectEntry>,
@@ -75,6 +75,7 @@ pub async fn connect_forever(
             &projects,
             config_path.clone(),
             auth.clone(),
+            api.clone(),
             engine.clone(),
             workspace.clone(),
             stop.clone(),
@@ -202,6 +203,7 @@ async fn connect_once(
     projects: &[ProjectEntry],
     config_path: PathBuf,
     auth: Arc<AuthManager>,
+    api: crate::api::ApiClient,
     engine: Arc<ToolEngine>,
     workspace: Arc<WorkspaceEngine>,
     stop: CancellationToken,
@@ -326,7 +328,7 @@ async fn connect_once(
                                 spawn_tool_call(message, config_path.clone(), engine.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             Some("workspace.call") => {
-                                spawn_workspace_call(message, config_path.clone(), workspace.clone(), in_flight.clone(), out_tx.clone()).await;
+                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), in_flight.clone(), out_tx.clone()).await;
                             }
                             Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
                                 handle_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone()).await;
@@ -526,6 +528,7 @@ async fn handle_approval(
 async fn spawn_workspace_call(
     message: Value,
     config_path: PathBuf,
+    api: crate::api::ApiClient,
     workspace: Arc<WorkspaceEngine>,
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
@@ -576,11 +579,116 @@ async fn spawn_workspace_call(
             root: target.root.clone(),
         },
     );
+    let create_worktree = action.get("action").and_then(Value::as_str) == Some("worktree_create");
     tokio::spawn(async move {
-        let result = workspace.execute(&target.root, action, cancel).await;
+        let result = if create_worktree {
+            create_workspace_worktree(
+                &config_path,
+                &api,
+                &target.project.id,
+                &target.root,
+                action,
+                workspace.as_ref(),
+                cancel,
+            )
+            .await
+        } else {
+            workspace.execute(&target.root, action, cancel).await
+        };
         in_flight.lock().await.remove(&request_id);
         let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
     });
+}
+
+async fn create_workspace_worktree(
+    config_path: &std::path::Path,
+    api: &crate::api::ApiClient,
+    project_id: &str,
+    source_root: &Path,
+    action: Value,
+    workspace: &WorkspaceEngine,
+    cancel: CancellationToken,
+) -> Result<Value, ExeoraError> {
+    let branch = action
+        .get("branch")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ExeoraError::new(ErrorCode::InvalidArguments, "A branch name is required.")
+        })?;
+    let mut config = ConfigStore::load_from(config_path.to_path_buf()).map_err(|_| {
+        ExeoraError::new(
+            ErrorCode::InternalError,
+            "Could not reload the local Exeora configuration.",
+        )
+    })?;
+    let project = config.find_project(project_id).cloned().ok_or_else(|| {
+        ExeoraError::new(
+            ErrorCode::UnknownProject,
+            "This machine does not serve that project. Run `exeora project add` there.",
+        )
+    })?;
+    let entry = crate::worktrees::create(
+        &config,
+        &project,
+        crate::worktrees::CreateWorktree {
+            branch: branch.to_owned(),
+            from: action
+                .get("from")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            reuse_existing_branch: action
+                .get("reuseExistingBranch")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            name: action
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            slug: action
+                .get("slug")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            path: None,
+            source: Some(source_root.to_path_buf()),
+        },
+    )
+    .map_err(|error| ExeoraError::new(ErrorCode::InvalidArguments, error.to_string()))?;
+    config.upsert_worktree(entry.clone());
+    config.save().map_err(|error| {
+        ExeoraError::new(
+            ErrorCode::InternalError,
+            format!("Could not save the local worktree record: {error}"),
+        )
+    })?;
+    let mut entry = entry;
+    api.put_worktree(&entry.project_id, &entry)
+        .await
+        .map_err(|error| {
+            ExeoraError::new(
+                ErrorCode::InternalError,
+                format!("Created the Git worktree but could not register it with Exeora: {error}"),
+            )
+        })?;
+    entry.sync_state = WorktreeSyncState::Active;
+    config.upsert_worktree(entry.clone());
+    let _ = config.save();
+    let status = workspace
+        .execute(source_root, json!({ "action": "status" }), cancel)
+        .await?;
+    Ok(json!({
+        "kind": "mutation",
+        "stdout": "",
+        "stderr": "",
+        "status": status,
+        "worktree": {
+            "id": entry.id,
+            "slug": entry.slug,
+            "name": entry.name,
+            "branch": entry.branch,
+            "localPath": entry.root,
+        }
+    }))
 }
 
 async fn handle_terminal_message(

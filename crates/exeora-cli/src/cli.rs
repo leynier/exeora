@@ -1,6 +1,6 @@
 use crate::{
     CLI_VERSION,
-    api::{ApiClient, DeviceView, ProjectView, ToolCallView},
+    api::{ApiClient, DeviceView, ToolCallView},
     auth::{
         AuthManager, clear_credentials, discover_client, load_credentials, using_file_fallback,
     },
@@ -66,7 +66,7 @@ pub enum Commands {
         command: ConfigCommand,
     },
     #[command(
-        about = "Serve a directory to your AI clients and keep this machine awake (signs in and registers as needed)"
+        about = "Sign in, register this machine if needed, and keep it awake to serve registered projects"
     )]
     Connect(ConnectArgs),
     #[command(about = "Show this machine's registration and projects")]
@@ -201,13 +201,8 @@ pub enum ConfigCommand {
 
 #[derive(Debug, Args)]
 pub struct ConnectArgs {
-    path: Option<PathBuf>,
-    #[arg(short, long)]
-    slug: Option<String>,
     #[arg(short, long)]
     name: Option<String>,
-    #[arg(long = "no-add", action = clap::ArgAction::SetFalse, default_value_t = true)]
-    add: bool,
     #[arg(long)]
     reset: bool,
     #[arg(short = 'g', long)]
@@ -395,6 +390,7 @@ async fn worktree_command(
                     name,
                     slug,
                     path,
+                    source: None,
                 },
             )?;
             persist_worktree(config, api, entry, json_output).await
@@ -617,7 +613,9 @@ async fn login_command(
             "No system keychain available, so the session is stored in a 0600 file under {parent}."
         ))?;
     }
-    cliclack::outro("Run `exeora connect` in a project directory.")?;
+    cliclack::outro(
+        "Run `exeora connect` to bring this machine online, then `exeora project add` in a directory to serve it.",
+    )?;
     Ok(())
 }
 
@@ -734,7 +732,7 @@ async fn project_command(
                         .collect::<Result<_>>()?,
                 ))?;
             } else if config.data().projects.is_empty() {
-                println!("No projects yet. Run `exeora connect` in one.");
+                println!("No projects yet. Run `exeora project add` in a directory.");
             } else {
                 for entry in &config.data().projects {
                     println!("{:<20} {}", entry.slug, entry.root.display());
@@ -784,11 +782,12 @@ async fn connect_command(
         Err(error) => return Err(error),
     };
     let device = ensure_device(config, api, devices, args.name).await?;
-    if args.add {
-        let root = project_root(args.path)?;
-        ensure_project(config, api, &device.0, root, args.slug).await?;
-    }
     config.save()?;
+    if config.data().projects.is_empty() && !json_output {
+        println!(
+            "No projects registered yet. Run `exeora project add` in a directory to serve it."
+        );
+    }
     connect_forever(
         config,
         api,
@@ -1241,50 +1240,6 @@ async fn ensure_device(
     Ok((device.id, device.name))
 }
 
-async fn ensure_project(
-    config: &mut ConfigStore,
-    api: &ApiClient,
-    device_id: &str,
-    root: PathBuf,
-    requested: Option<String>,
-) -> Result<ProjectEntry> {
-    let remote = api.list_projects().await?;
-    if let Some(local) = config
-        .data()
-        .projects
-        .iter()
-        .find(|entry| entry.root == root)
-        && remote.iter().any(|entry| {
-            entry.id == local.id
-                && entry.device_id == device_id
-                && entry.local_path == root.to_string_lossy()
-        })
-    {
-        return Ok(local.clone());
-    }
-    let name = file_name(&root)?;
-    let local = config
-        .data()
-        .projects
-        .iter()
-        .find(|entry| entry.root == root);
-    let slug = requested
-        .or_else(|| local.map(|entry| entry.slug.clone()))
-        .unwrap_or_else(|| unique_slug(&name, &root, &remote));
-    let added = api
-        .add_project(device_id, &name, &slug, &root.to_string_lossy())
-        .await?;
-    let entry = ProjectEntry {
-        id: added.id,
-        slug: added.slug.unwrap_or(slug),
-        name: added.name,
-        root,
-    };
-    config.upsert_project(entry.clone());
-    println!("Serving {} from {}.", entry.name, entry.root.display());
-    Ok(entry)
-}
-
 fn normalize_gateway(input: &str) -> Result<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -1343,21 +1298,6 @@ fn validate_project_root(root: PathBuf, home: Option<&Path>) -> Result<PathBuf> 
     Ok(root)
 }
 
-fn unique_slug(name: &str, root: &Path, remote: &[ProjectView]) -> String {
-    let base = slugify(name);
-    let taken: std::collections::HashSet<_> = remote
-        .iter()
-        .filter(|entry| Path::new(&entry.local_path) != root)
-        .map(|entry| entry.slug.as_str())
-        .collect();
-    if !taken.contains(base.as_str()) {
-        return base;
-    }
-    (2..100)
-        .map(|suffix| format!("{base}-{suffix}"))
-        .find(|candidate| !taken.contains(candidate.as_str()))
-        .unwrap_or_else(|| format!("{base}-{}", crate::protocol::now_ms()))
-}
 fn slugify(value: &str) -> String {
     let slug = value
         .to_lowercase()

@@ -78,8 +78,9 @@ With the gateway running:
 ```bash
 export EXEORA_GATEWAY_URL=http://localhost:8787
 
-# connect signs in, registers the machine and registers the directory,
-# skipping whichever of those is already done.
+# connect signs in, registers the machine and keeps it online.
+# Add a directory from anywhere, including another terminal:
+#   cargo run -p exeora-cli -- project add /path/to/project
 cargo run -p exeora-cli -- connect
 ```
 

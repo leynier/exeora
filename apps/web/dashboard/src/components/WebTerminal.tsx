@@ -11,11 +11,17 @@ export function WebTerminal({
   worktree,
   targetLabel,
   available,
+  active,
+  autoConnect = false,
+  onExit,
 }: {
   projectId: string;
   worktree?: string;
   targetLabel: string;
   available: boolean;
+  active: boolean;
+  autoConnect?: boolean;
+  onExit?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const socket = useRef<WebSocket | null>(null);
@@ -25,9 +31,11 @@ export function WebTerminal({
   const attempt = useRef(0);
   const size = useRef({ cols: 0, rows: 0 });
   const [confirming, setConfirming] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState(autoConnect);
   const [connected, setConnected] = useState(false);
   const toast = useToast();
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
 
   const closeTerminal = useCallback(() => {
     attempt.current += 1;
@@ -109,10 +117,12 @@ export function WebTerminal({
         } else if (message.type === "terminal.exit") {
           term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
           setConnected(false);
+          onExitRef.current?.();
         } else if (message.type === "terminal.error" && typeof message.message === "string") {
           term.write(`\r\n\x1b[31m${message.message}\x1b[0m\r\n`);
           toast(message.message, "error");
           setConnecting(false);
+          onExitRef.current?.();
         }
       });
       ws.addEventListener("close", () => {
@@ -159,11 +169,39 @@ export function WebTerminal({
       if (attempt.current === opening) {
         closeTerminal();
         toast(error instanceof Error ? error.message : "Could not open the terminal.", "error");
+        onExitRef.current?.();
       }
     }
   };
 
-  const idle = !connected && !connecting;
+  // Connect once when this session is mounted; reopen is a new session.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only connect
+  useEffect(() => {
+    if (!autoConnect) return;
+    void openTerminal();
+  }, [autoConnect]);
+
+  useEffect(() => {
+    if (!active) return;
+    const addon = fit.current;
+    const term = terminal.current;
+    if (!addon || !term) return;
+    addon.fit();
+    if (term.cols === size.current.cols && term.rows === size.current.rows) return;
+    size.current = { cols: term.cols, rows: term.rows };
+    if (socket.current?.readyState === WebSocket.OPEN && sessionId.current) {
+      socket.current.send(
+        JSON.stringify({
+          type: "terminal.resize",
+          sessionId: sessionId.current,
+          cols: term.cols,
+          rows: term.rows,
+        }),
+      );
+    }
+  }, [active]);
+
+  const idle = !autoConnect && !connected && !connecting;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0b0d10]">
@@ -176,7 +214,10 @@ export function WebTerminal({
           <button
             type="button"
             className="btn border-white/15 text-gray-300"
-            onClick={closeTerminal}
+            onClick={() => {
+              closeTerminal();
+              onExit?.();
+            }}
           >
             Close terminal
           </button>

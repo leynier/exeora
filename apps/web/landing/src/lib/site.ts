@@ -7,12 +7,13 @@ export const GITHUB_URL = "https://github.com/leynier/exeora";
 export const RELEASES_URL = `${GITHUB_URL}/releases/latest`;
 
 /**
- * The one command a first-time visitor runs.
+ * The command that brings a machine online.
  *
- * `connect` signs in, registers the machine and registers the directory when
- * any of those is missing, so there is nothing to run before it.
+ * `connect` signs in and registers the machine. Add a directory afterwards
+ * with `exeora project add`.
  */
 export const QUICKSTART = "exeora connect";
+export const ADD_PROJECT = "exeora project add";
 
 export const INSTALL_COMMANDS = {
   macos: "curl -fsSL https://exeora.dev/macos/install.sh | sh",

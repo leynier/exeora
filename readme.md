@@ -12,11 +12,11 @@ No port to open. No source code to upload. No tunnel to wire up.
 
 ```bash
 curl -fsSL https://exeora.dev/linux/install.sh | sh
-cd the-project-you-want-to-serve
 exeora connect
+exeora project add the-project-you-want-to-serve
 ```
 
-That one command signs you in, registers the machine, registers the directory, and prints an MCP URL. Point any client at it and leave `connect` running.
+`connect` signs you in, registers the machine, and keeps the outbound connection open. It does not have to be run from a project directory. `exeora project add` registers a directory to serve. Point any client at the printed MCP URL and leave `connect` running.
 
 **Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [releases](https://github.com/leynier/exeora/releases/latest)
 
@@ -56,7 +56,7 @@ flowchart TD
 
 ## How it works
 
-1. **You run the CLI** in the project directory. It opens an outbound connection to Exeora. No inbound port, no VPN, no ngrok config.
+1. **You run the CLI** on the machine. It opens an outbound connection to Exeora. No inbound port, no VPN, no ngrok config. Add each directory you want to serve with `exeora project add`.
 2. **You authorize a client** once. OAuth 2.1 with PKCE. Each project can be its own URL and its own token, so blast radius is a fact about the path, not a promise the model is asked to keep.
 3. **The agent works where the code already is** - read, search, edit, run commands - under the policy you set. Revoke the machine from the dashboard and the socket closes immediately.
 

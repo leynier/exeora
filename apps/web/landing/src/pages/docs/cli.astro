@@ -8,8 +8,9 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/cli/"
 >
   <p>
-    Everything below <code>connect</code> is something <code>connect</code> already does for you.
-    They exist because a script sometimes wants one step without the others.
+    Everything below <code>connect</code> is a piece you can run on its own.
+    <code>connect</code> signs in and keeps the machine online; <code>project add</code> registers a
+    directory.
   </p>
 
   <table>
@@ -18,8 +19,8 @@ import Doc from "../../layouts/Doc.astro";
     </thead>
     <tbody>
       <tr>
-        <td><code>connect [path]</code></td>
-        <td>Sign in, register and serve, skipping whatever is already done</td>
+        <td><code>connect</code></td>
+        <td>Sign in, register this machine and keep it connected</td>
       </tr>
       <tr>
         <td><code>login</code> / <code>logout</code></td>
@@ -35,7 +36,7 @@ import Doc from "../../layouts/Doc.astro";
       </tr>
       <tr>
         <td><code>project add [path]</code></td>
-        <td>Register a directory without connecting</td>
+        <td>Register a directory so this machine can serve it</td>
       </tr>
       <tr>
         <td><code>project list</code> / <code>project remove &lt;slug&gt;</code></td>
@@ -89,12 +90,7 @@ import Doc from "../../layouts/Doc.astro";
       <tr><th>Flag</th><th>What it does</th></tr>
     </thead>
     <tbody>
-      <tr><td><code>--slug</code></td><td>Name the project in its URL</td></tr>
       <tr><td><code>--name</code></td><td>Name the machine, when registering it</td></tr>
-      <tr>
-        <td><code>--no-add</code></td>
-        <td>Serve what is already registered, without adding this directory</td>
-      </tr>
       <tr>
         <td><code>--reset</code></td>
         <td>Register the machine again, after revoking it from the dashboard</td>

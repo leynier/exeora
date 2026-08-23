@@ -10,20 +10,24 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     Open the <strong>Workspace</strong> tab in the dashboard. Choose a project, then a worktree,
     from the dropdowns at the top of that page. Source Control and the terminal are available only
-    to the signed-in owner of that project, while its Exeora CLI is connected. <code>main</code> is
-    the project root; any other option is a worktree connected through <code>exeora worktree</code>.
-    Project pages still offer <strong>Open workspace</strong>, which lands on the same tab.
+    to the signed-in owner of that project, while its Exeora CLI is connected. The
+    <strong>project root</strong> is the directory you registered; it may be on any branch, not
+    necessarily <code>main</code>. Any other option is a Git worktree connected through{" "}
+    <code>exeora worktree</code> or created from Source Control. Project pages still offer{" "}
+    <strong>Open workspace</strong>, which lands on the same tab.
   </p>
 
   <h2>Source Control</h2>
 
   <p>
-    The dashboard reads Git's porcelain status from the project directory and presents it as a git
+    The dashboard reads Git's porcelain status from the selected worktree and presents it as a git
     client: the current branch in the toolbar, a commit composer above staged and unstaged files, and
     the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
     changes, delete individual untracked files, fetch, pull, and push. The branch control lists the
-    current branch, other local branches, and remotes you can check out. Type a name there to create
-    a branch from HEAD, or delete a merged local branch.
+    current branch, other local branches, and remotes you can check out. Choosing a branch that is
+    already checked out in another connected worktree switches the workspace to that worktree rather
+    than running <code>git switch</code> in place. Type a name there to create a branch from HEAD,
+    delete a merged local branch, or create a new Git worktree from Source Control.
   </p>
 
   <p>
@@ -47,15 +51,17 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     Opening a terminal requires an explicit confirmation. It starts the machine's default shell in a
-    real pseudo-terminal at the project's local path. Closing the browser, losing the relay, revoking
-    the machine, or reaching the session limit terminates the local process.
+    real pseudo-terminal at the selected worktree's local path. Switching project or worktree in the
+    dashboard keeps that session running: open terminals stay listed so you can close them or return
+    to them. Closing the browser, losing the relay, revoking the machine, or reaching the session
+    limit terminates the local process.
   </p>
 
   <p>
     A terminal connection uses a one-time ticket that expires after 30 seconds and is bound to this
-    site's origin and selected worktree. One web terminal may be open per worktree, so
-    <code>main</code> and multiple connected worktrees can each have one. Idle sessions end after 30
-    minutes and every session ends after eight hours; sessions cannot be reattached in this version.
+    site's origin and selected worktree. One web terminal may be open per worktree, so the project
+    root and multiple connected worktrees can each have one. Idle sessions end after 30 minutes and
+    every session ends after eight hours.
   </p>
 
   <h2>What is recorded</h2>

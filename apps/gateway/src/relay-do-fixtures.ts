@@ -197,6 +197,7 @@ export async function attachFakeExecutor(
                 files: [],
                 branches: [],
                 remotes: [],
+                gitWorktrees: [],
               },
             },
           }),

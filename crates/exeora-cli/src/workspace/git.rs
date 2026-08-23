@@ -213,6 +213,7 @@ impl GitWorkspace {
         result["branches"] = self.branches(root, cancel).await?;
         result["remotes"] = self.remotes(root, cancel).await?;
         result["operation"] = self.operation_state(root, cancel).await?.into();
+        result["gitWorktrees"] = self.git_worktrees(root, cancel).await?;
         Ok(result)
     }
 
@@ -383,6 +384,20 @@ impl GitWorkspace {
                 .filter(|line| !line.is_empty())
                 .collect::<Vec<_>>()
         ))
+    }
+
+    async fn git_worktrees(
+        &self,
+        root: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<Value, ExeoraError> {
+        let output = self
+            .run(root, &["worktree", "list", "--porcelain"], None, cancel)
+            .await?;
+        if !output.success {
+            return Ok(json!([]));
+        }
+        Ok(json!(parse_worktree_list(&output.stdout)))
     }
 
     async fn operation_state(
@@ -586,6 +601,7 @@ fn parse_status(bytes: &[u8], prefix: &str) -> Result<Value, ExeoraError> {
         "kind": "status", "repository": true, "head": head, "oid": oid,
         "upstream": upstream, "ahead": ahead, "behind": behind,
         "operation": Value::Null, "files": files, "branches": [], "remotes": [],
+        "gitWorktrees": [],
     }))
 }
 
@@ -617,11 +633,36 @@ fn project_relative(path: &str, prefix: &str) -> Option<String> {
     path.strip_prefix(prefix).map(str::to_owned)
 }
 
+fn parse_worktree_list(bytes: &[u8]) -> Vec<Value> {
+    let mut worktrees = Vec::new();
+    let mut path = None;
+    let mut branch = Value::Null;
+    let flush = |worktrees: &mut Vec<Value>, path: &mut Option<String>, branch: &mut Value| {
+        if let Some(path) = path.take() {
+            worktrees.push(json!({ "path": path, "branch": std::mem::take(branch) }));
+        }
+    };
+    for line in String::from_utf8_lossy(bytes).lines() {
+        if let Some(value) = line.strip_prefix("worktree ") {
+            flush(&mut worktrees, &mut path, &mut branch);
+            path = Some(value.to_owned());
+        } else if let Some(value) = line.strip_prefix("branch ") {
+            branch = json!(value.strip_prefix("refs/heads/").unwrap_or(value));
+        } else if line == "detached" {
+            branch = Value::Null;
+        } else if line.is_empty() {
+            flush(&mut worktrees, &mut path, &mut branch);
+        }
+    }
+    flush(&mut worktrees, &mut path, &mut branch);
+    worktrees
+}
+
 fn empty_status() -> Value {
     json!({
         "kind": "status", "repository": false, "head": Value::Null, "oid": Value::Null,
         "upstream": Value::Null, "ahead": 0, "behind": 0, "operation": Value::Null,
-        "files": [], "branches": [], "remotes": [],
+        "files": [], "branches": [], "remotes": [], "gitWorktrees": [],
     })
 }
 
@@ -691,9 +732,9 @@ fn invalid(message: impl Into<String>) -> ExeoraError {
 
 #[cfg(test)]
 mod tests {
-    use super::{GitWorkspace, parse_status};
+    use super::{GitWorkspace, parse_status, parse_worktree_list};
     use crate::error::ErrorCode;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::{fs, process::Command};
     use tempfile::tempdir;
     use tokio_util::sync::CancellationToken;
@@ -711,6 +752,17 @@ mod tests {
         assert_eq!(status["files"][0]["path"], "file with spaces.txt");
         assert_eq!(status["files"][1]["originalPath"], "old.txt");
         assert_eq!(status["files"][2]["kind"], "untracked");
+    }
+
+    #[test]
+    fn parses_porcelain_worktree_list_including_detached_heads() {
+        let worktrees = parse_worktree_list(
+            b"worktree /repo\nHEAD abc\nbranch refs/heads/develop\n\nworktree /repo/.worktrees/feature\nHEAD def\ndetached\n",
+        );
+        assert_eq!(worktrees[0]["path"], "/repo");
+        assert_eq!(worktrees[0]["branch"], "develop");
+        assert_eq!(worktrees[1]["path"], "/repo/.worktrees/feature");
+        assert_eq!(worktrees[1]["branch"], Value::Null);
     }
 
     #[tokio::test]
@@ -1000,5 +1052,10 @@ mod tests {
         assert_eq!(main_status["files"][0]["worktree"], "M");
         assert_eq!(feature_status["files"][0]["index"], "M");
         assert_eq!(feature_status["files"][0]["worktree"], ".");
+        let trees = main_status["gitWorktrees"]
+            .as_array()
+            .expect("git worktrees");
+        assert_eq!(trees.len(), 2);
+        assert!(trees.iter().any(|tree| tree["branch"] == "feature"));
     }
 }
