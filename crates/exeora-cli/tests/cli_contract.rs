@@ -33,7 +33,19 @@ fn exposes_the_command_surface_and_version_flag() {
                 .and(predicate::str::contains("prompt"))
                 .and(predicate::str::contains("sync"))
                 .and(predicate::str::contains("upgrade"))
-                .and(predicate::str::contains("keep this machine awake")),
+                .and(predicate::str::contains("keep it awake")),
+        );
+
+    Command::cargo_bin("exeora")
+        .unwrap()
+        .arg("connect")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("serve registered projects")
+                .and(predicate::str::contains("--no-add").not())
+                .and(predicate::str::contains("[PATH]").not()),
         );
 }
 

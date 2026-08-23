@@ -219,8 +219,8 @@ export function accountConsentPage(options: {
         ${
           projects.length === 0
             ? html`<p class="empty">
-                You have not connected any projects yet. Run <code>exeora connect</code> in a
-                directory on the machine you want to serve, then authorize this application again.
+                You have not connected any projects yet. Run <code>exeora project add</code> in a
+                directory on a machine running <code>exeora connect</code>, then authorize this application again.
               </p>
               <form method="post" action="/oauth/approve">
                 <input type="hidden" name="state" value="${options.state}" />

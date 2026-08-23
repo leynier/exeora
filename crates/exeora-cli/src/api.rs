@@ -83,6 +83,7 @@ pub struct Registered {
     pub slug: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct ApiClient {
     base: Url,
     http: reqwest::Client,

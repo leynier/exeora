@@ -1,5 +1,5 @@
 ---
-import { INSTALL_COMMANDS, QUICKSTART } from "../lib/site.js";
+import { ADD_PROJECT, INSTALL_COMMANDS, QUICKSTART } from "../lib/site.js";
 
 interface Props {
   id: string;
@@ -57,6 +57,19 @@ const { id } = Astro.props;
       <button
         type="button"
         data-copy-target={`${id}-connect`}
+        class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
+      >
+        <span data-copy-label aria-live="polite">Copy</span>
+      </button>
+    </div>
+    <div class="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4">
+      <span class="text-label-md text-foreground-faint font-mono" aria-hidden="true">03</span>
+      <code id={`${id}-add`} class="text-foreground min-w-0 flex-1 truncate font-mono text-[12px] sm:text-[13px]"
+        >{ADD_PROJECT}</code
+      >
+      <button
+        type="button"
+        data-copy-target={`${id}-add`}
         class="text-label-md text-foreground-muted hover:text-foreground border-border shrink-0 rounded-md border px-2.5 py-1.5 font-mono transition-colors duration-fast"
       >
         <span data-copy-label aria-live="polite">Copy</span>

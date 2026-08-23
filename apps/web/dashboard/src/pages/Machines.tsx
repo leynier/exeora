@@ -82,8 +82,7 @@ export function Machines() {
           <SkeletonRows />
         ) : machines.length === 0 ? (
           <EmptyState title="No machines yet">
-            Install the native CLI, then run <code className="font-mono">exeora connect</code> in a
-            project directory.
+            Install the native CLI, then run <code className="font-mono">exeora connect</code>.
           </EmptyState>
         ) : (
           <Divided>
