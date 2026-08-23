@@ -1,0 +1,51 @@
+---
+import Section from "./Section.astro";
+
+const useCases = [
+  {
+    label: "Remote debugging",
+    prompt: "Find why the service fails on staging using the logs and dependencies already there.",
+    outcome: "Work against the real environment instead of recreating it in a sandbox.",
+  },
+  {
+    label: "Real repositories",
+    prompt: "Review this repository, fix the type errors, and run its test suite.",
+    outcome: "Give a web-based AI access without cloning or uploading the repository.",
+  },
+  {
+    label: "Every machine",
+    prompt: "Update the API on my build VM, then check the deployment from my Raspberry Pi.",
+    outcome: "Use the same MCP client across laptops, servers, VMs, and edge devices.",
+  },
+  {
+    label: "Controlled execution",
+    prompt: "Read everything, but ask before edits and only run the commands I allow.",
+    outcome: "Set the boundary per project, audit every call, and revoke access immediately.",
+  },
+];
+---
+
+<Section
+  id="use-cases"
+  eyebrow="What becomes possible"
+  title="The real machine, not a copy of it"
+  subtitle="Give an agent the environment that already has the code, dependencies, credentials, and state it needs to finish the work"
+  wide
+>
+  <div class="grid gap-4 md:grid-cols-2">
+    {
+      useCases.map((useCase, index) => (
+        <article
+          class="animate-fade-in-up opacity-0-initial border-border bg-surface rounded-xl border p-6 sm:p-7"
+          style={`animation-delay: ${100 + index * 60}ms`}
+        >
+          <p class="text-label-md text-foreground-muted font-mono uppercase">{useCase.label}</p>
+          <blockquote class="text-title-lg text-foreground mt-4">“{useCase.prompt}”</blockquote>
+          <p class="text-body-md text-foreground-muted border-border-subtle mt-5 border-t pt-4">
+            {useCase.outcome}
+          </p>
+        </article>
+      ))
+    }
+  </div>
+</Section>

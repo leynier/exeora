@@ -1,11 +1,11 @@
 ---
 import { GITHUB_URL } from "../lib/site.js";
-import InstallCommands from "./InstallCommands.astro";
 
 /**
- * Hero and client proof in one unit: the promise, the command, and the agents
- * it already works with. Brand marks live in public/clients/ as monochrome SVGs
- * and are painted through a CSS mask so they pick up the current color.
+ * Lead with the work Exeora makes possible, then prove it with a representative
+ * tool run. Installation belongs at the end, after the visitor knows why they
+ * would install it. Brand marks live in public/clients/ as monochrome SVGs and
+ * are painted through a CSS mask so they pick up the current color.
  */
 
 const clients = [
@@ -24,124 +24,132 @@ const clients = [
 ];
 ---
 
-<section class="noise-overlay relative overflow-hidden px-6 pt-32 pb-20 sm:pt-40 sm:pb-24">
+<section class="noise-overlay relative overflow-hidden px-6 pt-28 pb-16 sm:pt-36 sm:pb-20">
   <div class="hero-glow pointer-events-none absolute inset-x-0 top-0 h-[36rem]"></div>
 
-  <div class="relative z-10 mx-auto max-w-4xl text-center">
-    <!-- No status dot. A pulsing dot is the universal gesture for "live", and
-         this states a fact about the design rather than a state, so the dot was
-         promising something that does not exist. -->
-    <a
-      href={GITHUB_URL}
-      target="_blank"
-      rel="noopener"
-      class="animate-fade-in-up opacity-0-initial bg-accent text-on-accent hover:bg-foreground text-label-md inline-flex cursor-pointer items-center gap-2 rounded-pill px-3.5 py-1.5 font-mono uppercase transition-colors duration-fast"
-      style="animation-delay: 80ms"
-    >
-      Open source · audit every line
-    </a>
-
-    <h1
-      class="animate-fade-in-up opacity-0-initial text-foreground mt-7 text-[32px] leading-[1.06] font-semibold tracking-[-1.2px] sm:text-[46px] lg:text-[56px]"
-      style="animation-delay: 160ms"
-    >
-      Exeora
-    </h1>
-
-    <p
-      class="animate-fade-in-up opacity-0-initial mt-2 text-[32px] leading-[1.06] font-semibold tracking-[-1.2px] sm:text-[46px] lg:text-[56px]"
-      style="animation-delay: 160ms"
-    >
-      <span class="text-gradient-accent">Secure execution for AI agents,</span><br />
-      <span class="text-foreground-muted">on any machine</span>
-    </p>
-
-    <p
-      class="animate-fade-in-up opacity-0-initial text-body-lg text-foreground-muted mx-auto mt-6 max-w-2xl sm:text-[17px]"
-      style="animation-delay: 240ms"
-    >
-      Exeora is an open-source service for securely connecting AI coding agents and MCP clients such
-      as Claude, ChatGPT or Cursor to development projects on machines you control. It uses one
-      outbound connection: no inbound port, no source-code upload and no tunnel.
-    </p>
-
-    <p
-      class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mx-auto mt-4 max-w-2xl"
-      style="animation-delay: 280ms"
-    >
-      Google Sign-In is optional. Exeora uses only your verified email address, name and profile
-      photo to authenticate you and connect you to the correct Exeora account. It does not request
-      access to Gmail, Drive, Calendar, contacts or other Google services, and it never stores
-      Google access or refresh tokens. <a
-        href="/privacy/"
-        class="text-foreground underline-offset-2 hover:underline">Read the privacy policy</a
-      >.
-    </p>
-
-    <div
-      class="animate-fade-in-up opacity-0-initial mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
-      style="animation-delay: 320ms"
-    >
-      <a
-        href="/dashboard/"
-        class="bg-accent text-on-accent hover:bg-foreground text-title-md w-full rounded-lg px-5 py-2.5 transition-colors duration-fast sm:w-auto"
-      >
-        Get started
-      </a>
+  <div class="relative z-10 mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1fr_0.92fr] lg:gap-16">
+    <div class="text-center lg:text-left">
       <a
         href={GITHUB_URL}
         target="_blank"
         rel="noopener"
-        class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-5 py-2.5 transition-colors duration-fast sm:w-auto"
+        class="animate-fade-in-up opacity-0-initial border-border bg-surface/70 text-foreground-muted hover:text-foreground text-label-md inline-flex cursor-pointer items-center gap-2 rounded-pill border px-3.5 py-1.5 font-mono uppercase transition-colors duration-fast"
+        style="animation-delay: 80ms"
       >
-        Star on
-        <svg
-          viewBox="0 0 24 24"
-          class="size-4"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path
-            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
-          ></path>
-        </svg>
-        GitHub
+        Open source · secure remote execution
       </a>
+
+      <h1
+        class="animate-fade-in-up opacity-0-initial text-foreground mt-7 text-[38px] leading-[1.03] font-semibold tracking-[-1.5px] sm:text-[52px] lg:text-[60px]"
+        style="animation-delay: 160ms"
+      >
+        Let your AI work where your code <span class="text-gradient-accent">already runs.</span>
+      </h1>
+
+      <p
+        class="animate-fade-in-up opacity-0-initial text-body-lg text-foreground-muted mx-auto mt-6 max-w-2xl sm:text-[17px] lg:mx-0"
+        style="animation-delay: 240ms"
+      >
+        Connect Claude, ChatGPT, Cursor, or any MCP client to a project on your laptop, server, VM,
+        or Raspberry Pi, without uploading the repository or opening a port.
+      </p>
+
+      <div
+        class="animate-fade-in-up opacity-0-initial mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start"
+        style="animation-delay: 320ms"
+      >
+        <a
+          href="#get-started"
+          class="bg-accent text-on-accent hover:bg-foreground text-title-md w-full rounded-lg px-5 py-3 transition-colors duration-fast sm:w-auto"
+        >
+          Connect a machine for free
+        </a>
+        <a
+          href="#use-cases"
+          class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md w-full rounded-lg border px-5 py-3 transition-colors duration-fast sm:w-auto"
+        >
+          See what it can do
+        </a>
+      </div>
+
+      <ul
+        class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-muted mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 lg:justify-start"
+        style="animation-delay: 380ms"
+      >
+        <li>10 machines free</li>
+        <li aria-hidden="true">·</li>
+        <li>No credit card</li>
+        <li aria-hidden="true">·</li>
+        <li>Self-hostable</li>
+      </ul>
     </div>
 
     <div
-      class="animate-fade-in-up opacity-0-initial mx-auto mt-12 max-w-2xl"
-      style="animation-delay: 400ms"
+      class="animate-fade-in-up opacity-0-initial border-border bg-surface/90 overflow-hidden rounded-xl border text-left shadow-2xl shadow-black/30"
+      style="animation-delay: 260ms"
+      aria-label="Example of an AI agent working through Exeora"
+      role="group"
     >
-      <InstallCommands id="hero" />
-    </div>
+      <div class="border-border-subtle bg-surface-elevated flex items-center justify-between border-b px-4 py-3">
+        <div class="flex items-center gap-2">
+          <span class="bg-brand size-2 rounded-full"></span>
+          <span class="text-title-md text-foreground">build-server</span>
+          <span class="text-body-md text-foreground-muted">/ payments-api</span>
+        </div>
+        <span class="text-label-md text-brand font-mono uppercase">Connected</span>
+      </div>
 
-    <p
-      class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-4"
-      style="animation-delay: 460ms"
-    >
-      Native Rust CLI. Install once, then run it in the directory you want to serve.
-    </p>
+      <div class="space-y-5 p-5 sm:p-6">
+        <div class="border-border-subtle bg-bg/60 rounded-lg border p-4">
+          <p class="text-label-md text-foreground-muted font-mono uppercase">Claude</p>
+          <p class="text-body-lg text-foreground mt-2">
+            Find why the integration tests fail on this server, fix it, and run them again.
+          </p>
+        </div>
+
+        <ol class="text-body-md space-y-3 font-mono">
+          <li class="flex items-start gap-3">
+            <span class="text-brand">✓</span>
+            <span><span class="text-foreground">Read test output</span><br /><span class="text-foreground-muted">Found a missing database migration</span></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-brand">✓</span>
+            <span><span class="text-foreground">Edited migration.sql</span><br /><span class="text-foreground-muted">1 file changed · unified diff returned</span></span>
+          </li>
+        </ol>
+
+        <div class="border-warning/30 bg-warning/[0.04] rounded-lg border p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-label-md text-warning font-mono uppercase">Approval required</p>
+              <code class="text-body-md text-foreground mt-2 block">bun test:integration</code>
+            </div>
+            <span class="bg-accent text-on-accent text-body-md rounded-md px-3 py-1.5 font-medium">Approve</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-4 border-t border-border-subtle pt-4">
+          <span class="text-body-md text-foreground"><span class="text-brand">✓</span> 184 tests passed</span>
+          <span class="text-body-md text-foreground-muted">42s</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Same section as the hero: clients are proof of the promise above, not a
        separate chapter with its own divider. -->
   <div
-    class="animate-fade-in-up opacity-0-initial relative z-10 mx-auto mt-10 max-w-5xl text-center sm:mt-12"
-    style="animation-delay: 520ms"
+    class="animate-fade-in-up opacity-0-initial relative z-10 mx-auto mt-14 max-w-5xl text-center sm:mt-16"
+    style="animation-delay: 460ms"
   >
-    <p class="text-label-md text-foreground-faint text-center font-mono uppercase">
-      Speaks MCP, so it works with
+    <p class="text-label-md text-foreground-muted text-center font-mono uppercase">
+      Bring the AI client you already use
     </p>
 
-    <ul class="mt-6 flex flex-wrap items-center justify-center gap-x-7 gap-y-4 sm:gap-x-9">
+    <ul class="mt-6 grid grid-cols-3 gap-x-4 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
       {
         clients.map((client) => (
-          <li class="text-foreground-muted hover:text-foreground flex items-center gap-2 transition-colors duration-fast">
+          <li class="text-foreground-muted hover:text-foreground flex items-center justify-center gap-2 transition-colors duration-fast">
             <span
               class="bg-current block size-[18px] opacity-80"
               style={`mask: url(${client.logo}) center / contain no-repeat; -webkit-mask: url(${client.logo}) center / contain no-repeat`}
@@ -153,28 +161,8 @@ const clients = [
       }
     </ul>
 
-    <p class="text-body-md text-foreground-faint mt-5 text-center">
-      Anything that speaks Streamable HTTP and OAuth 2.1 can connect - no plugin on the client side
+    <p class="text-body-md text-foreground-muted mt-5 text-center">
+      No client plugin. If it speaks MCP over HTTP with OAuth, it connects.
     </p>
-
-    <a
-      href="/#how-it-works"
-      class="text-foreground-faint hover:text-foreground mt-8 inline-flex flex-col items-center gap-1 transition-colors duration-fast"
-      aria-label="Continue to how it works"
-    >
-      <span class="text-label-md font-mono uppercase">How it works</span>
-      <svg
-        viewBox="0 0 24 24"
-        class="size-5"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.75"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m6 9 6 6 6-6"></path>
-      </svg>
-    </a>
   </div>
 </section>

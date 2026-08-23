@@ -2,70 +2,70 @@
 import Section from "./Section.astro";
 
 /**
- * Where Exeora sits between the two things people already reach for. Written
- * as what each option does, not as who wins: a tunnel and a cloud sandbox are
- * both reasonable tools, they just answer a different question.
+ * The category distinction a buyer needs first: local MCP servers are useful
+ * when client and project share a computer, while Exeora connects across that
+ * boundary without moving the project into a vendor sandbox.
  */
 
-const columns = ["Exeora", "ngrok, Cloudflare Tunnel", "Cloud sandbox"];
+const columns = ["Exeora", "Local MCP server", "Cloud sandbox"];
 
 const rows = [
   {
-    dimension: "Where your code lives",
+    dimension: "Where it runs",
+    values: ["Any connected machine", "The same computer as the client", "A vendor-hosted copy"],
+  },
+  {
+    dimension: "Web clients such as ChatGPT",
     values: [
-      "The machine you ran it on",
-      "The machine you ran it on",
-      "A copy on their infrastructure",
+      "Connect directly over authenticated HTTP",
+      "Needs a separate remote bridge",
+      "Built into the vendor",
     ],
   },
   {
-    dimension: "Inbound port",
-    values: ["None", "None, but the tunnel publishes a public URL", "None"],
-  },
-  {
-    dimension: "What is reachable",
+    dimension: "Authorization boundary",
     values: [
-      "Ten tools, one project directory",
-      "Whatever is listening on that port",
-      "A full shell in the copy",
+      "One OAuth resource per project",
+      "Usually one user-level configuration",
+      "One vendor account",
     ],
   },
   {
-    dimension: "Per-project isolation",
-    values: ["A separate OAuth resource and token", "You build it", "One sandbox per project"],
+    dimension: "Real toolchain and state",
+    values: ["Yes, on the target machine", "Yes, on the client machine", "Reinstalled in the copy"],
   },
   {
-    dimension: "Authentication",
+    dimension: "Policies and approvals",
     values: [
-      "OAuth 2.1, built in",
-      "Whatever your service does, often nothing",
-      "The vendor's account",
+      "Per project, enforced at both ends",
+      "Depends on the MCP server",
+      "Depends on the vendor",
     ],
   },
   {
-    dimension: "Your real toolchain and state",
-    values: ["Yes", "Yes", "Reinstalled, and never quite the same"],
+    dimension: "Central audit and revocation",
+    values: ["Built in", "Usually local", "Vendor-specific"],
   },
   {
     dimension: "Setup",
     values: [
-      "Install, log in, add a project",
-      "Run the tunnel, then secure it yourself",
-      "Push your code",
+      "Connect the machine and add a project",
+      "Install in every client environment",
+      "Upload or import the repository",
     ],
   },
   {
     dimension: "Source",
-    values: ["Open source (AGPL-3.0) - audit every line", "Varies by tool", "Usually closed"],
+    values: ["Full stack, AGPL-3.0", "Varies by server", "Usually closed"],
   },
 ];
 ---
 
 <Section
   id="compare"
-  eyebrow="Compare"
-  title="Neither a tunnel nor a sandbox"
-  subtitle="A tunnel exposes a port you then have to defend. A sandbox gives an agent a copy of your project rather than the project"
+  eyebrow="Why Exeora"
+  title="A local MCP works where the client runs. Exeora works where your project runs."
+  subtitle="Reach a real development environment from any compatible AI client without turning that environment into a public endpoint"
   wide
 >
   <!-- Below md the same rows are stacked, one card per dimension. A table of
@@ -88,7 +88,7 @@ const rows = [
                 <dt
                   class:list={[
                     "text-body-md",
-                    index === 0 ? "text-foreground" : "text-foreground-faint",
+                    index === 0 ? "text-foreground" : "text-foreground-muted",
                   ]}
                 >
                   {columns[index]}
@@ -149,7 +149,7 @@ const rows = [
                 <td
                   class:list={[
                     "text-body-md px-5 py-3.5",
-                    index === 0 ? "text-foreground bg-accent-subtle" : "text-foreground-faint",
+                    index === 0 ? "text-foreground bg-accent-subtle" : "text-foreground-muted",
                   ]}
                 >
                   {value}

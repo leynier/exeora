@@ -2,7 +2,7 @@
 import Section from "./Section.astro";
 
 /**
- * The six questions that close the main objections. Longer inventory of edge
+ * The questions that close the main objections. Longer inventory of edge
  * cases belongs in docs, not on the landing path.
  */
 
@@ -31,6 +31,10 @@ const questions = [
     q: "Is Exeora open source?",
     a: 'Yes. The full stack - CLI, gateway, dashboard and docs - is public on <a href="https://github.com/leynier/exeora" target="_blank" rel="noopener" class="text-foreground underline-offset-2 hover:underline">GitHub</a> under the AGPL-3.0. You can read every line, audit the security model, open issues and send pull requests. The hosted product at exeora.dev runs that same code.',
   },
+  {
+    q: "What does Google Sign-In access?",
+    a: 'Google Sign-In is optional. Exeora uses only your verified email address, name, and profile photo to authenticate you. It does not request Gmail, Drive, Calendar, contacts, or other Google services, and never stores Google access or refresh tokens. See the <a href="/privacy/" class="text-foreground underline-offset-2 hover:underline">privacy policy</a>.',
+  },
 ];
 ---
 
@@ -38,7 +42,7 @@ const questions = [
   id="faq"
   eyebrow="FAQ"
   title="The questions worth asking first"
-  subtitle="Mostly about what Exeora can see, what it cannot stop, and how to make it stop"
+  subtitle="What Exeora can see, what it can control, and how to cut access"
 >
   <div class="border-border bg-surface divide-border-subtle divide-y overflow-hidden rounded-xl border">
     {

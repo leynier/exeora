@@ -7,18 +7,20 @@ import Footer from "../components/Footer.astro";
 import Hero from "../components/Hero.astro";
 import Navbar from "../components/Navbar.astro";
 import Security from "../components/Security.astro";
+import UseCases from "../components/UseCases.astro";
 import Workflow from "../components/Workflow.astro";
 import Layout from "../layouts/Layout.astro";
 ---
 
 <Layout
   title="Exeora"
-  description="Exeora securely connects AI coding agents and MCP clients to development projects on machines you control. Google Sign-In uses only basic identity data for authentication."
+  description="Connect Claude, ChatGPT, Cursor, or any MCP client to a real development project on your laptop, server, VM, or Raspberry Pi without uploading the repository or opening a port."
   canonicalPath="/"
 >
   <Navbar />
   <main>
     <Hero />
+    <UseCases />
     <Workflow />
     <Comparison />
     <Features />

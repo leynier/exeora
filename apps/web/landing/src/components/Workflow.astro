@@ -3,16 +3,16 @@ import Section from "./Section.astro";
 
 const steps = [
   {
-    title: "The CLI dials out. Nothing dials in",
-    body: "The machine opens an outbound WebSocket and holds it. No inbound port, no tunnel, no VPN - the same command works behind NAT and behind a corporate firewall",
+    title: "Connect the machine",
+    body: "Install one native binary and run exeora connect. It signs in and opens an outbound connection, even behind NAT or a corporate firewall",
   },
   {
-    title: "Your code never leaves the machine",
-    body: "Exeora routes tool calls; it does not store your repository. Files are read, searched and edited where they already are, and only the result of a call crosses the wire",
+    title: "Add the project",
+    body: "Register the directory you want to serve. Exeora prints an MCP URL scoped to that project, not a shell endpoint for the whole machine",
   },
   {
-    title: "You choose the blast radius",
-    body: "A project's own URL reaches that project and nothing else, because the project is in the path rather than in anything the client sends. One account URL covers several, and you tick which ones when you authorize it",
+    title: "Paste the URL into your AI",
+    body: "Authorize it once, then read, search, edit, and run commands under the policy you choose. Revoke it from the dashboard whenever you want",
   },
 ];
 ---
@@ -20,8 +20,8 @@ const steps = [
 <Section
   id="how-it-works"
   eyebrow="How it works"
-  title="Three facts that explain the whole design"
-  subtitle="No inbound network path, no copy of your code, and a blast radius you decide when you authorize a client"
+  title="From machine to MCP in three steps"
+  subtitle="No tunnel configuration, no repository upload, and no plugin for each AI client"
 >
   <ol class="relative grid gap-10 md:grid-cols-3 md:gap-8">
     <!-- The connector sits behind the numbers on desktop only, where the

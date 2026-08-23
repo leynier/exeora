@@ -20,5 +20,12 @@ export default defineConfig({
   // ones that belong in the sitemap.
   integrations: [sitemap()],
 
-  vite: { plugins: [tailwind()] },
+  vite: {
+    plugins: [tailwind()],
+    server: {
+      // Amp review portals use a per-thread onamp.dev hostname in development.
+      // Keep the allowance scoped to that suffix rather than accepting every host.
+      allowedHosts: [".onamp.dev"],
+    },
+  },
 });

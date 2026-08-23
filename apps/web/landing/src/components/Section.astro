@@ -25,7 +25,7 @@ const { id, eyebrow, title, subtitle, wide = false } = Astro.props;
 >
   <div class:list={["mx-auto", wide ? "max-w-6xl" : "max-w-4xl"]}>
     <div class="animate-fade-in-up opacity-0-initial mx-auto max-w-2xl text-center">
-      <p class="text-label-md text-foreground-faint font-mono uppercase">{eyebrow}</p>
+      <p class="text-label-md text-foreground-muted font-mono uppercase">{eyebrow}</p>
       <h2 class="text-headline-lg sm:text-[32px] mt-3">{title}</h2>
       {subtitle && <p class="text-body-lg text-foreground-muted mt-4">{subtitle}</p>}
     </div>
