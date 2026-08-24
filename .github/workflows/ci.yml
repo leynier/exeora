@@ -36,6 +36,11 @@ jobs:
         shell: pwsh
         run: '[scriptblock]::Create((Get-Content -Raw install.ps1)) | Out-Null'
 
+      - name: Test Windows installer architecture detection
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-installers.ps1
+
   check:
     runs-on: ubuntu-latest
     steps:

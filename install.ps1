@@ -1,8 +1,16 @@
 $ErrorActionPreference = "Stop"
 
+function Get-ExeoraWindowsArchitecture {
+  if ($env:PROCESSOR_ARCHITEW6432) {
+    return $env:PROCESSOR_ARCHITEW6432
+  }
+  return $env:PROCESSOR_ARCHITECTURE
+}
+
 $version = if ($env:EXEORA_VERSION) { $env:EXEORA_VERSION } else { "latest" }
-if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne "X64") {
-  throw "Exeora currently supports Windows x64."
+$architecture = Get-ExeoraWindowsArchitecture
+if ($architecture -ne "AMD64") {
+  throw "Exeora currently supports Windows x64. Detected architecture: $architecture."
 }
 $asset = "exeora-x86_64-pc-windows-msvc.exe"
 $base = "https://github.com/leynier/exeora/releases"
