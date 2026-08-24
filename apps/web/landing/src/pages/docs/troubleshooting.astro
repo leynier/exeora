@@ -124,4 +124,21 @@ import Doc from "../../layouts/Doc.astro";
     <code>0600</code> file under <code>$XDG_CONFIG_HOME/exeora/</code> and says so when it happens.
     Nothing else changes.
   </p>
+
+  <h2>The Windows installer says x64 is unsupported</h2>
+
+  <p>
+    Exeora's Windows release is an <code>x86_64-pc-windows-msvc</code> executable. The installer
+    checks the native Windows architecture, not the bitness of the PowerShell process running it.
+    A 32-bit PowerShell on 64-bit Windows reports <code>PROCESSOR_ARCHITECTURE=x86</code>; Windows
+    exposes the native <code>AMD64</code> value in <code>PROCESSOR_ARCHITEW6432</code>. The installer
+    uses that override when it is present, so running the command from 32-bit PowerShell no longer
+    produces a false unsupported-architecture error.
+  </p>
+
+  <p>
+    ARM64 Windows is still not accepted because Exeora does not publish an ARM64 CLI binary. The
+    error now includes the detected architecture so that a genuine platform mismatch can be
+    distinguished from the old process-versus-OS detection problem.
+  </p>
 </Doc>
