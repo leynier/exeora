@@ -44,9 +44,18 @@ fn exposes_the_command_surface_and_version_flag() {
         .success()
         .stdout(
             predicate::str::contains("serve registered projects")
+                .and(predicate::str::contains("--code"))
                 .and(predicate::str::contains("--no-add").not())
                 .and(predicate::str::contains("[PATH]").not()),
         );
+
+    Command::cargo_bin("exeora")
+        .unwrap()
+        .arg("login")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--code"));
 }
 
 #[test]

@@ -3,7 +3,13 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
-import { clearSession, getSessionUserId, setSession } from "./session.js";
+import {
+  clearSession,
+  getSessionUserId,
+  hasDeviceContinuation,
+  setDeviceContinuation,
+  setSession,
+} from "./session.js";
 
 const USER = "usr_session";
 const bindings = {
@@ -21,7 +27,14 @@ const app = new Hono<{ Bindings: Env }>()
   .get("/clear", async (c) => {
     await clearSession(c);
     return c.text("ok");
-  });
+  })
+  .get("/bind", async (c) => {
+    await setDeviceContinuation(c, "req_state");
+    return c.text("ok");
+  })
+  .get("/bound", async (c) =>
+    c.text((await hasDeviceContinuation(c, c.req.query("state") ?? "")) ? "yes" : "no"),
+  );
 
 beforeEach(async () => {
   await db(env)
@@ -83,6 +96,21 @@ describe("revocable browser session", () => {
     await db(env).delete(schema.users).where(eq(schema.users.id, USER)).run();
     expect(await who(cookie)).toBe("anonymous");
     expect(await db(env).select().from(schema.browserSessions).all()).toEqual([]);
+  });
+
+  it("binds a device-code continuation to this browser, not to a URL", async () => {
+    const response = await app.request("/bind", {}, bindings);
+    const header = response.headers.get("set-cookie") ?? "";
+    expect(header).toMatch(/HttpOnly/i);
+    expect(header).toMatch(/SameSite=Lax/i);
+    const cookie = cookieFrom(response);
+    expect(
+      await (await app.request("/bound?state=req_state", { headers: { cookie } }, bindings)).text(),
+    ).toBe("yes");
+    expect(
+      await (await app.request("/bound?state=other", { headers: { cookie } }, bindings)).text(),
+    ).toBe("no");
+    expect(await (await app.request("/bound?state=req_state", {}, bindings)).text()).toBe("no");
   });
 
   it("sets HttpOnly, SameSite and environment-appropriate Secure", async () => {

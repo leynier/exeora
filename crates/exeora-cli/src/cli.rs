@@ -36,7 +36,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    #[command(about = "Sign in to Exeora in your browser")]
+    #[command(about = "Sign in to Exeora")]
     Login(GatewayChoice),
     #[command(about = "Forget the stored session on this machine")]
     Logout,
@@ -98,6 +98,11 @@ pub struct GatewayChoice {
     gateway: Option<String>,
     #[arg(short = 'y', long, help = "Do not ask before switching gateway")]
     yes: bool,
+    #[arg(
+        long,
+        help = "Sign in with a code shown in the terminal, for machines without a browser"
+    )]
+    code: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -209,6 +214,11 @@ pub struct ConnectArgs {
     gateway: Option<String>,
     #[arg(short = 'y', long)]
     yes: bool,
+    #[arg(
+        long,
+        help = "Sign in with a code shown in the terminal, for machines without a browser"
+    )]
+    code: bool,
 }
 
 #[derive(Debug, Args)]
@@ -284,7 +294,7 @@ pub async fn run(cli: Cli) -> Result<()> {
     let api = ApiClient::new(&gateway, http, auth.clone())?;
 
     match cli.command {
-        Commands::Login(_) => login_command(&api, auth, &config).await,
+        Commands::Login(args) => login_command(&api, auth, &config, args.code).await,
         Commands::Logout => {
             clear_credentials()?;
             auth.forget_access_token().await;
@@ -598,13 +608,22 @@ fn find_worktree(config: &ConfigStore, selector: &str) -> Result<WorktreeEntry> 
     }
 }
 
+async fn sign_in(auth: &AuthManager, code: bool) -> Result<crate::auth::LoginResult> {
+    if code {
+        auth.login_code().await
+    } else {
+        auth.login_browser().await
+    }
+}
+
 async fn login_command(
     api: &ApiClient,
     auth: Arc<AuthManager>,
     config: &ConfigStore,
+    code: bool,
 ) -> Result<()> {
     cliclack::intro("Exeora")?;
-    let _ = auth.login_browser().await?;
+    let _ = sign_in(auth.as_ref(), code).await?;
     let user = api.me().await?;
     cliclack::log::success(format!("Signed in as {}", user.email))?;
     if using_file_fallback() {
@@ -776,7 +795,7 @@ async fn connect_command(
     let devices = match api.list_devices().await {
         Ok(devices) => devices,
         Err(error) if error.to_string().contains("Not signed in") => {
-            let _ = auth.login_browser().await?;
+            let _ = sign_in(auth.as_ref(), args.code).await?;
             api.list_devices().await?
         }
         Err(error) => return Err(error),

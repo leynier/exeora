@@ -14,6 +14,12 @@ const TTL_SECONDS = 600;
 
 export interface PendingAuthorization {
   authRequest: AuthRequest;
+  /**
+   * When set, approval mints a code for a CLI device-code login rather than
+   * redirecting to a loopback callback. The hash is the row in
+   * `oauth_device_grants`; the user_code itself is never stored here.
+   */
+  deviceCodeHash?: string;
 }
 
 export async function parkAuthorization(env: Env, pending: PendingAuthorization): Promise<string> {

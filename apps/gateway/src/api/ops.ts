@@ -2,7 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { auditDeletionStatement } from "../audit-deletions.js";
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
-import { getCliClientId, getDashboardClientId } from "../oauth/clients.js";
+import { isCliClient, isDashboardClient } from "../oauth/clients.js";
 
 /**
  * Shared account and grant operations used by both the owner's API and the
@@ -233,8 +233,7 @@ export async function forgetOAuthClient(env: Env, clientId: string): Promise<voi
     if (isMetadataDocumentClient(clientId)) return;
     if (await stillAuthorized(env, clientId)) return;
 
-    const [cli, dashboard] = await Promise.all([getCliClientId(env), getDashboardClientId(env)]);
-    if (clientId === cli || clientId === dashboard) return;
+    if ((await isCliClient(env, clientId)) || (await isDashboardClient(env, clientId))) return;
 
     await env.OAUTH_PROVIDER.deleteClient(clientId);
   } catch {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consentPage, errorPage, signInPage } from "./pages.js";
+import { consentPage, deviceCodePage, deviceDonePage, errorPage, signInPage } from "./pages.js";
 import { github } from "./providers/github.js";
 import { google } from "./providers/google.js";
 
@@ -132,5 +132,22 @@ describe("errors", () => {
     for (const page of [signInPage([github], "s"), errorPage("nope")]) {
       expect(render(page)).toContain('name="robots" content="noindex"');
     }
+  });
+});
+
+describe("device-code sign-in", () => {
+  it("asks for the code shown in the terminal", () => {
+    const html = render(deviceCodePage({ userCode: "ABCD-EFGH" }));
+    expect(html).toContain("Sign in from another device");
+    expect(html).toContain('value="ABCD-EFGH"');
+    expect(html).toContain('action="/oauth/device"');
+    expect(html).toContain("Only enter a code displayed on a terminal you control");
+  });
+
+  it("tells the person they can return to the terminal", () => {
+    expect(text(deviceDonePage("authorized"))).toContain(
+      "close this tab and return to the terminal",
+    );
+    expect(text(deviceDonePage("denied"))).toContain("The terminal will stop waiting");
   });
 });

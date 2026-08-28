@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import worker from "./index.js";
 import {
   callerAddress,
-  isRateLimitedAuthPath,
+  isRateLimitedAuthRequest,
   limiterFor,
   tooManyRequests,
   withinLimit,
@@ -56,6 +56,16 @@ describe("the wrapper in front of the OAuth provider", () => {
     expect(response.status).toBe(429);
   });
 
+  it("limits guessing a device code, which is the form that tests short codes", async () => {
+    const response = await worker.fetch(
+      post("/oauth/device"),
+      withLimiter(false),
+      createExecutionContext(),
+    );
+
+    expect(response.status).toBe(429);
+  });
+
   it("lets the request through to the provider when the limit is not hit", async () => {
     const response = await worker.fetch(
       post("/oauth/token"),
@@ -71,9 +81,15 @@ describe("the wrapper in front of the OAuth provider", () => {
   it("does not limit the sign-in screen, which a person navigates to", async () => {
     // Rate limiting a browser navigation would let someone lock themselves out
     // of a consent flow by clicking back and forth.
-    expect(isRateLimitedAuthPath("/oauth/authorize")).toBe(false);
-    expect(isRateLimitedAuthPath("/oauth/token")).toBe(true);
-    expect(isRateLimitedAuthPath("/oauth/register")).toBe(true);
+    expect(isRateLimitedAuthRequest("GET", "/oauth/authorize")).toBe(false);
+    expect(isRateLimitedAuthRequest("GET", "/oauth/device")).toBe(false);
+    expect(isRateLimitedAuthRequest("GET", "/oauth/token")).toBe(false);
+    expect(isRateLimitedAuthRequest("GET", "/oauth/device/token")).toBe(false);
+    expect(isRateLimitedAuthRequest("POST", "/oauth/device")).toBe(true);
+    expect(isRateLimitedAuthRequest("POST", "/oauth/token")).toBe(true);
+    expect(isRateLimitedAuthRequest("POST", "/oauth/register")).toBe(true);
+    expect(isRateLimitedAuthRequest("POST", "/oauth/device/code")).toBe(true);
+    expect(isRateLimitedAuthRequest("POST", "/oauth/device/token")).toBe(true);
   });
 });
 

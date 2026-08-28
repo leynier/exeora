@@ -48,13 +48,21 @@ export function tooManyRequests(): Response {
 /**
  * Which unauthenticated requests are worth counting.
  *
- * Only the two the OAuth provider owns and anyone can reach without a token.
- * `/oauth/authorize` is deliberately absent: it is a browser navigation that
- * ends at a sign-in screen, and a person clicking around a consent flow should
- * not be able to lock themselves out of it.
+ * Token minting and registration, which anyone can reach without a token.
+ * Only POSTs: a GET or OPTIONS at `/oauth/token` or `/oauth/device/token`
+ * never reaches the handler, and counting them would let a crawler spend the
+ * CLI's IP budget. GET `/oauth/authorize` and GET `/oauth/device` stay
+ * uncounted for the same reason as before: they are browser navigations.
  */
-export function isRateLimitedAuthPath(pathname: string): boolean {
-  return pathname === "/oauth/token" || pathname === "/oauth/register";
+export function isRateLimitedAuthRequest(method: string, pathname: string): boolean {
+  if (method !== "POST") return false;
+  return (
+    pathname === "/oauth/token" ||
+    pathname === "/oauth/register" ||
+    pathname === "/oauth/device" ||
+    pathname === "/oauth/device/code" ||
+    pathname === "/oauth/device/token"
+  );
 }
 
 /**

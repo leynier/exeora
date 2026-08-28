@@ -7,6 +7,16 @@ import Doc from "../../layouts/Doc.astro";
   description="The errors you are most likely to see, and what each one actually means."
   canonicalPath="/docs/troubleshooting/"
 >
+  <h2>Signing in over SSH</h2>
+
+  <p>
+    <code>exeora login</code> opens a browser on this machine and waits for a callback on localhost.
+    That cannot work in an SSH session, a container, or a machine with no display. Run{" "}
+    <code>exeora login --code</code> instead. The terminal prints a URL and a code; open the URL on
+    another device, type the code shown here, and the CLI finishes signing in. Only enter a code
+    displayed on a terminal you control.
+  </p>
+
   <h2><code>LOCAL_EXECUTOR_OFFLINE</code></h2>
 
   <p>

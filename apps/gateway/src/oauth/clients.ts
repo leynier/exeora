@@ -31,13 +31,27 @@ interface ClientSpec {
   redirectUris: string[];
 }
 
-const CLI: ClientSpec = {
-  kvKey: "cli_client_id",
-  clientName: "Exeora CLI",
-  // RFC 8252 §7.3: scheme, host, path and query must match; the port is free,
-  // so the CLI can bind whatever ephemeral port is available.
-  redirectUris: ["http://127.0.0.1/callback"],
-};
+/** Loopback callback `exeora login` binds on a desktop. Port is free (RFC 8252). */
+export const CLI_LOOPBACK_REDIRECT = "http://127.0.0.1/callback";
+
+/** Redirect used only to mint a code during `exeora login --code`; never opened. */
+export function cliDeviceRedirectUri(env: Pick<Env, "EXEORA_BASE_URL">): string {
+  return new URL("/oauth/device/callback", env.EXEORA_BASE_URL).toString();
+}
+
+function cliRedirectUris(env: Pick<Env, "EXEORA_BASE_URL">): string[] {
+  return [CLI_LOOPBACK_REDIRECT, cliDeviceRedirectUri(env)];
+}
+
+const CLI_KV_KEY = "cli_client_id";
+
+function cliSpec(env: Pick<Env, "EXEORA_BASE_URL">): ClientSpec {
+  return {
+    kvKey: CLI_KV_KEY,
+    clientName: "Exeora CLI",
+    redirectUris: cliRedirectUris(env),
+  };
+}
 
 const DASHBOARD_KV_KEY = "dashboard_client_id";
 
@@ -49,7 +63,7 @@ function dashboard(env: Env): ClientSpec {
   };
 }
 
-export const getCliClientId = (env: Env) => clientIdFor(env, CLI);
+export const getCliClientId = (env: Env) => clientIdFor(env, cliSpec(env));
 export const getDashboardClientId = (env: Env) => clientIdFor(env, dashboard(env));
 
 /**
@@ -69,7 +83,7 @@ export async function isDashboardClient(
 
 /** Whether this is the public client installed by the native executor. */
 export async function isCliClient(env: Pick<Env, "OAUTH_KV">, clientId: string): Promise<boolean> {
-  const stored = await env.OAUTH_KV.get(CLI.kvKey);
+  const stored = await env.OAUTH_KV.get(CLI_KV_KEY);
   return stored !== null && stored === clientId;
 }
 
@@ -81,8 +95,21 @@ async function clientIdFor(env: Env, spec: ClientSpec): Promise<string> {
   const stored = await env.OAUTH_KV.get(spec.kvKey);
   // Re-checked against the provider: a client can be deleted while the KV
   // pointer survives.
-  if (stored && (await env.OAUTH_PROVIDER.lookupClient(stored))) {
-    return stored;
+  if (stored) {
+    const existing = await env.OAUTH_PROVIDER.lookupClient(stored);
+    if (existing) {
+      // A deployed CLI client may predate the device-code redirect. Adding it
+      // here is how an existing deployment heals itself the next time anyone
+      // signs in, without minting a second client id.
+      const registered = existing.redirectUris ?? [];
+      const missing = spec.redirectUris.filter((uri) => !registered.includes(uri));
+      if (missing.length > 0) {
+        await env.OAUTH_PROVIDER.updateClient(stored, {
+          redirectUris: [...registered, ...missing],
+        });
+      }
+      return stored;
+    }
   }
 
   const client = await env.OAUTH_PROVIDER.createClient({
