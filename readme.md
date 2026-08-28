@@ -140,7 +140,8 @@ irm https://exeora.dev/windows/install.ps1 | iex
 ```
 
 The installer selects the release for your operating system and CPU, verifies its SHA-256 checksum,
-and puts `exeora` on your PATH. Later, one command updates it in place:
+and puts `exeora` on your PATH. The Linux binary needs glibc 2.31 or newer (Ubuntu 20.04 LTS,
+22.04, 24.04, Debian 11 and later, current Fedora releases, and RHEL 9 and later). Later, one command updates it in place:
 
 ```bash
 exeora upgrade
