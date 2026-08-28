@@ -24,7 +24,7 @@ import Doc from "../../layouts/Doc.astro";
       </tr>
       <tr>
         <td><code>login</code> / <code>logout</code></td>
-        <td>Sign in through the browser, or forget the session on this machine</td>
+        <td>Sign in, or forget the session on this machine. <code>login --code</code> is for machines without a browser.</td>
       </tr>
       <tr>
         <td><code>gateway</code> / <code>gateway use &lt;url&gt;</code> / <code>gateway reset</code></td>
@@ -99,6 +99,10 @@ import Doc from "../../layouts/Doc.astro";
         <td><code>--gateway</code></td>
         <td>Serve to a different Exeora, and remember it</td>
       </tr>
+      <tr>
+        <td><code>--code</code></td>
+        <td>Sign in with a code shown in the terminal, for SSH and headless machines</td>
+      </tr>
     </tbody>
   </table>
 
@@ -107,6 +111,17 @@ import Doc from "../../layouts/Doc.astro";
     and its display awake. The request covers relay reconnects and is released when the command
     exits. It does not override an explicit sleep request or closing a laptop lid. If the operating
     system cannot create the request, Exeora warns once and continues connecting.
+  </p>
+
+  <h2>login</h2>
+
+  <p>
+    <code>exeora login</code> opens a browser on this machine. On a server, a VM, or any SSH
+    session where that cannot work, pass <code>--code</code>. The terminal prints a URL and a short
+    code. Open the URL on a phone or laptop, type the code from the terminal, and approve Exeora.
+    Do not paste a code you did not just see on a machine you control: that would sign their
+    machine in as you. <code>exeora connect --code</code> does the same thing on the way to staying
+    online.
   </p>
 
   <h2>gateway</h2>

@@ -98,6 +98,37 @@ export const oauthPending = sqliteTable(
   (table) => [index("oauth_pending_expiry").on(table.expiresAt)],
 );
 
+/**
+ * CLI sign-in without a browser on the machine: the terminal shows a short
+ * code, a phone or laptop opens the verification URL, and the CLI polls until
+ * that browser consents. Hashes only; the codes themselves are shown once.
+ */
+export const oauthDeviceGrants = sqliteTable(
+  "oauth_device_grants",
+  {
+    deviceCodeHash: text("device_code_hash").primaryKey(),
+    userCodeHash: text("user_code_hash").notNull(),
+    clientId: text("client_id").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    codeChallengeMethod: text("code_challenge_method").notNull(),
+    scopes: text("scopes").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    status: text("status", {
+      enum: ["pending", "completing", "authorized", "denied", "consumed"],
+    }).notNull(),
+    authorizationCode: text("authorization_code"),
+    issuer: text("issuer"),
+    intervalSeconds: integer("interval_seconds").notNull(),
+    lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("oauth_device_grants_user_code").on(table.userCodeHash),
+    index("oauth_device_grants_expiry").on(table.expiresAt),
+  ],
+);
+
 export const devices = sqliteTable(
   "devices",
   {

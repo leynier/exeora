@@ -40,6 +40,10 @@ pub struct CliClientInfo {
     pub client_id: String,
     pub authorization_endpoint: String,
     pub token_endpoint: String,
+    #[serde(default)]
+    pub device_code_endpoint: Option<String>,
+    #[serde(default)]
+    pub device_token_endpoint: Option<String>,
     pub scopes: Vec<String>,
 }
 
@@ -135,7 +139,7 @@ impl AuthManager {
         let expected_state = state.secret().clone();
         let (redirect_uri, callback) = start_loopback(expected_state).await?;
         let oauth = BasicClient::new(ClientId::new(info.client_id.clone()))
-            .set_auth_uri(AuthUrl::new(info.authorization_endpoint)?)
+            .set_auth_uri(AuthUrl::new(info.authorization_endpoint.clone())?)
             .set_token_uri(TokenUrl::new(info.token_endpoint.clone())?)
             .set_redirect_uri(RedirectUrl::new(redirect_uri.clone())?);
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -154,8 +158,128 @@ impl AuthManager {
                 anyhow!("Timed out waiting for the browser. Try `exeora login` again.")
             })???;
 
+        self.finish_login(
+            &info,
+            returned.code,
+            &redirect_uri,
+            verifier.secret(),
+            returned.issuer,
+        )
+        .await
+    }
+
+    /// Sign in from a machine with no browser: print a code, wait for another device.
+    pub async fn login_code(&self) -> Result<LoginResult> {
+        let info = self.discover_client().await?;
+        let device_code_endpoint = info.device_code_endpoint.as_deref().ok_or_else(|| {
+            anyhow!(
+                "This Exeora does not support code sign-in. Upgrade the gateway, or run `exeora login` on a machine with a browser."
+            )
+        })?;
+        let device_token_endpoint = info.device_token_endpoint.as_deref().ok_or_else(|| {
+            anyhow!(
+                "This Exeora does not support code sign-in. Upgrade the gateway, or run `exeora login` on a machine with a browser."
+            )
+        })?;
+        let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
+        let scope = info.scopes.join(" ");
+        let response = self
+            .http
+            .post(device_code_endpoint)
+            .form(&[
+                ("client_id", info.client_id.as_str()),
+                ("code_challenge", challenge.as_str()),
+                ("code_challenge_method", "S256"),
+                ("scope", scope.as_str()),
+            ])
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let detail = response.text().await.unwrap_or_default();
+            bail!(
+                "Could not start code sign-in ({status}): {}",
+                detail.chars().take(200).collect::<String>()
+            );
+        }
+        let started: DeviceCodeResponse = response.json().await?;
+        println!(
+            "\nOn another device, visit:\n{}\n",
+            started.verification_uri
+        );
+        println!("Enter this code:\n\n  {}\n", started.user_code);
+        println!("Waiting for authorization...\n");
+
+        let deadline =
+            tokio::time::Instant::now() + std::time::Duration::from_secs(started.expires_in.max(1));
+        let mut interval = started.interval.unwrap_or(5).max(1);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+            if tokio::time::Instant::now() >= deadline {
+                bail!("Timed out waiting for authorization. Try `exeora login --code` again.");
+            }
+            let poll = self
+                .http
+                .post(device_token_endpoint)
+                .form(&[
+                    ("client_id", info.client_id.as_str()),
+                    ("device_code", started.device_code.as_str()),
+                ])
+                .send()
+                .await?;
+            let status = poll.status();
+            if status.as_u16() == 429 {
+                interval = retry_after_secs(&poll)
+                    .unwrap_or(interval.saturating_add(5))
+                    .max(1);
+                continue;
+            }
+            if status.as_u16() == 400 {
+                let body: DevicePollResponse = match poll.json().await {
+                    Ok(body) => body,
+                    Err(_) => bail!("Code sign-in failed (400)."),
+                };
+                match body.error.as_deref() {
+                    Some("authorization_pending") => {}
+                    Some("slow_down") => interval = interval.saturating_add(5),
+                    Some("access_denied") => bail!("Authorization was declined."),
+                    Some("expired_token") => {
+                        bail!("The code expired. Try `exeora login --code` again.")
+                    }
+                    Some(other) => bail!("Code sign-in failed ({other})."),
+                    None => bail!("Code sign-in failed (400)."),
+                }
+                continue;
+            }
+            if !status.is_success() {
+                bail!("Code sign-in failed ({}).", status.as_u16());
+            }
+            let body: DevicePollResponse = match poll.json().await {
+                Ok(body) => body,
+                Err(_) => bail!("Code sign-in failed ({}).", status.as_u16()),
+            };
+            let code = body
+                .authorization_code
+                .ok_or_else(|| anyhow!("The gateway returned no authorization code."))?;
+            let redirect_uri = body
+                .redirect_uri
+                .ok_or_else(|| anyhow!("The gateway returned no redirect URI."))?;
+            return self
+                .finish_login(&info, code, &redirect_uri, verifier.secret(), body.iss)
+                .await;
+        }
+    }
+
+    async fn finish_login(
+        &self,
+        info: &CliClientInfo,
+        code: String,
+        redirect_uri: &str,
+        code_verifier: &str,
+        issuer: Option<String>,
+    ) -> Result<LoginResult> {
         let expected_issuer = Url::parse(&self.gateway)?.origin().ascii_serialization();
-        if let Some(issuer) = returned.issuer
+        if let Some(issuer) = issuer
             && issuer != expected_issuer
         {
             bail!(
@@ -169,9 +293,9 @@ impl AuthManager {
             .form(&[
                 ("grant_type", "authorization_code"),
                 ("client_id", info.client_id.as_str()),
-                ("code", returned.code.as_str()),
-                ("redirect_uri", redirect_uri.as_str()),
-                ("code_verifier", verifier.secret()),
+                ("code", code.as_str()),
+                ("redirect_uri", redirect_uri),
+                ("code_verifier", code_verifier),
             ])
             .send()
             .await?;
@@ -214,6 +338,28 @@ struct LoginTokenResponse {
 pub struct LoginResult {
     pub access_token: String,
     pub expires_at: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeviceCodeResponse {
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    expires_in: u64,
+    interval: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DevicePollResponse {
+    authorization_code: Option<String>,
+    redirect_uri: Option<String>,
+    iss: Option<String>,
+    error: Option<String>,
+}
+
+fn retry_after_secs(response: &reqwest::Response) -> Option<u64> {
+    let header = response.headers().get("retry-after")?.to_str().ok()?;
+    header.parse().ok()
 }
 
 pub async fn discover_client(http: &reqwest::Client, gateway: &str) -> Result<CliClientInfo> {

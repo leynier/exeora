@@ -1,7 +1,7 @@
 import tokens from "@exeora/design/tokens.css";
 
 /**
- * The inline stylesheet the three OAuth screens share.
+ * The inline stylesheet the OAuth screens share.
  *
  * It lives apart from the markup because it is a 200-line CSS document that
  * happens to be written as a template literal: keeping it next to `pages.ts`
@@ -250,5 +250,20 @@ export const styles = `
     border-radius: var(--radius-lg);
     color: var(--color-foreground-faint);
     font-size: .8125rem;
+  }
+
+  .field { display: grid; gap: .4rem; margin: 0 0 1.25rem; }
+  .field span { color: var(--color-foreground-faint); font-size: .8125rem; }
+  .field input {
+    font: inherit;
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    padding: .7rem .85rem;
+    color: var(--color-foreground);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
   }
 `;

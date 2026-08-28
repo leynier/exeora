@@ -1,4 +1,5 @@
 import "../env.js";
+import { purgeExpiredDeviceGrants } from "../oauth/device.js";
 import { purgeExpiredAuthorizations } from "../oauth/pending.js";
 import { purgeBrowserSessions } from "../oauth/session.js";
 import { rollupUsageDailyFromWarehouse } from "../warehouse-usage.js";
@@ -34,6 +35,7 @@ export async function runNightlyHousekeeping(
   const results = await Promise.allSettled([
     rollup(env),
     purgeExpiredAuthorizations(env),
+    purgeExpiredDeviceGrants(env),
     purgeBrowserSessions(env),
   ]);
 

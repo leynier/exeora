@@ -6,7 +6,7 @@ import type { AccountTargetProject, AuthTarget } from "./target.js";
 
 /**
  * The only HTML the gateway serves. The landing page and dashboard live in
- * `apps/web`; these three screens stay here because they are part of the OAuth
+ * `apps/web`; these screens stay here because they are part of the OAuth
  * flow and must be served by the authorization server itself.
  *
  * The stylesheet they share is in `pages-styles.ts` and inlined by `layout`.
@@ -275,6 +275,72 @@ export function accountConsentPage(options: {
       </div>
 
       <p class="foot">You can change which projects it reaches, or revoke it, from the dashboard.</p>
+    `,
+  );
+}
+
+/**
+ * The CLI is waiting on another machine. The person types the code shown in
+ * the terminal. The form is never prefilled from the URL: a link that already
+ * carried the code would be how a phishing page signed someone else's CLI in.
+ */
+export function deviceCodePage(options: { userCode?: string; problem?: string } = {}) {
+  const prefilled = options.userCode ?? "";
+  return layout(
+    "Sign in from another device",
+    html`
+      <div class="card">
+        <h1>Sign in from another device</h1>
+        <p class="lede">
+          Enter the code shown in the terminal running <code>exeora login --code</code>.
+        </p>
+
+        <div class="warn">
+          Only enter a code displayed on a terminal you control. A code from a chat, an email or
+          another website would sign <em>their</em> machine in as you.
+        </div>
+
+        ${options.problem ? html`<div class="warn">${options.problem}</div>` : ""}
+
+        <form method="post" action="/oauth/device">
+          <label class="field">
+            <span>Code</span>
+            <input
+              type="text"
+              name="user_code"
+              value="${prefilled}"
+              autocomplete="one-time-code"
+              autocapitalize="characters"
+              spellcheck="false"
+              inputmode="text"
+              maxlength="9"
+              required
+            />
+          </label>
+          <button class="btn" type="submit">Continue</button>
+        </form>
+      </div>
+
+      <p class="foot">The code expires in ten minutes and can be used only once.</p>
+    `,
+  );
+}
+
+export function deviceDonePage(outcome: "authorized" | "denied") {
+  const authorized = outcome === "authorized";
+  return layout(
+    authorized ? "Signed in" : "Sign-in cancelled",
+    html`
+      <div class="card">
+        <h1>${authorized ? "Signed in" : "Sign-in cancelled"}</h1>
+        <p class="lede">
+          ${
+            authorized
+              ? "You can close this tab and return to the terminal."
+              : "The terminal will stop waiting. Run the command again if you still want to sign in."
+          }
+        </p>
+      </div>
     `,
   );
 }

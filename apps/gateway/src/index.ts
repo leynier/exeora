@@ -22,7 +22,7 @@ import {
 import { propsOf } from "./props.js";
 import {
   callerAddress,
-  isRateLimitedAuthPath,
+  isRateLimitedAuthRequest,
   limiterFor,
   tooManyRequests,
   withinLimit,
@@ -269,7 +269,7 @@ const provider = new OAuthProvider({
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (isRateLimitedAuthPath(new URL(request.url).pathname)) {
+    if (isRateLimitedAuthRequest(request.method, new URL(request.url).pathname)) {
       if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) return tooManyRequests();
     }
 

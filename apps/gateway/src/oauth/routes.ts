@@ -3,7 +3,13 @@ import { Hono } from "hono";
 import { rememberAuthorization, revokeAccountProjectsExcept } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { isDashboardClient } from "./clients.js";
-import { accountConsentPage, consentPage, errorPage, signInPage } from "./pages.js";
+import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
+import {
+  abandonParkedDeviceGrant,
+  deviceCallbackSession,
+  refuseUnboundDeviceGrant,
+} from "./device-continue.js";
+import { accountConsentPage, consentPage, deviceDonePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { grantedScopes } from "./scopes.js";
@@ -82,7 +88,15 @@ oauthRoutes.get("/oauth/login/:provider", async (c) => {
   const provider = getProvider(c.req.param("provider"));
   const state = c.req.query("state");
 
-  if (!provider?.isConfigured(c.env) || !state) {
+  if (!state) {
+    return c.html(errorPage("That sign-in link is not valid."), 400);
+  }
+  const blocked = await refuseUnboundDeviceGrant(c, state);
+  if (blocked) return blocked;
+  if (!provider?.isConfigured(c.env)) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
     return c.html(errorPage("That sign-in link is not valid."), 400);
   }
   if (!(await peekAuthorization(c.env, state))) {
@@ -92,23 +106,68 @@ oauthRoutes.get("/oauth/login/:provider", async (c) => {
     );
   }
 
-  return c.redirect(
-    provider.authorizeUrl(c.env, { redirectUri: callbackUri(c.env, provider.id), state }),
-  );
+  try {
+    return c.redirect(
+      provider.authorizeUrl(c.env, { redirectUri: callbackUri(c.env, provider.id), state }),
+    );
+  } catch (error) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
+    return c.html(errorPage(describe(error)), 500);
+  }
 });
 
 oauthRoutes.get("/oauth/callback/:provider", async (c) => {
   const provider = getProvider(c.req.param("provider"));
   const code = c.req.query("code");
   const state = c.req.query("state");
+  const error = c.req.query("error");
 
-  if (!provider?.isConfigured(c.env) || !code || !state) {
+  if (!state) {
+    return c.html(errorPage("That sign-in could not be completed."), 400);
+  }
+
+  const blocked = await refuseUnboundDeviceGrant(c, state);
+  if (blocked) return blocked;
+
+  if (error || !code) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
+    return c.html(errorPage("That sign-in could not be completed."), 400);
+  }
+
+  if (!provider?.isConfigured(c.env)) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
     return c.html(errorPage("That sign-in could not be completed."), 400);
   }
 
   const pending = await peekAuthorization(c.env, state);
   if (!pending) {
     return c.html(errorPage("This sign-in has expired. Start again from the application."), 400);
+  }
+
+  // Refresh cannot re-exchange a spent upstream code; reuse the first session.
+  try {
+    const session = await deviceCallbackSession(c, pending.deviceCodeHash);
+    if (session) {
+      return c.html(
+        await askForConsent(c.env, {
+          authRequest: pending.authRequest,
+          userId: session.userId,
+          userEmail: session.userEmail,
+          state,
+        }),
+      );
+    }
+  } catch (error) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
+    return c.html(errorPage(describe(error)), 502);
   }
 
   try {
@@ -138,6 +197,9 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
       }),
     );
   } catch (error) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
     return c.html(errorPage(describe(error)), 502);
   }
 });
@@ -147,8 +209,16 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   const state = String(form.get("state") ?? "");
   const approved = form.get("decision") === "approve";
 
+  const blocked = await refuseUnboundDeviceGrant(c, state);
+  if (blocked) return blocked;
+
   const userId = await getSessionUserId(c);
-  if (!userId) return c.html(errorPage("Your session expired. Start again."), 400);
+  if (!userId) {
+    if (await abandonParkedDeviceGrant(c.env, state)) {
+      return c.html(deviceDonePage("denied"));
+    }
+    return c.html(errorPage("Your session expired. Start again."), 400);
+  }
 
   // Peeked rather than claimed, because the account screen can come back
   // unanswered and has to be shown again under the same state. The claim below
@@ -165,12 +235,19 @@ oauthRoutes.post("/oauth/approve", async (c) => {
 
   if (!approved) {
     // Consumed on the way out too: a denial that stayed parked could be
-    // replayed into an approval.
-    await claimAuthorization(c.env, state);
+    // replayed into an approval. The claim is the single winner against a
+    // concurrent approve; a denial that lost must not flip the device grant.
+    const claimed = await claimAuthorization(c.env, state);
+    if (!claimed) return c.html(errorPage("This request has already been completed."), 400);
 
-    const url = new URL(authRequest.redirectUri);
+    if (claimed.deviceCodeHash) {
+      await denyDeviceAuthorization(c.env, claimed.deviceCodeHash);
+      return c.html(deviceDonePage("denied"));
+    }
+
+    const url = new URL(claimed.authRequest.redirectUri);
     url.searchParams.set("error", "access_denied");
-    if (authRequest.state) url.searchParams.set("state", authRequest.state);
+    if (claimed.authRequest.state) url.searchParams.set("state", claimed.authRequest.state);
     return c.redirect(url.toString());
   }
 
@@ -217,18 +294,43 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   const claimed = await claimAuthorization(c.env, state);
   if (!claimed) return c.html(errorPage("This request has expired. Start again."), 400);
 
-  // After the claim: an account that has gone missing is terminal either way,
-  // and checking it first would put a read inside the window above for a case
-  // that cannot happen to a session that just resolved.
-  const user = await db(c.env)
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId))
-    .get();
-  if (!user) return c.html(errorPage("Your account could not be found."), 400);
+  try {
+    // After the claim: an account that has gone missing is terminal either way,
+    // and checking it first would put a read inside the window above for a case
+    // that cannot happen to a session that just resolved.
+    const user = await db(c.env)
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .get();
+    if (!user) {
+      if (claimed.deviceCodeHash) {
+        await denyDeviceAuthorization(c.env, claimed.deviceCodeHash);
+      }
+      return c.html(errorPage("Your account could not be found."), 400);
+    }
 
-  const { redirectTo } = await complete(c.env, claimed.authRequest, userId, projectIds);
-  return c.redirect(redirectTo);
+    const { redirectTo } = await complete(c.env, claimed.authRequest, userId, projectIds);
+
+    if (claimed.deviceCodeHash) {
+      const captured = await captureDeviceAuthorization(c.env, claimed.deviceCodeHash, redirectTo);
+      if (!captured) {
+        await denyDeviceAuthorization(c.env, claimed.deviceCodeHash);
+        return c.html(
+          errorPage("This sign-in could not be completed. Start again from the terminal."),
+          400,
+        );
+      }
+      return c.html(deviceDonePage("authorized"));
+    }
+
+    return c.redirect(redirectTo);
+  } catch (error) {
+    if (claimed.deviceCodeHash) {
+      await denyDeviceAuthorization(c.env, claimed.deviceCodeHash);
+    }
+    return c.html(errorPage(describe(error)), 502);
+  }
 });
 
 oauthRoutes.get("/oauth/logout", async (c) => {
@@ -331,7 +433,7 @@ async function complete(
  * must not be labelled with anything, since naming it would leak that it
  * exists.
  */
-async function askForConsent(
+export async function askForConsent(
   env: Env,
   options: { authRequest: AuthRequest; userId: string; userEmail: string; state: string },
 ) {

@@ -12,6 +12,7 @@ import {
   getCliClientId,
   getDashboardClientId,
 } from "./oauth/clients.js";
+import { deviceRoutes } from "./oauth/device-routes.js";
 import { oauthRoutes } from "./oauth/routes.js";
 
 /**
@@ -24,6 +25,7 @@ import { oauthRoutes } from "./oauth/routes.js";
 export const site = new Hono<{ Bindings: Env }>();
 site.route("/", installers);
 site.route("/", oauthRoutes);
+site.route("/", deviceRoutes);
 
 // Here rather than on `authenticated`, because the caller is a scheduled job
 // holding a shared secret, not a user holding an access token. The router
@@ -41,6 +43,8 @@ site.get("/oauth/cli-client", async (c) =>
     clientId: await getCliClientId(c.env),
     authorizationEndpoint: new URL("/oauth/authorize", c.env.EXEORA_BASE_URL).toString(),
     tokenEndpoint: new URL("/oauth/token", c.env.EXEORA_BASE_URL).toString(),
+    deviceCodeEndpoint: new URL("/oauth/device/code", c.env.EXEORA_BASE_URL).toString(),
+    deviceTokenEndpoint: new URL("/oauth/device/token", c.env.EXEORA_BASE_URL).toString(),
     scopes: CLI_SCOPES,
   }),
 );

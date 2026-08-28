@@ -2,6 +2,7 @@ import { and, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { db, schema } from "../db/client.js";
+import { DEVICE_TTL_SECONDS } from "./device.js";
 
 /**
  * Revocable, opaque browser session for the OAuth consent UI.
@@ -13,6 +14,8 @@ import { db, schema } from "../db/client.js";
 const COOKIE_NAME = "exeora_session";
 const COOKIE_VERSION = "v2";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+const DEVICE_COOKIE_NAME = "exeora_device_login";
+const DEVICE_COOKIE_VERSION = "v1";
 
 export async function setSession(c: Context<{ Bindings: Env }>, userId: string): Promise<void> {
   const token = randomToken();
@@ -57,6 +60,37 @@ export async function clearSession(c: Context<{ Bindings: Env }>): Promise<void>
   setCookie(c, COOKIE_NAME, "", cookieOptions(c, 0));
 }
 
+/**
+ * Binds a device-code continuation to the browser that typed the code.
+ *
+ * Origin on the POST is not enough: any HTTP client can send that header.
+ * This cookie is HttpOnly and never accepted from a query or form field, so
+ * a phishing page that only has the parked `state` cannot finish the flow.
+ */
+export async function setDeviceContinuation(
+  c: Context<{ Bindings: Env }>,
+  state: string,
+): Promise<void> {
+  const token = await deviceContinuationToken(state, c.env.COOKIE_SECRET);
+  setCookie(
+    c,
+    DEVICE_COOKIE_NAME,
+    `${DEVICE_COOKIE_VERSION}.${token}`,
+    cookieOptions(c, DEVICE_TTL_SECONDS),
+  );
+}
+
+export async function hasDeviceContinuation(
+  c: Context<{ Bindings: Env }>,
+  state: string,
+): Promise<boolean> {
+  const raw = getCookie(c, DEVICE_COOKIE_NAME);
+  if (!raw?.startsWith(`${DEVICE_COOKIE_VERSION}.`)) return false;
+  const token = raw.slice(DEVICE_COOKIE_VERSION.length + 1);
+  const expected = await deviceContinuationToken(state, c.env.COOKIE_SECRET);
+  return token.length === expected.length && token === expected;
+}
+
 export async function purgeBrowserSessions(env: Pick<Env, "DB">): Promise<void> {
   const now = new Date();
   await db(env)
@@ -85,6 +119,10 @@ function cookieOptions(c: Context<{ Bindings: Env }>, maxAge: number) {
     path: "/",
     maxAge,
   };
+}
+
+async function deviceContinuationToken(state: string, secret: string): Promise<string> {
+  return tokenHash(`device-login:${state}`, secret);
 }
 
 function randomToken(): string {

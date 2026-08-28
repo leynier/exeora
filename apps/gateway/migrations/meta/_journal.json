@@ -99,6 +99,13 @@
       "when": 1787197857203,
       "tag": "0013_sweet_violations",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1787918400000,
+      "tag": "0014_device_code_login",
+      "breakpoints": true
     }
   ]
 }
