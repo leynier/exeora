@@ -26,12 +26,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # glibc 2.31 is Ubuntu 20.04 LTS. Linking on ubuntu-latest (2.39)
+          # would refuse to start on 20.04 and 22.04.
           - runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             suffix: ""
+            glibc: "2.31"
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             suffix: ""
+            glibc: "2.31"
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             suffix: ""
@@ -63,8 +67,54 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      - name: Install Zig
+        if: runner.os == 'Linux'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
+        if: runner.os == 'Linux'
+        env:
+          CARGO_ZIGBUILD_VERSION: "0.23.3"
+        run: |
+          case "$(uname -m)" in
+            x86_64)
+              zigbuild_target=x86_64-unknown-linux-gnu
+              zigbuild_sha256=fbdbcf6f72d5c5676b897c67d3690df8319be2e1164d2af487c6be771070a1f9
+              ;;
+            aarch64)
+              zigbuild_target=aarch64-unknown-linux-gnu
+              zigbuild_sha256=364c5843f9c0cc7de620642832a6a5fba7a5e3cf825602e444c08eefb57b0391
+              ;;
+            *)
+              echo "Unsupported host for cargo-zigbuild: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          asset="cargo-zigbuild-${zigbuild_target}.tar.xz"
+          archive="${RUNNER_TEMP:-/tmp}/$asset"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$archive" \
+            "https://github.com/rust-cross/cargo-zigbuild/releases/download/v${CARGO_ZIGBUILD_VERSION}/$asset"
+          printf '%s  %s\n' "$zigbuild_sha256" "$archive" | sha256sum -c -
+          mkdir -p "$HOME/.cargo/bin"
+          tar -xJf "$archive" --strip-components=1 -C "$HOME/.cargo/bin" \
+            "cargo-zigbuild-${zigbuild_target}/cargo-zigbuild"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo zigbuild --version
+
       - name: Build native executable
+        if: runner.os != 'Linux'
         run: cargo build --locked --release -p exeora-cli --target ${{ matrix.target }}
+
+      - name: Build Linux executable against glibc ${{ matrix.glibc }}
+        if: runner.os == 'Linux'
+        run: cargo zigbuild --locked --release -p exeora-cli --target ${{ matrix.target }}.${{ matrix.glibc }}
+
+      - name: Check Linux glibc requirement
+        if: runner.os == 'Linux'
+        run: sh scripts/check-linux-glibc.sh "target/${{ matrix.target }}/release/exeora" "${{ matrix.glibc }}"
 
       - name: Stage executable
         shell: bash

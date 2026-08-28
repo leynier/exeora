@@ -104,6 +104,8 @@ git push && git push --tags
 
 The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, builds native Linux, macOS Intel, macOS Apple Silicon and Windows binaries, checks that the tag agrees with the manifest, then publishes the crates.io package and attaches the binaries plus checksums to a GitHub release. Publishing waits for every native build because a crates.io version cannot be rolled back. crates.io uses `CARGO_REGISTRY_TOKEN`.
 
+Linux binaries are linked against glibc 2.31 (Ubuntu 20.04 LTS) with `cargo zigbuild`, so they also run on 22.04 and later. Linking on the GitHub runner's own glibc would otherwise produce a binary that refuses to start on those machines.
+
 A stable tag must also agree with `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish otherwise, so bumping the var and letting it deploy is part of the release, not an afterthought. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
 
 Releases are deliberately not tied to `main`: the gateway deploys on every push, the CLI ships when a tag says so.

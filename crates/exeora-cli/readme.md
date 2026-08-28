@@ -30,7 +30,8 @@ irm https://exeora.dev/windows/install.ps1 | iex
 ```
 
 Both installers download the matching native release, verify its SHA-256
-checksum, and then place `exeora` on the user's `PATH`.
+checksum, and then place `exeora` on the user's `PATH`. The Linux binary is
+linked against glibc 2.31, so it runs on Ubuntu 20.04 LTS and later.
 
 Upgrade an existing installation with `exeora upgrade`. It resolves the
 latest stable GitHub release, verifies the published SHA-256 checksum, and

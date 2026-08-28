@@ -125,6 +125,16 @@ import Doc from "../../layouts/Doc.astro";
     Nothing else changes.
   </p>
 
+  <h2>Linux says <code>GLIBC_</code> is not found</h2>
+
+  <p>
+    The published Linux binary is linked against glibc 2.31, which is Ubuntu 20.04 LTS. A machine
+    older than that — Ubuntu 18.04, Debian 10, CentOS 7 — will refuse to start it. Upgrade the
+    distribution. If the machine can run the repository's required Rust toolchain and build
+    dependencies, a native source build may work, but systems with glibc older than 2.31 are not
+    supported.
+  </p>
+
   <h2>The Windows installer says x64 is unsupported</h2>
 
   <p>
