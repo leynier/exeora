@@ -101,10 +101,11 @@ async function clientIdFor(env: Env, spec: ClientSpec): Promise<string> {
       // A deployed CLI client may predate the device-code redirect. Adding it
       // here is how an existing deployment heals itself the next time anyone
       // signs in, without minting a second client id.
-      const missing = spec.redirectUris.filter((uri) => !existing.redirectUris.includes(uri));
+      const registered = existing.redirectUris ?? [];
+      const missing = spec.redirectUris.filter((uri) => !registered.includes(uri));
       if (missing.length > 0) {
         await env.OAUTH_PROVIDER.updateClient(stored, {
-          redirectUris: [...existing.redirectUris, ...missing],
+          redirectUris: [...registered, ...missing],
         });
       }
       return stored;
