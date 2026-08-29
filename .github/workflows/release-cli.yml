@@ -102,7 +102,9 @@ jobs:
             "cargo-zigbuild-${zigbuild_target}/cargo-zigbuild"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
-          cargo zigbuild --version
+          # `cargo zigbuild --version` asks the zigbuild *subcommand*, which only
+          # forwards `cargo build` flags and rejects it. Ask the binary itself.
+          cargo-zigbuild --version
 
       - name: Build native executable
         if: runner.os != 'Linux'
