@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TOOL_DEFINITIONS, TOOL_NAMES, toolFields } from "./tools.js";
+import { TOOL_DEFINITIONS, TOOL_NAMES, toolFields, toolInputSchema } from "./tools.js";
 
 /**
  * The contract as the documentation reads it.
@@ -52,6 +52,32 @@ describe("tool definitions", () => {
     // Spelled out rather than derived, because this list decides two things
     // that matter: what survives `read_only` mode, and what is never
     // interrupted by a confirmation prompt.
-    expect(readOnly).toEqual(["read_file", "list_files", "grep", "get_command_output"]);
+    expect(readOnly).toEqual([
+      "read_file",
+      "list_files",
+      "grep",
+      "list_git_worktrees",
+      "get_command_output",
+    ]);
+  });
+
+  it("validates worktree lifecycle combinations", () => {
+    expect(
+      toolInputSchema("create_worktree").safeParse({
+        branch: "feature/api",
+        from: "main",
+        reuseExistingBranch: true,
+      }).success,
+    ).toBe(false);
+    expect(toolInputSchema("attach_worktree").safeParse({ branch: "feature/api" }).success).toBe(
+      true,
+    );
+    expect(toolInputSchema("attach_worktree").safeParse({}).success).toBe(false);
+    expect(
+      toolInputSchema("attach_worktree").safeParse({
+        path: "/work/feature-api",
+        branch: "feature/api",
+      }).success,
+    ).toBe(false);
   });
 });

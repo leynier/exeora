@@ -59,16 +59,7 @@ impl ToolEngine {
         arguments: Value,
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
-        let validator = self
-            .validators
-            .get(&tool)
-            .ok_or_else(|| ExeoraError::new(ErrorCode::UnknownTool, "Unsupported tool."))?;
-        if let Err(error) = validator.validate(&arguments) {
-            return Err(ExeoraError::new(
-                ErrorCode::InvalidArguments,
-                error.to_string(),
-            ));
-        }
+        self.validate(tool, &arguments)?;
         if cancel.is_cancelled() {
             return Err(ExeoraError::new(
                 ErrorCode::Cancelled,
@@ -82,6 +73,14 @@ impl ToolEngine {
             ToolName::Grep => files::grep(root, arguments).await,
             ToolName::EditFile => files::edit_file(root, arguments).await,
             ToolName::WriteFile => files::write_file(root, arguments).await,
+            ToolName::ListGitWorktrees
+            | ToolName::CreateWorktree
+            | ToolName::AttachWorktree
+            | ToolName::DetachWorktree
+            | ToolName::RemoveWorktree => Err(ExeoraError::new(
+                ErrorCode::InternalError,
+                "Worktree lifecycle tools require the connected executor context.",
+            )),
             ToolName::RunCommand => self.processes.run_command(root, arguments, cancel).await,
             ToolName::StartCommand => {
                 self.processes
@@ -92,6 +91,20 @@ impl ToolEngine {
             ToolName::SendCommandInput => self.processes.send_input(root, arguments).await,
             ToolName::KillCommand => self.processes.kill_command(root, arguments).await,
         }
+    }
+
+    pub fn validate(&self, tool: ToolName, arguments: &Value) -> Result<(), ExeoraError> {
+        let validator = self
+            .validators
+            .get(&tool)
+            .ok_or_else(|| ExeoraError::new(ErrorCode::UnknownTool, "Unsupported tool."))?;
+        if let Err(error) = validator.validate(&arguments) {
+            return Err(ExeoraError::new(
+                ErrorCode::InvalidArguments,
+                error.to_string(),
+            ));
+        }
+        Ok(())
     }
 
     pub async fn kill_all(&self) {

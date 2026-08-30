@@ -11,6 +11,9 @@ const worktreeRouting = {
     "Run this call in a connected Git worktree by slug or id. Omit it, or use main, for the project root.",
   ),
 };
+const requiredWorktreeRouting = {
+  worktree: WorktreeRef.describe("The connected Git worktree to change, by slug or stable id."),
+};
 
 /** Registers canonical executor tools with project-endpoint worktree routing. */
 export function registerExecutorTools(
@@ -22,11 +25,21 @@ export function registerExecutorTools(
     context: ServerContext,
   ) => Promise<CallToolResult | InputRequiredResult>,
 ) {
-  const meta = <N extends ToolName>(name: N) => ({
-    title: TOOL_DEFINITIONS[name].title,
-    description: TOOL_DEFINITIONS[name].description,
-    annotations: { readOnlyHint: TOOL_DEFINITIONS[name].readOnly },
-  });
+  const meta = <N extends ToolName>(name: N) => {
+    const definition = TOOL_DEFINITIONS[name] as (typeof TOOL_DEFINITIONS)[N] & {
+      destructive?: boolean;
+    };
+    return {
+      title: definition.title,
+      description: definition.description,
+      annotations: {
+        readOnlyHint: definition.readOnly,
+        ...(definition.destructive === undefined
+          ? {}
+          : { destructiveHint: definition.destructive }),
+      },
+    };
+  };
 
   if (offers("read_file")) {
     server.registerTool(
@@ -76,6 +89,58 @@ export function registerExecutorTools(
         inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(worktreeRouting).shape,
       },
       (args, context) => run("write_file", args, context),
+    );
+  }
+  if (offers("list_git_worktrees")) {
+    server.registerTool(
+      "list_git_worktrees",
+      {
+        ...meta("list_git_worktrees"),
+        inputSchema: TOOL_DEFINITIONS.list_git_worktrees.inputSchema.shape,
+      },
+      (args, context) => run("list_git_worktrees", args, context),
+    );
+  }
+  if (offers("create_worktree")) {
+    server.registerTool(
+      "create_worktree",
+      {
+        ...meta("create_worktree"),
+        inputSchema: TOOL_DEFINITIONS.create_worktree.inputSchema.safeExtend(worktreeRouting).shape,
+      },
+      (args, context) => run("create_worktree", args, context),
+    );
+  }
+  if (offers("attach_worktree")) {
+    server.registerTool(
+      "attach_worktree",
+      {
+        ...meta("attach_worktree"),
+        inputSchema: TOOL_DEFINITIONS.attach_worktree.inputSchema.shape,
+      },
+      (args, context) => run("attach_worktree", args, context),
+    );
+  }
+  if (offers("detach_worktree")) {
+    server.registerTool(
+      "detach_worktree",
+      {
+        ...meta("detach_worktree"),
+        inputSchema:
+          TOOL_DEFINITIONS.detach_worktree.inputSchema.extend(requiredWorktreeRouting).shape,
+      },
+      (args, context) => run("detach_worktree", args, context),
+    );
+  }
+  if (offers("remove_worktree")) {
+    server.registerTool(
+      "remove_worktree",
+      {
+        ...meta("remove_worktree"),
+        inputSchema:
+          TOOL_DEFINITIONS.remove_worktree.inputSchema.extend(requiredWorktreeRouting).shape,
+      },
+      (args, context) => run("remove_worktree", args, context),
     );
   }
   if (offers("run_command")) {

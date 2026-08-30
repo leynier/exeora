@@ -66,7 +66,7 @@ export type AccountDispatchResult =
    */
   | { kind: "needs-approval"; projectId: string; project: string; worktreeId?: string };
 
-/** Runs one of the ten tools, wherever the account endpoint decides that is. */
+/** Runs one executor tool, wherever the account endpoint decides that is. */
 export type AccountDispatcher = (
   call: AccountCall,
   tool: ToolName,
@@ -99,6 +99,10 @@ const routingArgs = {
     "Run this call in a connected Git worktree by slug or id. Omit it, or use main, for the project root.",
   ),
 };
+const requiredWorktreeArgs = {
+  ...projectArg,
+  worktree: WorktreeRef.describe("The connected Git worktree to change, by slug or stable id."),
+};
 
 export function createAccountMcpHandler(
   dispatch: AccountDispatcher,
@@ -128,7 +132,7 @@ export function createAccountMcpHandler(
       registerAgentPrompt(server, true);
 
       /**
-       * One of the ten, forwarded to whichever machine serves the project this
+       * One executor tool, forwarded to whichever machine serves the project this
        * call resolves to.
        *
        * `project` is read here and removed before the arguments travel: the
@@ -208,11 +212,21 @@ export function createAccountMcpHandler(
       // Registered one by one, as in `mcp.ts` and for the same reason: the SDK
       // infers each callback's argument type from its own schema, and a loop
       // would collapse the schemas into a union that erases that inference.
-      const meta = <N extends ToolName>(name: N) => ({
-        title: TOOL_DEFINITIONS[name].title,
-        description: TOOL_DEFINITIONS[name].description,
-        annotations: { readOnlyHint: TOOL_DEFINITIONS[name].readOnly },
-      });
+      const meta = <N extends ToolName>(name: N) => {
+        const definition = TOOL_DEFINITIONS[name] as (typeof TOOL_DEFINITIONS)[N] & {
+          destructive?: boolean;
+        };
+        return {
+          title: definition.title,
+          description: definition.description,
+          annotations: {
+            readOnlyHint: definition.readOnly,
+            ...(definition.destructive === undefined
+              ? {}
+              : { destructiveHint: definition.destructive }),
+          },
+        };
+      };
 
       const manageMeta = <N extends AccountToolName>(name: N) => ({
         title: ACCOUNT_TOOL_DEFINITIONS[name].title,
@@ -281,6 +295,56 @@ export function createAccountMcpHandler(
             inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("write_file", args, ctx),
+        );
+      }
+      if (offers("list_git_worktrees")) {
+        server.registerTool(
+          "list_git_worktrees",
+          {
+            ...meta("list_git_worktrees"),
+            inputSchema: TOOL_DEFINITIONS.list_git_worktrees.inputSchema.extend(projectArg),
+          },
+          (args, ctx) => run("list_git_worktrees", args, ctx),
+        );
+      }
+      if (offers("create_worktree")) {
+        server.registerTool(
+          "create_worktree",
+          {
+            ...meta("create_worktree"),
+            inputSchema: TOOL_DEFINITIONS.create_worktree.inputSchema.safeExtend(routingArgs),
+          },
+          (args, ctx) => run("create_worktree", args, ctx),
+        );
+      }
+      if (offers("attach_worktree")) {
+        server.registerTool(
+          "attach_worktree",
+          {
+            ...meta("attach_worktree"),
+            inputSchema: TOOL_DEFINITIONS.attach_worktree.inputSchema.safeExtend(projectArg),
+          },
+          (args, ctx) => run("attach_worktree", args, ctx),
+        );
+      }
+      if (offers("detach_worktree")) {
+        server.registerTool(
+          "detach_worktree",
+          {
+            ...meta("detach_worktree"),
+            inputSchema: TOOL_DEFINITIONS.detach_worktree.inputSchema.extend(requiredWorktreeArgs),
+          },
+          (args, ctx) => run("detach_worktree", args, ctx),
+        );
+      }
+      if (offers("remove_worktree")) {
+        server.registerTool(
+          "remove_worktree",
+          {
+            ...meta("remove_worktree"),
+            inputSchema: TOOL_DEFINITIONS.remove_worktree.inputSchema.extend(requiredWorktreeArgs),
+          },
+          (args, ctx) => run("remove_worktree", args, ctx),
         );
       }
       if (offers("run_command")) {

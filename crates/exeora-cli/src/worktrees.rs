@@ -1,5 +1,9 @@
-use crate::config::{ConfigStore, ProjectEntry, WorktreeEntry, WorktreeSyncState};
+use crate::{
+    api::ApiClient,
+    config::{ConfigStore, ProjectEntry, WorktreeEntry, WorktreeSyncState},
+};
 use anyhow::{Context, Result, anyhow, bail};
+use serde::Serialize;
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -17,6 +21,50 @@ pub struct CreateWorktree {
     /// Directory to run `git worktree add` from. Defaults to the current
     /// checkout of this repository, then the registered project root.
     pub source: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicWorktree {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    pub branch: Option<String>,
+    pub managed: bool,
+}
+
+impl From<&WorktreeEntry> for PublicWorktree {
+    fn from(entry: &WorktreeEntry) -> Self {
+        Self {
+            id: entry.id.clone(),
+            slug: entry.slug.clone(),
+            name: entry.name.clone(),
+            branch: entry.branch.clone(),
+            managed: entry.managed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeInfo {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+    pub primary: bool,
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connected_slug: Option<String>,
+}
+
+pub struct WorktreeOutcome {
+    pub entry: WorktreeEntry,
+    pub outcome: &'static str,
+}
+
+pub struct RemoveOutcome {
+    pub entry: WorktreeEntry,
+    pub outcome: &'static str,
+    pub branch_deleted: bool,
 }
 
 pub fn resolve_project(config: &ConfigStore, selector: Option<&str>) -> Result<ProjectEntry> {
@@ -164,6 +212,183 @@ pub fn attach(
         slug,
         false,
     )
+}
+
+pub fn discover(config: &ConfigStore, project: &ProjectEntry) -> Result<Vec<GitWorktreeInfo>> {
+    let main = fs::canonicalize(git_path(&project.root, &["rev-parse", "--show-toplevel"])?)?;
+    let output = git_output(&project.root, &["worktree", "list", "--porcelain"])?;
+    let mut discovered = parse_worktree_porcelain(&output);
+
+    for item in &mut discovered {
+        let canonical = fs::canonicalize(&item.path).unwrap_or_else(|_| item.path.clone());
+        item.path = canonical.clone();
+        item.primary = canonical == main;
+        item.connected_slug = config.data().worktrees.iter().find_map(|entry| {
+            let root = fs::canonicalize(&entry.git_root).ok()?;
+            (entry.project_id == project.id && root == canonical).then(|| entry.slug.clone())
+        });
+        item.connected = item.connected_slug.is_some();
+    }
+
+    Ok(discovered)
+}
+
+pub fn path_for_branch(
+    config: &ConfigStore,
+    project: &ProjectEntry,
+    branch: &str,
+) -> Result<PathBuf> {
+    let matches: Vec<_> = discover(config, project)?
+        .into_iter()
+        .filter(|item| item.branch.as_deref() == Some(branch))
+        .collect();
+    match matches.as_slice() {
+        [] => bail!("No Git worktree has branch {branch} checked out."),
+        [item] if item.primary => {
+            bail!(
+                "The primary project worktree is selected by `main` and cannot be attached again."
+            )
+        }
+        [item] if item.connected => bail!("That Git worktree is already connected to Exeora."),
+        [item] => Ok(item.path.clone()),
+        _ => bail!("More than one Git worktree has branch {branch} checked out; attach by path."),
+    }
+}
+
+pub async fn persist(
+    config: &mut ConfigStore,
+    api: &ApiClient,
+    mut entry: WorktreeEntry,
+) -> Result<WorktreeOutcome> {
+    config.upsert_worktree(entry.clone());
+    config.save()?;
+    let outcome = match api.put_worktree(&entry.project_id, &entry).await {
+        Ok(_) => {
+            entry.sync_state = WorktreeSyncState::Active;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            "active"
+        }
+        Err(_) => "pendingUpsert",
+    };
+    Ok(WorktreeOutcome { entry, outcome })
+}
+
+pub async fn detach(
+    config: &mut ConfigStore,
+    api: &ApiClient,
+    mut entry: WorktreeEntry,
+) -> Result<WorktreeOutcome> {
+    entry.sync_state = WorktreeSyncState::Disabled;
+    config.upsert_worktree(entry.clone());
+    config.save()?;
+    let outcome = match api.remove_worktree(&entry.project_id, &entry.id).await {
+        Ok(_) => {
+            config.remove_worktree(&entry.id);
+            config.save()?;
+            "detached"
+        }
+        Err(_) => {
+            entry.sync_state = WorktreeSyncState::PendingDelete;
+            config.upsert_worktree(entry.clone());
+            config.save()?;
+            "pendingDelete"
+        }
+    };
+    Ok(WorktreeOutcome { entry, outcome })
+}
+
+pub async fn remove(
+    config: &mut ConfigStore,
+    api: &ApiClient,
+    project: &ProjectEntry,
+    mut entry: WorktreeEntry,
+    force: bool,
+    delete_branch_after: bool,
+) -> Result<RemoveOutcome> {
+    if is_dirty(&entry)? && !force {
+        bail!(
+            "{} has uncommitted changes. Pass force: true to remove it anyway.",
+            entry.slug
+        );
+    }
+    let branch = if delete_branch_after {
+        Some(
+            entry
+                .branch
+                .clone()
+                .context("The worktree is detached at HEAD, so it has no branch to delete")?,
+        )
+    } else {
+        None
+    };
+    entry.sync_state = WorktreeSyncState::Removing;
+    config.upsert_worktree(entry.clone());
+    config.save()?;
+    if let Err(error) = remove_git_worktree(project, &entry, force) {
+        entry.sync_state = WorktreeSyncState::Active;
+        config.upsert_worktree(entry);
+        config.save()?;
+        return Err(error);
+    }
+    entry.sync_state = WorktreeSyncState::PendingDelete;
+    config.upsert_worktree(entry.clone());
+    config.save()?;
+    let remote_removed = api
+        .remove_worktree(&entry.project_id, &entry.id)
+        .await
+        .is_ok();
+    if remote_removed {
+        config.remove_worktree(&entry.id);
+        config.save()?;
+    }
+    let branch_deleted = match branch {
+        Some(branch) => {
+            delete_branch(project, &branch)?;
+            true
+        }
+        None => false,
+    };
+    Ok(RemoveOutcome {
+        entry,
+        outcome: if remote_removed {
+            "removed"
+        } else {
+            "pendingDelete"
+        },
+        branch_deleted,
+    })
+}
+
+fn parse_worktree_porcelain(output: &str) -> Vec<GitWorktreeInfo> {
+    let mut result = Vec::new();
+    let mut path: Option<PathBuf> = None;
+    let mut branch: Option<String> = None;
+    let flush = |result: &mut Vec<GitWorktreeInfo>,
+                 path: &mut Option<PathBuf>,
+                 branch: &mut Option<String>| {
+        if let Some(path) = path.take() {
+            result.push(GitWorktreeInfo {
+                path,
+                branch: branch.take(),
+                primary: false,
+                connected: false,
+                connected_slug: None,
+            });
+        }
+    };
+    for line in output.lines() {
+        if let Some(value) = line.strip_prefix("worktree ") {
+            flush(&mut result, &mut path, &mut branch);
+            path = Some(PathBuf::from(value));
+        } else if let Some(value) = line.strip_prefix("branch refs/heads/") {
+            branch = Some(value.to_owned());
+        } else if line.is_empty() {
+            flush(&mut result, &mut path, &mut branch);
+        }
+    }
+    flush(&mut result, &mut path, &mut branch);
+    result
 }
 
 fn entry_for_path(
@@ -394,7 +619,10 @@ fn git_checked(cwd: &Path, args: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CreateWorktree, create, is_dirty, remove_git_worktree, slugify};
+    use super::{
+        CreateWorktree, attach, create, discover, is_dirty, path_for_branch, remove_git_worktree,
+        slugify,
+    };
     use crate::config::{ConfigStore, ProjectEntry, WorktreeSyncState};
     use std::{fs, process::Command};
     use tempfile::tempdir;
@@ -449,6 +677,66 @@ mod tests {
 
         remove_git_worktree(&project, &entry, false).expect("remove");
         assert!(!entry.git_root.exists());
+    }
+
+    #[test]
+    fn discovers_and_attaches_an_existing_worktree_by_branch() {
+        let temp = tempdir().expect("temp directory");
+        let repository = temp.path().join("repository");
+        fs::create_dir(&repository).expect("repository");
+        git(&repository, &["init"]);
+        git(&repository, &["config", "user.email", "test@example.com"]);
+        git(&repository, &["config", "user.name", "Exeora Test"]);
+        fs::write(repository.join("tracked.txt"), "main\n").expect("fixture");
+        git(&repository, &["add", "tracked.txt"]);
+        git(&repository, &["commit", "-m", "initial"]);
+
+        let external = temp.path().join("external");
+        let external_text = external.to_string_lossy().into_owned();
+        git(
+            &repository,
+            &["worktree", "add", "-b", "feature/existing", &external_text],
+        );
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        let project = ProjectEntry {
+            id: "prj_test".to_owned(),
+            slug: "repository".to_owned(),
+            name: "Repository".to_owned(),
+            root: fs::canonicalize(&repository).expect("root"),
+        };
+        config.upsert_project(project.clone());
+
+        let inventory = discover(&config, &project).expect("inventory");
+        assert_eq!(inventory.len(), 2);
+        let candidate = inventory
+            .iter()
+            .find(|item| item.branch.as_deref() == Some("feature/existing"))
+            .expect("feature worktree");
+        assert!(!candidate.primary);
+        assert!(!candidate.connected);
+        assert_eq!(
+            path_for_branch(&config, &project, "feature/existing").expect("branch path"),
+            fs::canonicalize(&external).expect("external path")
+        );
+
+        let entry = attach(
+            &config,
+            &project,
+            &external,
+            None,
+            Some("existing".to_owned()),
+        )
+        .expect("attached worktree");
+        assert!(!entry.managed);
+        config.upsert_worktree(entry);
+        let connected = discover(&config, &project).expect("connected inventory");
+        let candidate = connected
+            .iter()
+            .find(|item| item.branch.as_deref() == Some("feature/existing"))
+            .expect("feature worktree");
+        assert!(candidate.connected);
+        assert_eq!(candidate.connected_slug.as_deref(), Some("existing"));
+        assert!(path_for_branch(&config, &project, "feature/existing").is_err());
     }
 
     fn git(cwd: &std::path::Path, args: &[&str]) {

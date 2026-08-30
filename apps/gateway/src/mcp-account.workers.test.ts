@@ -20,17 +20,6 @@ import {
   createAccountMcpHandler,
 } from "./mcp-account.js";
 
-/**
- * The account endpoint: one URL covering several projects, and the seam that
- * decides which one a call lands in.
- *
- * The dispatcher is stubbed throughout, because what these tests are about is
- * the shape of the endpoint — what it advertises, what it passes down and what
- * it does with an approval — rather than what a machine does with the call
- * afterwards. Where the project actually resolves from is `index.ts`, and the
- * calls recorded here are what it receives.
- */
-
 const SECRET = "test-secret-that-is-at-least-32-bytes-long";
 
 function post(
@@ -75,7 +64,6 @@ function post(
   )(request, {}, ctx);
 }
 
-/** The same, as a 2026-07-28 client sends it. Shaped as in `mcp.workers.test.ts`. */
 function postModern(
   body: { params: { name: string; arguments?: unknown } } & Record<string, unknown>,
   options: { dispatch?: AccountDispatcher } = {},
@@ -164,6 +152,27 @@ describe("tools/list", () => {
     expect(listProjects?.inputSchema.properties ?? {}).not.toHaveProperty("project");
   });
 
+  it("uses lifecycle-specific worktree routing", async () => {
+    const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
+    const schemas = toolsOf(body) as Array<{
+      name: string;
+      inputSchema: { properties?: Record<string, unknown>; required?: string[] };
+    }>;
+
+    expect(
+      schemas.find((tool) => tool.name === "create_worktree")?.inputSchema.required ?? [],
+    ).not.toContain("worktree");
+    expect(
+      schemas.find((tool) => tool.name === "remove_worktree")?.inputSchema.required ?? [],
+    ).toContain("worktree");
+    expect(
+      schemas.find((tool) => tool.name === "attach_worktree")?.inputSchema.properties ?? {},
+    ).not.toHaveProperty("worktree");
+    expect(
+      schemas.find((tool) => tool.name === "list_git_worktrees")?.inputSchema.properties ?? {},
+    ).not.toHaveProperty("worktree");
+  });
+
   it("does not advertise the retired active-project tools", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
     const names = toolsOf(body).map((tool) => tool.name);
@@ -173,10 +182,6 @@ describe("tools/list", () => {
   });
 });
 
-/**
- * The same guidance as the per-project endpoint, plus the part only this one
- * needs: with several projects in reach, something has to say which.
- */
 describe("the agent prompt", () => {
   it("explains choosing a project, which the per-project endpoint cannot need", async () => {
     const body = await payload(
@@ -274,6 +279,47 @@ describe("naming a project on one call", () => {
     );
 
     expect(seen).toEqual([{ path: "a.ts" }]);
+  });
+
+  it("strips project and required worktree routing from remove_worktree", async () => {
+    const seen: Array<{
+      project: string | undefined;
+      worktree: string | undefined;
+      args: unknown;
+    }> = [];
+
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 21,
+          method: "tools/call",
+          params: {
+            name: "remove_worktree",
+            arguments: {
+              project: "api",
+              worktree: "feature-api",
+              force: true,
+              deleteBranch: false,
+            },
+          },
+        },
+        {
+          dispatch: async (received, _tool, args) => {
+            seen.push({ project: received.project, worktree: received.worktree, args });
+            return { kind: "value", value: { outcome: "removed" } };
+          },
+        },
+      ),
+    );
+
+    expect(seen).toEqual([
+      {
+        project: "api",
+        worktree: "feature-api",
+        args: { force: true, deleteBranch: false },
+      },
+    ]);
   });
 
   it("says nothing was named when the call did not name one", async () => {

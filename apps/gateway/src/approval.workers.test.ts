@@ -75,6 +75,22 @@ describe("what the prompt says", () => {
     expect(describeCall("edit_file", { path: "src/main.ts" })).toBe("Edit src/main.ts?");
   });
 
+  it("names worktree lifecycle targets and destructive options", () => {
+    expect(describeCall("create_worktree", { branch: "feature/api", from: "develop" })).toBe(
+      "Create worktree for branch feature/api from develop?",
+    );
+    expect(describeCall("attach_worktree", { branch: "feature/api" })).toBe(
+      "Attach worktree for branch feature/api?",
+    );
+    expect(
+      describeCall("remove_worktree", {
+        worktree: "feature-api",
+        force: true,
+        deleteBranch: true,
+      }),
+    ).toBe("Remove worktree feature-api with uncommitted changes allowed and delete its branch?");
+  });
+
   it("still says something when the arguments are not what it expected", () => {
     expect(describeCall("run_command", {})).toBe("Allow run_command?");
     expect(describeCall("write_file", null)).toBe("Allow write_file?");

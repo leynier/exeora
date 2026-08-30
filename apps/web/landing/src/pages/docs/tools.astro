@@ -68,11 +68,15 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
-    Every executor tool also accepts <code>worktree</code>, naming a connected Git worktree by slug
-    or id. Omit it, or pass <code>main</code>, to use the project's primary root. The gateway resolves
-    the selector to a stable id and removes it before the executor validates the canonical tool
-    input. <code>list_worktrees</code> is answered by the gateway and works while the machine is
-    offline. A worktree error never falls back to main.
+    File, command and process tools accept <code>worktree</code>, naming a connected Git worktree by
+    slug or id; omit it or pass <code>main</code> for the project root.{" "}
+    <code>create_worktree</code> accepts it as an optional source, while{" "}
+    <code>detach_worktree</code> and <code>remove_worktree</code> require it as their target.{" "}
+    <code>list_git_worktrees</code> and <code>attach_worktree</code> do not take it. The gateway
+    resolves selectors to stable ids and removes the routing field before executor validation.{" "}
+    <code>list_worktrees</code> remains the gateway inventory and works while the machine is offline;
+    <code>list_git_worktrees</code> requires the machine and includes unattached Git checkouts. A
+    worktree error never falls back to main.
   </p>
 
   {

@@ -14,6 +14,9 @@ import {
   type AccountToolName,
   isAccountToolName,
 } from "./tools-account.js";
+import { WORKTREE_TOOL_DEFINITIONS } from "./tools-worktrees.js";
+
+export * from "./tools-worktrees.js";
 
 /**
  * The single source of truth for what an Exeora tool accepts and returns.
@@ -318,6 +321,7 @@ export const TOOL_DEFINITIONS = {
     outputSchema: WriteFileOutput,
     readOnly: false,
   },
+  ...WORKTREE_TOOL_DEFINITIONS,
   run_command: {
     title: "Run command",
     description:

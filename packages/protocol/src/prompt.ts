@@ -184,8 +184,11 @@ const PROJECTS = `## Choosing a project
 
 const WORKTREES = `## Choosing a worktree
 
-- \`list_worktrees\` shows the Git worktrees connected under the current project.
-- Every executor tool accepts an optional \`worktree\` slug or id. Omit it, or use \`main\`, for the project's primary root. Pass the same worktree to process follow-up tools.
+- \`list_worktrees\` shows the worktrees connected to Exeora and works while the machine is offline. \`list_git_worktrees\` asks the connected machine for Git's complete inventory, including unattached worktrees and their absolute paths.
+- File, command and process tools accept an optional \`worktree\` slug or id. Omit it, or use \`main\`, for the project's primary root. Pass the same worktree to process follow-up tools.
+- \`create_worktree\` creates a checkout under Exeora's managed root; its optional \`worktree\` chooses the source checkout. \`attach_worktree\` connects an existing checkout by exactly one absolute path or exact branch.
+- \`detach_worktree\` and \`remove_worktree\` require \`worktree\`. Detach only disconnects it. Remove deletes the checkout, refuses dirty state unless \`force\` is true, and keeps its branch unless \`deleteBranch\` is true.
+- A \`pendingUpsert\` or \`pendingDelete\` outcome means the local Git/configuration change succeeded and \`exeora sync\` will retry the gateway half.
 - \`UNKNOWN_WORKTREE\` means the selector is not connected; \`WORKTREE_UNAVAILABLE\` means the local CLI cannot currently serve it. Never fall back to main after either error.`;
 
 const CAVEAT = `Not every tool named here is necessarily offered on this connection, because a project can hide any of them. Call what appears in your tool list, and treat an absent tool as a decision someone made rather than a fault to work around.`;
@@ -205,6 +208,6 @@ const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside 
 
 const INSTRUCTIONS_ACCOUNT = `This connection reaches several projects: \`list_projects\` shows them, and every other tool call must name its \`project\` when more than one is reachable. The choice is per call, so conversations do not move each other.`;
 
-const INSTRUCTIONS_WORKTREES = `\`list_worktrees\` shows connected Git worktrees. Every executor tool accepts an optional \`worktree\`; omit it for main, and never fall back to main after a worktree error.`;
+const INSTRUCTIONS_WORKTREES = `\`list_worktrees\` shows connected worktrees; \`list_git_worktrees\` discovers every local Git checkout. File and command tools take optional \`worktree\`, \`create_worktree\` uses it as a source, and \`detach_worktree\` / \`remove_worktree\` require it as their target. Never fall back to main after a worktree error.`;
 
 const INSTRUCTIONS_POINTER = `Exeora's full coding-agent prompt is available as the \`${AGENT_PROMPT_NAME}\` prompt and the \`${AGENT_PROMPT_TOOL.name}\` tool.`;

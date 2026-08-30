@@ -27,6 +27,11 @@ pub enum ToolName {
     Grep,
     EditFile,
     WriteFile,
+    ListGitWorktrees,
+    CreateWorktree,
+    AttachWorktree,
+    DetachWorktree,
+    RemoveWorktree,
     RunCommand,
     StartCommand,
     GetCommandOutput,
@@ -35,12 +40,17 @@ pub enum ToolName {
 }
 
 impl ToolName {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 15] = [
         Self::ReadFile,
         Self::ListFiles,
         Self::Grep,
         Self::EditFile,
         Self::WriteFile,
+        Self::ListGitWorktrees,
+        Self::CreateWorktree,
+        Self::AttachWorktree,
+        Self::DetachWorktree,
+        Self::RemoveWorktree,
         Self::RunCommand,
         Self::StartCommand,
         Self::GetCommandOutput,
@@ -55,6 +65,11 @@ impl ToolName {
             Self::Grep => "grep",
             Self::EditFile => "edit_file",
             Self::WriteFile => "write_file",
+            Self::ListGitWorktrees => "list_git_worktrees",
+            Self::CreateWorktree => "create_worktree",
+            Self::AttachWorktree => "attach_worktree",
+            Self::DetachWorktree => "detach_worktree",
+            Self::RemoveWorktree => "remove_worktree",
             Self::RunCommand => "run_command",
             Self::StartCommand => "start_command",
             Self::GetCommandOutput => "get_command_output",
@@ -66,7 +81,22 @@ impl ToolName {
     pub const fn read_only(self) -> bool {
         matches!(
             self,
-            Self::ReadFile | Self::ListFiles | Self::Grep | Self::GetCommandOutput
+            Self::ReadFile
+                | Self::ListFiles
+                | Self::Grep
+                | Self::ListGitWorktrees
+                | Self::GetCommandOutput
+        )
+    }
+
+    pub const fn is_worktree_tool(self) -> bool {
+        matches!(
+            self,
+            Self::ListGitWorktrees
+                | Self::CreateWorktree
+                | Self::AttachWorktree
+                | Self::DetachWorktree
+                | Self::RemoveWorktree
         )
     }
 }

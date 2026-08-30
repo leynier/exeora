@@ -451,37 +451,20 @@ async fn worktree_command(
             Ok(())
         }
         WorktreeCommand::Detach { selector } => {
-            let mut entry = find_worktree(config, &selector)?;
-            entry.sync_state = WorktreeSyncState::Disabled;
-            config.upsert_worktree(entry.clone());
-            config.save()?;
-            match api.remove_worktree(&entry.project_id, &entry.id).await {
-                Ok(_) => {
-                    config.remove_worktree(&entry.id);
-                    config.save()?;
-                    if json_output {
-                        emit(json!({ "worktree": entry, "outcome": "detached" }))
+            let outcome = worktrees::detach(config, api, find_worktree(config, &selector)?).await?;
+            if json_output {
+                emit(json!({ "worktree": outcome.entry, "outcome": outcome.outcome }))
+            } else {
+                println!(
+                    "Detached {}.{}",
+                    outcome.entry.slug,
+                    if outcome.outcome == "detached" {
+                        " The Git worktree was not changed."
                     } else {
-                        println!("Detached {}. The Git worktree was not changed.", entry.slug);
-                        Ok(())
+                        " Gateway deletion is pending; run `exeora sync`."
                     }
-                }
-                Err(error) => {
-                    entry.sync_state = WorktreeSyncState::PendingDelete;
-                    config.upsert_worktree(entry.clone());
-                    config.save()?;
-                    if json_output {
-                        emit(
-                            json!({ "worktree": entry, "outcome": "pendingDelete", "warning": error.to_string() }),
-                        )
-                    } else {
-                        println!(
-                            "Detached {} locally. Gateway deletion is pending; run `exeora sync`.",
-                            entry.slug
-                        );
-                        Ok(())
-                    }
-                }
+                );
+                Ok(())
             }
         }
         WorktreeCommand::Remove {
@@ -489,7 +472,7 @@ async fn worktree_command(
             force,
             delete_branch,
         } => {
-            let mut entry = find_worktree(config, &selector)?;
+            let entry = find_worktree(config, &selector)?;
             let project = config
                 .data()
                 .projects
@@ -497,47 +480,17 @@ async fn worktree_command(
                 .find(|project| project.id == entry.project_id)
                 .cloned()
                 .context("The parent project is no longer registered")?;
-            if worktrees::is_dirty(&entry)? && !force {
-                bail!(
-                    "{} has uncommitted changes. Pass --force to remove it anyway.",
-                    entry.slug
-                );
-            }
-            entry.sync_state = WorktreeSyncState::Removing;
-            config.upsert_worktree(entry.clone());
-            config.save()?;
-            if let Err(error) = worktrees::remove_git_worktree(&project, &entry, force) {
-                entry.sync_state = WorktreeSyncState::Active;
-                config.upsert_worktree(entry);
-                config.save()?;
-                return Err(error);
-            }
-            let branch = entry.branch.clone();
-            entry.sync_state = WorktreeSyncState::PendingDelete;
-            config.upsert_worktree(entry.clone());
-            config.save()?;
-            let remote_removed = api
-                .remove_worktree(&entry.project_id, &entry.id)
-                .await
-                .is_ok();
-            if remote_removed {
-                config.remove_worktree(&entry.id);
-                config.save()?;
-            }
-            if delete_branch {
-                let branch = branch
-                    .context("The worktree was detached at HEAD, so it has no branch to delete")?;
-                worktrees::delete_branch(&project, &branch)?;
-            }
+            let outcome =
+                worktrees::remove(config, api, &project, entry, force, delete_branch).await?;
             if json_output {
                 emit(
-                    json!({ "worktree": entry, "outcome": if remote_removed { "removed" } else { "pendingDelete" }, "branchDeleted": delete_branch }),
+                    json!({ "worktree": outcome.entry, "outcome": outcome.outcome, "branchDeleted": outcome.branch_deleted }),
                 )
             } else {
                 println!(
                     "Removed {}.{}",
-                    entry.slug,
-                    if remote_removed {
+                    outcome.entry.slug,
+                    if outcome.outcome == "removed" {
                         ""
                     } else {
                         " Gateway deletion is pending; run `exeora sync`."
@@ -552,28 +505,18 @@ async fn worktree_command(
 async fn persist_worktree(
     config: &mut ConfigStore,
     api: &ApiClient,
-    mut entry: WorktreeEntry,
+    entry: WorktreeEntry,
     json_output: bool,
 ) -> Result<()> {
-    config.upsert_worktree(entry.clone());
-    config.save()?;
-    let outcome = match api.put_worktree(&entry.project_id, &entry).await {
-        Ok(_) => {
-            entry.sync_state = WorktreeSyncState::Active;
-            config.upsert_worktree(entry.clone());
-            config.save()?;
-            "active"
-        }
-        Err(_) => "pendingUpsert",
-    };
+    let outcome = worktrees::persist(config, api, entry).await?;
     if json_output {
-        emit(json!({ "worktree": entry, "outcome": outcome }))
+        emit(json!({ "worktree": outcome.entry, "outcome": outcome.outcome }))
     } else {
         println!(
             "Connected {} at {}.{}",
-            entry.slug,
-            entry.root.display(),
-            if outcome == "active" {
+            outcome.entry.slug,
+            outcome.entry.root.display(),
+            if outcome.outcome == "active" {
                 ""
             } else {
                 " Gateway sync is pending; run `exeora sync`."
