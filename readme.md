@@ -31,7 +31,7 @@ AI agents are only as useful as the environment they can touch. Today you usuall
 1. **Expose the machine** - open a port, run a tunnel, hope the URL stays private.
 2. **Upload the code** - push the repo into a cloud sandbox that is never quite your machine.
 
-Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. The agent gets fifteen tools inside one project directory - not a shell on the whole box, and not a copy in someone else's cloud.
+Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. The agent gets sixteen tools inside one project directory - not a shell on the whole box, and not a copy in someone else's cloud.
 
 ```mermaid
 flowchart TD
@@ -86,7 +86,7 @@ flowchart TD
 
 ## Tools
 
-`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `list_git_worktrees` · `create_worktree` · `attach_worktree` · `detach_worktree` · `remove_worktree` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
+`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `apply_patch` · `list_git_worktrees` · `create_worktree` · `attach_worktree` · `detach_worktree` · `remove_worktree` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
 
 On the account URL, `list_projects` shows the available targets. When it returns more than one, every executor tool call names its `project`, so concurrent conversations do not move each other.
 

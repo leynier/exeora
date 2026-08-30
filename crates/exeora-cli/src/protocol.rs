@@ -17,7 +17,10 @@ pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 60_000;
 pub const MAX_COMMAND_TIMEOUT_MS: u64 = 300_000;
 pub const MAX_PROCESS_BUFFER_BYTES: usize = 256_000;
 pub const MAX_PROCESS_CHUNK_BYTES: usize = 100_000;
-pub const MAX_PROCESSES_PER_PROJECT: usize = 8;
+pub const MAX_PROCESSES_PER_WORKTREE: usize = 8;
+pub const MAX_PROCESSES_PER_PROJECT: usize = 16;
+pub const MAX_PATCH_OPS: usize = 20;
+pub const MAX_PATCH_BYTES: usize = 1_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -27,6 +30,7 @@ pub enum ToolName {
     Grep,
     EditFile,
     WriteFile,
+    ApplyPatch,
     ListGitWorktrees,
     CreateWorktree,
     AttachWorktree,
@@ -40,12 +44,13 @@ pub enum ToolName {
 }
 
 impl ToolName {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::ReadFile,
         Self::ListFiles,
         Self::Grep,
         Self::EditFile,
         Self::WriteFile,
+        Self::ApplyPatch,
         Self::ListGitWorktrees,
         Self::CreateWorktree,
         Self::AttachWorktree,
@@ -65,6 +70,7 @@ impl ToolName {
             Self::Grep => "grep",
             Self::EditFile => "edit_file",
             Self::WriteFile => "write_file",
+            Self::ApplyPatch => "apply_patch",
             Self::ListGitWorktrees => "list_git_worktrees",
             Self::CreateWorktree => "create_worktree",
             Self::AttachWorktree => "attach_worktree",

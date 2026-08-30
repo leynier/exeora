@@ -27,13 +27,13 @@ export const TOOL_NAMES = [
   "grep",
   "edit_file",
   "write_file",
+  "apply_patch",
   "run_command",
   "start_command",
   "get_command_output",
   "send_command_input",
   "kill_command",
 ] as const;
-
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface Project {

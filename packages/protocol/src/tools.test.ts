@@ -80,4 +80,11 @@ describe("tool definitions", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("treats apply_patch as a mutating batch, not a read", () => {
+    expect(TOOL_DEFINITIONS.apply_patch.readOnly).toBe(false);
+    expect(toolFields("apply_patch").find((field) => field.name === "operations")?.required).toBe(
+      true,
+    );
+  });
 });

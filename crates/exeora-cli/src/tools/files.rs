@@ -211,35 +211,16 @@ pub async fn edit_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
                     error.kind()
                 ))
             })?;
-        let (bom, content) = raw
-            .strip_prefix('\u{feff}')
-            .map_or(("", raw.as_str()), |text| ("\u{feff}", text));
-        let crlf = content
-            .find("\r\n")
-            .is_some_and(|crlf| content.find('\n') == Some(crlf + 1));
-        let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
-        let old = args.old_string.replace("\r\n", "\n").replace('\r', "\n");
-        let (base, index, length) = unique_match(&normalized, &old, &relative)?;
-        let mut changed = base.clone();
-        changed.replace_range(index..index + length, &args.new_string);
-        let restored = if crlf {
-            changed.replace('\n', "\r\n")
-        } else {
-            changed.clone()
-        };
+        let replaced = replace_unique(&raw, &args.old_string, &args.new_string, &relative)?;
         let mut options = OpenOptions::new();
         options.write(true).truncate(true);
         let mut file = dir
             .open_with(&relative, &options)
             .map_err(|error| ExeoraError::tool(error.to_string()))?;
-        file.write_all(format!("{bom}{restored}").as_bytes())
+        file.write_all(replaced.written.as_bytes())
             .map_err(|error| ExeoraError::tool(error.to_string()))?;
         let path = relative_string(&relative);
-        let diff = TextDiff::from_lines(&base, &changed)
-            .unified_diff()
-            .header(&path, &path)
-            .to_string();
-        Ok(json!({ "path": path, "replacements": 1, "diff": diff }))
+        Ok(json!({ "path": path, "replacements": 1, "diff": replaced.diff }))
     })
     .await
     .map_err(join_error)?
@@ -551,6 +532,79 @@ fn search_path(
     Ok((rows, exceeded))
 }
 
+pub(crate) struct Replaced {
+    pub written: String,
+    pub diff: String,
+}
+
+/// Unique byte-for-byte replacement. No NFKC, no trimming, no newline rewriting.
+pub(crate) fn replace_exact(
+    raw: &str,
+    old_string: &str,
+    new_string: &str,
+    path: &Path,
+) -> Result<Replaced, ExeoraError> {
+    let finder = memmem::Finder::new(old_string);
+    let hits: Vec<usize> = finder.find_iter(raw.as_bytes()).take(2).collect();
+    match hits.as_slice() {
+        [index] => {
+            let mut written =
+                String::with_capacity(raw.len() - old_string.len() + new_string.len());
+            written.push_str(&raw[..*index]);
+            written.push_str(new_string);
+            written.push_str(&raw[index + old_string.len()..]);
+            let display = relative_string(path);
+            let diff = TextDiff::from_lines(raw, &written)
+                .unified_diff()
+                .header(&display, &display)
+                .to_string();
+            Ok(Replaced { written, diff })
+        }
+        [] => Err(ExeoraError::tool(format!(
+            "Could not find the requested text in {}.",
+            relative_string(path)
+        ))),
+        _ => Err(ExeoraError::tool(format!(
+            "The requested text appears more than once in {}. Include surrounding lines to make it unique.",
+            relative_string(path)
+        ))),
+    }
+}
+
+/// Unique text replacement, preserving BOM and CRLF the way `edit_file` does.
+pub(crate) fn replace_unique(
+    raw: &str,
+    old_string: &str,
+    new_string: &str,
+    path: &Path,
+) -> Result<Replaced, ExeoraError> {
+    let (bom, content) = raw
+        .strip_prefix('\u{feff}')
+        .map_or(("", raw), |text| ("\u{feff}", text));
+    let crlf = content
+        .find("\r\n")
+        .is_some_and(|crlf| content.find('\n') == Some(crlf + 1));
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    let old = old_string.replace("\r\n", "\n").replace('\r', "\n");
+    let (base, index, length) = unique_match(&normalized, &old, path)?;
+    let mut changed = base.clone();
+    changed.replace_range(index..index + length, new_string);
+    let restored = if crlf {
+        changed.replace('\n', "\r\n")
+    } else {
+        changed.clone()
+    };
+    let display = relative_string(path);
+    let diff = TextDiff::from_lines(&base, &changed)
+        .unified_diff()
+        .header(&display, &display)
+        .to_string();
+    Ok(Replaced {
+        written: format!("{bom}{restored}"),
+        diff,
+    })
+}
+
 fn unique_match(
     content: &str,
     old: &str,
@@ -679,15 +733,15 @@ fn compile_glob(pattern: Option<&str>) -> Result<Option<GlobMatcher>, ExeoraErro
         })
         .transpose()
 }
-fn open_root(root: &Path) -> Result<Dir, ExeoraError> {
+pub(crate) fn open_root(root: &Path) -> Result<Dir, ExeoraError> {
     Dir::open_ambient_dir(root, ambient_authority())
         .map_err(|error| ExeoraError::tool(error.to_string()))
 }
-fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {
+pub(crate) fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {
     serde_json::from_value(value)
         .map_err(|error| ExeoraError::new(ErrorCode::InvalidArguments, error.to_string()))
 }
-fn join_error(error: tokio::task::JoinError) -> ExeoraError {
+pub(crate) fn join_error(error: tokio::task::JoinError) -> ExeoraError {
     ExeoraError::tool(error.to_string())
 }
 

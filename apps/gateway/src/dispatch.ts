@@ -241,17 +241,25 @@ async function resolveWorktree(
 }
 
 /**
- * What the executor is told about the caller, so `exeora connect` can name it.
+ * What the executor is told about the caller.
  *
- * Only the two display fields, never the client id: the machine's terminal is
- * a different audience from the dashboard, and an opaque identifier there is
- * noise rather than information.
+ * `name` and `version` are for the line `exeora connect` prints. `id` is the
+ * OAuth client, used on the machine to bind a long-running process to whoever
+ * started it. Absent when the gateway cannot name one, which is a real state:
+ * the process is then unattributed rather than guessed into the next caller.
  */
-function callerLabel(caller: CallerIdentity): { name?: string; version?: string } | undefined {
+function callerLabel(
+  caller: CallerIdentity,
+): { id?: string; name?: string; version?: string } | undefined {
   const name = caller.clientName ?? caller.mcp?.name;
   const version = caller.mcp?.version;
-  if (!name && !version) return undefined;
-  return { ...(name ? { name } : {}), ...(version ? { version } : {}) };
+  const id = caller.clientId;
+  if (!id && !name && !version) return undefined;
+  return {
+    ...(id ? { id } : {}),
+    ...(name ? { name } : {}),
+    ...(version ? { version } : {}),
+  };
 }
 
 /** Audit row. Records what ran and how it ended, never arguments or output. */

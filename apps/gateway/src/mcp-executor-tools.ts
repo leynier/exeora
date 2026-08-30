@@ -91,6 +91,16 @@ export function registerExecutorTools(
       (args, context) => run("write_file", args, context),
     );
   }
+  if (offers("apply_patch")) {
+    server.registerTool(
+      "apply_patch",
+      {
+        ...meta("apply_patch"),
+        inputSchema: TOOL_DEFINITIONS.apply_patch.inputSchema.extend(worktreeRouting).shape,
+      },
+      (args, context) => run("apply_patch", args, context),
+    );
+  }
   if (offers("list_git_worktrees")) {
     server.registerTool(
       "list_git_worktrees",

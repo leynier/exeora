@@ -190,6 +190,7 @@ describe("tool registry", () => {
       "grep",
       "edit_file",
       "write_file",
+      "apply_patch",
       "list_git_worktrees",
       "create_worktree",
       "attach_worktree",

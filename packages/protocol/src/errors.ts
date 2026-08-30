@@ -32,6 +32,14 @@ export const ERROR_CODES = [
   "UNKNOWN_WORKTREE",
   /** The worktree exists but this connected executor cannot currently serve it. */
   "WORKTREE_UNAVAILABLE",
+  /**
+   * No live process matches this call's project, worktree and caller.
+   *
+   * The same answer whether the handle was never issued, already stopped, or
+   * belongs to a different worktree or client: telling those apart would let a
+   * caller hunt across the machine, which is the guess this code exists to refuse.
+   */
+  "UNKNOWN_PROCESS",
   /** Reserved for protocol-v1 compatibility; the gateway no longer emits it. */
   "NO_ACTIVE_PROJECT",
   /** The caller is authenticated but not allowed to reach this project. */

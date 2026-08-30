@@ -5,6 +5,8 @@ import {
   MAX_COMMAND_TIMEOUT_MS,
   MAX_GREP_MATCHES,
   MAX_LIST_ENTRIES,
+  MAX_PATCH_BYTES,
+  MAX_PATCH_OPS,
   MAX_PROCESS_BUFFER_BYTES,
   MAX_PROCESS_CHUNK_BYTES,
   MAX_READ_BYTES,
@@ -157,6 +159,67 @@ export const WriteFileOutput = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// apply_patch
+// ---------------------------------------------------------------------------
+
+/** One file operation inside `apply_patch`. All of them land, or none of them do. */
+export const ApplyPatchOp = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal("create"),
+    path: relativePath,
+    content: z.string().describe("Full contents of the new file."),
+  }),
+  z.object({
+    op: z.literal("update"),
+    path: relativePath,
+    oldString: z
+      .string()
+      .min(1)
+      .describe(
+        "Exact text to replace. Must match the file byte for byte and must appear exactly once.",
+      ),
+    newString: z.string().describe("Replacement text."),
+  }),
+  z.object({
+    op: z.literal("replace"),
+    path: relativePath,
+    content: z.string().describe("Full contents to write. Overwrites any existing file."),
+  }),
+  z.object({
+    op: z.literal("delete"),
+    path: relativePath,
+  }),
+  z.object({
+    op: z.literal("move"),
+    from: relativePath.describe("Existing file to move."),
+    to: relativePath.describe("Destination path. Must not already exist."),
+  }),
+]);
+
+export const ApplyPatchInput = z.object({
+  operations: z
+    .array(ApplyPatchOp)
+    .min(1)
+    .max(MAX_PATCH_OPS)
+    .describe(
+      `File operations to apply together, all or nothing (max ${MAX_PATCH_OPS}). Combined contents must stay within ${Math.round(MAX_PATCH_BYTES / 1000)}KB.`,
+    ),
+});
+
+export const ApplyPatchFile = z.object({
+  path: z.string(),
+  op: z.enum(["create", "update", "replace", "delete", "move"]),
+  /** Unified diff of what changed, omitted for a delete. */
+  diff: z.string().optional(),
+  created: z.boolean().optional(),
+  deleted: z.boolean().optional(),
+});
+
+export const ApplyPatchOutput = z.object({
+  files: z.array(ApplyPatchFile),
+});
+
+// ---------------------------------------------------------------------------
 // run_command
 // ---------------------------------------------------------------------------
 
@@ -192,16 +255,9 @@ export const RunCommandOutput = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * A dev server, a watch task, a test suite that takes twenty minutes.
- *
- * Four tools rather than a flag on `run_command`, because the shape is
- * different: `start_command` answers at once with a handle, and everything
- * after is a separate call about a process that is already running.
- *
- * Deliberately polled rather than streamed. The relay is request and response,
- * and a call that answers immediately fits it exactly; streaming would need a
- * second shape on the wire and would still not reach a 2025-era client, which
- * has no way to receive one. Reading with a cursor works everywhere.
+ * A long-running process: start answers with a handle, later calls poll it.
+ * Deliberately not streamed — the relay is request/response, and 2025 clients
+ * have no other shape.
  */
 
 const processId = z.string().min(1).describe("Handle returned by start_command.");
@@ -321,6 +377,18 @@ export const TOOL_DEFINITIONS = {
     outputSchema: WriteFileOutput,
     readOnly: false,
   },
+  apply_patch: {
+    title: "Apply a multi-file patch",
+    description:
+      "Apply several file operations in one call: create, update (unique text replacement), " +
+      "replace (whole file), delete, or move. Checked before anything is written; if any " +
+      `operation cannot run, none of them do. At most ${MAX_PATCH_OPS} operations and ` +
+      `${Math.round(MAX_PATCH_BYTES / 1000)}KB. Prefer this over repeated edit_file when more ` +
+      "than one file must change together.",
+    inputSchema: ApplyPatchInput,
+    outputSchema: ApplyPatchOutput,
+    readOnly: false,
+  },
   ...WORKTREE_TOOL_DEFINITIONS,
   run_command: {
     title: "Run command",
@@ -389,14 +457,7 @@ export function isToolName(value: unknown): value is ToolName {
   return typeof value === "string" && value in TOOL_DEFINITIONS;
 }
 
-/**
- * The schema a tool's arguments must satisfy.
- *
- * The gateway hands this straight to `registerTool({ inputSchema })`, MCP v2
- * accepts any Standard Schema object, and the executor runs the very same
- * schema over the arguments that arrive off the wire. One definition, checked
- * on both sides of the relay.
- */
+/** The schema a tool's arguments must satisfy, checked on both sides of the relay. */
 export function toolInputSchema<N extends ToolName>(name: N) {
   return TOOL_DEFINITIONS[name].inputSchema;
 }

@@ -3,7 +3,7 @@ use crate::{
     error::{ErrorCode, ExeoraError},
     protocol::{
         DEFAULT_COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_BYTES, MAX_PROCESS_BUFFER_BYTES,
-        MAX_PROCESS_CHUNK_BYTES, MAX_PROCESSES_PER_PROJECT,
+        MAX_PROCESS_CHUNK_BYTES, MAX_PROCESSES_PER_PROJECT, MAX_PROCESSES_PER_WORKTREE,
     },
 };
 #[cfg(windows)]
@@ -32,6 +32,8 @@ type SharedChild = Arc<Mutex<Box<dyn ChildWrapper>>>;
 struct Running {
     root: PathBuf,
     project_scope: String,
+    worktree_key: String,
+    owner_client_id: Option<String>,
     child: SharedChild,
     stdin: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
     ring: Arc<Mutex<Ring>>,
@@ -192,6 +194,8 @@ impl ProcessRegistry {
         &self,
         root: &Path,
         project_scope: &str,
+        worktree_key: &str,
+        owner_client_id: Option<&str>,
         value: Value,
     ) -> Result<Value, ExeoraError> {
         let args: StartArgs = parse(value)?;
@@ -200,12 +204,25 @@ impl ProcessRegistry {
         for entry in entries.values_mut() {
             refresh(entry).await;
         }
-        if entries
+        let running = |entry: &&Running| entry.running;
+        let in_worktree = entries
             .values()
-            .filter(|entry| entry.project_scope == project_scope && entry.running)
-            .count()
-            >= MAX_PROCESSES_PER_PROJECT
-        {
+            .filter(|entry| {
+                entry.project_scope == project_scope
+                    && entry.worktree_key == worktree_key
+                    && running(entry)
+            })
+            .count();
+        if in_worktree >= MAX_PROCESSES_PER_WORKTREE {
+            return Err(ExeoraError::tool(format!(
+                "This worktree already has {MAX_PROCESSES_PER_WORKTREE} processes running. Stop one with kill_command before starting another."
+            )));
+        }
+        let in_project = entries
+            .values()
+            .filter(|entry| entry.project_scope == project_scope && running(entry))
+            .count();
+        if in_project >= MAX_PROCESSES_PER_PROJECT {
             return Err(ExeoraError::tool(format!(
                 "This project already has {MAX_PROCESSES_PER_PROJECT} processes running. Stop one with kill_command before starting another."
             )));
@@ -224,6 +241,8 @@ impl ProcessRegistry {
             Running {
                 root: real_root,
                 project_scope: project_scope.to_owned(),
+                worktree_key: worktree_key.to_owned(),
+                owner_client_id: owner_client_id.map(str::to_owned),
                 child: Arc::new(Mutex::new(child)),
                 stdin,
                 ring,
@@ -234,10 +253,24 @@ impl ProcessRegistry {
         Ok(json!({ "processId": id, "command": args.command, "pid": pid }))
     }
 
-    pub async fn get_output(&self, root: &Path, value: Value) -> Result<Value, ExeoraError> {
+    pub async fn get_output(
+        &self,
+        root: &Path,
+        project_scope: &str,
+        worktree_key: &str,
+        owner_client_id: Option<&str>,
+        value: Value,
+    ) -> Result<Value, ExeoraError> {
         let args: OutputArgs = parse(value)?;
         let mut entries = self.entries.lock().await;
-        let entry = find_entry(&mut entries, root, &args.process_id)?;
+        let entry = find_entry(
+            &mut entries,
+            root,
+            project_scope,
+            worktree_key,
+            owner_client_id,
+            &args.process_id,
+        )?;
         refresh(entry).await;
         let ring = entry.ring.lock().await;
         let total = ring.dropped + ring.bytes;
@@ -254,10 +287,24 @@ impl ProcessRegistry {
         }))
     }
 
-    pub async fn send_input(&self, root: &Path, value: Value) -> Result<Value, ExeoraError> {
+    pub async fn send_input(
+        &self,
+        root: &Path,
+        project_scope: &str,
+        worktree_key: &str,
+        owner_client_id: Option<&str>,
+        value: Value,
+    ) -> Result<Value, ExeoraError> {
         let args: InputArgs = parse(value)?;
         let mut entries = self.entries.lock().await;
-        let entry = find_entry(&mut entries, root, &args.process_id)?;
+        let entry = find_entry(
+            &mut entries,
+            root,
+            project_scope,
+            worktree_key,
+            owner_client_id,
+            &args.process_id,
+        )?;
         if !entry.running {
             return Err(ExeoraError::tool("That process is not accepting input."));
         }
@@ -292,10 +339,24 @@ impl ProcessRegistry {
         Ok(json!({ "processId": args.process_id, "bytesWritten": payload.len() }))
     }
 
-    pub async fn kill_command(&self, root: &Path, value: Value) -> Result<Value, ExeoraError> {
+    pub async fn kill_command(
+        &self,
+        root: &Path,
+        project_scope: &str,
+        worktree_key: &str,
+        owner_client_id: Option<&str>,
+        value: Value,
+    ) -> Result<Value, ExeoraError> {
         let args: ProcessArgs = parse(value)?;
         let mut entries = self.entries.lock().await;
-        let entry = find_entry(&mut entries, root, &args.process_id)?;
+        let entry = find_entry(
+            &mut entries,
+            root,
+            project_scope,
+            worktree_key,
+            owner_client_id,
+            &args.process_id,
+        )?;
         refresh(entry).await;
         if !entry.running {
             return Ok(
@@ -526,20 +587,39 @@ async fn refresh(entry: &mut Running) {
     }
 }
 
+const UNKNOWN_PROCESS: &str = "No such process in this project and worktree.";
+
 fn find_entry<'a>(
     entries: &'a mut HashMap<String, Running>,
     root: &Path,
+    project_scope: &str,
+    worktree_key: &str,
+    owner_client_id: Option<&str>,
     id: &str,
 ) -> Result<&'a mut Running, ExeoraError> {
     let real_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_owned());
-    entries
-        .get_mut(id)
-        .filter(|entry| entry.root == real_root)
-        .ok_or_else(|| {
-            ExeoraError::tool(
-                "No such process. It may have been stopped, or it belongs to another project.",
-            )
-        })
+    let Some(entry) = entries.get_mut(id) else {
+        return Err(ExeoraError::new(ErrorCode::UnknownProcess, UNKNOWN_PROCESS));
+    };
+    // Same answer for a handle that lives elsewhere, so a caller cannot hunt
+    // across worktrees or clients by reading the error.
+    if entry.root != real_root
+        || entry.project_scope != project_scope
+        || entry.worktree_key != worktree_key
+        || !owner_matches(entry.owner_client_id.as_deref(), owner_client_id)
+    {
+        return Err(ExeoraError::new(ErrorCode::UnknownProcess, UNKNOWN_PROCESS));
+    }
+    Ok(entry)
+}
+
+/// A process started without a client id is unattributed: the handle and tuple
+/// are the whole proof. One started with an id stays bound to that id.
+fn owner_matches(bound: Option<&str>, caller: Option<&str>) -> bool {
+    match bound {
+        None => true,
+        Some(bound) => caller == Some(bound),
+    }
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ExeoraError> {

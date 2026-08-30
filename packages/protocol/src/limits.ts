@@ -47,12 +47,32 @@ export const MAX_PROCESS_BUFFER_BYTES = 256_000;
 export const MAX_PROCESS_CHUNK_BYTES = 100_000;
 
 /**
- * How many long-running processes one project may have at once.
+ * How many long-running processes one worktree may have at once.
  *
  * Low on purpose. These are dev servers and watch tasks, and an agent that has
  * started twenty of something has lost track rather than found a use for them.
+ * Counted per worktree so one checkout cannot spend another checkout's slots.
  */
-export const MAX_PROCESSES_PER_PROJECT = 8;
+export const MAX_PROCESSES_PER_WORKTREE = 8;
+
+/**
+ * How many long-running processes one project may have at once, across worktrees.
+ *
+ * The worktree cap is the one an agent hits first. This is the backstop so eight
+ * checkouts cannot become sixty-four dev servers on one machine.
+ */
+export const MAX_PROCESSES_PER_PROJECT = 16;
+
+/** Largest number of file operations `apply_patch` will take in one call. */
+export const MAX_PATCH_OPS = 20;
+
+/**
+ * Largest combined size of contents `apply_patch` will write, in bytes.
+ *
+ * Aligned with MAX_RESULT_BYTES so a patch cannot be larger than a tool result
+ * the relay would accept anyway.
+ */
+export const MAX_PATCH_BYTES = 1_000_000;
 
 /**
  * How long a call may wait for someone to confirm it, in milliseconds.

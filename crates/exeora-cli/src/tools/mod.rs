@@ -1,4 +1,5 @@
 mod files;
+mod patch;
 pub(crate) mod path;
 mod processes;
 
@@ -17,6 +18,13 @@ use tokio_util::sync::CancellationToken;
 pub struct ToolEngine {
     validators: HashMap<ToolName, Validator>,
     processes: Arc<ProcessRegistry>,
+}
+
+/// Where a call runs, and who started it, when that is known.
+pub struct CallScope<'a> {
+    pub project: &'a str,
+    pub worktree: &'a str,
+    pub owner: Option<&'a str>,
 }
 
 impl ToolEngine {
@@ -47,14 +55,47 @@ impl ToolEngine {
         arguments: Value,
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
-        self.execute_for_project(root, &root.to_string_lossy(), tool, arguments, cancel)
-            .await
+        let project = root.to_string_lossy();
+        self.execute_scoped(
+            root,
+            CallScope {
+                project: &project,
+                worktree: "main",
+                owner: None,
+            },
+            tool,
+            arguments,
+            cancel,
+        )
+        .await
     }
 
     pub async fn execute_for_project(
         &self,
         root: &Path,
         project_scope: &str,
+        tool: ToolName,
+        arguments: Value,
+        cancel: CancellationToken,
+    ) -> Result<Value, ExeoraError> {
+        self.execute_scoped(
+            root,
+            CallScope {
+                project: project_scope,
+                worktree: "main",
+                owner: None,
+            },
+            tool,
+            arguments,
+            cancel,
+        )
+        .await
+    }
+
+    pub async fn execute_scoped(
+        &self,
+        root: &Path,
+        scope: CallScope<'_>,
         tool: ToolName,
         arguments: Value,
         cancel: CancellationToken,
@@ -73,6 +114,7 @@ impl ToolEngine {
             ToolName::Grep => files::grep(root, arguments).await,
             ToolName::EditFile => files::edit_file(root, arguments).await,
             ToolName::WriteFile => files::write_file(root, arguments).await,
+            ToolName::ApplyPatch => patch::apply_patch(root, arguments).await,
             ToolName::ListGitWorktrees
             | ToolName::CreateWorktree
             | ToolName::AttachWorktree
@@ -84,12 +126,24 @@ impl ToolEngine {
             ToolName::RunCommand => self.processes.run_command(root, arguments, cancel).await,
             ToolName::StartCommand => {
                 self.processes
-                    .start_command(root, project_scope, arguments)
+                    .start_command(root, scope.project, scope.worktree, scope.owner, arguments)
                     .await
             }
-            ToolName::GetCommandOutput => self.processes.get_output(root, arguments).await,
-            ToolName::SendCommandInput => self.processes.send_input(root, arguments).await,
-            ToolName::KillCommand => self.processes.kill_command(root, arguments).await,
+            ToolName::GetCommandOutput => {
+                self.processes
+                    .get_output(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .await
+            }
+            ToolName::SendCommandInput => {
+                self.processes
+                    .send_input(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .await
+            }
+            ToolName::KillCommand => {
+                self.processes
+                    .kill_command(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .await
+            }
         }
     }
 

@@ -297,6 +297,16 @@ export function createAccountMcpHandler(
           (args, ctx) => run("write_file", args, ctx),
         );
       }
+      if (offers("apply_patch")) {
+        server.registerTool(
+          "apply_patch",
+          {
+            ...meta("apply_patch"),
+            inputSchema: TOOL_DEFINITIONS.apply_patch.inputSchema.extend(routingArgs),
+          },
+          (args, ctx) => run("apply_patch", args, ctx),
+        );
+      }
       if (offers("list_git_worktrees")) {
         server.registerTool(
           "list_git_worktrees",

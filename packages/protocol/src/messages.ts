@@ -218,14 +218,18 @@ export const ToolCallMessage = z.object({
   tool: z.enum(TOOL_NAMES),
   arguments: z.unknown(),
   /**
-   * Which AI client asked, for the line `exeora connect` prints. Optional in
-   * both directions on purpose, so it needed no version bump: an older CLI
-   * strips the key it does not know, and a newer one tolerates a gateway that
-   * does not send it. It is also genuinely absent sometimes, because not every
-   * client registers a name or announces itself over MCP.
+   * Which AI client asked, for the line `exeora connect` prints and for binding
+   * a long-running process to the caller that started it. Optional in both
+   * directions on purpose, so it needed no version bump: an older CLI strips
+   * the key it does not know, and a newer one tolerates a gateway that does
+   * not send it. It is also genuinely absent sometimes, because not every
+   * client registers a name or announces itself over MCP. A process started
+   * without an `id` is unattributed rather than guessed into whoever calls next.
    */
   client: z
     .object({
+      /** The OAuth client id, when the gateway could name one. */
+      id: z.string().optional(),
       name: z.string().optional(),
       version: z.string().optional(),
     })
