@@ -4,8 +4,9 @@ updates:
   - package-ecosystem: bun
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     labels:
       - dependencies
@@ -13,22 +14,48 @@ updates:
       prefix: "chore"
       include: scope
     groups:
-      production-dependencies:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
-      development-dependencies:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
+      monthly-batch:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      monthly-batch:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      monthly-batch:
+        applies-to: version-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels:
       - dependencies
@@ -37,6 +64,6 @@ updates:
       prefix: "ci"
       include: scope
     groups:
-      github-actions:
-        patterns:
-          - "*"
+      monthly-batch:
+        applies-to: version-updates
+        patterns: ["*"]
