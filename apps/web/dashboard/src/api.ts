@@ -34,7 +34,6 @@ export const TOOL_NAMES = [
   "send_command_input",
   "kill_command",
 ] as const;
-
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 export interface Project {
