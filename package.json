@@ -28,7 +28,7 @@
     "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.9",
+    "@biomejs/biome": "2.5.10",
     "@exeora/design": "workspace:*",
     "@playwright/test": "1.62.1",
     "@resvg/resvg-js": "^2.6.2",
