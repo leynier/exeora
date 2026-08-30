@@ -98,7 +98,7 @@ impl ToolEngine {
             .validators
             .get(&tool)
             .ok_or_else(|| ExeoraError::new(ErrorCode::UnknownTool, "Unsupported tool."))?;
-        if let Err(error) = validator.validate(&arguments) {
+        if let Err(error) = validator.validate(arguments) {
             return Err(ExeoraError::new(
                 ErrorCode::InvalidArguments,
                 error.to_string(),

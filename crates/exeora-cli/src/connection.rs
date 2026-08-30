@@ -363,6 +363,7 @@ async fn connect_once(
     Ok(ConnectOutcome::Disconnected)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn spawn_tool_call(
     message: Value,
     config_path: PathBuf,
