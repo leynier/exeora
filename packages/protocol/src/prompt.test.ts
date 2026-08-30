@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   MAX_GREP_MATCHES,
+  MAX_PATCH_OPS,
   MAX_PROCESSES_PER_PROJECT,
+  MAX_PROCESSES_PER_WORKTREE,
   MAX_READ_BYTES,
 } from "./limits.js";
 import { AGENT_PROMPT_NAME, AGENT_PROMPT_TOOL, agentPrompt, serverInstructions } from "./prompt.js";
@@ -37,7 +39,10 @@ describe("agentPrompt", () => {
     expect(prompt).toContain(`${Math.round(MAX_READ_BYTES / 1000)}KB`);
     expect(prompt).toContain(`${MAX_GREP_MATCHES} matches`);
     expect(prompt).toContain(`${DEFAULT_COMMAND_TIMEOUT_MS / 1000}s`);
-    expect(prompt).toContain(`${MAX_PROCESSES_PER_PROJECT} live processes`);
+    expect(prompt).toContain(`${MAX_PROCESSES_PER_WORKTREE} live processes`);
+    expect(prompt).toContain(`${MAX_PROCESSES_PER_PROJECT} across them`);
+    expect(prompt).toContain(`${MAX_PATCH_OPS} operations`);
+    expect(prompt).toContain("UNKNOWN_PROCESS");
   });
 
   it("explains per-call project selection only on the account endpoint", () => {
@@ -91,6 +96,8 @@ describe("serverInstructions", () => {
 
     expect(instructions).toContain("PATH_ESCAPE");
     expect(instructions).toContain("edit_file");
+    expect(instructions).toContain("apply_patch");
+    expect(instructions).toContain("UNKNOWN_PROCESS");
     expect(instructions).toContain("FORBIDDEN");
   });
 });

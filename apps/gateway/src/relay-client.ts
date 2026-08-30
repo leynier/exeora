@@ -100,7 +100,7 @@ export async function callRelayTool(
     worktreeSlug?: string | undefined;
     tool: ToolName;
     args: unknown;
-    client?: { name?: string; version?: string } | undefined;
+    client?: { id?: string; name?: string; version?: string } | undefined;
     policy?: CommandPolicy | undefined;
     signal?: AbortSignal | undefined;
   },
@@ -237,7 +237,7 @@ export async function requestRelayApproval(
     tool: ToolName;
     prompt: string;
     clientName?: string | undefined;
-    client?: { name?: string; version?: string } | undefined;
+    client?: { id?: string; name?: string; version?: string } | undefined;
   },
 ): Promise<ApprovalOutcome> {
   if (options.prompt.length > MAX_APPROVAL_PROMPT_LENGTH) {

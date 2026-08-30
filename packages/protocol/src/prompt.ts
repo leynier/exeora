@@ -3,7 +3,9 @@ import {
   MAX_COMMAND_OUTPUT_BYTES,
   MAX_COMMAND_TIMEOUT_MS,
   MAX_GREP_MATCHES,
+  MAX_PATCH_OPS,
   MAX_PROCESSES_PER_PROJECT,
+  MAX_PROCESSES_PER_WORKTREE,
   MAX_READ_BYTES,
 } from "./limits.js";
 
@@ -129,9 +131,10 @@ const FINDING = `## Finding things
 
 const CHANGING = `## Changing things
 
-- \`edit_file\` for a file that already exists. \`write_file\` replaces a file whole, and using it on something you have only partly read is how the rest of it gets lost.
+- \`edit_file\` for one change in a file that already exists. \`write_file\` replaces a file whole, and using it on something you have only partly read is how the rest of it gets lost.
 - \`oldString\` must match exactly one place in the file. When an edit is refused as ambiguous, add surrounding lines until it is unique. Never retry the same string hoping for a different answer.
 - \`write_file\` is for files you are creating. Parent directories are made for you.
+- \`apply_patch\` when more than one file must change together: create, update, replace, delete or move, up to ${MAX_PATCH_OPS} operations. Every operation is checked before anything is written; if any of them cannot run, none of them do. Do not issue a sequence of \`edit_file\` calls for a multi-file change that has to land as one.
 - Every edit answers with a unified diff. Read it: it is the only confirmation that you changed what you meant to change.
 - Do not create files nobody asked for. No summary markdown, no notes file, no README beside the work. Editing what exists beats adding to it.`;
 
@@ -139,8 +142,9 @@ const RUNNING = `## Running things
 
 - \`run_command\` for anything that finishes on its own: tests, a build, \`git status\`. It returns stdout, stderr and the exit code, keeps the last ${KB(MAX_COMMAND_OUTPUT_BYTES)} of output, and is killed along with everything it started after ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)} by default and ${SECONDS(MAX_COMMAND_TIMEOUT_MS)} at the most. Stdin is closed, so a command that waits for input exits rather than hanging.
 - \`start_command\` for anything that does not finish: a dev server, a watcher, a REPL, a test run that outlives a single call. It answers immediately with a handle.
-- Then \`get_command_output\` to read from it with a cursor, \`send_command_input\` to answer something it is waiting on, and \`kill_command\` to stop it and everything it started.
-- A project holds at most ${MAX_PROCESSES_PER_PROJECT} live processes. Kill what you started once you are done with it; do not leave a dev server running as a parting gift.
+- Then \`get_command_output\` to read from it with a cursor, \`send_command_input\` to answer something it is waiting on, and \`kill_command\` to stop it and everything it started. Pass the same \`project\` and \`worktree\` you used on \`start_command\`; a handle is only valid there.
+- A worktree holds at most ${MAX_PROCESSES_PER_WORKTREE} live processes, and a project ${MAX_PROCESSES_PER_PROJECT} across them. Kill what you started once you are done with it; do not leave a dev server running as a parting gift.
+- \`UNKNOWN_PROCESS\` means this call's project, worktree and caller do not own that handle. Report it and stop. Do not retry on main, do not search other projects, and do not guess a different worktree.
 - Prefer one plain command to a chained one. \`a && b\` is two things, one of which may be refused, and the refusal names the whole line rather than the part that caused it.`;
 
 const POLICY = `## What the project allows
@@ -149,7 +153,8 @@ const POLICY = `## What the project allows
 - \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are answers, not obstacles. Someone decided, or someone was asked and did not answer. Say what was refused and stop. Do not reach for a different tool, reshape the command, or route around it in any other way. This is the one thing you must never do here.
 - When a list of commands is in force, shell syntax is refused outright: \`;\`, \`&&\`, \`|\`, backticks and \`$(...)\` will not go through whatever the first word is.
 - \`LOCAL_EXECUTOR_OFFLINE\` means the machine is asleep or \`exeora connect\` is not running. Retrying will not fix it. Say so and let the user.
-- \`PATH_ESCAPE\` and \`PATH_NOT_FOUND\` are about the path you sent rather than about permission. Reread it and send the real one.`;
+- \`PATH_ESCAPE\` and \`PATH_NOT_FOUND\` are about the path you sent rather than about permission. Reread it and send the real one.
+- \`UNKNOWN_PROCESS\` is the same kind of answer: this call does not own that handle. Do not hunt for it.`;
 
 const WORK = `## Doing the work
 
@@ -185,7 +190,7 @@ const PROJECTS = `## Choosing a project
 const WORKTREES = `## Choosing a worktree
 
 - \`list_worktrees\` shows the worktrees connected to Exeora and works while the machine is offline. \`list_git_worktrees\` asks the connected machine for Git's complete inventory, including unattached worktrees and their absolute paths.
-- File, command and process tools accept an optional \`worktree\` slug or id. Omit it, or use \`main\`, for the project's primary root. Pass the same worktree to process follow-up tools.
+- File, command and process tools accept an optional \`worktree\` slug or id. Omit it, or use \`main\`, for the project's primary root. That omission is the default, not a memory of the last worktree you used. Pass the same worktree to process follow-up tools.
 - \`create_worktree\` creates a checkout under Exeora's managed root; its optional \`worktree\` chooses the source checkout. \`attach_worktree\` connects an existing checkout by exactly one absolute path or exact branch.
 - \`detach_worktree\` and \`remove_worktree\` require \`worktree\`. Detach only disconnects it. Remove deletes the checkout, refuses dirty state unless \`force\` is true, and keeps its branch unless \`deleteBranch\` is true.
 - A \`pendingUpsert\` or \`pendingDelete\` outcome means the local Git/configuration change succeeded and \`exeora sync\` will retry the gateway half.
@@ -201,8 +206,8 @@ const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside 
 
 - Paths are relative to the project root. Absolute paths and \`..\` are refused with \`PATH_ESCAPE\`.
 - Search with \`grep\` before reading. \`list_files\` for shape, \`read_file\` last; when a read comes back \`truncated\`, continue with \`offset\`.
-- \`edit_file\` for a file that exists, \`write_file\` only for one you are creating. \`oldString\` must be unique; when an edit is refused, add surrounding lines rather than retrying it.
-- \`run_command\` for anything that finishes (stdin closed, killed at ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)}). \`start_command\` with \`get_command_output\`, \`send_command_input\` and \`kill_command\` for dev servers, watchers and anything interactive. Kill what you start.
+- \`edit_file\` for a file that exists, \`write_file\` only for one you are creating, \`apply_patch\` when several files must change together. \`oldString\` must be unique; when an edit is refused, add surrounding lines rather than retrying it.
+- \`run_command\` for anything that finishes (stdin closed, killed at ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)}). \`start_command\` with \`get_command_output\`, \`send_command_input\` and \`kill_command\` for dev servers, watchers and anything interactive. Follow-up process calls must repeat the same project and worktree. Kill what you start. \`UNKNOWN_PROCESS\` means this call does not own that handle: report it and stop.
 - A project's policy can make it read only, restrict which commands run, hide tools, and require a person to confirm. \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are decisions: report them and stop, never work around them. \`LOCAL_EXECUTOR_OFFLINE\` means the machine is not connected.
 - Not every Exeora tool is necessarily offered here. Call what you can see; an absent one is policy, not a fault.`;
 

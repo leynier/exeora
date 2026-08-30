@@ -182,6 +182,7 @@
                             "UNKNOWN_PROJECT",
                             "UNKNOWN_WORKTREE",
                             "WORKTREE_UNAVAILABLE",
+                            "UNKNOWN_PROCESS",
                             "NO_ACTIVE_PROJECT",
                             "FORBIDDEN",
                             "APPROVAL_DECLINED",
@@ -780,6 +781,7 @@
                             "UNKNOWN_PROJECT",
                             "UNKNOWN_WORKTREE",
                             "WORKTREE_UNAVAILABLE",
+                            "UNKNOWN_PROCESS",
                             "NO_ACTIVE_PROJECT",
                             "FORBIDDEN",
                             "APPROVAL_DECLINED",
@@ -1012,6 +1014,7 @@
                 "grep",
                 "edit_file",
                 "write_file",
+                "apply_patch",
                 "list_git_worktrees",
                 "create_worktree",
                 "attach_worktree",
@@ -1028,6 +1031,9 @@
             "client": {
               "type": "object",
               "properties": {
+                "id": {
+                  "type": "string"
+                },
                 "name": {
                   "type": "string"
                 },
@@ -1083,6 +1089,7 @@
                           "grep",
                           "edit_file",
                           "write_file",
+                          "apply_patch",
                           "list_git_worktrees",
                           "create_worktree",
                           "attach_worktree",
@@ -1590,6 +1597,7 @@
                 "grep",
                 "edit_file",
                 "write_file",
+                "apply_patch",
                 "list_git_worktrees",
                 "create_worktree",
                 "attach_worktree",
@@ -1814,6 +1822,7 @@
                   "grep",
                   "edit_file",
                   "write_file",
+                  "apply_patch",
                   "list_git_worktrees",
                   "create_worktree",
                   "attach_worktree",
@@ -1883,6 +1892,7 @@
               "grep",
               "edit_file",
               "write_file",
+              "apply_patch",
               "list_git_worktrees",
               "create_worktree",
               "attach_worktree",

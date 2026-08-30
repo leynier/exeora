@@ -140,3 +140,83 @@ async fn command_tools_capture_output_and_time_out() {
     assert_eq!(timeout["timedOut"], true);
     assert_eq!(timeout["exitCode"], serde_json::Value::Null);
 }
+
+#[tokio::test]
+async fn apply_patch_is_all_or_nothing() {
+    let root = TempDir::new().unwrap();
+    let engine = ToolEngine::new().unwrap();
+    std::fs::write(root.path().join("keep.txt"), "keep\n").unwrap();
+    std::fs::write(root.path().join("old.txt"), "alpha\n").unwrap();
+
+    let applied = call(
+        &engine,
+        &root,
+        ToolName::ApplyPatch,
+        json!({
+            "operations": [
+                {"op": "create", "path": "new.txt", "content": "created\n"},
+                {"op": "update", "path": "old.txt", "oldString": "alpha", "newString": "beta"},
+                {"op": "delete", "path": "keep.txt"}
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(applied["files"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("new.txt")).unwrap(),
+        "created\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("old.txt")).unwrap(),
+        "beta\n"
+    );
+    assert!(!root.path().join("keep.txt").exists());
+
+    let refused = engine
+        .execute(
+            root.path(),
+            ToolName::ApplyPatch,
+            json!({
+                "operations": [
+                    {"op": "create", "path": "ghost.txt", "content": "nope\n"},
+                    {"op": "update", "path": "old.txt", "oldString": "missing", "newString": "x"}
+                ]
+            }),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::ToolFailed);
+    assert!(!root.path().join("ghost.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("old.txt")).unwrap(),
+        "beta\n"
+    );
+}
+
+#[tokio::test]
+async fn apply_patch_refuses_an_escape_before_writing() {
+    let root = TempDir::new().unwrap();
+    let engine = ToolEngine::new().unwrap();
+    std::fs::write(root.path().join("safe.txt"), "safe\n").unwrap();
+
+    let error = engine
+        .execute(
+            root.path(),
+            ToolName::ApplyPatch,
+            json!({
+                "operations": [
+                    {"op": "update", "path": "safe.txt", "oldString": "safe", "newString": "changed"},
+                    {"op": "create", "path": "../outside.txt", "content": "escaped\n"}
+                ]
+            }),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PathEscape);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("safe.txt")).unwrap(),
+        "safe\n"
+    );
+}

@@ -10,6 +10,7 @@ import { z } from "zod";
 
 const client = z
   .object({
+    id: z.string().optional(),
     name: z.string().optional(),
     version: z.string().optional(),
   })

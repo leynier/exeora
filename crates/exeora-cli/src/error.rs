@@ -25,6 +25,8 @@ pub enum ErrorCode {
     UnknownWorktree,
     #[serde(rename = "WORKTREE_UNAVAILABLE")]
     WorktreeUnavailable,
+    #[serde(rename = "UNKNOWN_PROCESS")]
+    UnknownProcess,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
     NoActiveProject,
     #[serde(rename = "FORBIDDEN")]
@@ -51,6 +53,7 @@ impl ErrorCode {
             Self::UnknownProject => "UNKNOWN_PROJECT",
             Self::UnknownWorktree => "UNKNOWN_WORKTREE",
             Self::WorktreeUnavailable => "WORKTREE_UNAVAILABLE",
+            Self::UnknownProcess => "UNKNOWN_PROCESS",
             Self::NoActiveProject => "NO_ACTIVE_PROJECT",
             Self::Forbidden => "FORBIDDEN",
             Self::ApprovalDeclined => "APPROVAL_DECLINED",

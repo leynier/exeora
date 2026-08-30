@@ -9,7 +9,7 @@ use crate::{
         HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES,
         PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
     },
-    tools::ToolEngine,
+    tools::{CallScope, ToolEngine},
     workspace::WorkspaceEngine,
     worktrees::{self, CreateWorktree, PublicWorktree},
 };
@@ -40,6 +40,7 @@ struct ActiveCall {
 struct ResolvedTarget {
     project: ProjectEntry,
     root: PathBuf,
+    worktree_id: Option<String>,
     worktree_slug: Option<String>,
 }
 
@@ -419,12 +420,9 @@ async fn spawn_tool_call(
     let ResolvedTarget {
         project,
         root,
+        worktree_id,
         worktree_slug,
     } = target;
-    let worktree_id = message
-        .get("worktreeId")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     let Some(tool_name) = message
         .get("tool")
         .and_then(Value::as_str)
@@ -487,6 +485,13 @@ async fn spawn_tool_call(
             worktree_slug.as_deref().unwrap_or("main")
         );
     }
+    let worktree_key = worktree_id.clone().unwrap_or_else(|| "main".to_owned());
+    let owner_client_id = message
+        .get("client")
+        .and_then(Value::as_object)
+        .and_then(|client| client.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     tokio::spawn(async move {
         let result = if tool.is_worktree_tool() {
             execute_worktree_tool(
@@ -504,7 +509,17 @@ async fn spawn_tool_call(
             .await
         } else {
             engine
-                .execute_for_project(&root, &project.id, tool, arguments, cancel)
+                .execute_scoped(
+                    &root,
+                    CallScope {
+                        project: &project.id,
+                        worktree: &worktree_key,
+                        owner: owner_client_id.as_deref(),
+                    },
+                    tool,
+                    arguments,
+                    cancel,
+                )
                 .await
         };
         in_flight.lock().await.remove(&request_id);
@@ -1100,6 +1115,7 @@ fn resolve_target(
         return Ok(ResolvedTarget {
             root: std::fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone()),
             project,
+            worktree_id: None,
             worktree_slug: None,
         });
     };
@@ -1128,6 +1144,7 @@ fn resolve_target(
     Ok(ResolvedTarget {
         project,
         root: std::fs::canonicalize(&worktree.root).unwrap_or_else(|_| worktree.root.clone()),
+        worktree_id: Some(worktree.id.clone()),
         worktree_slug: Some(worktree.slug.clone()),
     })
 }
@@ -1388,6 +1405,7 @@ mod tests {
         let resolved =
             resolve_target(&config_path, "prj_1", Some("wtr_active"), Some("feature")).unwrap();
         assert_eq!(resolved.root, fs::canonicalize(feature).unwrap());
+        assert_eq!(resolved.worktree_id.as_deref(), Some("wtr_active"));
         assert_eq!(resolved.worktree_slug.as_deref(), Some("feature"));
 
         for (id, slug) in [

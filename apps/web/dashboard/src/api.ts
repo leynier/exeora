@@ -27,6 +27,7 @@ export const TOOL_NAMES = [
   "grep",
   "edit_file",
   "write_file",
+  "apply_patch",
   "run_command",
   "start_command",
   "get_command_output",

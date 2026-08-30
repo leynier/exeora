@@ -93,6 +93,7 @@ pub mod error {
 ///                  "grep",
 ///                  "edit_file",
 ///                  "write_file",
+///                  "apply_patch",
 ///                  "list_git_worktrees",
 ///                  "create_worktree",
 ///                  "attach_worktree",
@@ -299,6 +300,7 @@ pub mod error {
 ///                            "UNKNOWN_PROJECT",
 ///                            "UNKNOWN_WORKTREE",
 ///                            "WORKTREE_UNAVAILABLE",
+///                            "UNKNOWN_PROCESS",
 ///                            "NO_ACTIVE_PROJECT",
 ///                            "FORBIDDEN",
 ///                            "APPROVAL_DECLINED",
@@ -897,6 +899,7 @@ pub mod error {
 ///                            "UNKNOWN_PROJECT",
 ///                            "UNKNOWN_WORKTREE",
 ///                            "WORKTREE_UNAVAILABLE",
+///                            "UNKNOWN_PROCESS",
 ///                            "NO_ACTIVE_PROJECT",
 ///                            "FORBIDDEN",
 ///                            "APPROVAL_DECLINED",
@@ -1088,6 +1091,7 @@ pub mod error {
 ///              "grep",
 ///              "edit_file",
 ///              "write_file",
+///              "apply_patch",
 ///              "list_git_worktrees",
 ///              "create_worktree",
 ///              "attach_worktree",
@@ -1168,6 +1172,9 @@ pub mod error {
 ///            "client": {
 ///              "type": "object",
 ///              "properties": {
+///                "id": {
+///                  "type": "string"
+///                },
 ///                "name": {
 ///                  "type": "string"
 ///                },
@@ -1241,6 +1248,7 @@ pub mod error {
 ///                          "grep",
 ///                          "edit_file",
 ///                          "write_file",
+///                          "apply_patch",
 ///                          "list_git_worktrees",
 ///                          "create_worktree",
 ///                          "attach_worktree",
@@ -1276,6 +1284,7 @@ pub mod error {
 ///                "grep",
 ///                "edit_file",
 ///                "write_file",
+///                "apply_patch",
 ///                "list_git_worktrees",
 ///                "create_worktree",
 ///                "attach_worktree",
@@ -1775,6 +1784,7 @@ pub mod error {
 ///                "grep",
 ///                "edit_file",
 ///                "write_file",
+///                "apply_patch",
 ///                "list_git_worktrees",
 ///                "create_worktree",
 ///                "attach_worktree",
@@ -2011,6 +2021,7 @@ pub struct ExeoraProtocolTypes {
 ///              "grep",
 ///              "edit_file",
 ///              "write_file",
+///              "apply_patch",
 ///              "list_git_worktrees",
 ///              "create_worktree",
 ///              "attach_worktree",
@@ -2135,6 +2146,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///    "grep",
 ///    "edit_file",
 ///    "write_file",
+///    "apply_patch",
 ///    "list_git_worktrees",
 ///    "create_worktree",
 ///    "attach_worktree",
@@ -2172,6 +2184,8 @@ pub enum ExeoraProtocolTypesCommandPolicyToolsItem {
     EditFile,
     #[serde(rename = "write_file")]
     WriteFile,
+    #[serde(rename = "apply_patch")]
+    ApplyPatch,
     #[serde(rename = "list_git_worktrees")]
     ListGitWorktrees,
     #[serde(rename = "create_worktree")]
@@ -2201,6 +2215,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesCommandPolicyToolsItem {
             Self::Grep => f.write_str("grep"),
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
+            Self::ApplyPatch => f.write_str("apply_patch"),
             Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
             Self::CreateWorktree => f.write_str("create_worktree"),
             Self::AttachWorktree => f.write_str("attach_worktree"),
@@ -2223,6 +2238,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesCommandPolicyToolsItem {
             "grep" => Ok(Self::Grep),
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
+            "apply_patch" => Ok(Self::ApplyPatch),
             "list_git_worktrees" => Ok(Self::ListGitWorktrees),
             "create_worktree" => Ok(Self::CreateWorktree),
             "attach_worktree" => Ok(Self::AttachWorktree),
@@ -2448,6 +2464,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "UNKNOWN_PROJECT",
 ///                        "UNKNOWN_WORKTREE",
 ///                        "WORKTREE_UNAVAILABLE",
+///                        "UNKNOWN_PROCESS",
 ///                        "NO_ACTIVE_PROJECT",
 ///                        "FORBIDDEN",
 ///                        "APPROVAL_DECLINED",
@@ -3046,6 +3063,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "UNKNOWN_PROJECT",
 ///                        "UNKNOWN_WORKTREE",
 ///                        "WORKTREE_UNAVAILABLE",
+///                        "UNKNOWN_PROCESS",
 ///                        "NO_ACTIVE_PROJECT",
 ///                        "FORBIDDEN",
 ///                        "APPROVAL_DECLINED",
@@ -3685,6 +3703,7 @@ pub struct ExeoraProtocolTypesExecutorMessageProjectsItem {
 ///                "UNKNOWN_PROJECT",
 ///                "UNKNOWN_WORKTREE",
 ///                "WORKTREE_UNAVAILABLE",
+///                "UNKNOWN_PROCESS",
 ///                "NO_ACTIVE_PROJECT",
 ///                "FORBIDDEN",
 ///                "APPROVAL_DECLINED",
@@ -6435,6 +6454,7 @@ impl<'de> ::serde::Deserialize<'de>
 ///        "UNKNOWN_PROJECT",
 ///        "UNKNOWN_WORKTREE",
 ///        "WORKTREE_UNAVAILABLE",
+///        "UNKNOWN_PROCESS",
 ///        "NO_ACTIVE_PROJECT",
 ///        "FORBIDDEN",
 ///        "APPROVAL_DECLINED",
@@ -6475,6 +6495,7 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant1Error {
 ///    "UNKNOWN_PROJECT",
 ///    "UNKNOWN_WORKTREE",
 ///    "WORKTREE_UNAVAILABLE",
+///    "UNKNOWN_PROCESS",
 ///    "NO_ACTIVE_PROJECT",
 ///    "FORBIDDEN",
 ///    "APPROVAL_DECLINED",
@@ -6519,6 +6540,8 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant1ErrorCode {
     UnknownWorktree,
     #[serde(rename = "WORKTREE_UNAVAILABLE")]
     WorktreeUnavailable,
+    #[serde(rename = "UNKNOWN_PROCESS")]
+    UnknownProcess,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
     NoActiveProject,
     #[serde(rename = "FORBIDDEN")]
@@ -6544,6 +6567,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             Self::UnknownProject => f.write_str("UNKNOWN_PROJECT"),
             Self::UnknownWorktree => f.write_str("UNKNOWN_WORKTREE"),
             Self::WorktreeUnavailable => f.write_str("WORKTREE_UNAVAILABLE"),
+            Self::UnknownProcess => f.write_str("UNKNOWN_PROCESS"),
             Self::NoActiveProject => f.write_str("NO_ACTIVE_PROJECT"),
             Self::Forbidden => f.write_str("FORBIDDEN"),
             Self::ApprovalDeclined => f.write_str("APPROVAL_DECLINED"),
@@ -6567,6 +6591,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             "UNKNOWN_PROJECT" => Ok(Self::UnknownProject),
             "UNKNOWN_WORKTREE" => Ok(Self::UnknownWorktree),
             "WORKTREE_UNAVAILABLE" => Ok(Self::WorktreeUnavailable),
+            "UNKNOWN_PROCESS" => Ok(Self::UnknownProcess),
             "NO_ACTIVE_PROJECT" => Ok(Self::NoActiveProject),
             "FORBIDDEN" => Ok(Self::Forbidden),
             "APPROVAL_DECLINED" => Ok(Self::ApprovalDeclined),
@@ -6722,6 +6747,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageSessio
 ///          "grep",
 ///          "edit_file",
 ///          "write_file",
+///          "apply_patch",
 ///          "list_git_worktrees",
 ///          "create_worktree",
 ///          "attach_worktree",
@@ -6859,6 +6885,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesLocal
 ///    "grep",
 ///    "edit_file",
 ///    "write_file",
+///    "apply_patch",
 ///    "list_git_worktrees",
 ///    "create_worktree",
 ///    "attach_worktree",
@@ -6896,6 +6923,8 @@ pub enum ExeoraProtocolTypesLocalCommandPolicyToolsItem {
     EditFile,
     #[serde(rename = "write_file")]
     WriteFile,
+    #[serde(rename = "apply_patch")]
+    ApplyPatch,
     #[serde(rename = "list_git_worktrees")]
     ListGitWorktrees,
     #[serde(rename = "create_worktree")]
@@ -6925,6 +6954,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             Self::Grep => f.write_str("grep"),
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
+            Self::ApplyPatch => f.write_str("apply_patch"),
             Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
             Self::CreateWorktree => f.write_str("create_worktree"),
             Self::AttachWorktree => f.write_str("attach_worktree"),
@@ -6947,6 +6977,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             "grep" => Ok(Self::Grep),
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
+            "apply_patch" => Ok(Self::ApplyPatch),
             "list_git_worktrees" => Ok(Self::ListGitWorktrees),
             "create_worktree" => Ok(Self::CreateWorktree),
             "attach_worktree" => Ok(Self::AttachWorktree),
@@ -7055,6 +7086,9 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        "client": {
 ///          "type": "object",
 ///          "properties": {
+///            "id": {
+///              "type": "string"
+///            },
 ///            "name": {
 ///              "type": "string"
 ///            },
@@ -7128,6 +7162,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                      "grep",
 ///                      "edit_file",
 ///                      "write_file",
+///                      "apply_patch",
 ///                      "list_git_worktrees",
 ///                      "create_worktree",
 ///                      "attach_worktree",
@@ -7163,6 +7198,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "grep",
 ///            "edit_file",
 ///            "write_file",
+///            "apply_patch",
 ///            "list_git_worktrees",
 ///            "create_worktree",
 ///            "attach_worktree",
@@ -7662,6 +7698,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "grep",
 ///            "edit_file",
 ///            "write_file",
+///            "apply_patch",
 ///            "list_git_worktrees",
 ///            "create_worktree",
 ///            "attach_worktree",
@@ -9259,6 +9296,9 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionSta
 ///{
 ///  "type": "object",
 ///  "properties": {
+///    "id": {
+///      "type": "string"
+///    },
 ///    "name": {
 ///      "type": "string"
 ///    },
@@ -9274,6 +9314,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionSta
 #[serde(deny_unknown_fields)]
 pub struct ExeoraProtocolTypesRelayMessageClient {
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub id: ::std::option::Option<::std::string::String>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub name: ::std::option::Option<::std::string::String>,
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub version: ::std::option::Option<::std::string::String>,
@@ -9281,6 +9323,7 @@ pub struct ExeoraProtocolTypesRelayMessageClient {
 impl ::std::default::Default for ExeoraProtocolTypesRelayMessageClient {
     fn default() -> Self {
         Self {
+            id: Default::default(),
             name: Default::default(),
             version: Default::default(),
         }
@@ -9413,6 +9456,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageData {
 ///              "grep",
 ///              "edit_file",
 ///              "write_file",
+///              "apply_patch",
 ///              "list_git_worktrees",
 ///              "create_worktree",
 ///              "attach_worktree",
@@ -9537,6 +9581,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
 ///    "grep",
 ///    "edit_file",
 ///    "write_file",
+///    "apply_patch",
 ///    "list_git_worktrees",
 ///    "create_worktree",
 ///    "attach_worktree",
@@ -9574,6 +9619,8 @@ pub enum ExeoraProtocolTypesRelayMessagePolicyToolsItem {
     EditFile,
     #[serde(rename = "write_file")]
     WriteFile,
+    #[serde(rename = "apply_patch")]
+    ApplyPatch,
     #[serde(rename = "list_git_worktrees")]
     ListGitWorktrees,
     #[serde(rename = "create_worktree")]
@@ -9603,6 +9650,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             Self::Grep => f.write_str("grep"),
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
+            Self::ApplyPatch => f.write_str("apply_patch"),
             Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
             Self::CreateWorktree => f.write_str("create_worktree"),
             Self::AttachWorktree => f.write_str("attach_worktree"),
@@ -9625,6 +9673,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             "grep" => Ok(Self::Grep),
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
+            "apply_patch" => Ok(Self::ApplyPatch),
             "list_git_worktrees" => Ok(Self::ListGitWorktrees),
             "create_worktree" => Ok(Self::CreateWorktree),
             "attach_worktree" => Ok(Self::AttachWorktree),
@@ -9750,6 +9799,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageSessionId
 ///    "grep",
 ///    "edit_file",
 ///    "write_file",
+///    "apply_patch",
 ///    "list_git_worktrees",
 ///    "create_worktree",
 ///    "attach_worktree",
@@ -9787,6 +9837,8 @@ pub enum ExeoraProtocolTypesRelayMessageTool {
     EditFile,
     #[serde(rename = "write_file")]
     WriteFile,
+    #[serde(rename = "apply_patch")]
+    ApplyPatch,
     #[serde(rename = "list_git_worktrees")]
     ListGitWorktrees,
     #[serde(rename = "create_worktree")]
@@ -9816,6 +9868,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageTool {
             Self::Grep => f.write_str("grep"),
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
+            Self::ApplyPatch => f.write_str("apply_patch"),
             Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
             Self::CreateWorktree => f.write_str("create_worktree"),
             Self::AttachWorktree => f.write_str("attach_worktree"),
@@ -9838,6 +9891,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageTool {
             "grep" => Ok(Self::Grep),
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
+            "apply_patch" => Ok(Self::ApplyPatch),
             "list_git_worktrees" => Ok(Self::ListGitWorktrees),
             "create_worktree" => Ok(Self::CreateWorktree),
             "attach_worktree" => Ok(Self::AttachWorktree),

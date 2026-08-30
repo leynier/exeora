@@ -53,6 +53,7 @@ describe("read_only", () => {
   it("refuses every tool that changes anything", () => {
     expect(policyAllows(readOnly, "edit_file", {}).allowed).toBe(false);
     expect(policyAllows(readOnly, "write_file", {}).allowed).toBe(false);
+    expect(policyAllows(readOnly, "apply_patch", {}).allowed).toBe(false);
     expect(policyAllows(readOnly, "create_worktree", { branch: "feature" }).allowed).toBe(false);
     expect(policyAllows(readOnly, "attach_worktree", { path: "/work/feature" }).allowed).toBe(
       false,
