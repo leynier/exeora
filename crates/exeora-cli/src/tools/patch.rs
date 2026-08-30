@@ -782,7 +782,7 @@ fn inject_next_rename_failure() {
     FAIL_NEXT_RENAME.with(|flag| flag.set(true));
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn inject_delete_failure_at(n: usize) {
     DELETE_COUNT.with(|count| count.set(0));
     FAIL_DELETE_AT.with(|target| target.set(n));
@@ -790,9 +790,11 @@ fn inject_delete_failure_at(n: usize) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::inject_delete_failure_at;
     use super::{
-        apply_patch_sync, inject_delete_failure_at, inject_next_rename_failure,
-        inject_next_write_failure, take_applied_actions,
+        apply_patch_sync, inject_next_rename_failure, inject_next_write_failure,
+        take_applied_actions,
     };
     use crate::error::ErrorCode;
     use serde_json::json;
