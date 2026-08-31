@@ -151,16 +151,20 @@ export function sendCancel(ctx: DurableObjectState, requestId: string): void {
 }
 
 /**
- * Whether a socket other than this one is still attached as the executor.
+ * Whether another routable executor is still attached.
  *
- * A close arriving for a socket the CLI has already replaced must not record
- * a disconnection: a machine that dropped and redialled faster than the old
- * connection was noticed would be marked offline while it is sitting there
- * connected. The closing socket may or may not still be in the list, so the
- * question is asked about the others rather than about the count.
+ * A reconnect marks the previous socket `active: false` before closing it. The
+ * hibernation API may keep that stale socket in `getWebSockets()` until its close
+ * event is delivered, so counting every attached socket can leave presence
+ * recorded as connected after the replacement has also gone. Match
+ * `executorSocket()` here and ignore executors that were explicitly replaced.
  */
 export function hasOtherExecutor(ctx: DurableObjectState, closing: WebSocket): boolean {
-  return ctx.getWebSockets("executor").some((socket) => socket !== closing);
+  return ctx.getWebSockets("executor").some((socket) => {
+    if (socket === closing) return false;
+    const state = attachmentOf(socket);
+    return state?.role === "executor" && state.active !== false;
+  });
 }
 
 export function callerSocket(
