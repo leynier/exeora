@@ -6,6 +6,7 @@ import {
 } from "@exeora/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 import { callRelayWorkspace } from "./relay-client.js";
+import { hasOtherExecutor } from "./relay-do-callers.js";
 import {
   attachFakeExecutor,
   eventually,
@@ -70,6 +71,30 @@ describe("workspace relay", () => {
     ]);
     await eventually(() => expect(stale.socket.readyState).toBe(WebSocket.CLOSED));
     current.socket.close(1000, "done");
+  });
+
+  it("ignores an explicitly replaced executor when deciding whether a closing one has a successor", () => {
+    const executor = (active: boolean | undefined) =>
+      ({
+        deserializeAttachment: () => ({
+          role: "executor",
+          deviceId: "dev_test",
+          ...(active === undefined ? {} : { active }),
+        }),
+      }) as unknown as WebSocket;
+    const closing = executor(true);
+    const stale = executor(false);
+    const legacy = executor(undefined);
+    const ctx = {
+      getWebSockets: () => [stale, closing],
+    } as unknown as DurableObjectState;
+
+    expect(hasOtherExecutor(ctx, closing)).toBe(false);
+
+    const legacyCtx = {
+      getWebSockets: () => [legacy, closing],
+    } as unknown as DurableObjectState;
+    expect(hasOtherExecutor(legacyCtx, closing)).toBe(true);
   });
 
   it("requires a current CLI before dispatching source-control work", async () => {
