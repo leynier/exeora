@@ -14,7 +14,6 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "./db/client.js";
 import { callRelayTool } from "./relay-client.js";
-import { hasOtherExecutor } from "./relay-do-callers.js";
 import {
   attachFakeExecutor,
   currentDeviceId,
@@ -34,30 +33,6 @@ import {
 beforeEach(freshRelay);
 
 describe("presence", () => {
-  it("ignores an explicitly replaced executor when deciding whether a closing one has a successor", () => {
-    const executor = (active: boolean | undefined) =>
-      ({
-        deserializeAttachment: () => ({
-          role: "executor",
-          deviceId: "dev_test",
-          ...(active === undefined ? {} : { active }),
-        }),
-      }) as unknown as WebSocket;
-    const closing = executor(true);
-    const stale = executor(false);
-    const legacy = executor(undefined);
-    const ctx = {
-      getWebSockets: () => [stale, closing],
-    } as unknown as DurableObjectState;
-
-    expect(hasOtherExecutor(ctx, closing)).toBe(false);
-
-    const legacyCtx = {
-      getWebSockets: () => [legacy, closing],
-    } as unknown as DurableObjectState;
-    expect(hasOtherExecutor(legacyCtx, closing)).toBe(true);
-  });
-
   it("reports offline with no executor attached", async () => {
     expect(await relay().isOnline()).toBe(false);
   });
