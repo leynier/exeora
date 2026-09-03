@@ -1,4 +1,4 @@
-import { TOOL_DEFINITIONS, type ToolName, WorktreeRef } from "@exeora/protocol";
+import { TOOL_DEFINITIONS, type ToolName, WorkspaceRef } from "@exeora/protocol";
 import type {
   CallToolResult,
   InputRequiredResult,
@@ -6,16 +6,16 @@ import type {
   ServerContext,
 } from "@modelcontextprotocol/server";
 
-const worktreeRouting = {
-  worktree: WorktreeRef.optional().describe(
-    "Run this call in a connected Git worktree by slug or id. Omit it, or use main, for the project root.",
+const workspaceRouting = {
+  workspace: WorkspaceRef.optional().describe(
+    "Run this call in a connected Git workspace by slug or id. Omit it, or use main, for the project root.",
   ),
 };
-const requiredWorktreeRouting = {
-  worktree: WorktreeRef.describe("The connected Git worktree to change, by slug or stable id."),
+const requiredWorkspaceRouting = {
+  workspace: WorkspaceRef.describe("The connected Git workspace to change, by slug or stable id."),
 };
 
-/** Registers canonical executor tools with project-endpoint worktree routing. */
+/** Registers canonical executor tools with project-endpoint workspace routing. */
 export function registerExecutorTools(
   server: McpServer,
   offers: (name: ToolName) => boolean,
@@ -46,7 +46,7 @@ export function registerExecutorTools(
       "read_file",
       {
         ...meta("read_file"),
-        inputSchema: TOOL_DEFINITIONS.read_file.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.read_file.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("read_file", args, context),
     );
@@ -56,7 +56,7 @@ export function registerExecutorTools(
       "list_files",
       {
         ...meta("list_files"),
-        inputSchema: TOOL_DEFINITIONS.list_files.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.list_files.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("list_files", args, context),
     );
@@ -66,7 +66,7 @@ export function registerExecutorTools(
       "grep",
       {
         ...meta("grep"),
-        inputSchema: TOOL_DEFINITIONS.grep.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.grep.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("grep", args, context),
     );
@@ -76,7 +76,7 @@ export function registerExecutorTools(
       "edit_file",
       {
         ...meta("edit_file"),
-        inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.edit_file.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("edit_file", args, context),
     );
@@ -86,7 +86,7 @@ export function registerExecutorTools(
       "write_file",
       {
         ...meta("write_file"),
-        inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.write_file.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("write_file", args, context),
     );
@@ -96,61 +96,62 @@ export function registerExecutorTools(
       "apply_patch",
       {
         ...meta("apply_patch"),
-        inputSchema: TOOL_DEFINITIONS.apply_patch.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.apply_patch.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("apply_patch", args, context),
     );
   }
-  if (offers("list_git_worktrees")) {
+  if (offers("list_git_workspaces")) {
     server.registerTool(
-      "list_git_worktrees",
+      "list_git_workspaces",
       {
-        ...meta("list_git_worktrees"),
-        inputSchema: TOOL_DEFINITIONS.list_git_worktrees.inputSchema.shape,
+        ...meta("list_git_workspaces"),
+        inputSchema: TOOL_DEFINITIONS.list_git_workspaces.inputSchema.shape,
       },
-      (args, context) => run("list_git_worktrees", args, context),
+      (args, context) => run("list_git_workspaces", args, context),
     );
   }
-  if (offers("create_worktree")) {
+  if (offers("create_workspace")) {
     server.registerTool(
-      "create_worktree",
+      "create_workspace",
       {
-        ...meta("create_worktree"),
-        inputSchema: TOOL_DEFINITIONS.create_worktree.inputSchema.safeExtend(worktreeRouting).shape,
-      },
-      (args, context) => run("create_worktree", args, context),
-    );
-  }
-  if (offers("attach_worktree")) {
-    server.registerTool(
-      "attach_worktree",
-      {
-        ...meta("attach_worktree"),
-        inputSchema: TOOL_DEFINITIONS.attach_worktree.inputSchema.shape,
-      },
-      (args, context) => run("attach_worktree", args, context),
-    );
-  }
-  if (offers("detach_worktree")) {
-    server.registerTool(
-      "detach_worktree",
-      {
-        ...meta("detach_worktree"),
+        ...meta("create_workspace"),
         inputSchema:
-          TOOL_DEFINITIONS.detach_worktree.inputSchema.extend(requiredWorktreeRouting).shape,
+          TOOL_DEFINITIONS.create_workspace.inputSchema.safeExtend(workspaceRouting).shape,
       },
-      (args, context) => run("detach_worktree", args, context),
+      (args, context) => run("create_workspace", args, context),
     );
   }
-  if (offers("remove_worktree")) {
+  if (offers("attach_workspace")) {
     server.registerTool(
-      "remove_worktree",
+      "attach_workspace",
       {
-        ...meta("remove_worktree"),
-        inputSchema:
-          TOOL_DEFINITIONS.remove_worktree.inputSchema.extend(requiredWorktreeRouting).shape,
+        ...meta("attach_workspace"),
+        inputSchema: TOOL_DEFINITIONS.attach_workspace.inputSchema.shape,
       },
-      (args, context) => run("remove_worktree", args, context),
+      (args, context) => run("attach_workspace", args, context),
+    );
+  }
+  if (offers("detach_workspace")) {
+    server.registerTool(
+      "detach_workspace",
+      {
+        ...meta("detach_workspace"),
+        inputSchema:
+          TOOL_DEFINITIONS.detach_workspace.inputSchema.extend(requiredWorkspaceRouting).shape,
+      },
+      (args, context) => run("detach_workspace", args, context),
+    );
+  }
+  if (offers("remove_workspace")) {
+    server.registerTool(
+      "remove_workspace",
+      {
+        ...meta("remove_workspace"),
+        inputSchema:
+          TOOL_DEFINITIONS.remove_workspace.inputSchema.extend(requiredWorkspaceRouting).shape,
+      },
+      (args, context) => run("remove_workspace", args, context),
     );
   }
   if (offers("run_command")) {
@@ -158,7 +159,7 @@ export function registerExecutorTools(
       "run_command",
       {
         ...meta("run_command"),
-        inputSchema: TOOL_DEFINITIONS.run_command.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.run_command.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("run_command", args, context),
     );
@@ -168,7 +169,7 @@ export function registerExecutorTools(
       "start_command",
       {
         ...meta("start_command"),
-        inputSchema: TOOL_DEFINITIONS.start_command.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.start_command.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("start_command", args, context),
     );
@@ -178,7 +179,7 @@ export function registerExecutorTools(
       "get_command_output",
       {
         ...meta("get_command_output"),
-        inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.get_command_output.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("get_command_output", args, context),
     );
@@ -188,7 +189,7 @@ export function registerExecutorTools(
       "send_command_input",
       {
         ...meta("send_command_input"),
-        inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.send_command_input.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("send_command_input", args, context),
     );
@@ -198,7 +199,7 @@ export function registerExecutorTools(
       "kill_command",
       {
         ...meta("kill_command"),
-        inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.kill_command.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("kill_command", args, context),
     );
@@ -208,7 +209,7 @@ export function registerExecutorTools(
       "list_skills",
       {
         ...meta("list_skills"),
-        inputSchema: TOOL_DEFINITIONS.list_skills.inputSchema.extend(worktreeRouting).shape,
+        inputSchema: TOOL_DEFINITIONS.list_skills.inputSchema.extend(workspaceRouting).shape,
       },
       (args, context) => run("list_skills", args, context),
     );

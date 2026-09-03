@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-export function CreateWorktreeDialog({
+export function CreateWorkspaceDialog({
   open,
   pending,
   defaultBranch,
@@ -44,11 +44,11 @@ export function CreateWorktreeDialog({
       className="border-border bg-surface text-foreground m-auto w-[min(26rem,calc(100vw-2rem))] rounded-xl border p-6 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
       <h2 id={titleId} className="text-title-lg">
-        Create a Git worktree?
+        Create a Git workspace?
       </h2>
       <p className="text-body-md text-foreground-muted mt-2">
         This adds a separate checkout on the connected machine and switches Source Control to it.
-        The current worktree stays on {fromHead ?? "its current branch"}.
+        The current workspace stays on {fromHead ?? "its current branch"}.
       </p>
       <label className="mt-4 block">
         <span className="text-label-md text-foreground-faint font-mono tracking-wide uppercase">
@@ -65,7 +65,7 @@ export function CreateWorktreeDialog({
       {name.length > 0 && name === fromHead ? (
         <p className="text-body-md text-foreground-muted mt-2">
           {name} is already checked out here. Use a new branch name, or an existing branch that is
-          not open in another worktree.
+          not open in another workspace.
         </p>
       ) : null}
       <label className="text-body-md mt-3 flex items-start gap-2">
@@ -88,7 +88,7 @@ export function CreateWorktreeDialog({
           disabled={pending || name.length === 0 || name === fromHead}
           onClick={() => onSubmit({ branch: name, reuseExistingBranch })}
         >
-          {pending ? "Working…" : "Create worktree"}
+          {pending ? "Working…" : "Create workspace"}
         </button>
       </div>
     </dialog>

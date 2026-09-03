@@ -19,11 +19,11 @@ export const ProjectRef = z
   .min(1)
   .describe("The project's slug, or its id. Slugs are unique within an account.");
 
-export const WorktreeRef = z
+export const WorkspaceRef = z
   .string()
   .min(1)
   .describe(
-    "A connected worktree's slug or stable id. Use main, or omit it, for the project root.",
+    "A connected workspace's slug or stable id. Use main, or omit it, for the project root.",
   );
 
 export const ProjectSummary = z.object({
@@ -41,10 +41,11 @@ export const ListProjectsOutput = z.object({
   projects: z.array(ProjectSummary),
 });
 
-export const ListWorktreesInput = z.object({ project: ProjectRef.optional() });
-export const ListWorktreesOutput = z.object({
+export const ListWorkspacesInput = z.object({ project: ProjectRef.optional() });
+
+export const ListWorkspacesOutput = z.object({
   project: z.string(),
-  worktrees: z.array(
+  workspaces: z.array(
     z.object({
       slug: z.string(),
       name: z.string(),
@@ -55,12 +56,12 @@ export const ListWorktreesOutput = z.object({
 });
 
 export const ACCOUNT_TOOL_DEFINITIONS = {
-  list_worktrees: {
-    title: "List worktrees",
+  list_workspaces: {
+    title: "List workspaces",
     description:
-      "List the Git worktrees connected under a project. Pass a project slug or id when this connection reaches more than one project.",
-    inputSchema: ListWorktreesInput,
-    outputSchema: ListWorktreesOutput,
+      "List the Git workspaces connected under a project. Pass a project slug or id when this connection reaches more than one project.",
+    inputSchema: ListWorkspacesInput,
+    outputSchema: ListWorkspacesOutput,
     readOnly: true,
   },
   list_projects: {

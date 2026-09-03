@@ -17,23 +17,16 @@ import {
   isAccountToolName,
 } from "./tools-account.js";
 import { SKILL_TOOL_DEFINITIONS } from "./tools-skills.js";
-import { WORKTREE_TOOL_DEFINITIONS } from "./tools-worktrees.js";
+import { WORKSPACE_TOOL_DEFINITIONS } from "./tools-workspaces.js";
 
 export * from "./tools-skills.js";
-export * from "./tools-worktrees.js";
+export * from "./tools-workspaces.js";
 
 /**
  * The single source of truth for what an Exeora tool accepts and returns.
- *
  * The gateway feeds `inputShape` straight into `server.registerTool()`, and the
- * executor validates incoming arguments against the same shape before doing any
- * work. The executor borrows some of its file handling from other projects,
- * which describe their tools with schemas of their own; those are deliberately
- * ignored so this contract exists exactly once.
- *
- * Project `path`s are relative to the project root. Reads and command `cwd` may
- * also use `~/.agents/AGENTS.md` and `~/.agents/skills/`; anything else absolute
- * or climbing out with `..` is `PATH_ESCAPE`.
+ * executor validates incoming arguments against the same shape before doing any work.
+ * Project `path`s are relative to the project root.
  */
 
 const relativePath = z
@@ -390,7 +383,7 @@ export const TOOL_DEFINITIONS = {
     outputSchema: ApplyPatchOutput,
     readOnly: false,
   },
-  ...WORKTREE_TOOL_DEFINITIONS,
+  ...WORKSPACE_TOOL_DEFINITIONS,
   run_command: {
     title: "Run command",
     description:

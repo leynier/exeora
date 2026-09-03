@@ -47,11 +47,11 @@ export function mcpRoute(projectId: string): string {
 export interface McpToolContext {
   userId: string;
   projectId: string;
-  worktree?: string | undefined;
+  workspace?: string | undefined;
   caller: CallerIdentity;
   /** True once the user has confirmed this exact call. */
   approved: boolean;
-  approvedWorktreeId?: string | undefined;
+  approvedWorkspaceId?: string | undefined;
   /**
    * Whether this client can be asked over MCP.
    *
@@ -85,7 +85,12 @@ export type DispatchResult =
    * for `run_command` in one project would verify against the same arguments in
    * another.
    */
-  | { kind: "needs-approval"; projectId: string; worktreeId?: string; worktreeSlug?: string };
+  | {
+      kind: "needs-approval";
+      projectId: string;
+      workspaceId?: string;
+      workspaceSlug?: string;
+    };
 
 /** Runs a tool on the user's machine, through the relay. */
 export type ToolDispatcher = (
@@ -112,7 +117,7 @@ export function createProjectMcpHandler(
    * `LOCAL_EXECUTOR_OFFLINE`, which says the true thing.
    */
   advertised?: ReadonlySet<ToolName>,
-  listWorktrees?: (
+  listWorkspaces?: (
     context: Pick<McpToolContext, "userId" | "projectId" | "caller">,
   ) => Promise<unknown>,
 ) {
@@ -134,13 +139,13 @@ export function createProjectMcpHandler(
 
       registerAgentPrompt(server, false);
 
-      if (listWorktrees) {
+      if (listWorkspaces) {
         server.registerTool(
-          "list_worktrees",
+          "list_workspaces",
           {
-            title: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.title,
-            description: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.description,
-            inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.inputSchema.omit({
+            title: ACCOUNT_TOOL_DEFINITIONS.list_workspaces.title,
+            description: ACCOUNT_TOOL_DEFINITIONS.list_workspaces.description,
+            inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_workspaces.inputSchema.omit({
               project: true,
             }),
             annotations: { readOnlyHint: true },
@@ -148,7 +153,7 @@ export function createProjectMcpHandler(
           async (_args, ctx) => {
             const props = propsOf();
             return toolResult(
-              await listWorktrees({
+              await listWorkspaces({
                 userId: String(props.userId ?? ""),
                 projectId,
                 caller: {
@@ -166,21 +171,21 @@ export function createProjectMcpHandler(
       // arguments again against the same schema before touching the disk.
       const run = async (tool: ToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
-        const { worktree, rest } = splitWorktree(args);
+        const { workspace, rest } = splitWorkspace(args);
         const approval = await approvalFor(ctx, tool, args);
 
         const result = await dispatch(
           {
             userId: String(props.userId ?? ""),
             projectId,
-            worktree,
+            workspace,
             caller: {
               clientId: props.clientId,
               clientName: props.clientName,
               mcp: mcpClientInfo(ctx),
             },
             approved: approval?.projectId === projectId,
-            approvedWorktreeId: approval?.worktreeId,
+            approvedWorkspaceId: approval?.workspaceId,
             canElicit: request.era === "modern",
           },
           tool,
@@ -206,7 +211,7 @@ export function createProjectMcpHandler(
             tool,
             args,
             undefined,
-            result.worktreeId,
+            result.workspaceId,
           );
         }
 
@@ -221,10 +226,10 @@ export function createProjectMcpHandler(
   );
 }
 
-function splitWorktree(args: unknown): { worktree: string | undefined; rest: unknown } {
-  if (!args || typeof args !== "object") return { worktree: undefined, rest: args };
-  const { worktree, ...rest } = args as Record<string, unknown>;
-  return { worktree: typeof worktree === "string" ? worktree : undefined, rest };
+function splitWorkspace(args: unknown): { workspace: string | undefined; rest: unknown } {
+  if (!args || typeof args !== "object") return { workspace: undefined, rest: args };
+  const { workspace, ...rest } = args as Record<string, unknown>;
+  return { workspace: typeof workspace === "string" ? workspace : undefined, rest };
 }
 
 /**
@@ -288,7 +293,7 @@ export async function askToConfirm(
   tool: ToolName,
   args: unknown,
   where?: string,
-  worktreeId?: string,
+  workspaceId?: string,
 ) {
   const question = describeCall(tool, args);
 
@@ -302,7 +307,7 @@ export async function askToConfirm(
     requestState: await codec.mint(
       {
         projectId,
-        ...(worktreeId ? { worktreeId } : {}),
+        ...(workspaceId ? { workspaceId } : {}),
         tool,
         argsHash: await hashArguments(args),
       },
@@ -332,7 +337,7 @@ export async function approvalFor(
   ctx: Pick<ServerContext, "mcpReq">,
   tool: ToolName,
   args: unknown,
-): Promise<{ projectId: string; worktreeId?: string } | null> {
+): Promise<{ projectId: string; workspaceId?: string } | null> {
   const state = ctx.mcpReq.requestState<ApprovalState>();
   if (!state || typeof state !== "object") return null;
   if (state.tool !== tool) return null;
@@ -349,7 +354,7 @@ export async function approvalFor(
 
   return {
     projectId: state.projectId,
-    ...(state.worktreeId ? { worktreeId: state.worktreeId } : {}),
+    ...(state.workspaceId ? { workspaceId: state.workspaceId } : {}),
   };
 }
 

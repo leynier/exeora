@@ -25,8 +25,8 @@ describe("audit pipeline event", () => {
       {
         userId: "usr_1",
         projectId: "prj_1",
-        worktreeId: "wkt_1",
-        worktreeSlug: "feature-one",
+        workspaceId: "wkt_1",
+        workspaceSlug: "feature-one",
         tool: "read_file",
         status: "ok",
         durationMs: 12,
@@ -78,8 +78,8 @@ describe("audit pipeline event", () => {
     const handle = await beginAudit(auditEnv, {
       userId: "usr_1",
       projectId: "prj_1",
-      worktreeId: "wkt_1",
-      worktreeSlug: "feature-one",
+      workspaceId: "wkt_1",
+      workspaceSlug: "feature-one",
       tool: "read_file",
       endpoint: "project",
       caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
@@ -110,7 +110,7 @@ describe("audit pipeline event", () => {
     expect(accepted?.acceptedAt).not.toBeNull();
   });
 
-  it("includes worktree identity only after the v2 stream is configured", async () => {
+  it("includes workspace identity in frozen worktree columns after the v2 stream is configured", async () => {
     const send = sender();
     const auditEnv = {
       DB: env.DB,
@@ -120,8 +120,8 @@ describe("audit pipeline event", () => {
     const handle = await beginAudit(auditEnv, {
       userId: "usr_1",
       projectId: "prj_1",
-      worktreeId: "wkt_1",
-      worktreeSlug: "feature-one",
+      workspaceId: "wkt_1",
+      workspaceSlug: "feature-one",
       tool: "read_file",
       endpoint: "dashboard",
       caller: { clientId: undefined, clientName: undefined, mcp: undefined },

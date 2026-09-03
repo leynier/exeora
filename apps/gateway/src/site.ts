@@ -68,8 +68,8 @@ site.get("/terminal/connect", async (c) => {
   if (c.req.header("Origin") !== expectedOrigin) return c.text("Invalid origin.", 403);
   const projectId = c.req.query("projectId");
   const deviceId = c.req.query("deviceId");
-  const worktreeId = c.req.query("worktreeId");
-  const worktreeSlug = c.req.query("worktreeSlug");
+  const workspaceId = c.req.query("workspaceId");
+  const workspaceSlug = c.req.query("workspaceSlug");
   const ticket = c.req.query("ticket");
   const cols = Number(c.req.query("cols"));
   const rows = Number(c.req.query("rows"));
@@ -78,7 +78,7 @@ site.get("/terminal/connect", async (c) => {
     !deviceId ||
     !ticket ||
     !/^[0-9a-f]{64}$/.test(ticket) ||
-    Boolean(worktreeId) !== Boolean(worktreeSlug) ||
+    Boolean(workspaceId) !== Boolean(workspaceSlug) ||
     !Number.isInteger(cols) ||
     cols < 20 ||
     cols > 500 ||
@@ -102,27 +102,27 @@ site.get("/terminal/connect", async (c) => {
     )
     .get();
   if (!project) return c.text("Project not found.", 404);
-  if (worktreeId && worktreeSlug) {
-    const worktree = await db(c.env)
-      .select({ id: schema.worktrees.id })
-      .from(schema.worktrees)
+  if (workspaceId && workspaceSlug) {
+    const workspace = await db(c.env)
+      .select({ id: schema.workspaces.id })
+      .from(schema.workspaces)
       .where(
         and(
-          eq(schema.worktrees.id, worktreeId),
-          eq(schema.worktrees.projectId, projectId),
-          eq(schema.worktrees.slug, worktreeSlug),
+          eq(schema.workspaces.id, workspaceId),
+          eq(schema.workspaces.projectId, projectId),
+          eq(schema.workspaces.slug, workspaceSlug),
         ),
       )
       .get();
-    if (!worktree) return c.text("Worktree not found.", 404);
+    if (!workspace) return c.text("Workspace not found.", 404);
   }
   const relay = c.env.DEVICE_RELAY.getByName(relayName(project.userId, deviceId));
   if (
     !(await relay.consumeTerminalTicket(
       ticket,
       projectId,
-      worktreeId,
-      worktreeSlug,
+      workspaceId,
+      workspaceSlug,
       expectedOrigin,
     ))
   ) {
@@ -131,8 +131,8 @@ site.get("/terminal/connect", async (c) => {
   const url = new URL("https://relay/caller/terminal");
   url.searchParams.set("id", crypto.randomUUID());
   url.searchParams.set("projectId", projectId);
-  if (worktreeId) url.searchParams.set("worktreeId", worktreeId);
-  if (worktreeSlug) url.searchParams.set("worktreeSlug", worktreeSlug);
+  if (workspaceId) url.searchParams.set("workspaceId", workspaceId);
+  if (workspaceSlug) url.searchParams.set("workspaceSlug", workspaceSlug);
   url.searchParams.set("cols", String(cols));
   url.searchParams.set("rows", String(rows));
   return relay.fetch(new Request(url, { headers: { Upgrade: "websocket" } }));

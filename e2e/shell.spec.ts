@@ -41,7 +41,7 @@ async function mockApi(page: Page) {
       "/api/clients": [],
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
-      [`/api/projects/${project.id}/worktrees`]: [],
+      [`/api/projects/${project.id}/workspaces`]: [],
     };
     const body = bodies[path];
     if (body !== undefined) {

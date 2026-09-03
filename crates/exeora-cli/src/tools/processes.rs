@@ -3,7 +3,7 @@ use crate::{
     error::{ErrorCode, ExeoraError},
     protocol::{
         DEFAULT_COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_BYTES, MAX_PROCESS_BUFFER_BYTES,
-        MAX_PROCESS_CHUNK_BYTES, MAX_PROCESSES_PER_PROJECT, MAX_PROCESSES_PER_WORKTREE,
+        MAX_PROCESS_CHUNK_BYTES, MAX_PROCESSES_PER_PROJECT, MAX_PROCESSES_PER_WORKSPACE,
     },
 };
 #[cfg(windows)]
@@ -32,7 +32,7 @@ type SharedChild = Arc<Mutex<Box<dyn ChildWrapper>>>;
 struct Running {
     root: PathBuf,
     project_scope: String,
-    worktree_key: String,
+    workspace_key: String,
     owner_client_id: Option<String>,
     child: SharedChild,
     stdin: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
@@ -194,7 +194,7 @@ impl ProcessRegistry {
         &self,
         root: &Path,
         project_scope: &str,
-        worktree_key: &str,
+        workspace_key: &str,
         owner_client_id: Option<&str>,
         value: Value,
     ) -> Result<Value, ExeoraError> {
@@ -205,17 +205,17 @@ impl ProcessRegistry {
             refresh(entry).await;
         }
         let running = |entry: &&Running| entry.running;
-        let in_worktree = entries
+        let in_workspace = entries
             .values()
             .filter(|entry| {
                 entry.project_scope == project_scope
-                    && entry.worktree_key == worktree_key
+                    && entry.workspace_key == workspace_key
                     && running(entry)
             })
             .count();
-        if in_worktree >= MAX_PROCESSES_PER_WORKTREE {
+        if in_workspace >= MAX_PROCESSES_PER_WORKSPACE {
             return Err(ExeoraError::tool(format!(
-                "This worktree already has {MAX_PROCESSES_PER_WORKTREE} processes running. Stop one with kill_command before starting another."
+                "This workspace already has {MAX_PROCESSES_PER_WORKSPACE} processes running. Stop one with kill_command before starting another."
             )));
         }
         let in_project = entries
@@ -242,7 +242,7 @@ impl ProcessRegistry {
             Running {
                 root: project_root,
                 project_scope: project_scope.to_owned(),
-                worktree_key: worktree_key.to_owned(),
+                workspace_key: workspace_key.to_owned(),
                 owner_client_id: owner_client_id.map(str::to_owned),
                 child: Arc::new(Mutex::new(child)),
                 stdin,
@@ -258,7 +258,7 @@ impl ProcessRegistry {
         &self,
         root: &Path,
         project_scope: &str,
-        worktree_key: &str,
+        workspace_key: &str,
         owner_client_id: Option<&str>,
         value: Value,
     ) -> Result<Value, ExeoraError> {
@@ -268,7 +268,7 @@ impl ProcessRegistry {
             &mut entries,
             root,
             project_scope,
-            worktree_key,
+            workspace_key,
             owner_client_id,
             &args.process_id,
         )?;
@@ -292,7 +292,7 @@ impl ProcessRegistry {
         &self,
         root: &Path,
         project_scope: &str,
-        worktree_key: &str,
+        workspace_key: &str,
         owner_client_id: Option<&str>,
         value: Value,
     ) -> Result<Value, ExeoraError> {
@@ -302,7 +302,7 @@ impl ProcessRegistry {
             &mut entries,
             root,
             project_scope,
-            worktree_key,
+            workspace_key,
             owner_client_id,
             &args.process_id,
         )?;
@@ -344,7 +344,7 @@ impl ProcessRegistry {
         &self,
         root: &Path,
         project_scope: &str,
-        worktree_key: &str,
+        workspace_key: &str,
         owner_client_id: Option<&str>,
         value: Value,
     ) -> Result<Value, ExeoraError> {
@@ -354,7 +354,7 @@ impl ProcessRegistry {
             &mut entries,
             root,
             project_scope,
-            worktree_key,
+            workspace_key,
             owner_client_id,
             &args.process_id,
         )?;
@@ -588,13 +588,13 @@ async fn refresh(entry: &mut Running) {
     }
 }
 
-const UNKNOWN_PROCESS: &str = "No such process in this project and worktree.";
+const UNKNOWN_PROCESS: &str = "No such process in this project and workspace.";
 
 fn find_entry<'a>(
     entries: &'a mut HashMap<String, Running>,
     root: &Path,
     project_scope: &str,
-    worktree_key: &str,
+    workspace_key: &str,
     owner_client_id: Option<&str>,
     id: &str,
 ) -> Result<&'a mut Running, ExeoraError> {
@@ -603,10 +603,10 @@ fn find_entry<'a>(
         return Err(ExeoraError::new(ErrorCode::UnknownProcess, UNKNOWN_PROCESS));
     };
     // Same answer for a handle that lives elsewhere, so a caller cannot hunt
-    // across worktrees or clients by reading the error.
+    // across workspaces or clients by reading the error.
     if entry.root != real_root
         || entry.project_scope != project_scope
-        || entry.worktree_key != worktree_key
+        || entry.workspace_key != workspace_key
         || !owner_matches(entry.owner_client_id.as_deref(), owner_client_id)
     {
         return Err(ExeoraError::new(ErrorCode::UnknownProcess, UNKNOWN_PROCESS));

@@ -5,22 +5,22 @@ import { useTerminals } from "./Terminals.js";
 
 export function WorkspaceTerminals({
   projectId,
-  worktreeId,
-  worktreeSlug,
+  workspaceId,
+  workspaceSlug,
   targetLabel,
   available,
   visible,
 }: {
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug: string | null;
+  workspaceId?: string;
+  workspaceSlug: string | null;
   targetLabel: string;
   available: boolean;
   visible: boolean;
 }) {
   const { sessions, openSession } = useTerminals();
   const [confirming, setConfirming] = useState(false);
-  const currentKey = terminalSessionKey(projectId, worktreeId);
+  const currentKey = terminalSessionKey(projectId, workspaceId);
   const currentOpen = sessions.some((session) => session.key === currentKey);
 
   if (!visible || currentOpen) return null;
@@ -60,8 +60,8 @@ export function WorkspaceTerminals({
           openSession({
             key: currentKey,
             projectId,
-            worktreeId,
-            worktreeSlug,
+            workspaceId,
+            workspaceSlug,
             label: targetLabel,
           });
         }}

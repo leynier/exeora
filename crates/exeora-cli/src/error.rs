@@ -21,10 +21,10 @@ pub enum ErrorCode {
     UnknownTool,
     #[serde(rename = "UNKNOWN_PROJECT")]
     UnknownProject,
-    #[serde(rename = "UNKNOWN_WORKTREE")]
-    UnknownWorktree,
-    #[serde(rename = "WORKTREE_UNAVAILABLE")]
-    WorktreeUnavailable,
+    #[serde(rename = "UNKNOWN_WORKSPACE")]
+    UnknownWorkspace,
+    #[serde(rename = "WORKSPACE_UNAVAILABLE")]
+    WorkspaceUnavailable,
     #[serde(rename = "UNKNOWN_PROCESS")]
     UnknownProcess,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
@@ -51,8 +51,8 @@ impl ErrorCode {
             Self::InvalidArguments => "INVALID_ARGUMENTS",
             Self::UnknownTool => "UNKNOWN_TOOL",
             Self::UnknownProject => "UNKNOWN_PROJECT",
-            Self::UnknownWorktree => "UNKNOWN_WORKTREE",
-            Self::WorktreeUnavailable => "WORKTREE_UNAVAILABLE",
+            Self::UnknownWorkspace => "UNKNOWN_WORKSPACE",
+            Self::WorkspaceUnavailable => "WORKSPACE_UNAVAILABLE",
             Self::UnknownProcess => "UNKNOWN_PROCESS",
             Self::NoActiveProject => "NO_ACTIVE_PROJECT",
             Self::Forbidden => "FORBIDDEN",

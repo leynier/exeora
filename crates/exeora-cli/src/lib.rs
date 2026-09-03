@@ -11,6 +11,6 @@ pub mod protocol;
 pub mod tools;
 pub mod upgrade;
 pub mod workspace;
-pub mod worktrees;
+pub mod workspaces;
 
 pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");

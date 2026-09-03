@@ -152,7 +152,7 @@ describe("tools/list", () => {
     expect(listProjects?.inputSchema.properties ?? {}).not.toHaveProperty("project");
   });
 
-  it("uses lifecycle-specific worktree routing", async () => {
+  it("uses lifecycle-specific workspace routing", async () => {
     const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
     const schemas = toolsOf(body) as Array<{
       name: string;
@@ -160,17 +160,17 @@ describe("tools/list", () => {
     }>;
 
     expect(
-      schemas.find((tool) => tool.name === "create_worktree")?.inputSchema.required ?? [],
-    ).not.toContain("worktree");
+      schemas.find((tool) => tool.name === "create_workspace")?.inputSchema.required ?? [],
+    ).not.toContain("workspace");
     expect(
-      schemas.find((tool) => tool.name === "remove_worktree")?.inputSchema.required ?? [],
-    ).toContain("worktree");
+      schemas.find((tool) => tool.name === "remove_workspace")?.inputSchema.required ?? [],
+    ).toContain("workspace");
     expect(
-      schemas.find((tool) => tool.name === "attach_worktree")?.inputSchema.properties ?? {},
-    ).not.toHaveProperty("worktree");
+      schemas.find((tool) => tool.name === "attach_workspace")?.inputSchema.properties ?? {},
+    ).not.toHaveProperty("workspace");
     expect(
-      schemas.find((tool) => tool.name === "list_git_worktrees")?.inputSchema.properties ?? {},
-    ).not.toHaveProperty("worktree");
+      schemas.find((tool) => tool.name === "list_git_workspaces")?.inputSchema.properties ?? {},
+    ).not.toHaveProperty("workspace");
   });
 
   it("does not advertise the retired active-project tools", async () => {
@@ -281,10 +281,10 @@ describe("naming a project on one call", () => {
     expect(seen).toEqual([{ path: "a.ts" }]);
   });
 
-  it("strips project and required worktree routing from remove_worktree", async () => {
+  it("strips project and required workspace routing from remove_workspace", async () => {
     const seen: Array<{
       project: string | undefined;
-      worktree: string | undefined;
+      workspace: string | undefined;
       args: unknown;
     }> = [];
 
@@ -295,10 +295,10 @@ describe("naming a project on one call", () => {
           id: 21,
           method: "tools/call",
           params: {
-            name: "remove_worktree",
+            name: "remove_workspace",
             arguments: {
               project: "api",
-              worktree: "feature-api",
+              workspace: "feature-api",
               force: true,
               deleteBranch: false,
             },
@@ -306,7 +306,7 @@ describe("naming a project on one call", () => {
         },
         {
           dispatch: async (received, _tool, args) => {
-            seen.push({ project: received.project, worktree: received.worktree, args });
+            seen.push({ project: received.project, workspace: received.workspace, args });
             return { kind: "value", value: { outcome: "removed" } };
           },
         },
@@ -316,7 +316,7 @@ describe("naming a project on one call", () => {
     expect(seen).toEqual([
       {
         project: "api",
-        worktree: "feature-api",
+        workspace: "feature-api",
         args: { force: true, deleteBranch: false },
       },
     ]);

@@ -198,9 +198,9 @@ export const projects = sqliteTable(
   ],
 );
 
-/** Git worktrees exposed as routable subspaces of one project. */
-export const worktrees = sqliteTable(
-  "worktrees",
+/** Workspaces exposed as routable subspaces of one project; each is a git worktree on the machine. */
+export const workspaces = sqliteTable(
+  "workspaces",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id")
@@ -218,8 +218,8 @@ export const worktrees = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
-    uniqueIndex("worktrees_project_slug").on(table.projectId, table.slug),
-    index("worktrees_project").on(table.projectId),
+    uniqueIndex("workspaces_project_slug").on(table.projectId, table.slug),
+    index("workspaces_project").on(table.projectId),
   ],
 );
 
@@ -341,8 +341,8 @@ export const auditOutbox = sqliteTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
     projectId: text("project_id").notNull(),
-    worktreeId: text("worktree_id"),
-    worktreeSlug: text("worktree_slug"),
+    workspaceId: text("workspace_id"),
+    workspaceSlug: text("workspace_slug"),
     tool: text("tool").notNull(),
     status: text("status", { enum: ["ok", "error"] }),
     durationMs: integer("duration_ms"),
@@ -416,7 +416,7 @@ export type User = typeof users.$inferSelect;
 export type AdminUser = typeof adminUsers.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type Project = typeof projects.$inferSelect;
-export type Worktree = typeof worktrees.$inferSelect;
+export type Workspace = typeof workspaces.$inferSelect;
 export type ProjectClient = typeof projectClients.$inferSelect;
 export type ClientEndpoint = ProjectClient["endpoint"];
 export type UsageDaily = typeof usageDaily.$inferSelect;

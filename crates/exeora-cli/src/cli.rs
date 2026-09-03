@@ -4,10 +4,10 @@ use crate::{
     auth::{
         AuthManager, clear_credentials, discover_client, load_credentials, using_file_fallback,
     },
-    config::{ConfigStore, DEFAULT_GATEWAY, ProjectEntry, WorktreeEntry, WorktreeSyncState},
+    config::{ConfigStore, DEFAULT_GATEWAY, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     connection::connect_forever,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
-    worktrees::{self, CreateWorktree},
+    workspaces,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{ArgAction, Args, Parser, Subcommand};
@@ -55,10 +55,10 @@ pub enum Commands {
         #[command(subcommand)]
         command: ProjectCommand,
     },
-    #[command(about = "Manage Git worktrees connected to Exeora projects")]
-    Worktree {
+    #[command(about = "Manage Git workspaces connected to Exeora projects")]
+    Workspace {
         #[command(subcommand)]
-        command: WorktreeCommand,
+        command: WorkspaceCommand,
     },
     #[command(about = "Show or change local Exeora settings")]
     Config {
@@ -150,8 +150,8 @@ pub enum ProjectCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum WorktreeCommand {
-    #[command(about = "Create a Git worktree and connect it to an Exeora project")]
+pub enum WorkspaceCommand {
+    #[command(about = "Create a Git workspace and connect it to an Exeora project")]
     Create {
         branch: String,
         #[arg(long = "from")]
@@ -168,7 +168,7 @@ pub enum WorktreeCommand {
         #[arg(long)]
         path: Option<PathBuf>,
     },
-    #[command(about = "Connect an existing Git worktree to an Exeora project")]
+    #[command(about = "Connect an existing Git workspace to an Exeora project")]
     Attach {
         path: PathBuf,
         #[arg(short, long)]
@@ -178,16 +178,16 @@ pub enum WorktreeCommand {
         #[arg(short, long)]
         slug: Option<String>,
     },
-    #[command(about = "List worktrees connected to Exeora")]
+    #[command(about = "List workspaces connected to Exeora")]
     List {
         #[arg(short, long, conflicts_with = "all")]
         project: Option<String>,
         #[arg(long)]
         all: bool,
     },
-    #[command(about = "Disconnect a worktree from Exeora without deleting it")]
+    #[command(about = "Disconnect a workspace from Exeora without deleting it")]
     Detach { selector: String },
-    #[command(about = "Disconnect and remove a Git worktree")]
+    #[command(about = "Disconnect and remove a Git workspace")]
     Remove {
         selector: String,
         #[arg(long)]
@@ -228,7 +228,7 @@ pub struct LogsArgs {
     #[arg(short, long)]
     project: Option<String>,
     #[arg(short, long)]
-    worktree: Option<String>,
+    workspace: Option<String>,
     #[arg(short, long)]
     client: Option<String>,
     #[arg(long)]
@@ -308,8 +308,8 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Project { command } => {
             project_command(&mut config, &api, command, cli.json).await
         }
-        Commands::Worktree { command } => {
-            worktree_command(&mut config, &api, command, cli.json).await
+        Commands::Workspace { command } => {
+            workspace_command(&mut config, &api, command, cli.json).await
         }
         Commands::Connect(args) => connect_command(&mut config, &api, auth, args, cli.json).await,
         Commands::Status => status_command(&config, &api, cli.json).await,
@@ -329,22 +329,24 @@ fn config_command(
     json_output: bool,
 ) -> Result<()> {
     match command {
-        ConfigCommand::Get { key } if key == "worktree-root" => {
-            let value = config.worktree_root()?;
+        ConfigCommand::Get { key } if key == "workspace-root" => {
+            let value = config.workspace_root()?;
             if json_output {
-                emit(json!({ "key": key, "value": value, "source": config.worktree_root_source() }))
+                emit(
+                    json!({ "key": key, "value": value, "source": config.workspace_root_source() }),
+                )
             } else {
                 println!("{}", value.display());
                 Ok(())
             }
         }
-        ConfigCommand::Set { key, value } if key == "worktree-root" => {
+        ConfigCommand::Set { key, value } if key == "workspace-root" => {
             let value = if value.is_absolute() {
                 value.clone()
             } else {
                 env::current_dir()?.join(value)
             };
-            config.data_mut().worktree_root = Some(value.clone());
+            config.data_mut().workspace_root = Some(value.clone());
             config.save()?;
             if json_output {
                 emit(json!({ "key": key, "value": value }))
@@ -353,12 +355,12 @@ fn config_command(
                 Ok(())
             }
         }
-        ConfigCommand::Unset { key } if key == "worktree-root" => {
-            config.data_mut().worktree_root = None;
+        ConfigCommand::Unset { key } if key == "workspace-root" => {
+            config.data_mut().workspace_root = None;
             config.save()?;
             if json_output {
                 emit(
-                    json!({ "key": key, "value": config.worktree_root()?, "source": config.worktree_root_source() }),
+                    json!({ "key": key, "value": config.workspace_root()?, "source": config.workspace_root_source() }),
                 )
             } else {
                 println!("Unset {key}.");
@@ -368,19 +370,19 @@ fn config_command(
         ConfigCommand::Get { key }
         | ConfigCommand::Set { key, .. }
         | ConfigCommand::Unset { key } => {
-            bail!("Unknown setting {key}. Available settings: worktree-root")
+            bail!("Unknown setting {key}. Available settings: workspace-root")
         }
     }
 }
 
-async fn worktree_command(
+async fn workspace_command(
     config: &mut ConfigStore,
     api: &ApiClient,
-    command: WorktreeCommand,
+    command: WorkspaceCommand,
     json_output: bool,
 ) -> Result<()> {
     match command {
-        WorktreeCommand::Create {
+        WorkspaceCommand::Create {
             branch,
             from_ref,
             reuse_existing_branch,
@@ -389,11 +391,11 @@ async fn worktree_command(
             slug,
             path,
         } => {
-            let project = worktrees::resolve_project(config, project.as_deref())?;
-            let entry = worktrees::create(
+            let project = workspaces::resolve_project(config, project.as_deref())?;
+            let entry = workspaces::create(
                 config,
                 &project,
-                CreateWorktree {
+                workspaces::CreateWorkspace {
                     branch,
                     from: from_ref,
                     reuse_existing_branch,
@@ -403,27 +405,27 @@ async fn worktree_command(
                     source: None,
                 },
             )?;
-            persist_worktree(config, api, entry, json_output).await
+            persist_workspace(config, api, entry, json_output).await
         }
-        WorktreeCommand::Attach {
+        WorkspaceCommand::Attach {
             path,
             project,
             name,
             slug,
         } => {
-            let project = worktrees::resolve_project(config, project.as_deref())?;
-            let entry = worktrees::attach(config, &project, &path, name, slug)?;
-            persist_worktree(config, api, entry, json_output).await
+            let project = workspaces::resolve_project(config, project.as_deref())?;
+            let entry = workspaces::attach(config, &project, &path, name, slug)?;
+            persist_workspace(config, api, entry, json_output).await
         }
-        WorktreeCommand::List { project, all } => {
+        WorkspaceCommand::List { project, all } => {
             let project_id = if all {
                 None
             } else {
-                Some(worktrees::resolve_project(config, project.as_deref())?.id)
+                Some(workspaces::resolve_project(config, project.as_deref())?.id)
             };
             let entries: Vec<_> = config
                 .data()
-                .worktrees
+                .workspaces
                 .iter()
                 .filter(|entry| project_id.as_ref().is_none_or(|id| &entry.project_id == id))
                 .collect();
@@ -431,7 +433,7 @@ async fn worktree_command(
                 return emit(serde_json::to_value(entries)?);
             }
             if entries.is_empty() {
-                println!("No connected worktrees.");
+                println!("No connected workspaces.");
             }
             for entry in entries {
                 let project = config
@@ -450,16 +452,20 @@ async fn worktree_command(
             }
             Ok(())
         }
-        WorktreeCommand::Detach { selector } => {
-            let outcome = worktrees::detach(config, api, find_worktree(config, &selector)?).await?;
+        WorkspaceCommand::Detach { selector } => {
+            let outcome =
+                workspaces::detach(config, api, find_workspace(config, &selector)?).await?;
             if json_output {
-                emit(json!({ "worktree": outcome.entry, "outcome": outcome.outcome }))
+                emit(json!({
+                    "workspace": outcome.entry,
+                    "outcome": outcome.outcome
+                }))
             } else {
                 println!(
                     "Detached {}.{}",
                     outcome.entry.slug,
                     if outcome.outcome == "detached" {
-                        " The Git worktree was not changed."
+                        " The Git workspace was not changed."
                     } else {
                         " Gateway deletion is pending; run `exeora sync`."
                     }
@@ -467,12 +473,12 @@ async fn worktree_command(
                 Ok(())
             }
         }
-        WorktreeCommand::Remove {
+        WorkspaceCommand::Remove {
             selector,
             force,
             delete_branch,
         } => {
-            let entry = find_worktree(config, &selector)?;
+            let entry = find_workspace(config, &selector)?;
             let project = config
                 .data()
                 .projects
@@ -481,11 +487,13 @@ async fn worktree_command(
                 .cloned()
                 .context("The parent project is no longer registered")?;
             let outcome =
-                worktrees::remove(config, api, &project, entry, force, delete_branch).await?;
+                workspaces::remove(config, api, &project, entry, force, delete_branch).await?;
             if json_output {
-                emit(
-                    json!({ "worktree": outcome.entry, "outcome": outcome.outcome, "branchDeleted": outcome.branch_deleted }),
-                )
+                emit(json!({
+                    "workspace": outcome.entry,
+                    "outcome": outcome.outcome,
+                    "branchDeleted": outcome.branch_deleted
+                }))
             } else {
                 println!(
                     "Removed {}.{}",
@@ -502,15 +510,18 @@ async fn worktree_command(
     }
 }
 
-async fn persist_worktree(
+async fn persist_workspace(
     config: &mut ConfigStore,
     api: &ApiClient,
-    entry: WorktreeEntry,
+    entry: WorkspaceEntry,
     json_output: bool,
 ) -> Result<()> {
-    let outcome = worktrees::persist(config, api, entry).await?;
+    let outcome = workspaces::persist(config, api, entry).await?;
     if json_output {
-        emit(json!({ "worktree": outcome.entry, "outcome": outcome.outcome }))
+        emit(json!({
+            "workspace": outcome.entry,
+            "outcome": outcome.outcome
+        }))
     } else {
         println!(
             "Connected {} at {}.{}",
@@ -526,10 +537,10 @@ async fn persist_worktree(
     }
 }
 
-fn find_worktree(config: &ConfigStore, selector: &str) -> Result<WorktreeEntry> {
+fn find_workspace(config: &ConfigStore, selector: &str) -> Result<WorkspaceEntry> {
     if let Some(entry) = config
         .data()
-        .worktrees
+        .workspaces
         .iter()
         .find(|entry| entry.id == selector)
     {
@@ -537,16 +548,16 @@ fn find_worktree(config: &ConfigStore, selector: &str) -> Result<WorktreeEntry> 
     }
     let matches: Vec<_> = config
         .data()
-        .worktrees
+        .workspaces
         .iter()
         .filter(|entry| entry.slug.eq_ignore_ascii_case(selector))
         .cloned()
         .collect();
     match matches.as_slice() {
-        [] => Err(anyhow!("No worktree called {selector} on this machine.")),
+        [] => Err(anyhow!("No workspace called {selector} on this machine.")),
         [entry] => Ok(entry.clone()),
         _ => bail!(
-            "Several projects have a worktree called {selector}. Use its wtr_ id from `exeora worktree list --all`."
+            "Several projects have a workspace called {selector}. Use its ID from `exeora workspace list --all`."
         ),
     }
 }
@@ -885,13 +896,13 @@ async fn logs_command(api: &ApiClient, args: LogsArgs, json_output: bool) -> Res
                         .get(call.project_id.as_str())
                         .is_some_and(|entry| entry.slug.eq_ignore_ascii_case(slug))
                 })
-                && args.worktree.as_ref().is_none_or(|selector| {
-                    call.worktree_id.as_deref() == Some(selector)
+                && args.workspace.as_ref().is_none_or(|selector| {
+                    call.workspace_id.as_deref() == Some(selector)
                         || call
-                            .worktree_slug
+                            .workspace_slug
                             .as_deref()
                             .is_some_and(|slug| slug.eq_ignore_ascii_case(selector))
-                        || (selector.eq_ignore_ascii_case("main") && call.worktree_id.is_none())
+                        || (selector.eq_ignore_ascii_case("main") && call.workspace_id.is_none())
                 })
                 && args.client.as_ref().is_none_or(|name| {
                     client_name(call)
@@ -924,7 +935,7 @@ async fn logs_command(api: &ApiClient, args: LogsArgs, json_output: bool) -> Res
             by_id
                 .get(call.project_id.as_str())
                 .map_or("removed", |entry| entry.slug.as_str()),
-            call.worktree_slug.as_deref().unwrap_or("main"),
+            call.workspace_slug.as_deref().unwrap_or("main"),
             client_name(call),
             call.duration_ms
         );
@@ -1033,59 +1044,59 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
         config.data_mut().projects = next;
         config.save()?;
     }
-    let pending = config.data().worktrees.clone();
+    let pending = config.data().workspaces.clone();
     let mut synced = 0usize;
     let mut recovered = 0usize;
     for mut entry in pending {
         match entry.sync_state {
-            WorktreeSyncState::PendingUpsert => {
-                if api.put_worktree(&entry.project_id, &entry).await.is_ok() {
-                    entry.sync_state = WorktreeSyncState::Active;
-                    config.upsert_worktree(entry);
+            WorkspaceSyncState::PendingUpsert => {
+                if api.put_workspace(&entry.project_id, &entry).await.is_ok() {
+                    entry.sync_state = WorkspaceSyncState::Active;
+                    config.upsert_workspace(entry);
                     synced += 1;
                 }
             }
-            WorktreeSyncState::PendingDelete | WorktreeSyncState::Disabled => {
+            WorkspaceSyncState::PendingDelete | WorkspaceSyncState::Disabled => {
                 if api
-                    .remove_worktree(&entry.project_id, &entry.id)
+                    .remove_workspace(&entry.project_id, &entry.id)
                     .await
                     .is_ok()
                 {
-                    config.remove_worktree(&entry.id);
+                    config.remove_workspace(&entry.id);
                     synced += 1;
                 }
             }
-            WorktreeSyncState::Removing => {
+            WorkspaceSyncState::Removing => {
                 recovered += 1;
                 if entry.git_root.exists() {
-                    // The process stopped before Git removed the worktree. Make
+                    // The process stopped before Git removed the workspace. Make
                     // it routable again instead of leaving it permanently
                     // hidden behind the transient Removing state.
-                    entry.sync_state = WorktreeSyncState::Active;
-                    config.upsert_worktree(entry);
+                    entry.sync_state = WorkspaceSyncState::Active;
+                    config.upsert_workspace(entry);
                 } else {
                     // Git removal completed, but the process stopped before the
                     // gateway deletion. Resume that half of the operation.
-                    entry.sync_state = WorktreeSyncState::PendingDelete;
+                    entry.sync_state = WorkspaceSyncState::PendingDelete;
                     if api
-                        .remove_worktree(&entry.project_id, &entry.id)
+                        .remove_workspace(&entry.project_id, &entry.id)
                         .await
                         .is_ok()
                     {
-                        config.remove_worktree(&entry.id);
+                        config.remove_workspace(&entry.id);
                         synced += 1;
                     } else {
-                        config.upsert_worktree(entry);
+                        config.upsert_workspace(entry);
                     }
                 }
             }
-            WorktreeSyncState::Active => {}
+            WorkspaceSyncState::Active => {}
         }
     }
     config.save()?;
     if projects_changed || synced > 0 || recovered > 0 {
         println!(
-            "Synchronized projects and {synced} pending worktrees with the gateway; recovered {recovered} interrupted removals."
+            "Synchronized projects and {synced} pending workspaces with the gateway; recovered {recovered} interrupted removals."
         );
     } else {
         println!("Already up to date.");

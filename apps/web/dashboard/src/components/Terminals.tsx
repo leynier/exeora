@@ -61,7 +61,7 @@ export function TerminalsProvider({ children }: { children: ReactNode }) {
     (session: OpenTerminalSession) => {
       const params = new URLSearchParams();
       params.set("project", session.projectId);
-      if (session.worktreeSlug) params.set("worktree", session.worktreeSlug);
+      if (session.workspaceSlug) params.set("workspace", session.workspaceSlug);
       params.set("view", "terminal");
       navigate({ pathname: "/workspace", search: params.toString() });
     },
@@ -127,7 +127,7 @@ export function GlobalTerminals() {
           >
             <WebTerminal
               projectId={session.projectId}
-              worktree={session.worktreeId}
+              workspace={session.workspaceId}
               targetLabel={session.label}
               available
               active={shown}
@@ -153,7 +153,7 @@ function matchesLocation(session: OpenTerminalSession, location: Location): bool
   const search = new URLSearchParams(location.search);
   return (
     session.projectId === (search.get("project") ?? "") &&
-    (session.worktreeSlug ?? null) === search.get("worktree")
+    (session.workspaceSlug ?? null) === search.get("workspace")
   );
 }
 
@@ -164,14 +164,14 @@ function mergeRemote(
 ): OpenTerminalSession[] {
   const next = [...local];
   for (const item of items) {
-    const key = terminalSessionKey(item.projectId, item.worktreeId);
+    const key = terminalSessionKey(item.projectId, item.workspaceId);
     if (closed.has(key) || next.some((session) => session.key === key)) continue;
     next.push({
       key,
       projectId: item.projectId,
-      worktreeId: item.worktreeId,
-      worktreeSlug: item.worktreeSlug ?? null,
-      label: item.worktreeSlug ?? "project root",
+      workspaceId: item.workspaceId,
+      workspaceSlug: item.workspaceSlug ?? null,
+      label: item.workspaceSlug ?? "project root",
     });
   }
   return next;

@@ -1,10 +1,10 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { api, type GitStatus, type WorkspaceAction, type Worktree } from "../api.js";
+import { api, type GitStatus, type Workspace, type WorkspaceAction } from "../api.js";
 import { keys } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { CreateWorktreeDialog } from "./CreateWorktreeDialog.js";
+import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog.js";
 import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
 import { useToast } from "./toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "./ui.js";
@@ -20,26 +20,26 @@ import {
 
 export function SourceControl({
   projectId,
-  worktree,
-  worktrees,
+  workspace,
+  workspaces,
   projectLocalPath,
   targetKey,
   targetLabel,
   status,
   loading,
   error,
-  onSelectWorktree,
+  onSelectWorkspace,
 }: {
   projectId: string;
-  worktree?: string;
-  worktrees: Worktree[];
+  workspace?: string;
+  workspaces: Workspace[];
   projectLocalPath: string;
   targetKey: string;
   targetLabel: string;
   status?: GitStatus;
   loading: boolean;
   error: unknown;
-  onSelectWorktree: (slug: string | null) => void;
+  onSelectWorkspace: (slug: string | null) => void;
 }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -52,13 +52,13 @@ export function SourceControl({
     body: string;
     label: string;
   } | null>(null);
-  const [creatingWorktree, setCreatingWorktree] = useState(false);
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
   const chosenArea = chosen?.area ?? "working";
   const diff = useQuery({
     queryKey: ["workspace", projectId, targetKey, "diff", chosenPath, chosenArea],
-    queryFn: () => api.gitDiff(projectId, chosenPath, chosenArea, worktree),
+    queryFn: () => api.gitDiff(projectId, chosenPath, chosenArea, workspace),
     enabled: Boolean(chosen && status?.repository),
   });
   const staged = useMemo(
@@ -74,14 +74,14 @@ export function SourceControl({
   const run = async (action: WorkspaceAction) => {
     setPending(true);
     try {
-      const result = await api.workspaceAction(projectId, action, worktree);
+      const result = await api.workspaceAction(projectId, action, workspace);
       client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
       await client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] });
       if (action.action === "commit") setCommitMessage("");
-      if (action.action === "worktree_create" && result.worktree) {
-        await client.invalidateQueries({ queryKey: keys.worktrees(projectId) });
-        onSelectWorktree(result.worktree.slug);
-        setCreatingWorktree(false);
+      if (action.action === "workspace_create" && result.workspace) {
+        await client.invalidateQueries({ queryKey: keys.workspaces(projectId) });
+        onSelectWorkspace(result.workspace.slug);
+        setCreatingWorkspace(false);
       } else if (action.action.startsWith("branch_")) setSelected(null);
       else setSelected((current) => selectionAfterStatus(current, result.status));
       toast(workspaceActionLabel(action));
@@ -122,10 +122,10 @@ export function SourceControl({
             status={status}
             pending={pending}
             projectLocalPath={projectLocalPath}
-            worktrees={worktrees}
+            workspaces={workspaces}
             onRun={run}
-            onSelectWorktree={onSelectWorktree}
-            onCreateWorktree={() => setCreatingWorktree(true)}
+            onSelectWorkspace={onSelectWorkspace}
+            onCreateWorkspace={() => setCreatingWorkspace(true)}
             onConfirmDelete={(name) =>
               setConfirm({
                 action: { action: "branch_delete", name },
@@ -336,15 +336,15 @@ export function SourceControl({
           </div>
         </main>
       </div>
-      <CreateWorktreeDialog
-        open={creatingWorktree}
+      <CreateWorkspaceDialog
+        open={creatingWorkspace}
         pending={pending}
         defaultBranch=""
         fromHead={status.head}
-        onCancel={() => setCreatingWorktree(false)}
+        onCancel={() => setCreatingWorkspace(false)}
         onSubmit={({ branch, reuseExistingBranch }) =>
           void run({
-            action: "worktree_create",
+            action: "workspace_create",
             branch,
             reuseExistingBranch,
             from: reuseExistingBranch ? undefined : (status.head ?? undefined),

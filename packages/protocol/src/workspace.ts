@@ -23,12 +23,12 @@ export const GitBranch = z.object({
   current: z.boolean(),
 });
 
-export const GitWorktreeCheckout = z.object({
+export const GitWorkspaceCheckout = z.object({
   path: z.string(),
   branch: z.string().nullable(),
 });
 
-export type GitWorktreeCheckout = z.infer<typeof GitWorktreeCheckout>;
+export type GitWorkspaceCheckout = z.infer<typeof GitWorkspaceCheckout>;
 
 export const GitStatus = z.object({
   kind: z.literal("status"),
@@ -42,8 +42,8 @@ export const GitStatus = z.object({
   files: z.array(GitFileState),
   branches: z.array(GitBranch),
   remotes: z.array(z.string()),
-  /** Every Git worktree of this repository, including the project root. */
-  gitWorktrees: z.array(GitWorktreeCheckout).default([]),
+  /** Every Git workspace of this repository, including the project root. */
+  gitWorkspaces: z.array(GitWorkspaceCheckout).default([]),
 });
 
 export type GitStatus = z.infer<typeof GitStatus>;
@@ -87,7 +87,7 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("branch_delete"), name: z.string().min(1).max(255) }),
   z.object({
-    action: z.literal("worktree_create"),
+    action: z.literal("workspace_create"),
     branch: z.string().min(1).max(255),
     from: optionalRef,
     reuseExistingBranch: z.boolean().default(false),
@@ -103,7 +103,7 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
 
 export type WorkspaceAction = z.infer<typeof WorkspaceAction>;
 
-export const CreatedWorktree = z.object({
+export const CreatedWorkspace = z.object({
   id: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
@@ -111,14 +111,14 @@ export const CreatedWorktree = z.object({
   localPath: z.string().min(1),
 });
 
-export type CreatedWorktree = z.infer<typeof CreatedWorktree>;
+export type CreatedWorkspace = z.infer<typeof CreatedWorkspace>;
 
 export const WorkspaceMutationResult = z.object({
   kind: z.literal("mutation"),
   stdout: z.string(),
   stderr: z.string(),
   status: GitStatus,
-  worktree: CreatedWorktree.optional(),
+  workspace: CreatedWorkspace.optional(),
 });
 
 export type WorkspaceMutationResult = z.infer<typeof WorkspaceMutationResult>;
@@ -132,8 +132,8 @@ export const TerminalOpenMessage = z.object({
   type: z.literal("terminal.open"),
   sessionId,
   projectId: z.string(),
-  worktreeId: z.string().optional(),
-  worktreeSlug: z.string().optional(),
+  workspaceId: z.string().optional(),
+  workspaceSlug: z.string().optional(),
   cols: z.number().int().min(20).max(500),
   rows: z.number().int().min(5).max(300),
 });

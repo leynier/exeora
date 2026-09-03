@@ -25,8 +25,8 @@ export interface ApprovalView {
   id: string;
   deviceId: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   tool: ToolName;
   prompt: string;
   clientName?: string;
@@ -54,8 +54,8 @@ export interface TerminalCallerState {
   role: "terminal";
   id: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   targetKey: string;
   settled: boolean;
   startedAt: number;
@@ -88,7 +88,7 @@ export function callerTag(
 }
 
 export function relayError(
-  code: "TOOL_TIMEOUT" | "WORKTREE_UNAVAILABLE",
+  code: "TOOL_TIMEOUT" | "WORKSPACE_UNAVAILABLE",
   message: string,
 ): CallerResponse {
   return { type: "error", error: { code, message } };

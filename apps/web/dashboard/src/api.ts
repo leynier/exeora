@@ -47,7 +47,7 @@ export interface Project {
   createdAt: number;
 }
 
-export interface Worktree {
+export interface Workspace {
   id: string;
   projectId: string;
   slug: string;
@@ -63,13 +63,14 @@ export interface WorkspaceCapabilities {
   online: boolean;
   sourceControl: boolean;
   terminal: boolean;
-  worktreeRouting: boolean;
+  workspaceRouting: boolean;
 }
 
 export interface GitFileState {
   path: string;
   originalPath?: string;
   index: string;
+  /** Git porcelain XY working-tree letter, not an Exeora workspace id. */
   worktree: string;
   kind: "tracked" | "untracked" | "conflict";
   submodule: boolean;
@@ -83,7 +84,7 @@ export interface GitBranch {
   current: boolean;
 }
 
-export interface GitWorktreeCheckout {
+export interface GitWorkspaceCheckout {
   path: string;
   branch: string | null;
 }
@@ -100,7 +101,7 @@ export interface GitStatus {
   files: GitFileState[];
   branches: GitBranch[];
   remotes: string[];
-  gitWorktrees?: GitWorktreeCheckout[];
+  gitWorkspaces?: GitWorkspaceCheckout[];
 }
 
 export interface GitDiff {
@@ -123,7 +124,7 @@ export type WorkspaceAction =
   | { action: "branch_track"; name: string; remoteBranch: string }
   | { action: "branch_delete"; name: string }
   | {
-      action: "worktree_create";
+      action: "workspace_create";
       branch: string;
       from?: string;
       reuseExistingBranch?: boolean;
@@ -136,7 +137,7 @@ export interface WorkspaceMutationResult {
   stdout: string;
   stderr: string;
   status: GitStatus;
-  worktree?: {
+  workspace?: {
     id: string;
     slug: string;
     name: string;
@@ -148,8 +149,8 @@ export interface WorkspaceMutationResult {
 export interface ToolCall {
   id: string;
   projectId: string;
-  worktreeId: string | null;
-  worktreeSlug: string | null;
+  workspaceId: string | null;
+  workspaceSlug: string | null;
   tool: string;
   status: "ok" | "error";
   durationMs: number;
@@ -331,7 +332,7 @@ function apiError(body: Record<string, unknown> | null): string {
  */
 export interface ToolCallFilters {
   projectId?: string;
-  worktreeId?: string;
+  workspaceId?: string;
   status?: "ok" | "error";
   clientId?: string;
 }
@@ -354,8 +355,8 @@ export interface Approval {
   deviceId: string;
   deviceName: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   tool: string;
   /** Already written for a person: "Run `npm test`?" */
   prompt: string;
@@ -371,30 +372,30 @@ export const api = {
   me: () => request<User>("/api/me"),
   devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
-  worktrees: (projectId: string) => request<Worktree[]>(`/api/projects/${projectId}/worktrees`),
-  workspaceCapabilities: (id: string, worktree?: string) =>
+  workspaces: (projectId: string) => request<Workspace[]>(`/api/projects/${projectId}/workspaces`),
+  workspaceCapabilities: (id: string, workspace?: string) =>
     request<WorkspaceCapabilities>(
-      `/api/projects/${id}/workspace/capabilities${workspaceTarget(worktree)}`,
+      `/api/projects/${id}/workspace/capabilities${workspaceTarget(workspace)}`,
     ),
-  gitStatus: (id: string, worktree?: string) =>
-    request<GitStatus>(`/api/projects/${id}/workspace/status${workspaceTarget(worktree)}`),
-  gitDiff: (id: string, path: string, area: "working" | "staged", worktree?: string) => {
+  gitStatus: (id: string, workspace?: string) =>
+    request<GitStatus>(`/api/projects/${id}/workspace/status${workspaceTarget(workspace)}`),
+  gitDiff: (id: string, path: string, area: "working" | "staged", workspace?: string) => {
     const query = new URLSearchParams({ path, area });
-    if (worktree) query.set("worktree", worktree);
+    if (workspace) query.set("workspace", workspace);
     return request<GitDiff>(`/api/projects/${id}/workspace/diff?${query}`);
   },
-  workspaceAction: (id: string, action: WorkspaceAction, worktree?: string) =>
+  workspaceAction: (id: string, action: WorkspaceAction, workspace?: string) =>
     request<WorkspaceMutationResult>(
-      `/api/projects/${id}/workspace/actions${workspaceTarget(worktree)}`,
+      `/api/projects/${id}/workspace/actions${workspaceTarget(workspace)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(action),
       },
     ),
-  terminalTicket: (id: string, worktree?: string) =>
+  terminalTicket: (id: string, workspace?: string) =>
     request<{ url: string; expiresInMs: number }>(
-      `/api/projects/${id}/terminal-ticket${workspaceTarget(worktree)}`,
+      `/api/projects/${id}/terminal-ticket${workspaceTarget(workspace)}`,
       { method: "POST" },
     ),
   terminals: () =>
@@ -403,11 +404,10 @@ export const api = {
   toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
     const query = new URLSearchParams();
     if (filters.projectId) query.set("projectId", filters.projectId);
-    if (filters.worktreeId) query.set("worktreeId", filters.worktreeId);
+    if (filters.workspaceId) query.set("workspaceId", filters.workspaceId);
     if (filters.status) query.set("status", filters.status);
     if (filters.clientId) query.set("clientId", filters.clientId);
     if (cursor) query.set("cursor", cursor);
-
     const suffix = query.size > 0 ? `?${query}` : "";
     return request<ToolCallPage>(`/api/tool-calls${suffix}`);
   },
@@ -481,8 +481,8 @@ export const api = {
     request<{ ok: true }>(`/api/admin/users/${userId}`, { method: "DELETE" }),
 };
 
-function workspaceTarget(worktree?: string): string {
-  return worktree ? `?${new URLSearchParams({ worktree })}` : "";
+function workspaceTarget(workspace?: string): string {
+  return workspace ? `?${new URLSearchParams({ workspace })}` : "";
 }
 
 /** The gateway's answer, from a connection and a disconnection it recorded. */

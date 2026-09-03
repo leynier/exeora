@@ -445,20 +445,20 @@ describe("capabilities", () => {
     executor.socket.close(1000, "done");
   });
 
-  it("never sends a worktree call to an executor that did not negotiate routing", async () => {
+  it("never sends a workspace call to an executor that did not negotiate routing", async () => {
     const executor = await attachFakeExecutor();
     const error = await failureOf(() =>
       callRelayTool(relay(), {
-        requestId: "req_old_cli_worktree",
+        requestId: "req_old_cli_workspace",
         projectId: "prj_test",
-        worktreeId: "wtr_feature",
-        worktreeSlug: "feature",
+        workspaceId: "wsp_feature",
+        workspaceSlug: "feature",
         tool: "read_file",
         args: { path: "README.md" },
       }),
     );
 
-    expect(error.code).toBe("WORKTREE_UNAVAILABLE");
+    expect(error.code).toBe("WORKSPACE_UNAVAILABLE");
     expect(executor.seen).toEqual([]);
     executor.socket.close(1000, "done");
   });
@@ -467,7 +467,7 @@ describe("capabilities", () => {
     const announced: ExecutorCapabilities = {
       prompt: true,
       tools: ["read_file", "start_command", "a_tool_from_the_future"],
-      worktreeRouting: true,
+      workspaceRouting: true,
     };
     const executor = await attachFakeExecutor({ capabilities: announced });
 

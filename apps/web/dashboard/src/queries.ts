@@ -13,7 +13,7 @@ export const keys = {
   me: ["me"] as const,
   devices: ["devices"] as const,
   projects: ["projects"] as const,
-  worktrees: (projectId: string) => ["projects", projectId, "worktrees"] as const,
+  workspaces: (projectId: string) => ["projects", projectId, "workspaces"] as const,
   workspaceCapabilities: (id: string, target: string) =>
     ["workspace", id, target, "capabilities"] as const,
   gitStatus: (id: string, target: string) => ["workspace", id, target, "status"] as const,
@@ -95,33 +95,33 @@ export const useDevices = () =>
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.projects });
 
-export const useWorktrees = (projectId: string | undefined) =>
+export const useWorkspaces = (projectId: string | undefined) =>
   useQuery({
-    queryKey: keys.worktrees(projectId ?? ""),
-    queryFn: () => api.worktrees(projectId ?? ""),
+    queryKey: keys.workspaces(projectId ?? ""),
+    queryFn: () => api.workspaces(projectId ?? ""),
     enabled: Boolean(projectId),
     refetchInterval: LIVE,
   });
 
 export const useWorkspaceCapabilities = (
   id: string,
-  worktree: string | undefined,
+  workspace: string | undefined,
   enabled = true,
 ) => {
-  const target = worktree ?? "main";
+  const target = workspace ?? "main";
   return useQuery({
     queryKey: keys.workspaceCapabilities(id, target),
-    queryFn: () => api.workspaceCapabilities(id, worktree),
+    queryFn: () => api.workspaceCapabilities(id, workspace),
     enabled: enabled && id.length > 0,
     refetchInterval: LIVE,
   });
 };
 
-export const useGitStatus = (id: string, worktree: string | undefined, enabled = true) => {
-  const target = worktree ?? "main";
+export const useGitStatus = (id: string, workspace: string | undefined, enabled = true) => {
+  const target = workspace ?? "main";
   return useQuery({
     queryKey: keys.gitStatus(id, target),
-    queryFn: () => api.gitStatus(id, worktree),
+    queryFn: () => api.gitStatus(id, workspace),
     enabled: enabled && id.length > 0,
     refetchInterval: LIVE,
   });

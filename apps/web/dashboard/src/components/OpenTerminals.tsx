@@ -3,8 +3,8 @@ import type { Project } from "../api.js";
 export type OpenTerminalSession = {
   key: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug: string | null;
+  workspaceId?: string;
+  workspaceSlug: string | null;
   label: string;
 };
 

@@ -4,7 +4,7 @@ import {
   MAX_GREP_MATCHES,
   MAX_PATCH_OPS,
   MAX_PROCESSES_PER_PROJECT,
-  MAX_PROCESSES_PER_WORKTREE,
+  MAX_PROCESSES_PER_WORKSPACE,
   MAX_READ_BYTES,
 } from "./limits.js";
 import { AGENT_PROMPT_NAME, AGENT_PROMPT_TOOL, agentPrompt, serverInstructions } from "./prompt.js";
@@ -39,7 +39,7 @@ describe("agentPrompt", () => {
     expect(prompt).toContain(`${Math.round(MAX_READ_BYTES / 1000)}KB`);
     expect(prompt).toContain(`${MAX_GREP_MATCHES} matches`);
     expect(prompt).toContain(`${DEFAULT_COMMAND_TIMEOUT_MS / 1000}s`);
-    expect(prompt).toContain(`${MAX_PROCESSES_PER_WORKTREE} live processes`);
+    expect(prompt).toContain(`${MAX_PROCESSES_PER_WORKSPACE} live processes`);
     expect(prompt).toContain(`${MAX_PROCESSES_PER_PROJECT} across them`);
     expect(prompt).toContain(`${MAX_PATCH_OPS} operations`);
     expect(prompt).toContain("UNKNOWN_PROCESS");
@@ -50,7 +50,7 @@ describe("agentPrompt", () => {
     const account = agentPrompt({ account: true });
 
     for (const name of ACCOUNT_TOOL_NAMES) {
-      if (name !== "list_worktrees") {
+      if (name !== "list_workspaces") {
         expect(project, `${name} has no meaning on a per-project URL`).not.toContain(name);
       }
       expect(account, `${name} is unexplained on the account URL`).toContain(name);

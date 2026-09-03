@@ -43,16 +43,16 @@ import Doc from "../../layouts/Doc.astro";
         <td>Manage this machine's projects</td>
       </tr>
       <tr>
-        <td><code>worktree create</code> / <code>worktree attach</code></td>
-        <td>Create or connect a Git worktree as a project subspace</td>
+        <td><code>workspace create</code> / <code>workspace attach</code></td>
+        <td>Create or connect a Git workspace as a project subspace</td>
       </tr>
       <tr>
-        <td><code>worktree list</code> / <code>worktree detach</code> / <code>worktree remove</code></td>
-        <td>Inspect, disconnect or physically remove connected worktrees</td>
+        <td><code>workspace list</code> / <code>workspace detach</code> / <code>workspace remove</code></td>
+        <td>Inspect, disconnect or physically remove connected workspaces</td>
       </tr>
       <tr>
-        <td><code>config get|set|unset worktree-root</code></td>
-        <td>Control where Exeora creates managed worktrees by default</td>
+        <td><code>config get|set|unset workspace-root</code></td>
+        <td>Control where Exeora creates managed workspaces by default</td>
       </tr>
       <tr>
         <td><code>init [path]</code></td>
@@ -130,18 +130,19 @@ import Doc from "../../layouts/Doc.astro";
     Exeora is open source, so <code>https://exeora.dev</code> is a default rather than an address. <code>exeora gateway use https://your.example.com</code> points this machine at your own deployment and stores the choice, so every later command follows it with no flag and no variable. <code>exeora gateway</code> prints the active one and where it came from; <code>exeora gateway reset</code> goes back to the hosted one. <code>exeora login</code> and <code>exeora connect</code> take <code>--gateway</code> to do the same thing on the way past.
   </p>
 
-  <h2>worktrees</h2>
+  <h2>workspaces</h2>
 
   <p>
-    <code>exeora worktree create feature/name</code> creates a native Git worktree from the current
-    worktree's <code>HEAD</code>, registers it under the current Exeora project and synchronizes its
-    stable id with the gateway. Use <code>--from &lt;ref&gt;</code> to choose another base, or{" "}
+    <code>exeora workspace create feature/name</code> creates a native Git worktree wrapped as an Exeora
+    workspace from the current workspace's <code>HEAD</code>, registers it under the current Exeora project and
+    synchronizes its stable id with the gateway.
+    Use <code>--from &lt;ref&gt;</code> to choose another base, or{" "}
     <code>--reuse-existing-branch</code> when the branch already exists. <code>--project</code> selects
     a project when the command is not run inside one.
   </p>
 
   <p>
-    <code>attach</code> connects an existing worktree without taking ownership of its creation.{" "}
+    <code>attach</code> connects an existing workspace without taking ownership of its creation.{" "}
     <code>detach</code> only disconnects it from Exeora. <code>remove</code> runs Git's worktree
     removal and refuses uncommitted changes unless <code>--force</code> is present; branches are kept
     unless <code>--delete-branch</code> is requested, and then Git's safe <code>branch -d</code> is used.
@@ -149,8 +150,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     The default root follows the platform data directory.{" "}
-    <code>EXEORA_WORKTREE_ROOT</code> overrides
-    it for one environment, while <code>exeora config set worktree-root &lt;path&gt;</code> persists it.
+    <code>EXEORA_WORKSPACE_ROOT</code> overrides
+    it for one environment, while <code>exeora config set workspace-root &lt;path&gt;</code> persists it.
     A gateway outage leaves a safe pending record and <code>exeora sync</code> retries it.
   </p>
 
@@ -204,7 +205,7 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     <code>--json</code> makes <code>status</code>, <code>logs</code>, <code>device list</code> and{" "}
-    <code>project list</code>, <code>worktree list</code> and <code>config get</code> print one JSON document instead of drawing on the terminal. Errors
+    <code>project list</code>, <code>workspace list</code> and <code>config get</code> print one JSON document instead of drawing on the terminal. Errors
     become JSON on stderr with a non-zero exit, so a caller piping stdout into a parser gets either
     valid JSON or nothing.
   </p>

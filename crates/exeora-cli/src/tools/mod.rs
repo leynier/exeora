@@ -24,7 +24,7 @@ pub struct ToolEngine {
 /// Where a call runs, and who started it, when that is known.
 pub struct CallScope<'a> {
     pub project: &'a str,
-    pub worktree: &'a str,
+    pub workspace: &'a str,
     pub owner: Option<&'a str>,
 }
 
@@ -61,7 +61,7 @@ impl ToolEngine {
             root,
             CallScope {
                 project: &project,
-                worktree: "main",
+                workspace: "main",
                 owner: None,
             },
             tool,
@@ -83,7 +83,7 @@ impl ToolEngine {
             root,
             CallScope {
                 project: project_scope,
-                worktree: "main",
+                workspace: "main",
                 owner: None,
             },
             tool,
@@ -116,33 +116,33 @@ impl ToolEngine {
             ToolName::EditFile => files::edit_file(root, arguments).await,
             ToolName::WriteFile => files::write_file(root, arguments).await,
             ToolName::ApplyPatch => patch::apply_patch(root, arguments).await,
-            ToolName::ListGitWorktrees
-            | ToolName::CreateWorktree
-            | ToolName::AttachWorktree
-            | ToolName::DetachWorktree
-            | ToolName::RemoveWorktree => Err(ExeoraError::new(
+            ToolName::ListGitWorkspaces
+            | ToolName::CreateWorkspace
+            | ToolName::AttachWorkspace
+            | ToolName::DetachWorkspace
+            | ToolName::RemoveWorkspace => Err(ExeoraError::new(
                 ErrorCode::InternalError,
-                "Worktree lifecycle tools require the connected executor context.",
+                "Workspace lifecycle tools require the connected executor context.",
             )),
             ToolName::RunCommand => self.processes.run_command(root, arguments, cancel).await,
             ToolName::StartCommand => {
                 self.processes
-                    .start_command(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .start_command(root, scope.project, scope.workspace, scope.owner, arguments)
                     .await
             }
             ToolName::GetCommandOutput => {
                 self.processes
-                    .get_output(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .get_output(root, scope.project, scope.workspace, scope.owner, arguments)
                     .await
             }
             ToolName::SendCommandInput => {
                 self.processes
-                    .send_input(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .send_input(root, scope.project, scope.workspace, scope.owner, arguments)
                     .await
             }
             ToolName::KillCommand => {
                 self.processes
-                    .kill_command(root, scope.project, scope.worktree, scope.owner, arguments)
+                    .kill_command(root, scope.project, scope.workspace, scope.owner, arguments)
                     .await
             }
             ToolName::ListSkills => skills::list_skills(root, arguments).await,

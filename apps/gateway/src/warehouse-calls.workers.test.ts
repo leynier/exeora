@@ -63,8 +63,8 @@ describe("reading a page", () => {
       {
         id: "call_1",
         projectId: "prj_1",
-        worktreeId: null,
-        worktreeSlug: null,
+        workspaceId: null,
+        workspaceSlug: null,
         tool: "read_file",
         status: "ok",
         durationMs: 12,
@@ -111,12 +111,14 @@ describe("reading a page", () => {
     const { query } = await page([], {
       userId: "usr_1",
       projectId: "prj_1",
+      workspaceId: "wsp_1",
       status: "error",
       clientId: "client_x",
       pageSize: 50,
     });
 
     expect(query).toContain("project_id = 'prj_1'");
+    expect(query).toContain("worktree_id = 'wsp_1'");
     expect(query).toContain("status = 'error'");
     expect(query).toContain("client_id = 'client_x'");
   });

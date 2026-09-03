@@ -20,7 +20,7 @@ pub struct ProjectEntry {
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum WorktreeSyncState {
+pub enum WorkspaceSyncState {
     PendingUpsert,
     #[default]
     Active,
@@ -31,7 +31,7 @@ pub enum WorktreeSyncState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WorktreeEntry {
+pub struct WorkspaceEntry {
     pub id: String,
     pub project_id: String,
     pub slug: String,
@@ -43,7 +43,7 @@ pub struct WorktreeEntry {
     #[serde(default)]
     pub managed: bool,
     #[serde(default)]
-    pub sync_state: WorktreeSyncState,
+    pub sync_state: WorkspaceSyncState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,9 +78,9 @@ pub struct ConfigData {
     #[serde(default)]
     pub projects: Vec<ProjectEntry>,
     #[serde(default)]
-    pub worktrees: Vec<WorktreeEntry>,
+    pub workspaces: Vec<WorkspaceEntry>,
     #[serde(default)]
-    pub worktree_root: Option<PathBuf>,
+    pub workspace_root: Option<PathBuf>,
     #[serde(default)]
     pub star: StarPrompt,
 }
@@ -96,8 +96,8 @@ impl Default for ConfigData {
             device_id: None,
             device_name: None,
             projects: Vec::new(),
-            worktrees: Vec::new(),
-            worktree_root: None,
+            workspaces: Vec::new(),
+            workspace_root: None,
             star: StarPrompt::default(),
         }
     }
@@ -150,20 +150,20 @@ impl ConfigStore {
         }
     }
 
-    pub fn worktree_root(&self) -> Result<PathBuf> {
-        if let Some(path) = env::var_os("EXEORA_WORKTREE_ROOT") {
+    pub fn workspace_root(&self) -> Result<PathBuf> {
+        if let Some(path) = env::var_os("EXEORA_WORKSPACE_ROOT") {
             return absolute_path(PathBuf::from(path));
         }
-        if let Some(path) = &self.data.worktree_root {
+        if let Some(path) = &self.data.workspace_root {
             return absolute_path(path.clone());
         }
-        default_worktree_root()
+        default_workspace_root()
     }
 
-    pub fn worktree_root_source(&self) -> &'static str {
-        if env::var_os("EXEORA_WORKTREE_ROOT").is_some() {
+    pub fn workspace_root_source(&self) -> &'static str {
+        if env::var_os("EXEORA_WORKSPACE_ROOT").is_some() {
             "env"
-        } else if self.data.worktree_root.is_some() {
+        } else if self.data.workspace_root.is_some() {
             "config"
         } else {
             "default"
@@ -181,23 +181,25 @@ impl ConfigStore {
 
     pub fn remove_project(&mut self, id: &str) {
         self.data.projects.retain(|entry| entry.id != id);
-        self.data.worktrees.retain(|entry| entry.project_id != id);
+        self.data.workspaces.retain(|entry| entry.project_id != id);
     }
 
-    pub fn upsert_worktree(&mut self, worktree: WorktreeEntry) {
-        self.data.worktrees.retain(|entry| entry.id != worktree.id);
-        self.data.worktrees.push(worktree);
+    pub fn upsert_workspace(&mut self, workspace: WorkspaceEntry) {
+        self.data
+            .workspaces
+            .retain(|entry| entry.id != workspace.id);
+        self.data.workspaces.push(workspace);
     }
 
-    pub fn remove_worktree(&mut self, id: &str) {
-        self.data.worktrees.retain(|entry| entry.id != id);
+    pub fn remove_workspace(&mut self, id: &str) {
+        self.data.workspaces.retain(|entry| entry.id != id);
     }
 
     pub fn forget_local_state(&mut self) {
         self.data.device_id = None;
         self.data.device_name = None;
         self.data.projects.clear();
-        self.data.worktrees.clear();
+        self.data.workspaces.clear();
     }
 
     pub fn save(&self) -> Result<()> {
@@ -261,24 +263,25 @@ fn absolute_path(path: PathBuf) -> Result<PathBuf> {
     }
 }
 
-pub fn default_worktree_root() -> Result<PathBuf> {
+pub fn default_workspace_root() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let base = env::var_os("LOCALAPPDATA")
             .or_else(|| env::var_os("APPDATA"))
             .context("Neither LOCALAPPDATA nor APPDATA is set")?;
-        return Ok(PathBuf::from(base).join("Exeora/worktrees"));
+        return Ok(PathBuf::from(base).join("Exeora/workspaces"));
     }
     #[cfg(target_os = "macos")]
     {
-        return Ok(home_dir()?.join("Library/Application Support/Exeora/worktrees"));
+        let home = home_dir()?;
+        return Ok(home.join("Library/Application Support/Exeora/workspaces"));
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let base = env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
             .unwrap_or(home_dir()?.join(".local/share"));
-        Ok(base.join("exeora/worktrees"))
+        Ok(base.join("exeora/workspaces"))
     }
 }
 

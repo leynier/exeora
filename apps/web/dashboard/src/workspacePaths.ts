@@ -8,45 +8,46 @@ export function sameLocalPath(left: string, right: string): boolean {
 }
 
 /**
- * Which Exeora worktree currently has `branch` checked out.
+ * Which Exeora workspace currently has `branch` checked out.
  *
  * `null` is the project root. `undefined` means Git does not have that branch
- * in any known worktree, so Source Control may still switch in place.
+ * in any known workspace, so Source Control may still switch in place.
  */
-export function worktreeSlugForBranch(
+export function workspaceSlugForBranch(
   branch: string,
-  gitWorktrees: { path: string; branch: string | null }[] | undefined,
+  gitWorkspaces: { path: string; branch: string | null }[] | undefined,
   projectLocalPath: string,
-  worktrees: { slug: string; localPath: string }[],
+  workspaces: { slug: string; localPath: string }[],
 ): string | null | undefined {
-  const checkout = gitWorktrees?.find((entry) => entry.branch === branch);
+  const checkout = gitWorkspaces?.find((entry) => entry.branch === branch);
   if (!checkout) return undefined;
-  const match = worktrees.find((entry) => sameLocalPath(entry.localPath, checkout.path));
+  const match = workspaces.find((entry) => sameLocalPath(entry.localPath, checkout.path));
   if (match) return match.slug;
   if (sameLocalPath(projectLocalPath, checkout.path)) return null;
   return undefined;
 }
 
 export function projectRootBranch(
-  gitWorktrees: { path: string; branch: string | null }[] | undefined,
+  gitWorkspaces: { path: string; branch: string | null }[] | undefined,
   projectLocalPath: string,
-  worktrees: { slug: string; localPath: string }[],
+  workspaces: { slug: string; localPath: string }[],
 ): string | null {
-  const root = gitWorktrees?.find((entry) => {
-    if (worktrees.some((worktree) => sameLocalPath(worktree.localPath, entry.path))) return false;
+  const root = gitWorkspaces?.find((entry) => {
+    if (workspaces.some((workspace) => sameLocalPath(workspace.localPath, entry.path)))
+      return false;
     return sameLocalPath(projectLocalPath, entry.path);
   });
   return root?.branch ?? null;
 }
 
-export function terminalSessionKey(projectId: string, worktreeId?: string): string {
-  return `${projectId}:${worktreeId ?? "main"}`;
+export function terminalSessionKey(projectId: string, workspaceId?: string): string {
+  return `${projectId}:${workspaceId ?? "main"}`;
 }
 
 export type ListedTerminal = {
   sessionId: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   startedAt: number;
 };

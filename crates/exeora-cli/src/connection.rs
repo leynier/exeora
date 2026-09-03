@@ -2,7 +2,7 @@ use crate::{
     CLI_VERSION,
     api::ApiClient,
     auth::AuthManager,
-    config::{ConfigStore, ProjectEntry, WorktreeEntry, WorktreeSyncState},
+    config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     error::{ErrorCode, ExeoraError},
     policy::{CommandPolicy, effective_policy, policy_allows},
     protocol::{
@@ -11,7 +11,7 @@ use crate::{
     },
     tools::{CallScope, ToolEngine},
     workspace::WorkspaceEngine,
-    worktrees::{self, CreateWorktree, PublicWorktree},
+    workspaces::{self, CreateWorkspace, PublicWorkspace},
 };
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -40,8 +40,8 @@ struct ActiveCall {
 struct ResolvedTarget {
     project: ProjectEntry,
     root: PathBuf,
-    worktree_id: Option<String>,
-    worktree_slug: Option<String>,
+    workspace_id: Option<String>,
+    workspace_slug: Option<String>,
 }
 
 type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
@@ -247,7 +247,7 @@ async fn connect_once(
             "prompt": can_prompt,
             "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "features": ["source-control-v1", "terminal-v1"],
-            "worktreeRouting": true,
+            "workspaceRouting": true,
         },
     }))?.into())).await?;
     emit_event(json_output, "open", json!({}));
@@ -408,8 +408,8 @@ async fn spawn_tool_call(
     let target = match resolve_target(
         &config_path,
         project_id,
-        message.get("worktreeId").and_then(Value::as_str),
-        message.get("worktreeSlug").and_then(Value::as_str),
+        message.get("workspaceId").and_then(Value::as_str),
+        message.get("workspaceSlug").and_then(Value::as_str),
     ) {
         Ok(target) => target,
         Err(error) => {
@@ -420,8 +420,8 @@ async fn spawn_tool_call(
     let ResolvedTarget {
         project,
         root,
-        worktree_id,
-        worktree_slug,
+        workspace_id,
+        workspace_slug,
     } = target;
     let Some(tool_name) = message
         .get("tool")
@@ -459,7 +459,7 @@ async fn spawn_tool_call(
         return;
     }
 
-    if matches!(tool, ToolName::DetachWorktree | ToolName::RemoveWorktree) {
+    if matches!(tool, ToolName::DetachWorkspace | ToolName::RemoveWorkspace) {
         cancel_root(&in_flight, &root).await;
         engine.kill_root(&root).await;
         workspace.kill_root(&root).await;
@@ -476,16 +476,16 @@ async fn spawn_tool_call(
     emit_event(
         json_output,
         "call",
-        json!({ "tool": tool_name, "project": project.slug, "worktree": worktree_slug, "client": describe_client(message.get("client")) }),
+        json!({ "tool": tool_name, "project": project.slug, "workspace": workspace_slug, "client": describe_client(message.get("client")) }),
     );
     if !json_output {
         println!(
             "→ {tool_name} ({}/{})",
             project.slug,
-            worktree_slug.as_deref().unwrap_or("main")
+            workspace_slug.as_deref().unwrap_or("main")
         );
     }
-    let worktree_key = worktree_id.clone().unwrap_or_else(|| "main".to_owned());
+    let workspace_key = workspace_id.clone().unwrap_or_else(|| "main".to_owned());
     let owner_client_id = message
         .get("client")
         .and_then(Value::as_object)
@@ -493,15 +493,15 @@ async fn spawn_tool_call(
         .and_then(Value::as_str)
         .map(str::to_owned);
     tokio::spawn(async move {
-        let result = if tool.is_worktree_tool() {
-            execute_worktree_tool(
+        let result = if tool.is_workspace_tool() {
+            execute_workspace_tool(
                 &config_path,
                 &api,
                 &engine,
                 &lifecycle_lock,
                 &project,
                 &root,
-                worktree_id.as_deref(),
+                workspace_id.as_deref(),
                 tool,
                 arguments,
                 cancel,
@@ -513,7 +513,7 @@ async fn spawn_tool_call(
                     &root,
                     CallScope {
                         project: &project.id,
-                        worktree: &worktree_key,
+                        workspace: &workspace_key,
                         owner: owner_client_id.as_deref(),
                     },
                     tool,
@@ -542,14 +542,14 @@ async fn spawn_tool_call(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn execute_worktree_tool(
+async fn execute_workspace_tool(
     config_path: &Path,
     api: &ApiClient,
     engine: &ToolEngine,
     lifecycle_lock: &LifecycleLock,
     project: &ProjectEntry,
     source_root: &Path,
-    worktree_id: Option<&str>,
+    workspace_id: Option<&str>,
     tool: ToolName,
     arguments: Value,
     cancel: CancellationToken,
@@ -582,11 +582,11 @@ async fn execute_worktree_tool(
     })?;
 
     match tool {
-        ToolName::ListGitWorktrees => {
-            let worktrees = worktrees::discover(&config, &project).map_err(worktree_error)?;
-            Ok(json!({ "worktrees": worktrees }))
+        ToolName::ListGitWorkspaces => {
+            let workspaces = workspaces::discover(&config, &project).map_err(workspace_error)?;
+            Ok(json!({ "workspaces": workspaces }))
         }
-        ToolName::CreateWorktree => {
+        ToolName::CreateWorkspace => {
             let branch = string_argument(record, "branch")?;
             let from = optional_string_argument(record, "from")?;
             let reuse_existing_branch = record
@@ -599,10 +599,10 @@ async fn execute_worktree_tool(
                     "from cannot be used with reuseExistingBranch.",
                 ));
             }
-            let entry = worktrees::create(
+            let entry = workspaces::create(
                 &config,
                 &project,
-                CreateWorktree {
+                CreateWorkspace {
                     branch,
                     from,
                     reuse_existing_branch,
@@ -612,16 +612,16 @@ async fn execute_worktree_tool(
                     source: Some(source_root.to_path_buf()),
                 },
             )
-            .map_err(worktree_error)?;
-            let outcome = worktrees::persist(&mut config, api, entry)
+            .map_err(workspace_error)?;
+            let outcome = workspaces::persist(&mut config, api, entry)
                 .await
-                .map_err(worktree_internal_error)?;
+                .map_err(workspace_internal_error)?;
             Ok(json!({
-                "worktree": PublicWorktree::from(&outcome.entry),
+                "workspace": PublicWorkspace::from(&outcome.entry),
                 "outcome": outcome.outcome,
             }))
         }
-        ToolName::AttachWorktree => {
+        ToolName::AttachWorkspace => {
             let path = optional_string_argument(record, "path")?;
             let branch = optional_string_argument(record, "branch")?;
             let path = match (path, branch) {
@@ -635,8 +635,8 @@ async fn execute_worktree_tool(
                     }
                     path
                 }
-                (None, Some(branch)) => worktrees::path_for_branch(&config, &project, &branch)
-                    .map_err(worktree_error)?,
+                (None, Some(branch)) => workspaces::path_for_branch(&config, &project, &branch)
+                    .map_err(workspace_error)?,
                 _ => {
                     return Err(ExeoraError::new(
                         ErrorCode::InvalidArguments,
@@ -644,35 +644,35 @@ async fn execute_worktree_tool(
                     ));
                 }
             };
-            let entry = worktrees::attach(
+            let entry = workspaces::attach(
                 &config,
                 &project,
                 &path,
                 optional_string_argument(record, "name")?,
                 optional_string_argument(record, "slug")?,
             )
-            .map_err(worktree_error)?;
-            let outcome = worktrees::persist(&mut config, api, entry)
+            .map_err(workspace_error)?;
+            let outcome = workspaces::persist(&mut config, api, entry)
                 .await
-                .map_err(worktree_internal_error)?;
+                .map_err(workspace_internal_error)?;
             Ok(json!({
-                "worktree": PublicWorktree::from(&outcome.entry),
+                "workspace": PublicWorkspace::from(&outcome.entry),
                 "outcome": outcome.outcome,
             }))
         }
-        ToolName::DetachWorktree => {
-            let entry = active_worktree(&config, &project.id, worktree_id)?;
-            let outcome = worktrees::detach(&mut config, api, entry)
+        ToolName::DetachWorkspace => {
+            let entry = active_workspace(&config, &project.id, workspace_id)?;
+            let outcome = workspaces::detach(&mut config, api, entry)
                 .await
-                .map_err(worktree_internal_error)?;
+                .map_err(workspace_internal_error)?;
             Ok(json!({
-                "worktree": PublicWorktree::from(&outcome.entry),
+                "workspace": PublicWorkspace::from(&outcome.entry),
                 "outcome": outcome.outcome,
             }))
         }
-        ToolName::RemoveWorktree => {
-            let entry = active_worktree(&config, &project.id, worktree_id)?;
-            let outcome = worktrees::remove(
+        ToolName::RemoveWorkspace => {
+            let entry = active_workspace(&config, &project.id, workspace_id)?;
+            let outcome = workspaces::remove(
                 &mut config,
                 api,
                 &project,
@@ -687,45 +687,45 @@ async fn execute_worktree_tool(
                     .unwrap_or(false),
             )
             .await
-            .map_err(worktree_error)?;
+            .map_err(workspace_error)?;
             Ok(json!({
-                "worktree": PublicWorktree::from(&outcome.entry),
+                "workspace": PublicWorkspace::from(&outcome.entry),
                 "outcome": outcome.outcome,
                 "branchDeleted": outcome.branch_deleted,
             }))
         }
         _ => Err(ExeoraError::new(
             ErrorCode::InternalError,
-            "The worktree tool dispatcher received a different tool.",
+            "The workspace tool dispatcher received a different tool.",
         )),
     }
 }
 
-fn active_worktree(
+fn active_workspace(
     config: &ConfigStore,
     project_id: &str,
-    worktree_id: Option<&str>,
-) -> Result<WorktreeEntry, ExeoraError> {
-    let worktree_id = worktree_id.ok_or_else(|| {
+    workspace_id: Option<&str>,
+) -> Result<WorkspaceEntry, ExeoraError> {
+    let workspace_id = workspace_id.ok_or_else(|| {
         ExeoraError::new(
             ErrorCode::InvalidArguments,
-            "A connected worktree slug or id is required.",
+            "A connected workspace slug or id is required.",
         )
     })?;
     config
         .data()
-        .worktrees
+        .workspaces
         .iter()
         .find(|entry| {
-            entry.id == worktree_id
+            entry.id == workspace_id
                 && entry.project_id == project_id
-                && entry.sync_state == WorktreeSyncState::Active
+                && entry.sync_state == WorkspaceSyncState::Active
         })
         .cloned()
         .ok_or_else(|| {
             ExeoraError::new(
-                ErrorCode::WorktreeUnavailable,
-                "That worktree is no longer connected or available on this machine.",
+                ErrorCode::WorkspaceUnavailable,
+                "That workspace is no longer connected or available on this machine.",
             )
         })
 }
@@ -756,7 +756,7 @@ fn optional_string_argument(
     }
 }
 
-fn worktree_error(error: anyhow::Error) -> ExeoraError {
+fn workspace_error(error: anyhow::Error) -> ExeoraError {
     let message = error.to_string();
     let code = if message.starts_with("git ") || message.starts_with("Could not") {
         ErrorCode::ToolFailed
@@ -766,7 +766,7 @@ fn worktree_error(error: anyhow::Error) -> ExeoraError {
     ExeoraError::new(code, message)
 }
 
-fn worktree_internal_error(error: anyhow::Error) -> ExeoraError {
+fn workspace_internal_error(error: anyhow::Error) -> ExeoraError {
     ExeoraError::new(ErrorCode::InternalError, error.to_string())
 }
 
@@ -852,8 +852,8 @@ async fn spawn_workspace_call(
     let target = match resolve_target(
         &config_path,
         project_id,
-        message.get("worktreeId").and_then(Value::as_str),
-        message.get("worktreeSlug").and_then(Value::as_str),
+        message.get("workspaceId").and_then(Value::as_str),
+        message.get("workspaceSlug").and_then(Value::as_str),
     ) {
         Ok(target) => target,
         Err(error) => {
@@ -870,11 +870,11 @@ async fn spawn_workspace_call(
             root: target.root.clone(),
         },
     );
-    let create_worktree = action.get("action").and_then(Value::as_str) == Some("worktree_create");
+    let create_workspace = action.get("action").and_then(Value::as_str) == Some("workspace_create");
     tokio::spawn(async move {
-        let result = if create_worktree {
+        let result = if create_workspace {
             let _guard = lifecycle_lock.lock().await;
-            create_workspace_worktree(
+            create_and_connect_workspace(
                 &config_path,
                 &api,
                 &target.project.id,
@@ -892,7 +892,7 @@ async fn spawn_workspace_call(
     });
 }
 
-async fn create_workspace_worktree(
+async fn create_and_connect_workspace(
     config_path: &std::path::Path,
     api: &crate::api::ApiClient,
     project_id: &str,
@@ -920,10 +920,10 @@ async fn create_workspace_worktree(
             "This machine does not serve that project. Run `exeora project add` there.",
         )
     })?;
-    let entry = crate::worktrees::create(
+    let entry = crate::workspaces::create(
         &config,
         &project,
-        crate::worktrees::CreateWorktree {
+        crate::workspaces::CreateWorkspace {
             branch: branch.to_owned(),
             from: action
                 .get("from")
@@ -946,12 +946,12 @@ async fn create_workspace_worktree(
         },
     )
     .map_err(|error| ExeoraError::new(ErrorCode::InvalidArguments, error.to_string()))?;
-    let outcome = crate::worktrees::persist(&mut config, api, entry)
+    let outcome = crate::workspaces::persist(&mut config, api, entry)
         .await
         .map_err(|error| {
             ExeoraError::new(
                 ErrorCode::InternalError,
-                format!("Could not save the created worktree: {error}"),
+                format!("Could not save the created workspace: {error}"),
             )
         })?;
     let entry = outcome.entry;
@@ -963,7 +963,7 @@ async fn create_workspace_worktree(
         "stdout": "",
         "stderr": "",
         "status": status,
-        "worktree": {
+        "workspace": {
             "id": entry.id,
             "slug": entry.slug,
             "name": entry.name,
@@ -999,8 +999,8 @@ async fn handle_terminal_message(
             let target = match resolve_target(
                 &config_path,
                 project_id,
-                message.get("worktreeId").and_then(Value::as_str),
-                message.get("worktreeSlug").and_then(Value::as_str),
+                message.get("workspaceId").and_then(Value::as_str),
+                message.get("workspaceSlug").and_then(Value::as_str),
             ) {
                 Ok(target) => target,
                 Err(error) => {
@@ -1084,8 +1084,8 @@ async fn send_terminal_error(outgoing: &mpsc::Sender<Value>, session_id: &str, m
 fn resolve_target(
     config_path: &Path,
     project_id: &str,
-    worktree_id: Option<&str>,
-    worktree_slug: Option<&str>,
+    workspace_id: Option<&str>,
+    workspace_slug: Option<&str>,
 ) -> Result<ResolvedTarget, ExeoraError> {
     let config = ConfigStore::load_from(config_path.to_path_buf()).map_err(|_| {
         ExeoraError::new(
@@ -1099,11 +1099,11 @@ fn resolve_target(
             "This machine does not serve that project. Run `exeora project add` there.",
         )
     })?;
-    let Some(worktree_id) = worktree_id else {
-        if worktree_slug.is_some() {
+    let Some(workspace_id) = workspace_id else {
+        if workspace_slug.is_some() {
             return Err(ExeoraError::new(
-                ErrorCode::WorktreeUnavailable,
-                "The worktree target is incomplete.",
+                ErrorCode::WorkspaceUnavailable,
+                "The workspace target is incomplete.",
             ));
         }
         if !project.root.is_dir() {
@@ -1115,37 +1115,37 @@ fn resolve_target(
         return Ok(ResolvedTarget {
             root: std::fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone()),
             project,
-            worktree_id: None,
-            worktree_slug: None,
+            workspace_id: None,
+            workspace_slug: None,
         });
     };
-    let worktree = config
+    let workspace = config
         .data()
-        .worktrees
+        .workspaces
         .iter()
         .find(|entry| {
-            entry.id == worktree_id
+            entry.id == workspace_id
                 && entry.project_id == project.id
-                && entry.sync_state == WorktreeSyncState::Active
-                && worktree_slug.is_none_or(|slug| slug == entry.slug)
+                && entry.sync_state == WorkspaceSyncState::Active
+                && workspace_slug.is_none_or(|slug| slug == entry.slug)
         })
         .ok_or_else(|| {
             ExeoraError::new(
-                ErrorCode::WorktreeUnavailable,
-                "That worktree is no longer connected or available on this machine.",
+                ErrorCode::WorkspaceUnavailable,
+                "That workspace is no longer connected or available on this machine.",
             )
         })?;
-    if !worktree.root.is_dir() {
+    if !workspace.root.is_dir() {
         return Err(ExeoraError::new(
-            ErrorCode::WorktreeUnavailable,
-            "That worktree is registered but its directory is unavailable.",
+            ErrorCode::WorkspaceUnavailable,
+            "That workspace is registered but its directory is unavailable.",
         ));
     }
     Ok(ResolvedTarget {
         project,
-        root: std::fs::canonicalize(&worktree.root).unwrap_or_else(|_| worktree.root.clone()),
-        worktree_id: Some(worktree.id.clone()),
-        worktree_slug: Some(worktree.slug.clone()),
+        root: std::fs::canonicalize(&workspace.root).unwrap_or_else(|_| workspace.root.clone()),
+        workspace_id: Some(workspace.id.clone()),
+        workspace_slug: Some(workspace.slug.clone()),
     })
 }
 
@@ -1216,9 +1216,9 @@ fn served_roots(config_path: &std::path::Path) -> HashSet<PathBuf> {
     allowed.extend(
         config
             .data()
-            .worktrees
+            .workspaces
             .iter()
-            .filter(|entry| entry.sync_state == WorktreeSyncState::Active)
+            .filter(|entry| entry.sync_state == WorkspaceSyncState::Active)
             .filter_map(|entry| std::fs::canonicalize(&entry.root).ok()),
     );
     allowed
@@ -1308,7 +1308,7 @@ fn platform() -> &'static str {
 mod tests {
     use super::{awake_event, handshake_rejection, resolve_target, result_frame};
     use crate::{
-        config::{ConfigStore, ProjectEntry, WorktreeEntry, WorktreeSyncState},
+        config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         error::ErrorCode,
         protocol::MAX_RESULT_BYTES,
     };
@@ -1358,7 +1358,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_only_the_active_worktree_with_the_matching_stable_identity() {
+    fn resolves_only_the_active_workspace_with_the_matching_stable_identity() {
         let directory = tempdir().unwrap();
         let main = directory.path().join("main");
         let feature = directory.path().join("feature");
@@ -1376,19 +1376,19 @@ mod tests {
         });
         for (id, slug, root, sync_state) in [
             (
-                "wtr_active",
+                "wsp_active",
                 "feature",
                 feature.clone(),
-                WorktreeSyncState::Active,
+                WorkspaceSyncState::Active,
             ),
             (
-                "wtr_pending",
+                "wsp_pending",
                 "pending",
                 pending,
-                WorktreeSyncState::PendingUpsert,
+                WorkspaceSyncState::PendingUpsert,
             ),
         ] {
-            config.upsert_worktree(WorktreeEntry {
+            config.upsert_workspace(WorkspaceEntry {
                 id: id.to_owned(),
                 project_id: "prj_1".to_owned(),
                 slug: slug.to_owned(),
@@ -1403,18 +1403,18 @@ mod tests {
         config.save().unwrap();
 
         let resolved =
-            resolve_target(&config_path, "prj_1", Some("wtr_active"), Some("feature")).unwrap();
+            resolve_target(&config_path, "prj_1", Some("wsp_active"), Some("feature")).unwrap();
         assert_eq!(resolved.root, fs::canonicalize(feature).unwrap());
-        assert_eq!(resolved.worktree_id.as_deref(), Some("wtr_active"));
-        assert_eq!(resolved.worktree_slug.as_deref(), Some("feature"));
+        assert_eq!(resolved.workspace_id.as_deref(), Some("wsp_active"));
+        assert_eq!(resolved.workspace_slug.as_deref(), Some("feature"));
 
         for (id, slug) in [
-            ("wtr_active", Some("renamed")),
-            ("wtr_pending", Some("pending")),
-            ("wtr_missing", None),
+            ("wsp_active", Some("renamed")),
+            ("wsp_pending", Some("pending")),
+            ("wsp_missing", None),
         ] {
             let error = resolve_target(&config_path, "prj_1", Some(id), slug).unwrap_err();
-            assert_eq!(error.code, ErrorCode::WorktreeUnavailable);
+            assert_eq!(error.code, ErrorCode::WorkspaceUnavailable);
         }
     }
 }

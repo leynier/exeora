@@ -1,43 +1,43 @@
 import { Link } from "react-router";
-import type { Project, Worktree } from "../api.js";
+import type { Project, Workspace } from "../api.js";
 import { Select } from "./Select.js";
 
 /**
- * Project, then worktree. The Workspace tab is reachable without walking into
+ * Project, then workspace. The Workspace tab is reachable without walking into
  * a project first, so both choices live here rather than being implied by the
  * URL the visitor arrived from.
  */
 export function WorkspaceRootSelector({
   projects,
   projectId,
-  worktrees,
+  workspaces,
   selectedSlug,
   projectRootBranch,
   onSelectProject,
-  onSelectWorktree,
+  onSelectWorkspace,
 }: {
   projects: Project[];
   projectId: string;
-  worktrees: Worktree[];
+  workspaces: Workspace[];
   selectedSlug: string | null;
   projectRootBranch?: string | null;
   onSelectProject: (id: string) => void;
-  onSelectWorktree: (slug: string | null) => void;
+  onSelectWorkspace: (slug: string | null) => void;
 }) {
   const projectOptions = projects.map((project) => ({
     value: project.id,
     label: project.name,
   }));
-  const worktreeOptions = [
+  const workspaceOptions = [
     {
       value: "main",
       label: "project root",
       hint: projectRootBranch ?? "primary checkout",
     },
-    ...worktrees.map((worktree) => ({
-      value: worktree.slug,
-      label: worktree.slug,
-      hint: worktree.branch ?? "detached HEAD",
+    ...workspaces.map((workspace) => ({
+      value: workspace.slug,
+      label: workspace.slug,
+      hint: workspace.branch ?? "detached HEAD",
     })),
   ];
 
@@ -51,11 +51,11 @@ export function WorkspaceRootSelector({
         onChange={onSelectProject}
       />
       <Select
-        label="Worktree"
+        label="Workspace"
         value={selectedSlug ?? "main"}
-        options={worktreeOptions}
+        options={workspaceOptions}
         disabled={!projectId}
-        onChange={(value) => onSelectWorktree(value === "main" ? null : value)}
+        onChange={(value) => onSelectWorkspace(value === "main" ? null : value)}
       />
       {projectId ? (
         <Link className="btn" to={`/projects/${projectId}`}>

@@ -20,8 +20,8 @@ export async function callRelayWorkspace(
   options: {
     requestId: string;
     projectId: string;
-    worktreeId?: string | undefined;
-    worktreeSlug?: string | undefined;
+    workspaceId?: string | undefined;
+    workspaceSlug?: string | undefined;
     action: WorkspaceAction;
     signal?: AbortSignal | undefined;
   },
@@ -30,6 +30,16 @@ export async function callRelayWorkspace(
   const issuedAt = Date.now();
   const expiresAt = issuedAt + RELAY_TIMEOUT_MS;
   const socket = await dial(relay, "workspace", options.requestId);
+  const request: CallerRequest = {
+    type: "workspace.start",
+    requestId: options.requestId,
+    projectId: options.projectId,
+    workspaceId: options.workspaceId,
+    workspaceSlug: options.workspaceSlug,
+    action: options.action,
+    issuedAt,
+    expiresAt,
+  };
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (answer: { value: WorkspaceValue } | { error: Error }) => {
@@ -78,16 +88,7 @@ export async function callRelayWorkspace(
       abort();
       return;
     }
-    send(socket, {
-      type: "workspace.start",
-      requestId: options.requestId,
-      projectId: options.projectId,
-      worktreeId: options.worktreeId,
-      worktreeSlug: options.worktreeSlug,
-      action: options.action,
-      issuedAt,
-      expiresAt,
-    });
+    send(socket, request);
   });
 }
 
@@ -96,8 +97,8 @@ export async function callRelayTool(
   options: {
     requestId: string;
     projectId: string;
-    worktreeId?: string | undefined;
-    worktreeSlug?: string | undefined;
+    workspaceId?: string | undefined;
+    workspaceSlug?: string | undefined;
     tool: ToolName;
     args: unknown;
     client?: { id?: string; name?: string; version?: string } | undefined;
@@ -119,8 +120,8 @@ export async function callRelayTool(
     type: "tool.start",
     requestId: options.requestId,
     projectId: options.projectId,
-    worktreeId: options.worktreeId,
-    worktreeSlug: options.worktreeSlug,
+    workspaceId: options.workspaceId,
+    workspaceSlug: options.workspaceSlug,
     tool: options.tool,
     arguments: options.args,
     client: options.client,
@@ -232,8 +233,8 @@ export async function requestRelayApproval(
   options: {
     id: string;
     projectId: string;
-    worktreeId?: string | undefined;
-    worktreeSlug?: string | undefined;
+    workspaceId?: string | undefined;
+    workspaceSlug?: string | undefined;
     tool: ToolName;
     prompt: string;
     clientName?: string | undefined;

@@ -21,7 +21,7 @@ describe("workspace relay", () => {
   const WORKSPACE_CAPABILITIES: ExecutorCapabilities = {
     ...BASELINE_CAPABILITIES,
     features: ["source-control-v1", "terminal-v1"],
-    worktreeRouting: true,
+    workspaceRouting: true,
   };
 
   it("negotiates the source-control feature and keeps its calls separate from tools", async () => {
@@ -29,8 +29,8 @@ describe("workspace relay", () => {
     const value = await callRelayWorkspace(relay(), {
       requestId: "req_workspace",
       projectId: "prj_test",
-      worktreeId: "wtr_feature",
-      worktreeSlug: "feature",
+      workspaceId: "wsp_feature",
+      workspaceSlug: "feature",
       action: { action: "status" },
     });
 
@@ -38,8 +38,8 @@ describe("workspace relay", () => {
     expect(executor.workspaceSeen).toEqual([
       {
         requestId: "req_workspace",
-        worktreeId: "wtr_feature",
-        worktreeSlug: "feature",
+        workspaceId: "wsp_feature",
+        workspaceSlug: "feature",
         action: { action: "status" },
       },
     ]);
@@ -131,18 +131,18 @@ describe("workspace relay", () => {
       ),
     ).toBe(false);
 
-    const worktreeTicket = await relay().createTerminalTicket(
+    const workspaceTicket = await relay().createTerminalTicket(
       "prj_test",
-      "wtr_feature",
+      "wsp_feature",
       "feature",
       "https://exeora.dev",
     );
-    if (!worktreeTicket) throw new Error("worktree ticket was not issued");
+    if (!workspaceTicket) throw new Error("workspace ticket was not issued");
     expect(
       await relay().consumeTerminalTicket(
-        worktreeTicket,
+        workspaceTicket,
         "prj_test",
-        "wtr_other",
+        "wsp_other",
         "other",
         "https://exeora.dev",
       ),
@@ -231,15 +231,15 @@ describe("workspace relay", () => {
     );
     expect(duplicate.status).toBe(409);
 
-    const worktreeResponse = await relay().fetch(
+    const workspaceResponse = await relay().fetch(
       new Request(
-        "https://relay/caller/terminal?id=term_worktree&projectId=prj_test&worktreeId=wtr_feature&worktreeSlug=feature&cols=80&rows=24",
+        "https://relay/caller/terminal?id=term_workspace&projectId=prj_test&workspaceId=wsp_feature&workspaceSlug=feature&cols=80&rows=24",
         { headers: { Upgrade: "websocket" } },
       ),
     );
-    expect(worktreeResponse.status).toBe(101);
-    worktreeResponse.webSocket?.accept();
-    worktreeResponse.webSocket?.close(1000, "done");
+    expect(workspaceResponse.status).toBe(101);
+    workspaceResponse.webSocket?.accept();
+    workspaceResponse.webSocket?.close(1000, "done");
 
     browser.close(1000, "done");
     await eventually(async () => {

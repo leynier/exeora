@@ -55,7 +55,7 @@ describe("workspace ownership and availability", () => {
       online: false,
       sourceControl: false,
       terminal: false,
-      worktreeRouting: false,
+      workspaceRouting: false,
     });
 
     const other = await call(`/api/projects/${PROJECT}/workspace/capabilities`, OTHER);
@@ -82,11 +82,11 @@ describe("workspace ownership and availability", () => {
     expect(await other.json()).toEqual({ items: [] });
   });
 
-  it("resolves only worktrees that belong to the owner's project", async () => {
+  it("resolves only workspaces that belong to the owner's project", async () => {
     await db(env)
-      .insert(schema.worktrees)
+      .insert(schema.workspaces)
       .values({
-        id: "wtr_workspace",
+        id: "wsp_workspace",
         projectId: PROJECT,
         slug: "feature",
         name: "Feature",
@@ -97,15 +97,15 @@ describe("workspace ownership and availability", () => {
       .run();
 
     const known = await call(
-      `/api/projects/${PROJECT}/workspace/capabilities?worktree=wtr_workspace`,
+      `/api/projects/${PROJECT}/workspace/capabilities?workspace=wsp_workspace`,
     );
     expect(known.status).toBe(200);
-    expect(await known.json()).toMatchObject({ online: false, worktreeRouting: false });
+    expect(await known.json()).toMatchObject({ online: false, workspaceRouting: false });
 
-    const missing = await call(`/api/projects/${PROJECT}/workspace/status?worktree=missing`);
+    const missing = await call(`/api/projects/${PROJECT}/workspace/status?workspace=missing`);
     expect(missing.status).toBe(404);
     const hidden = await call(
-      `/api/projects/${PROJECT}/workspace/capabilities?worktree=feature`,
+      `/api/projects/${PROJECT}/workspace/capabilities?workspace=feature`,
       OTHER,
     );
     expect(hidden.status).toBe(404);

@@ -68,8 +68,8 @@ export const ExecutorCapabilities = z.object({
   tools: z.array(z.string().max(64)).max(64),
   /** Additive non-MCP surfaces this executor understands. */
   features: z.array(z.string().max(64)).max(32).optional(),
-  /** Whether tool calls can target a registered Git worktree by stable id. */
-  worktreeRouting: z.boolean().optional(),
+  /** Whether tool calls can target a registered Git workspace by stable id. */
+  workspaceRouting: z.boolean().optional(),
 });
 
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
@@ -213,8 +213,8 @@ export const ToolCallMessage = z.object({
   type: z.literal("tool.call"),
   requestId: z.string(),
   projectId: z.string(),
-  worktreeId: z.string().optional(),
-  worktreeSlug: z.string().optional(),
+  workspaceId: z.string().optional(),
+  workspaceSlug: z.string().optional(),
   tool: z.enum(TOOL_NAMES),
   arguments: z.unknown(),
   /**
@@ -265,8 +265,8 @@ export const WorkspaceCallMessage = z.object({
   type: z.literal("workspace.call"),
   requestId: z.string(),
   projectId: z.string(),
-  worktreeId: z.string().optional(),
-  worktreeSlug: z.string().optional(),
+  workspaceId: z.string().optional(),
+  workspaceSlug: z.string().optional(),
   action: WorkspaceAction,
   issuedAt: z.number().int(),
   expiresAt: z.number().int(),
@@ -295,8 +295,8 @@ export const ApprovalRequestMessage = z.object({
   type: z.literal("approval.request"),
   id: z.string(),
   projectId: z.string(),
-  worktreeId: z.string().optional(),
-  worktreeSlug: z.string().optional(),
+  workspaceId: z.string().optional(),
+  workspaceSlug: z.string().optional(),
   tool: z.enum(TOOL_NAMES),
   /** One line, already written for a person: "Run `npm test`?" */
   prompt: z.string(),
