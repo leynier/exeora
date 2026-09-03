@@ -4,7 +4,7 @@
   "scripts": {
     "setup": {
       "enabled": true,
-      "command": "bun install && mise install rust@1.98.0 && mise use -g rust@1.98.0"
+      "command": "bun install && mise install rust@1.98.0 && mise use -g rust@1.98.0 && (command -v git-lfs >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y git-lfs) || true)"
     },
     "run": { "enabled": true, "command": null },
     "archive": { "enabled": true, "command": null },
