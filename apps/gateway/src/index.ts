@@ -1,7 +1,12 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { advertisedAccountTools, advertisedTools } from "./advertised.js";
+import {
+  advertisedAccountMcpTools,
+  advertisedAccountTools,
+  advertisedMcpTools,
+  advertisedTools,
+} from "./advertised.js";
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
 import { reconcileAuditOutbox } from "./audit.js";
 import { rememberAccountMcpClient, rememberMcpClient } from "./clients.js";
@@ -9,6 +14,7 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
+import { dispatchMcpToDevice } from "./dispatch-mcp.js";
 import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
 import { CLI_SCOPES, DASHBOARD_SCOPES } from "./oauth/clients.js";
@@ -116,6 +122,10 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
     method === "tools/list"
       ? await advertisedTools(c.env, propsOf(c.executionCtx).userId, projectId)
       : undefined;
+  const mcpTools =
+    method === "tools/list" || method === "tools/call"
+      ? await advertisedMcpTools(c.env, propsOf(c.executionCtx).userId, projectId)
+      : [];
 
   const handler = createProjectMcpHandler(
     projectId,
@@ -147,6 +157,19 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
         .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.projects.userId, userId)))
         .all();
       return { project: projectId, workspaces: rows };
+    },
+    {
+      tools: mcpTools,
+      dispatch: (context, exposedName, args) =>
+        dispatchMcpToDevice(c.env, {
+          userId: context.userId,
+          projectId,
+          workspace: context.workspace,
+          exposedName,
+          args,
+          caller: context.caller,
+          signal,
+        }),
     },
   );
 
@@ -192,12 +215,30 @@ authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
 
   const advertised =
     method === "tools/list" ? await advertisedAccountTools(c.env, userId, clientId) : undefined;
+  const mcpCatalogs =
+    method === "tools/list" || method === "tools/call"
+      ? await advertisedAccountMcpTools(c.env, userId, clientId)
+      : [];
 
   const handler = createAccountMcpHandler(
     (call, tool, args) => dispatchAccountCall(c.env, call, tool, args, signal),
     (call, tool, args) => answerAccountTool(c.env, call, tool, args),
     c.env,
     advertised,
+    {
+      catalogs: mcpCatalogs,
+      dispatch: (call, exposedName, args) =>
+        dispatchMcpToDevice(c.env, {
+          userId: call.userId,
+          projectId: call.projectId,
+          workspace: call.workspace,
+          exposedName,
+          args,
+          caller: call.caller,
+          signal,
+          endpoint: "account",
+        }),
+    },
   );
 
   const peek = c.req.raw.clone();

@@ -94,6 +94,12 @@ Both URLs also carry `get_agent_prompt`, which reaches no machine: it hands back
 
 Full reference: [exeora.dev/docs/tools](https://exeora.dev/docs/tools/).
 
+### Proxy other MCP servers
+
+Exeora can also connect to MCP servers configured on the machine and re-publish their tools through its own MCP endpoint. Configure project servers in `exeora.toml` or user-wide servers under `mcpServers` in Exeora's local `config.json`; stdio and Streamable HTTP are supported. Upstream tools are namespaced as `mcp__server__tool` and keep their original input schema and MCP result.
+
+See [proxy other MCP servers](https://exeora.dev/docs/mcp-proxy/) for configuration examples, environment-variable secrets, project overrides, and protocol compatibility.
+
 ## Clients
 
 Works with any MCP client that speaks Streamable HTTP and OAuth, including:

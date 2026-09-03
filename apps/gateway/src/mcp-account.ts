@@ -21,6 +21,7 @@ import {
   registerAgentPrompt,
   toolResult,
 } from "./mcp.js";
+import { type ProjectMcpCatalog, registerAccountMcpProxyTools } from "./mcp-proxy-account-tools.js";
 
 /**
  * The account endpoint: one URL, `exeora.dev/mcp`, the same for everyone.
@@ -75,6 +76,15 @@ export type AccountToolHandler = (
   args: unknown,
 ) => Promise<unknown>;
 
+export interface AccountMcpProxyOptions {
+  catalogs: readonly ProjectMcpCatalog[];
+  dispatch: (
+    call: Pick<AccountCall, "userId" | "caller" | "workspace"> & { projectId: string },
+    exposedName: string,
+    args: unknown,
+  ) => Promise<unknown>;
+}
+
 /**
  * The `project` argument the account endpoint adds to every executor tool.
  *
@@ -108,6 +118,7 @@ export function createAccountMcpHandler(
    * gateway-only list tools are always offered so a caller can name a target.
    */
   advertised?: ReadonlySet<ToolName>,
+  mcpProxy?: AccountMcpProxyOptions,
 ) {
   return createMcpHandler(
     (request) => {
@@ -412,6 +423,30 @@ export function createAccountMcpHandler(
             inputSchema: TOOL_DEFINITIONS.list_skills.inputSchema.extend(routingArgs),
           },
           (args, ctx) => run("list_skills", args, ctx),
+        );
+      }
+
+      if (mcpProxy) {
+        registerAccountMcpProxyTools(
+          server,
+          mcpProxy.catalogs,
+          async (catalog, tool, workspace, args, ctx) => {
+            const props = propsOf();
+            return mcpProxy.dispatch(
+              {
+                userId: String(props.userId ?? ""),
+                caller: {
+                  clientId: props.clientId,
+                  clientName: props.clientName,
+                  mcp: mcpClientInfo(ctx),
+                },
+                projectId: catalog.projectId,
+                workspace,
+              },
+              tool.exposedName,
+              args,
+            );
+          },
         );
       }
 

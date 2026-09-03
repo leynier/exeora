@@ -5,6 +5,7 @@ import {
   AGENT_PROMPT_TOOL,
   agentPrompt,
   ExeoraError,
+  type McpToolDescriptor,
   serverInstructions,
   type ToolName,
 } from "@exeora/protocol";
@@ -27,14 +28,13 @@ import {
 import type { CallerIdentity, McpClientInfo } from "./clients.js";
 import "./env.js";
 import { registerExecutorTools } from "./mcp-executor-tools.js";
+import { registerMcpProxyTools } from "./mcp-proxy-tools.js";
 
 /**
  * One MCP endpoint per project: `exeora.dev/p/:projectId/mcp`.
  *
- * The handler is stateless, so building one per request costs nothing and lets
- * `route` carry the project id. Isolating projects at the URL means an agent
- * connected to one project has no way to name another; the separation is
- * structural rather than something the model is asked to respect.
+ * The stateless handler carries project isolation in its URL rather than in a
+ * model-selected argument.
  *
  * `legacy: "stateless"` is the SDK default and is what makes today's clients
  * work: claude.ai and ChatGPT still speak the 2025-era protocol, and the same
@@ -99,6 +99,17 @@ export type ToolDispatcher = (
   args: unknown,
 ) => Promise<DispatchResult>;
 
+export type McpProxyDispatcher = (
+  context: Pick<McpToolContext, "userId" | "projectId" | "workspace" | "caller">,
+  exposedName: string,
+  args: unknown,
+) => Promise<unknown>;
+
+export interface McpProxyOptions {
+  tools: readonly McpToolDescriptor[];
+  dispatch: McpProxyDispatcher;
+}
+
 /**
  * `env` is threaded in rather than reached for. The handler factory runs inside
  * the SDK, and `getMcpAuthContext()` carries only the grant's props, so this is
@@ -120,6 +131,7 @@ export function createProjectMcpHandler(
   listWorkspaces?: (
     context: Pick<McpToolContext, "userId" | "projectId" | "caller">,
   ) => Promise<unknown>,
+  mcpProxy?: McpProxyOptions,
 ) {
   return createMcpHandler(
     (request) => {
@@ -219,6 +231,26 @@ export function createProjectMcpHandler(
       };
 
       registerExecutorTools(server, offers, run);
+
+      if (mcpProxy) {
+        registerMcpProxyTools(server, mcpProxy.tools, async (tool, workspace, args, ctx) => {
+          const props = propsOf();
+          return mcpProxy.dispatch(
+            {
+              userId: String(props.userId ?? ""),
+              projectId,
+              workspace,
+              caller: {
+                clientId: props.clientId,
+                clientName: props.clientName,
+                mcp: mcpClientInfo(ctx),
+              },
+            },
+            tool.exposedName,
+            args,
+          );
+        });
+      }
 
       return server;
     },

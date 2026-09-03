@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use atomic_write_file::AtomicWriteFile;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     env, fs,
     io::Write,
     path::{Path, PathBuf},
@@ -66,6 +67,41 @@ impl Default for StarPrompt {
     }
 }
 
+/// One MCP server Exeora can connect to and re-expose through its own MCP endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            command: None,
+            args: Vec::new(),
+            env: BTreeMap::new(),
+            url: None,
+            headers: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigData {
@@ -81,6 +117,9 @@ pub struct ConfigData {
     pub workspaces: Vec<WorkspaceEntry>,
     #[serde(default)]
     pub workspace_root: Option<PathBuf>,
+    /// User-wide MCP servers. A project may override or disable one by name in exeora.toml.
+    #[serde(default)]
+    pub mcp_servers: BTreeMap<String, McpServerConfig>,
     #[serde(default)]
     pub star: StarPrompt,
 }
@@ -98,6 +137,7 @@ impl Default for ConfigData {
             projects: Vec::new(),
             workspaces: Vec::new(),
             workspace_root: None,
+            mcp_servers: BTreeMap::new(),
             star: StarPrompt::default(),
         }
     }

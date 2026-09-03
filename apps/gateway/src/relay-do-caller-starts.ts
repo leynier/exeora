@@ -67,6 +67,64 @@ export function handleWorkspaceCallerMessage(
   }
 }
 
+type McpStart = Extract<CallerRequest, { type: "mcp.start" }>;
+
+export function handleMcpCallerMessage(
+  ctx: DurableObjectState,
+  socket: WebSocket,
+  state: ToolCallerState,
+  message: McpStart,
+): void {
+  if (message.requestId !== state.id || state.issuedAt !== undefined) return;
+  if (message.expiresAt <= Date.now()) {
+    settleCaller(socket, relayError("TOOL_TIMEOUT", "The MCP call expired before dispatch."));
+    return;
+  }
+  const executor = executorSocket(ctx);
+  const executorState = executor ? attachmentOf(executor) : null;
+  if (!executor || executorState?.role !== "executor") {
+    settleCaller(socket, offline("No Exeora CLI is connected for this project."));
+    return;
+  }
+  if (!executorState.capabilities?.features?.includes("mcp-proxy-v1")) {
+    settleCaller(socket, {
+      type: "error",
+      error: { code: "FORBIDDEN", message: "Update the Exeora CLI to use MCP proxying." },
+    });
+    return;
+  }
+  if (message.workspaceId && !executorState.capabilities?.workspaceRouting) {
+    settleCaller(
+      socket,
+      relayError(
+        "WORKSPACE_UNAVAILABLE",
+        "The connected Exeora CLI does not support workspace routing. Upgrade it and reconnect.",
+      ),
+    );
+    return;
+  }
+  socket.serializeAttachment({ ...state, issuedAt: message.issuedAt } satisfies ToolCallerState);
+  try {
+    executor.send(
+      encodeMessage({
+        type: "mcp.call",
+        requestId: message.requestId,
+        projectId: message.projectId,
+        workspaceId: message.workspaceId,
+        workspaceSlug: message.workspaceSlug,
+        server: message.server,
+        tool: message.tool,
+        arguments: message.arguments,
+        client: message.client,
+        issuedAt: message.issuedAt,
+        expiresAt: message.expiresAt,
+      }),
+    );
+  } catch {
+    settleCaller(socket, offline("The connection to the device failed."));
+  }
+}
+
 type ToolStart = Extract<CallerRequest, { type: "tool.start" }>;
 
 export function handleToolCallerMessage(
