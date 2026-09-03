@@ -1,4 +1,4 @@
-use super::path::{relative_string, resolve_in_project};
+use super::path::{Access, relative_string, resolve_in_project, resolve_path};
 use crate::{
     error::{ErrorCode, ExeoraError},
     protocol::{MAX_GREP_MATCHES, MAX_LIST_ENTRIES, MAX_READ_BYTES},
@@ -43,12 +43,12 @@ pub async fn read_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
     let root = root.to_owned();
     tokio::task::spawn_blocking(move || {
         let args: ReadArgs = parse(args)?;
-        let (real_root, relative) = resolve_in_project(&root, &args.path)?;
-        let dir = open_root(&real_root)?;
-        let mut file = dir.open(&relative).map_err(|error| {
+        let resolved = resolve_path(&root, &args.path, Access::Read)?;
+        let dir = open_root(&resolved.root)?;
+        let mut file = dir.open(&resolved.relative).map_err(|error| {
             ExeoraError::tool(format!(
                 "Could not read {}: {:?}.",
-                relative_string(&relative),
+                resolved.display(),
                 error.kind()
             ))
         })?;
@@ -63,7 +63,7 @@ pub async fn read_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
         if memchr(0, &prefix[..prefix_len]).is_some() {
             return Err(ExeoraError::tool(format!(
                 "{} is a binary file ({size} bytes). read_file only returns text.",
-                relative_string(&relative)
+                resolved.display()
             )));
         }
         let offset = args.offset.unwrap_or(1);
@@ -84,7 +84,7 @@ pub async fn read_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
         if start > 0 && start >= window.total_lines {
             return Err(ExeoraError::tool(format!(
                 "Offset {offset} is past the end of {}, which has {} lines.",
-                relative_string(&relative),
+                resolved.display(),
                 window.total_lines
             )));
         }
@@ -92,7 +92,7 @@ pub async fn read_file(root: &Path, args: Value) -> Result<Value, ExeoraError> {
             .limit
             .map_or(usize::MAX, |limit| start.saturating_add(limit));
         Ok(json!({
-            "path": relative_string(&relative),
+            "path": resolved.display(),
             "content": window.content,
             "truncated": window.byte_limit_reached || requested_end < window.total_lines,
             "totalLines": window.total_lines,
@@ -113,23 +113,23 @@ pub async fn list_files(root: &Path, args: Value) -> Result<Value, ExeoraError> 
     let root = root.to_owned();
     tokio::task::spawn_blocking(move || {
         let args: ListArgs = parse(args)?;
-        let (real_root, start) = resolve_in_project(&root, args.path.as_deref().unwrap_or("."))?;
+        let resolved = resolve_path(&root, args.path.as_deref().unwrap_or("."), Access::Read)?;
         let glob = compile_glob(args.glob.as_deref())?;
         let mut seen = 0usize;
         let mut output = Vec::new();
-        for entry in walk(&real_root, &start, args.recursive.unwrap_or(false), MAX_LIST_ENTRIES + 1)? {
+        for entry in walk(&resolved.root, &resolved.relative, args.recursive.unwrap_or(false), MAX_LIST_ENTRIES + 1)? {
             if glob.as_ref().is_some_and(|glob| !glob.is_match(&entry.relative)) { continue; }
             seen += 1;
             if output.len() >= MAX_LIST_ENTRIES { continue; }
             let mut value = json!({
-                "path": relative_string(&entry.relative),
+                "path": resolved.display_under(&entry.relative),
                 "type": if entry.symlink { "symlink" } else if entry.directory { "directory" } else { "file" },
             });
             if !entry.directory
                 && let Ok(metadata) = fs::metadata(&entry.absolute) { value["size"] = json!(metadata.len()); }
             output.push(value);
         }
-        Ok(json!({ "path": if start.as_os_str().is_empty() { ".".to_owned() } else { relative_string(&start) }, "entries": output, "truncated": seen > MAX_LIST_ENTRIES }))
+        Ok(json!({ "path": resolved.display(), "entries": output, "truncated": seen > MAX_LIST_ENTRIES }))
     }).await.map_err(join_error)?
 }
 
@@ -147,7 +147,7 @@ pub async fn grep(root: &Path, args: Value) -> Result<Value, ExeoraError> {
     let root = root.to_owned();
     tokio::task::spawn_blocking(move || {
         let args: GrepArgs = parse(args)?;
-        let (real_root, start) = resolve_in_project(&root, args.path.as_deref().unwrap_or("."))?;
+        let resolved = resolve_path(&root, args.path.as_deref().unwrap_or("."), Access::Read)?;
         let matcher = RegressMatcher::new(&args.pattern, args.case_insensitive.unwrap_or(false))?;
         let glob = compile_glob(args.glob.as_deref())?;
         let limit = args.max_results.unwrap_or(MAX_GREP_MATCHES);
@@ -160,7 +160,7 @@ pub async fn grep(root: &Path, args: Value) -> Result<Value, ExeoraError> {
             .bom_sniffing(false)
             .binary_detection(BinaryDetection::quit(b'\0'))
             .build();
-        for entry in walk(&real_root, &start, true, 50_000)? {
+        for entry in walk(&resolved.root, &resolved.relative, true, 50_000)? {
             if entry.directory
                 || entry.symlink
                 || glob
@@ -170,9 +170,13 @@ pub async fn grep(root: &Path, args: Value) -> Result<Value, ExeoraError> {
                 continue;
             }
 
-            let Ok((file_rows, exceeded)) =
-                search_path(&mut searcher, &matcher, &entry, limit - rows.len())
-            else {
+            let Ok((file_rows, exceeded)) = search_path(
+                &mut searcher,
+                &matcher,
+                &entry,
+                &resolved.display_under(&entry.relative),
+                limit - rows.len(),
+            ) else {
                 continue;
             };
             rows.extend(file_rows);
@@ -454,8 +458,21 @@ fn walk(
     recursive: bool,
     limit: usize,
 ) -> Result<Vec<WalkEntry>, ExeoraError> {
+    let start_path = root.join(start);
+    if start_path.is_file() {
+        let relative = start_path.strip_prefix(root).unwrap_or(start).to_path_buf();
+        let symlink = fs::symlink_metadata(&start_path)
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(false);
+        return Ok(vec![WalkEntry {
+            absolute: start_path,
+            relative,
+            directory: false,
+            symlink,
+        }]);
+    }
     let ignores = load_ignore(root);
-    let mut queue = VecDeque::from([root.join(start)]);
+    let mut queue = VecDeque::from([start_path]);
     let mut output = Vec::new();
     while let Some(directory) = queue.pop_front() {
         let Ok(entries) = fs::read_dir(&directory) else {
@@ -494,7 +511,13 @@ fn walk(
                 symlink: kind.is_symlink(),
             });
             if recursive && directory_entry && !kind.is_symlink() {
-                queue.push_back(absolute);
+                // Junctions report as directories, not symlinks.
+                match fs::canonicalize(&absolute) {
+                    Ok(real) if real == root || real.starts_with(root) => {
+                        queue.push_back(absolute);
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -511,9 +534,9 @@ fn search_path(
     searcher: &mut Searcher,
     matcher: &RegressMatcher,
     entry: &WalkEntry,
+    path: &str,
     limit: usize,
 ) -> Result<(Vec<Value>, bool), ExeoraError> {
-    let path = relative_string(&entry.relative);
     let mut rows = Vec::new();
     let mut exceeded = false;
     let sink = sinks::Bytes(|line_number: u64, bytes: &[u8]| {

@@ -42,9 +42,11 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   canonicalPath="/docs/tools/"
 >
   <p>
-    Every path is interpreted relative to the project root and confined to it before anything
-    touches the disk. An absolute path, or one that climbs out with <code>..</code>, is refused with
-    <code>PATH_ESCAPE</code> rather than resolved.
+    Project paths are relative to the project root and confined to it before anything touches the
+    disk. <code>read_file</code>, <code>list_files</code>, <code>grep</code> and command{" "}
+    <code>cwd</code> may also use <code>~/.agents/AGENTS.md</code> and paths under{" "}
+    <code>~/.agents/skills/</code>. Writes cannot. Any other absolute path, or one that climbs out
+    with <code>..</code>, is refused with <code>PATH_ESCAPE</code>.
   </p>
 
   <p>

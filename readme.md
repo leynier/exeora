@@ -31,7 +31,7 @@ AI agents are only as useful as the environment they can touch. Today you usuall
 1. **Expose the machine** - open a port, run a tunnel, hope the URL stays private.
 2. **Upload the code** - push the repo into a cloud sandbox that is never quite your machine.
 
-Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. The agent gets sixteen tools inside one project directory - not a shell on the whole box, and not a copy in someone else's cloud.
+Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. The agent gets seventeen tools inside one project directory - not a shell on the whole box, and not a copy in someone else's cloud.
 
 ```mermaid
 flowchart TD

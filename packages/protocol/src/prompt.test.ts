@@ -62,6 +62,21 @@ describe("agentPrompt", () => {
     expect(project).not.toContain("every executor tool call");
   });
 
+  it("tells the agent to read AGENTS.md in the agentsstandard order", () => {
+    const prompt = agentPrompt();
+
+    expect(prompt).toContain("`~/.agents/AGENTS.md`");
+    expect(prompt).toContain("`.agents/AGENTS.md`");
+    expect(prompt).toContain("`AGENTS.md`");
+    expect(prompt).not.toContain("CLAUDE.md");
+    expect(prompt).not.toContain("llms.txt");
+    expect(prompt.indexOf("`~/.agents/AGENTS.md`")).toBeLessThan(
+      prompt.indexOf("`.agents/AGENTS.md`"),
+    );
+    expect(prompt).toContain("from the project root down");
+    expect(prompt).toContain("does not offer that extra root");
+  });
+
   it("says a refusal is a decision rather than something to work around", () => {
     // The single most important line in the prompt: an agent that routes around
     // a policy refusal defeats the reason the policy exists.
@@ -99,6 +114,8 @@ describe("serverInstructions", () => {
     expect(instructions).toContain("apply_patch");
     expect(instructions).toContain("UNKNOWN_PROCESS");
     expect(instructions).toContain("FORBIDDEN");
+    expect(instructions).toContain("~/.agents/AGENTS.md");
+    expect(instructions).toContain("list_skills");
   });
 });
 

@@ -16,8 +16,10 @@ import {
   type AccountToolName,
   isAccountToolName,
 } from "./tools-account.js";
+import { SKILL_TOOL_DEFINITIONS } from "./tools-skills.js";
 import { WORKTREE_TOOL_DEFINITIONS } from "./tools-worktrees.js";
 
+export * from "./tools-skills.js";
 export * from "./tools-worktrees.js";
 
 /**
@@ -29,9 +31,9 @@ export * from "./tools-worktrees.js";
  * which describe their tools with schemas of their own; those are deliberately
  * ignored so this contract exists exactly once.
  *
- * Every `path` is interpreted relative to the project root and confined to it by
- * the executor. Absolute paths and anything escaping the root are rejected with
- * `PATH_ESCAPE`; see `paths.ts` in the CLI package.
+ * Project `path`s are relative to the project root. Reads and command `cwd` may
+ * also use `~/.agents/AGENTS.md` and `~/.agents/skills/`; anything else absolute
+ * or climbing out with `..` is `PATH_ESCAPE`.
  */
 
 const relativePath = z
@@ -39,12 +41,13 @@ const relativePath = z
   .min(1)
   .describe("Path relative to the project root. Must stay inside the project.");
 
-// ---------------------------------------------------------------------------
-// read_file
-// ---------------------------------------------------------------------------
+const readablePath = z
+  .string()
+  .min(1)
+  .describe("Project-relative path, or `~/.agents/AGENTS.md` / a path under `~/.agents/skills/`.");
 
 export const ReadFileInput = z.object({
-  path: relativePath,
+  path: readablePath,
   offset: z
     .number()
     .int()
@@ -72,7 +75,9 @@ export const ReadFileOutput = z.object({
 // ---------------------------------------------------------------------------
 
 export const ListFilesInput = z.object({
-  path: relativePath.optional().describe("Directory to list. Defaults to the project root."),
+  path: readablePath
+    .optional()
+    .describe("Directory or file to list. Defaults to the project root."),
   recursive: z.boolean().optional().describe("Walk subdirectories. Defaults to false."),
   glob: z.string().optional().describe("Only return entries matching this glob, e.g. '**/*.ts'."),
 });
@@ -96,7 +101,9 @@ export const ListFilesOutput = z.object({
 
 export const GrepInput = z.object({
   pattern: z.string().min(1).describe("Regular expression to search for."),
-  path: relativePath.optional().describe("Directory to search. Defaults to the project root."),
+  path: readablePath
+    .optional()
+    .describe("Directory or file to search. Defaults to the project root."),
   glob: z.string().optional().describe("Restrict the search to files matching this glob."),
   caseInsensitive: z.boolean().optional().describe("Ignore case. Defaults to false."),
   maxResults: z
@@ -225,9 +232,9 @@ export const ApplyPatchOutput = z.object({
 
 export const RunCommandInput = z.object({
   command: z.string().min(1).describe("Shell command to run inside the project."),
-  cwd: relativePath
+  cwd: readablePath
     .optional()
-    .describe("Working directory relative to the project root. Defaults to the root."),
+    .describe("Project-relative, or under `~/.agents/skills/`. Defaults to the project root."),
   timeoutMs: z
     .number()
     .int()
@@ -251,22 +258,16 @@ export const RunCommandOutput = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Long-running processes
+// Long-running processes: start returns a handle, later calls poll it.
 // ---------------------------------------------------------------------------
-
-/**
- * A long-running process: start answers with a handle, later calls poll it.
- * Deliberately not streamed — the relay is request/response, and 2025 clients
- * have no other shape.
- */
 
 const processId = z.string().min(1).describe("Handle returned by start_command.");
 
 export const StartCommandInput = z.object({
   command: z.string().min(1).describe("Shell command to start inside the project."),
-  cwd: relativePath
+  cwd: readablePath
     .optional()
-    .describe("Working directory relative to the project root. Defaults to the root."),
+    .describe("Project-relative, or under `~/.agents/skills/`. Defaults to the project root."),
 });
 
 export const StartCommandOutput = z.object({
@@ -329,7 +330,7 @@ export const TOOL_DEFINITIONS = {
   read_file: {
     title: "Read file",
     description:
-      "Read the contents of a text file in the project. Output is truncated at " +
+      "Read a text file in the project, `~/.agents/AGENTS.md`, or under `~/.agents/skills/`. Output is truncated at " +
       `${Math.round(MAX_READ_BYTES / 1000)}KB. Use offset/limit for large files; when you need the whole ` +
       "file, continue with offset until complete.",
     inputSchema: ReadFileInput,
@@ -339,7 +340,7 @@ export const TOOL_DEFINITIONS = {
   list_files: {
     title: "List files",
     description:
-      "List directory contents in the project. Lists one level by default; set recursive to walk " +
+      "List a directory or file in the project, `~/.agents/AGENTS.md`, or under `~/.agents/skills/`. Lists one level by default; set recursive to walk " +
       "subdirectories, and glob to filter (for example '**/*.ts'). Includes dotfiles. Recursive " +
       "listings respect .gitignore and always skip .git and node_modules. Output is truncated to " +
       `${MAX_LIST_ENTRIES} entries.`,
@@ -350,7 +351,7 @@ export const TOOL_DEFINITIONS = {
   grep: {
     title: "Search file contents",
     description:
-      "Search file contents for a regular expression. Returns matching lines with file paths and " +
+      "Search a directory or file for a regular expression. Paths may be project-relative, `~/.agents/AGENTS.md`, or under `~/.agents/skills/`. Returns matching lines with file paths and " +
       "1-based line numbers. Respects .gitignore and always skips .git and node_modules. Output is " +
       `truncated to ${MAX_GREP_MATCHES} matches, and long lines to 500 characters.`,
     inputSchema: GrepInput,
@@ -393,7 +394,7 @@ export const TOOL_DEFINITIONS = {
   run_command: {
     title: "Run command",
     description:
-      "Run a shell command on the user's machine, in the project directory. Returns stdout, stderr " +
+      "Run a shell command on the user's machine, in the project or under `~/.agents/skills/`. Returns stdout, stderr " +
       `and the exit code. Output is truncated to the last ${Math.round(MAX_COMMAND_OUTPUT_BYTES / 1000)}KB. ` +
       `The command is killed, with everything it started, after ${DEFAULT_COMMAND_TIMEOUT_MS / 1000}s ` +
       `by default and at most ${MAX_COMMAND_TIMEOUT_MS / 1000}s. Stdin is closed, so a command that ` +
@@ -405,7 +406,7 @@ export const TOOL_DEFINITIONS = {
   start_command: {
     title: "Start a long-running command",
     description:
-      "Start a command and return immediately with a handle, for anything that outlives a single " +
+      "Start a command in the project or under `~/.agents/skills/` and return immediately with a handle, for anything that outlives a single " +
       "call: a dev server, a watch task, a long test run. Read its output with get_command_output " +
       "and stop it with kill_command. It keeps running until it exits or is killed, but dies with " +
       "the connection to Exeora, so nothing is left running once nobody is watching. Use " +
@@ -424,9 +425,7 @@ export const TOOL_DEFINITIONS = {
       "skipped rather than silently lost if you read too slowly.",
     inputSchema: GetCommandOutputInput,
     outputSchema: GetCommandOutputOutput,
-    // It changes nothing, which is what read_only means. A project set to
-    // read only cannot start a process in the first place, so nothing here
-    // becomes reachable that was not already.
+    // It changes nothing; a read-only project cannot start a process anyway.
     readOnly: true,
   },
   send_command_input: {
@@ -447,6 +446,7 @@ export const TOOL_DEFINITIONS = {
     outputSchema: KillCommandOutput,
     readOnly: false,
   },
+  ...SKILL_TOOL_DEFINITIONS,
 } as const;
 
 export type ToolName = keyof typeof TOOL_DEFINITIONS;

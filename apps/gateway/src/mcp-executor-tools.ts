@@ -203,4 +203,14 @@ export function registerExecutorTools(
       (args, context) => run("kill_command", args, context),
     );
   }
+  if (offers("list_skills")) {
+    server.registerTool(
+      "list_skills",
+      {
+        ...meta("list_skills"),
+        inputSchema: TOOL_DEFINITIONS.list_skills.inputSchema.extend(worktreeRouting).shape,
+      },
+      (args, context) => run("list_skills", args, context),
+    );
+  }
 }

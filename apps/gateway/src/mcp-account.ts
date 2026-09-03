@@ -407,6 +407,16 @@ export function createAccountMcpHandler(
           (args, ctx) => run("kill_command", args, ctx),
         );
       }
+      if (offers("list_skills")) {
+        server.registerTool(
+          "list_skills",
+          {
+            ...meta("list_skills"),
+            inputSchema: TOOL_DEFINITIONS.list_skills.inputSchema.extend(routingArgs),
+          },
+          (args, ctx) => run("list_skills", args, ctx),
+        );
+      }
 
       return server;
     },

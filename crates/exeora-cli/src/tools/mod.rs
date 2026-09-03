@@ -2,6 +2,7 @@ mod files;
 mod patch;
 pub(crate) mod path;
 mod processes;
+mod skills;
 
 pub use processes::ProcessRegistry;
 
@@ -144,6 +145,7 @@ impl ToolEngine {
                     .kill_command(root, scope.project, scope.worktree, scope.owner, arguments)
                     .await
             }
+            ToolName::ListSkills => skills::list_skills(root, arguments).await,
         }
     }
 

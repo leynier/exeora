@@ -20,7 +20,7 @@ const account = agentPrompt({ account: true });
   canonicalPath="/docs/agent-prompt/"
 >
   <p>
-    Exeora hands a client sixteen tools and a project directory. What it cannot hand over is the
+    Exeora hands a client seventeen tools and a project directory. What it cannot hand over is the
     judgement to use them well: search before reading, edit rather than overwrite, start a dev server
     with <code>start_command</code> instead of watching <code>run_command</code> time out, and stop
     when the project's policy says no rather than looking for another way in.
@@ -132,9 +132,10 @@ exeora prompt --account`}</pre>
 
   <p>
     This prompt is about Exeora: what the tools do, what the limits are, and what a refusal means.
-    It says nothing about your codebase, and it is not trying to. Keep your <code>AGENTS.md</code> or
-    <code>CLAUDE.md</code> exactly as it is and let this sit alongside it. Where they disagree about
-    style or process, yours wins.
+    It also tells the agent to <code>read_file</code> your <code>~/.agents/AGENTS.md</code>,{" "}
+    <code>.agents/AGENTS.md</code> and <code>AGENTS.md</code> before other work, and to list Agent
+    Skills with <code>list_skills</code>. Where those files disagree with this prompt about style or
+    process, yours win.
   </p>
 
   <p>

@@ -1,4 +1,4 @@
-use super::path::resolve_in_project;
+use super::path::{Access, resolve_path};
 use crate::{
     error::{ErrorCode, ExeoraError},
     protocol::{
@@ -146,9 +146,9 @@ impl ProcessRegistry {
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
         let args: RunArgs = parse(value)?;
-        let (real_root, cwd) = resolve_in_project(root, args.cwd.as_deref().unwrap_or("."))?;
+        let cwd = resolve_path(root, args.cwd.as_deref().unwrap_or("."), Access::Cwd)?;
         let timeout_ms = args.timeout_ms.unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS);
-        let mut child = spawn_wrapped(&args.command, &real_root.join(cwd), false)?;
+        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), false)?;
         let stdout = child.stdout().take();
         let stderr = child.stderr().take();
         let captured = Arc::new(Mutex::new(CapturedOutput::default()));
@@ -199,7 +199,7 @@ impl ProcessRegistry {
         value: Value,
     ) -> Result<Value, ExeoraError> {
         let args: StartArgs = parse(value)?;
-        let (real_root, cwd) = resolve_in_project(root, args.cwd.as_deref().unwrap_or("."))?;
+        let cwd = resolve_path(root, args.cwd.as_deref().unwrap_or("."), Access::Cwd)?;
         let mut entries = self.entries.lock().await;
         for entry in entries.values_mut() {
             refresh(entry).await;
@@ -227,7 +227,8 @@ impl ProcessRegistry {
                 "This project already has {MAX_PROCESSES_PER_PROJECT} processes running. Stop one with kill_command before starting another."
             )));
         }
-        let mut child = spawn_wrapped(&args.command, &real_root.join(cwd), true)?;
+        let project_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_owned());
+        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), true)?;
         let pid = child.id();
         let stdin = Arc::new(Mutex::new(child.stdin().take()));
         let stdout = child.stdout().take();
@@ -239,7 +240,7 @@ impl ProcessRegistry {
         entries.insert(
             id.clone(),
             Running {
-                root: real_root,
+                root: project_root,
                 project_scope: project_scope.to_owned(),
                 worktree_key: worktree_key.to_owned(),
                 owner_client_id: owner_client_id.map(str::to_owned),
