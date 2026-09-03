@@ -62,6 +62,30 @@ describe("executor → relay framing", () => {
       sessionId: "term_1",
       data: "aGVsbG8=",
     },
+    {
+      type: "mcp.tools",
+      projectId: "prj_1",
+      servers: [
+        {
+          name: "context7",
+          status: "ready",
+          tools: [
+            {
+              name: "resolve-library-id",
+              title: "Resolve library id",
+              description: "Resolve a library name to its context7 id.",
+              inputSchema: {
+                type: "object",
+                properties: { libraryName: { type: "string" } },
+                required: ["libraryName"],
+              },
+              annotations: { readOnlyHint: true },
+            },
+          ],
+        },
+        { name: "broken", status: "error", error: "Exited before the handshake.", tools: [] },
+      ],
+    },
   ];
 
   it.each(cases)("round-trips $type", (message) => {
@@ -101,6 +125,17 @@ describe("relay → executor framing", () => {
         branch: "feature/from-dashboard",
         reuseExistingBranch: false,
       },
+      issuedAt: 1_754_400_000_000,
+      expiresAt: 1_754_400_060_000,
+    },
+    {
+      type: "mcp.call",
+      requestId: "req_9",
+      projectId: "prj_1",
+      server: "context7",
+      tool: "resolve-library-id",
+      arguments: { libraryName: "react" },
+      client: { id: "cli_1", name: "claude" },
       issuedAt: 1_754_400_000_000,
       expiresAt: 1_754_400_060_000,
     },
@@ -153,6 +188,38 @@ describe("malformed frames", () => {
       result: { ok: true, error: { code: "TOOL_FAILED", message: "x" } },
     });
     expect(decodeExecutorMessage(frame)).toBeNull();
+  });
+
+  it("carries a downstream tool name in an approval request", () => {
+    // A string rather than the enum: the question can be about an MCP tool no
+    // enum could list, and an older CLI answers by dropping the frame, which
+    // times out and refuses the call rather than running it unconfirmed.
+    const frame: RelayMessage = {
+      type: "approval.request",
+      id: "apr_1",
+      projectId: "prj_1",
+      tool: "mcp__context7__resolve-library-id",
+      prompt: "Use MCP tool `resolve-library-id` from server `context7`?",
+      expiresAt: 1_754_400_090_000,
+    };
+    expect(decodeRelayMessage(encodeMessage(frame))).toEqual(frame);
+  });
+
+  it("rejects an mcp.call naming a malformed server or tool", () => {
+    for (const bad of [{ server: "Bad Name" }, { tool: "no spaces allowed" }]) {
+      const frame = JSON.stringify({
+        type: "mcp.call",
+        requestId: "r",
+        projectId: "p",
+        server: "context7",
+        tool: "resolve-library-id",
+        arguments: {},
+        issuedAt: 0,
+        expiresAt: 1,
+        ...bad,
+      });
+      expect(decodeRelayMessage(frame)).toBeNull();
+    }
   });
 });
 

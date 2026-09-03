@@ -1,4 +1,4 @@
-import type { ExecutorCapabilities, ToolName } from "@exeora/protocol";
+import type { ExecutorCapabilities } from "@exeora/protocol";
 import { encodeMessage } from "@exeora/protocol";
 import type { CallerResponse } from "./relay-internal.js";
 
@@ -27,7 +27,8 @@ export interface ApprovalView {
   projectId: string;
   workspaceId?: string;
   workspaceSlug?: string;
-  tool: ToolName;
+  /** The tool being confirmed; a downstream MCP tool names itself `mcp__…`. */
+  tool: string;
   prompt: string;
   clientName?: string;
   requestedAt: number;

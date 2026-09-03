@@ -7,10 +7,13 @@ import {
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
+  type McpToolsMessage,
   MIN_SUPPORTED_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
 } from "@exeora/protocol";
 import { observeTool } from "./cost-metrics.js";
+// biome-ignore format: the wrapped form of this import spends four lines to say one thing
+import { forgetStoredMcpTools, forwardMcpStart, readMcpTools, storeMcpTools } from "./relay-do-mcp.js";
 import "./env.js";
 import { touchDevice } from "./presence.js";
 import { handleToolCallerMessage, handleWorkspaceCallerMessage } from "./relay-do-caller-starts.js";
@@ -23,7 +26,6 @@ import {
   type ExecutorSocketState,
   executorSocket,
   failCallers,
-  hasOtherExecutor,
   offline,
   replaceOtherExecutors,
   resolveTerminalApproval,
@@ -37,15 +39,14 @@ import {
 import {
   acceptTerminalSocket,
   consumeTerminalTicket,
-  dropExecutor,
   expireWorkspaceSessions,
   forgetAllStoredTerminals,
   forwardTerminalMessage,
+  handleSocketClose,
+  handleSocketError,
   handleTerminalCallerMessage,
   issueTerminalTicket,
   listTerminalSummaries,
-  persistDetachedTerminal,
-  scheduleWorkspaceAlarm,
 } from "./relay-do-terminal.js";
 import { decodeCallerRequest } from "./relay-internal.js";
 
@@ -226,6 +227,11 @@ export class DeviceRelay extends DurableObject<Env> {
         return;
       }
 
+      case "mcp.tools": {
+        await storeMcpTools(this.ctx, message, raw);
+        return;
+      }
+
       case "workspace.result": {
         const caller = callerSocket(this.ctx, "workspace", message.requestId);
         if (caller) settleCaller(caller, { type: "workspace.result", result: message.result });
@@ -243,33 +249,11 @@ export class DeviceRelay extends DurableObject<Env> {
   }
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
-    const state = attachmentOf(socket);
-    if (!state) return;
-    if (state.role === "executor") {
-      // biome-ignore format: keep DeviceRelay under the file-length budget
-      await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The device disconnected while the call was in flight.");
-      return;
-    }
-    if (!state.settled) {
-      if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
-      else if (state.role === "terminal") await persistDetachedTerminal(this.ctx, socket, state);
-      else resolveTerminalApproval(this.ctx, state.id);
-    } else if (state.role === "terminal") await scheduleWorkspaceAlarm(this.ctx);
+    await handleSocketClose(this.ctx, this.env, socket);
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
-    const state = attachmentOf(socket);
-    if (state?.role === "executor") {
-      // A failed socket is gone whether or not a close frame follows, and the
-      // runtime does not promise one. Recording it here as well is idempotent.
-      // biome-ignore format: keep DeviceRelay under the file-length budget
-      await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The connection to the device failed.");
-    } else if ((state?.role === "tool" || state?.role === "workspace") && !state.settled)
-      sendCancel(this.ctx, state.id);
-    else if (state?.role === "terminal" && !state.settled)
-      await persistDetachedTerminal(this.ctx, socket, state);
-    else if (state?.role === "approval" && !state.settled)
-      resolveTerminalApproval(this.ctx, state.id);
+    await handleSocketError(this.ctx, this.env, socket);
   }
 
   // ---------------------------------------------------------------------
@@ -303,6 +287,11 @@ export class DeviceRelay extends DurableObject<Env> {
     if (!socket) return null;
     const state = attachmentOf(socket);
     return state?.role === "executor" ? (state.capabilities ?? BASELINE_CAPABILITIES) : null;
+  }
+
+  /** One project's downstream MCP servers, or null when nothing was announced. */
+  async mcpTools(projectId: string): Promise<McpToolsMessage["servers"] | null> {
+    return readMcpTools(this.ctx, projectId);
   }
 
   async createTerminalTicket(
@@ -364,6 +353,9 @@ export class DeviceRelay extends DurableObject<Env> {
     }
     failCallers(this.ctx, "This device was revoked.");
     await forgetAllStoredTerminals(this.ctx);
+    // A revoked machine's announcements are stale the moment the socket dies:
+    // nobody may reconfigure the projects of a device they no longer control.
+    await forgetStoredMcpTools(this.ctx);
   }
 
   // ---------------------------------------------------------------------
@@ -390,6 +382,11 @@ export class DeviceRelay extends DurableObject<Env> {
 
     if (state.role === "workspace" && message.type === "workspace.start") {
       handleWorkspaceCallerMessage(this.ctx, socket, state, message);
+      return;
+    }
+
+    if (state.role === "tool" && message.type === "mcp.start") {
+      forwardMcpStart(this.ctx, socket, state, message);
       return;
     }
 

@@ -4,7 +4,8 @@ use crate::{
     auth::AuthManager,
     config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     error::{ErrorCode, ExeoraError},
-    policy::{CommandPolicy, effective_policy, policy_allows},
+    mcp::McpRegistry,
+    policy::{CommandPolicy, effective_policy, mcp_policy_allows, policy_allows},
     protocol::{
         HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES,
         PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
@@ -58,6 +59,10 @@ pub async fn connect_forever(
     let _awake = acquire_keep_awake(json_output);
     let engine = Arc::new(ToolEngine::new()?);
     let workspace = Arc::new(WorkspaceEngine::new());
+    // Downstream MCP servers outlive any one relay connection: a reconnect is
+    // seconds, and respawning every server would cost more than the outage
+    // did. They die with `connect` itself, in the two exits below.
+    let mcp = McpRegistry::start(&projects, json_output).await;
     let lifecycle_lock = Arc::new(Mutex::new(()));
     let config_path = config.path().to_path_buf();
     let gateway = config.gateway_url();
@@ -82,6 +87,7 @@ pub async fn connect_forever(
             api.clone(),
             engine.clone(),
             workspace.clone(),
+            mcp.clone(),
             lifecycle_lock.clone(),
             stop.clone(),
             json_output,
@@ -92,7 +98,10 @@ pub async fn connect_forever(
         engine.kill_all().await;
         match outcome {
             Ok(ConnectOutcome::Stopped) => break,
-            Ok(ConnectOutcome::Rejected(reason)) => return Err(anyhow!(reason)),
+            Ok(ConnectOutcome::Rejected(reason)) => {
+                mcp.kill_all().await;
+                return Err(anyhow!(reason));
+            }
             Ok(ConnectOutcome::Disconnected) => {
                 delay = Duration::from_secs(1);
                 emit_event(
@@ -115,6 +124,7 @@ pub async fn connect_forever(
     }
     engine.kill_all().await;
     workspace.kill_all().await;
+    mcp.kill_all().await;
     if !json_output {
         println!("Disconnected.");
     }
@@ -211,6 +221,7 @@ async fn connect_once(
     api: crate::api::ApiClient,
     engine: Arc<ToolEngine>,
     workspace: Arc<WorkspaceEngine>,
+    mcp: Arc<McpRegistry>,
     lifecycle_lock: LifecycleLock,
     stop: CancellationToken,
     json_output: bool,
@@ -246,7 +257,7 @@ async fn connect_once(
         "capabilities": {
             "prompt": can_prompt,
             "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "features": ["source-control-v1", "terminal-v1"],
+            "features": ["source-control-v1", "terminal-v1", "mcp-v1"],
             "workspaceRouting": true,
         },
     }))?.into())).await?;
@@ -311,6 +322,19 @@ async fn connect_once(
                                         emit_event(json_output, "notice", json!({ "message": notice }));
                                         if !json_output { println!("{notice}"); }
                                 }
+                                // The announcement follows the handshake rather
+                                // than riding in it: the servers are still
+                                // starting, and holding the socket open for npx
+                                // would put every slow server in the connection
+                                // path. A gateway that never learns MCP tools
+                                // offers none, which is the safe degradation.
+                                let announce_tx = out_tx.clone();
+                                let announce_registry = mcp.clone();
+                                tokio::spawn(async move {
+                                    for frame in announce_registry.announce_frames().await {
+                                        let _ = announce_tx.send(frame);
+                                    }
+                                });
                             }
                             Some("cancel") => {
                                 if let Some(id) = message.get("requestId").and_then(Value::as_str)
@@ -332,6 +356,9 @@ async fn connect_once(
                             }
                             Some("tool.call") => {
                                 spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                            }
+                            Some("mcp.call") => {
+                                spawn_mcp_call(message, mcp.clone(), config_path.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             Some("workspace.call") => {
                                 spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone()).await;
@@ -522,6 +549,144 @@ async fn spawn_tool_call(
                 )
                 .await
         };
+        in_flight.lock().await.remove(&request_id);
+        let elapsed = now_ms().saturating_sub(started);
+        let frame = result_frame(&request_id, started, result);
+        let ok = frame
+            .pointer("/result/ok")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let _ = outgoing.send(frame);
+        emit_event(
+            json_output,
+            "result",
+            json!({ "tool": tool_name, "ok": ok, "durationMs": elapsed }),
+        );
+        if !json_output {
+            println!("{} {tool_name} {elapsed}ms", if ok { "✓" } else { "✗" });
+        }
+    });
+}
+
+/**
+ * A call to a downstream MCP tool: the same request/response shape as
+ * `spawn_tool_call`, answered with the same `tool.result` frame, but routed to
+ * a configured server instead of the executor's own tools.
+ *
+ * Only the local half of the policy is checked here. The account's policy was
+ * already applied on the gateway, which is the only side that holds it; what
+ * only this side can hold is the project's own `exeora.toml`.
+ */
+async fn spawn_mcp_call(
+    message: Value,
+    registry: Arc<McpRegistry>,
+    config_path: PathBuf,
+    in_flight: InFlight,
+    outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
+) {
+    let Some(request_id) = message
+        .get("requestId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let Some(project_id) = message
+        .get("projectId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let started = now_ms();
+    let send_error = |code: ErrorCode, text: &str| {
+        let _ = outgoing.send(result_frame(
+            &request_id,
+            started,
+            Err(ExeoraError::new(code, text)),
+        ));
+    };
+    if message
+        .get("expiresAt")
+        .and_then(Value::as_u64)
+        .is_some_and(|expires| now_ms() > expires)
+    {
+        send_error(
+            ErrorCode::ToolTimeout,
+            "The request expired before it was received.",
+        );
+        return;
+    }
+    let (Some(server), Some(tool)) = (
+        message.get("server").and_then(Value::as_str),
+        message.get("tool").and_then(Value::as_str),
+    ) else {
+        send_error(ErrorCode::UnknownTool, "Unsupported tool.");
+        return;
+    };
+    let server = server.to_owned();
+    let tool = tool.to_owned();
+    let tool_name = format!("mcp__{server}__{tool}");
+    let arguments = message
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let target = match resolve_target(&config_path, &project_id, None, None) {
+        Ok(target) => target,
+        Err(error) => {
+            send_error(error.code, &error.message);
+            return;
+        }
+    };
+    let ResolvedTarget { project, root, .. } = target;
+    let (policy, problem) = effective_policy(&root, None);
+    if let Some(problem) = problem {
+        emit_event(json_output, "error", json!({ "message": problem }));
+    }
+    let read_only_hint = registry
+        .tool_is_read_only(&project_id, &server, &tool)
+        .await
+        .unwrap_or(false);
+    let verdict = mcp_policy_allows(&policy, read_only_hint);
+    if !verdict.allowed {
+        send_error(
+            ErrorCode::Forbidden,
+            verdict
+                .reason
+                .as_deref()
+                .unwrap_or("This project does not allow that."),
+        );
+        return;
+    }
+
+    let cancel = CancellationToken::new();
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: root.clone(),
+        },
+    );
+    emit_event(
+        json_output,
+        "call",
+        json!({ "tool": tool_name, "project": project.slug, "client": describe_client(message.get("client")) }),
+    );
+    if !json_output {
+        println!("→ {tool_name} ({})", project.slug);
+    }
+    // The relay's deadline is the budget, minus a moment for the trip back.
+    let budget_ms = message
+        .get("expiresAt")
+        .and_then(Value::as_u64)
+        .map(|expires| expires.saturating_sub(now_ms()).saturating_sub(1_000))
+        .unwrap_or(30_000);
+    let budget = Duration::from_millis(budget_ms.clamp(1_000, 60_000));
+    tokio::spawn(async move {
+        let result = registry
+            .call(&project_id, &server, &tool, arguments, budget, cancel)
+            .await;
         in_flight.lock().await.remove(&request_id);
         let elapsed = now_ms().saturating_sub(started);
         let frame = result_frame(&request_id, started, result);
@@ -1273,7 +1438,7 @@ fn describe_client(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn emit_event(json_output: bool, event: &str, fields: Value) {
+pub(crate) fn emit_event(json_output: bool, event: &str, fields: Value) {
     if !json_output {
         return;
     }

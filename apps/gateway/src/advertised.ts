@@ -1,4 +1,4 @@
-import { TOOL_NAMES, type ToolName } from "@exeora/protocol";
+import { type McpServerTools, TOOL_NAMES, type ToolName } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
 import { accountProjects } from "./client-targets.js";
@@ -71,4 +71,55 @@ export async function advertisedAccountTools(
   const chosen = reachable.length === 1 ? reachable[0] : undefined;
 
   return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
+}
+
+/**
+ * The downstream MCP servers the machine serving this project announced.
+ *
+ * Null rather than an empty array, because the two answers differ: null means
+ * "nothing to say", which is a machine that never announced any and a request
+ * that is not `tools/list`, and an empty array would mean "a machine announced
+ * that it has none", which the relay stores by remembering nothing. Same call
+ * as `advertisedTools` returning undefined to offer every tool.
+ */
+export async function advertisedMcpTools(
+  env: Env,
+  userId: string | undefined,
+  projectId: string,
+): Promise<McpServerTools[] | null> {
+  if (!userId) return null;
+
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+
+  if (!project) return null;
+
+  return env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).mcpTools(projectId);
+}
+
+/**
+ * The same question on the account endpoint, answered only when the connection
+ * reaches exactly one project.
+ *
+ * With several reachable, a downstream tool's name would be ambiguous — the
+ * same `mcp__github__create_issue` from two projects means two different
+ * servers on two machines, and one registration cannot be both. So none are
+ * offered, which matches how the canonical list narrows: the connection that
+ * reaches one project is as confined as a per-project URL.
+ */
+export async function advertisedAccountMcpTools(
+  env: Env,
+  userId: string | undefined,
+  clientId: string | undefined,
+): Promise<{ projectId: string; servers: McpServerTools[] } | null> {
+  if (!userId || !clientId) return null;
+
+  const reachable = await accountProjects(env, { userId, clientId });
+  if (reachable.length !== 1 || !reachable[0]) return null;
+
+  const servers = await advertisedMcpTools(env, userId, reachable[0].id);
+  return servers ? { projectId: reachable[0].id, servers } : null;
 }

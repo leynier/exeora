@@ -130,3 +130,42 @@ export const HEARTBEAT_TIMEOUT_MS = 90_000;
  * room to raise it if a real command needs it.
  */
 export const MAX_APPROVAL_PROMPT_LENGTH = 2_048;
+
+// ---------------------------------------------------------------------------
+// Downstream MCP servers
+//
+// An announcement travels executor → relay → Durable Object storage, not a
+// socket attachment, so the binding that matters is the storage value ceiling
+// (128 KiB per key). MAX_MCP_ANNOUNCEMENT_BYTES is set below that with room for
+// the frame around the servers, and the executor enforces the same budget
+// before sending so an honest CLI never trips the relay's copy.
+// ---------------------------------------------------------------------------
+
+/** How many downstream MCP servers one project may configure. */
+export const MAX_MCP_SERVERS = 16;
+
+/**
+ * How many tools one downstream server may contribute.
+ *
+ * Also a per-server sanity bound on the handshake: a server listing thousands
+ * of tools is not something a client can put in a model's context anyway.
+ */
+export const MAX_MCP_TOOLS_PER_SERVER = 64;
+
+/**
+ * Largest single tool input schema an announcement will carry, in bytes.
+ *
+ * Generous for real schemas, which are a few hundred bytes each, and small
+ * enough that one pathological server cannot spend the whole announcement
+ * budget on its own arguments.
+ */
+export const MAX_MCP_INPUT_SCHEMA_BYTES = 16_384;
+
+/**
+ * Largest whole announcement frame, in bytes.
+ *
+ * The relay stores it under one storage key per project, so it must clear the
+ * Durable Object value ceiling. Servers that do not fit are reported as errors
+ * in the announcement rather than silently dropped.
+ */
+export const MAX_MCP_ANNOUNCEMENT_BYTES = 100_000;

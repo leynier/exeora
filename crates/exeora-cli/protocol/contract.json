@@ -30,6 +30,10 @@
     "MAX_COMMAND_TIMEOUT_MS": 300000,
     "MAX_GREP_MATCHES": 200,
     "MAX_LIST_ENTRIES": 1000,
+    "MAX_MCP_ANNOUNCEMENT_BYTES": 100000,
+    "MAX_MCP_INPUT_SCHEMA_BYTES": 16384,
+    "MAX_MCP_SERVERS": 16,
+    "MAX_MCP_TOOLS_PER_SERVER": 64,
     "MAX_PATCH_BYTES": 1000000,
     "MAX_PATCH_OPS": 20,
     "MAX_PROCESSES_PER_PROJECT": 16,
@@ -888,6 +892,105 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "mcp.tools"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "servers": {
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ready",
+                      "error"
+                    ]
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "tools": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 256
+                        },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 4096
+                        },
+                        "inputSchema": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        },
+                        "annotations": {
+                          "type": "object",
+                          "properties": {
+                            "readOnlyHint": {
+                              "type": "boolean"
+                            },
+                            "destructiveHint": {
+                              "type": "boolean"
+                            },
+                            "idempotentHint": {
+                              "type": "boolean"
+                            },
+                            "openWorldHint": {
+                              "type": "boolean"
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "inputSchema"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "status",
+                  "tools"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "projectId",
+            "servers"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "terminal.opened"
             },
             "sessionId": {
@@ -1588,6 +1691,66 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "mcp.call"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "server": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+            },
+            "tool": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+            },
+            "arguments": {},
+            "client": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "issuedAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "projectId",
+            "server",
+            "tool",
+            "arguments",
+            "issuedAt",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "cancel"
             },
             "requestId": {
@@ -1638,25 +1801,7 @@
             },
             "tool": {
               "type": "string",
-              "enum": [
-                "read_file",
-                "list_files",
-                "grep",
-                "edit_file",
-                "write_file",
-                "apply_patch",
-                "list_git_workspaces",
-                "create_workspace",
-                "attach_workspace",
-                "detach_workspace",
-                "remove_workspace",
-                "run_command",
-                "start_command",
-                "get_command_output",
-                "send_command_input",
-                "kill_command",
-                "list_skills"
-              ]
+              "maxLength": 128
             },
             "prompt": {
               "type": "string"

@@ -954,6 +954,105 @@ pub mod error {
 ///        {
 ///          "type": "object",
 ///          "required": [
+///            "projectId",
+///            "servers",
+///            "type"
+///          ],
+///          "properties": {
+///            "projectId": {
+///              "type": "string"
+///            },
+///            "servers": {
+///              "type": "array",
+///              "items": {
+///                "type": "object",
+///                "required": [
+///                  "name",
+///                  "status",
+///                  "tools"
+///                ],
+///                "properties": {
+///                  "error": {
+///                    "type": "string",
+///                    "maxLength": 512
+///                  },
+///                  "name": {
+///                    "type": "string",
+///                    "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///                  },
+///                  "status": {
+///                    "type": "string",
+///                    "enum": [
+///                      "ready",
+///                      "error"
+///                    ]
+///                  },
+///                  "tools": {
+///                    "type": "array",
+///                    "items": {
+///                      "type": "object",
+///                      "required": [
+///                        "inputSchema",
+///                        "name"
+///                      ],
+///                      "properties": {
+///                        "annotations": {
+///                          "type": "object",
+///                          "properties": {
+///                            "destructiveHint": {
+///                              "type": "boolean"
+///                            },
+///                            "idempotentHint": {
+///                              "type": "boolean"
+///                            },
+///                            "openWorldHint": {
+///                              "type": "boolean"
+///                            },
+///                            "readOnlyHint": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        "description": {
+///                          "type": "string",
+///                          "maxLength": 4096
+///                        },
+///                        "inputSchema": {
+///                          "type": "object",
+///                          "additionalProperties": {},
+///                          "propertyNames": {
+///                            "type": "string"
+///                          }
+///                        },
+///                        "name": {
+///                          "type": "string",
+///                          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///                        },
+///                        "title": {
+///                          "type": "string",
+///                          "maxLength": 256
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    "maxItems": 64
+///                  }
+///                },
+///                "additionalProperties": false
+///              },
+///              "maxItems": 16
+///            },
+///            "type": {
+///              "type": "string",
+///              "const": "mcp.tools"
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        {
+///          "type": "object",
+///          "required": [
 ///            "sessionId",
 ///            "type"
 ///          ],
@@ -1712,6 +1811,66 @@ pub mod error {
 ///        {
 ///          "type": "object",
 ///          "required": [
+///            "arguments",
+///            "expiresAt",
+///            "issuedAt",
+///            "projectId",
+///            "requestId",
+///            "server",
+///            "tool",
+///            "type"
+///          ],
+///          "properties": {
+///            "arguments": {},
+///            "client": {
+///              "type": "object",
+///              "properties": {
+///                "id": {
+///                  "type": "string"
+///                },
+///                "name": {
+///                  "type": "string"
+///                },
+///                "version": {
+///                  "type": "string"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            "expiresAt": {
+///              "type": "integer",
+///              "maximum": 9007199254740991.0,
+///              "minimum": -9007199254740991.0
+///            },
+///            "issuedAt": {
+///              "type": "integer",
+///              "maximum": 9007199254740991.0,
+///              "minimum": -9007199254740991.0
+///            },
+///            "projectId": {
+///              "type": "string"
+///            },
+///            "requestId": {
+///              "type": "string"
+///            },
+///            "server": {
+///              "type": "string",
+///              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///            },
+///            "tool": {
+///              "type": "string",
+///              "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///            },
+///            "type": {
+///              "type": "string",
+///              "const": "mcp.call"
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        {
+///          "type": "object",
+///          "required": [
 ///            "requestId",
 ///            "type"
 ///          ],
@@ -1782,25 +1941,7 @@ pub mod error {
 ///            },
 ///            "tool": {
 ///              "type": "string",
-///              "enum": [
-///                "read_file",
-///                "list_files",
-///                "grep",
-///                "edit_file",
-///                "write_file",
-///                "apply_patch",
-///                "list_git_workspaces",
-///                "create_workspace",
-///                "attach_workspace",
-///                "detach_workspace",
-///                "remove_workspace",
-///                "run_command",
-///                "start_command",
-///                "get_command_output",
-///                "send_command_input",
-///                "kill_command",
-///                "list_skills"
-///              ]
+///              "maxLength": 128
 ///            },
 ///            "type": {
 ///              "type": "string",
@@ -3128,6 +3269,105 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///    {
 ///      "type": "object",
 ///      "required": [
+///        "projectId",
+///        "servers",
+///        "type"
+///      ],
+///      "properties": {
+///        "projectId": {
+///          "type": "string"
+///        },
+///        "servers": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "name",
+///              "status",
+///              "tools"
+///            ],
+///            "properties": {
+///              "error": {
+///                "type": "string",
+///                "maxLength": 512
+///              },
+///              "name": {
+///                "type": "string",
+///                "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "ready",
+///                  "error"
+///                ]
+///              },
+///              "tools": {
+///                "type": "array",
+///                "items": {
+///                  "type": "object",
+///                  "required": [
+///                    "inputSchema",
+///                    "name"
+///                  ],
+///                  "properties": {
+///                    "annotations": {
+///                      "type": "object",
+///                      "properties": {
+///                        "destructiveHint": {
+///                          "type": "boolean"
+///                        },
+///                        "idempotentHint": {
+///                          "type": "boolean"
+///                        },
+///                        "openWorldHint": {
+///                          "type": "boolean"
+///                        },
+///                        "readOnlyHint": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    "description": {
+///                      "type": "string",
+///                      "maxLength": 4096
+///                    },
+///                    "inputSchema": {
+///                      "type": "object",
+///                      "additionalProperties": {},
+///                      "propertyNames": {
+///                        "type": "string"
+///                      }
+///                    },
+///                    "name": {
+///                      "type": "string",
+///                      "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///                    },
+///                    "title": {
+///                      "type": "string",
+///                      "maxLength": 256
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                "maxItems": 64
+///              }
+///            },
+///            "additionalProperties": false
+///          },
+///          "maxItems": 16
+///        },
+///        "type": {
+///          "type": "string",
+///          "const": "mcp.tools"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
 ///        "sessionId",
 ///        "type"
 ///      ],
@@ -3272,6 +3512,12 @@ pub enum ExeoraProtocolTypesExecutorMessage {
     ApprovalAnswer {
         approved: bool,
         id: ::std::string::String,
+    },
+    #[serde(rename = "mcp.tools")]
+    McpTools {
+        #[serde(rename = "projectId")]
+        project_id: ::std::string::String,
+        servers: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageServersItem>,
     },
     #[serde(rename = "terminal.opened")]
     TerminalOpened {
@@ -6644,6 +6890,689 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
+///`ExeoraProtocolTypesExecutorMessageServersItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "name",
+///    "status",
+///    "tools"
+///  ],
+///  "properties": {
+///    "error": {
+///      "type": "string",
+///      "maxLength": 512
+///    },
+///    "name": {
+///      "type": "string",
+///      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///    },
+///    "status": {
+///      "type": "string",
+///      "enum": [
+///        "ready",
+///        "error"
+///      ]
+///    },
+///    "tools": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "inputSchema",
+///          "name"
+///        ],
+///        "properties": {
+///          "annotations": {
+///            "type": "object",
+///            "properties": {
+///              "destructiveHint": {
+///                "type": "boolean"
+///              },
+///              "idempotentHint": {
+///                "type": "boolean"
+///              },
+///              "openWorldHint": {
+///                "type": "boolean"
+///              },
+///              "readOnlyHint": {
+///                "type": "boolean"
+///              }
+///            },
+///            "additionalProperties": false
+///          },
+///          "description": {
+///            "type": "string",
+///            "maxLength": 4096
+///          },
+///          "inputSchema": {
+///            "type": "object",
+///            "additionalProperties": {},
+///            "propertyNames": {
+///              "type": "string"
+///            }
+///          },
+///          "name": {
+///            "type": "string",
+///            "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///          },
+///          "title": {
+///            "type": "string",
+///            "maxLength": 256
+///          }
+///        },
+///        "additionalProperties": false
+///      },
+///      "maxItems": 64
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub error: ::std::option::Option<ExeoraProtocolTypesExecutorMessageServersItemError>,
+    pub name: ExeoraProtocolTypesExecutorMessageServersItemName,
+    pub status: ExeoraProtocolTypesExecutorMessageServersItemStatus,
+    pub tools: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageServersItemToolsItem>,
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemError`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 512
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemError(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageServersItemError {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageServersItemError>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageServersItemError) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemError {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageServersItemError {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemError
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemError
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageServersItemError {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageServersItemName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageServersItemName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageServersItemName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| {
+                ::regress::Regex::new("^[a-z0-9][a-z0-9-]{0,31}$").unwrap()
+            });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9-]{0,31}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageServersItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageServersItemName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemStatus`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "ready",
+///    "error"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageServersItemStatus {
+    #[serde(rename = "ready")]
+    Ready,
+    #[serde(rename = "error")]
+    Error,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageServersItemStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Ready => f.write_str("ready"),
+            Self::Error => f.write_str("error"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "ready" => Ok(Self::Ready),
+            "error" => Ok(Self::Error),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageServersItemStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemToolsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "inputSchema",
+///    "name"
+///  ],
+///  "properties": {
+///    "annotations": {
+///      "type": "object",
+///      "properties": {
+///        "destructiveHint": {
+///          "type": "boolean"
+///        },
+///        "idempotentHint": {
+///          "type": "boolean"
+///        },
+///        "openWorldHint": {
+///          "type": "boolean"
+///        },
+///        "readOnlyHint": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    "description": {
+///      "type": "string",
+///      "maxLength": 4096
+///    },
+///    "inputSchema": {
+///      "type": "object",
+///      "additionalProperties": {},
+///      "propertyNames": {
+///        "type": "string"
+///      }
+///    },
+///    "name": {
+///      "type": "string",
+///      "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///    },
+///    "title": {
+///      "type": "string",
+///      "maxLength": 256
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemToolsItem {
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub annotations:
+        ::std::option::Option<ExeoraProtocolTypesExecutorMessageServersItemToolsItemAnnotations>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub description:
+        ::std::option::Option<ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription>,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+    pub name: ExeoraProtocolTypesExecutorMessageServersItemToolsItemName,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub title: ::std::option::Option<ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle>,
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemToolsItemAnnotations`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "properties": {
+///    "destructiveHint": {
+///      "type": "boolean"
+///    },
+///    "idempotentHint": {
+///      "type": "boolean"
+///    },
+///    "openWorldHint": {
+///      "type": "boolean"
+///    },
+///    "readOnlyHint": {
+///      "type": "boolean"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemToolsItemAnnotations {
+    #[serde(
+        rename = "destructiveHint",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub destructive_hint: ::std::option::Option<bool>,
+    #[serde(
+        rename = "idempotentHint",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub idempotent_hint: ::std::option::Option<bool>,
+    #[serde(
+        rename = "openWorldHint",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub open_world_hint: ::std::option::Option<bool>,
+    #[serde(
+        rename = "readOnlyHint",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub read_only_hint: ::std::option::Option<bool>,
+}
+impl ::std::default::Default for ExeoraProtocolTypesExecutorMessageServersItemToolsItemAnnotations {
+    fn default() -> Self {
+        Self {
+            destructive_hint: Default::default(),
+            idempotent_hint: Default::default(),
+            open_world_hint: Default::default(),
+            read_only_hint: Default::default(),
+        }
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 4096
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemDescription
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemToolsItemName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemToolsItemName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageServersItemToolsItemName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageServersItemToolsItemName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-zA-Z0-9_-]{1,64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-zA-Z0-9_-]{1,64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageServersItemToolsItemName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 256
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 256usize {
+            return Err("longer than 256 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageServersItemToolsItemTitle
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ExeoraProtocolTypesExecutorMessageSessionId`
 ///
 /// <details><summary>JSON schema</summary>
@@ -7647,6 +8576,66 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///    {
 ///      "type": "object",
 ///      "required": [
+///        "arguments",
+///        "expiresAt",
+///        "issuedAt",
+///        "projectId",
+///        "requestId",
+///        "server",
+///        "tool",
+///        "type"
+///      ],
+///      "properties": {
+///        "arguments": {},
+///        "client": {
+///          "type": "object",
+///          "properties": {
+///            "id": {
+///              "type": "string"
+///            },
+///            "name": {
+///              "type": "string"
+///            },
+///            "version": {
+///              "type": "string"
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        "expiresAt": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": -9007199254740991.0
+///        },
+///        "issuedAt": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": -9007199254740991.0
+///        },
+///        "projectId": {
+///          "type": "string"
+///        },
+///        "requestId": {
+///          "type": "string"
+///        },
+///        "server": {
+///          "type": "string",
+///          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///        },
+///        "tool": {
+///          "type": "string",
+///          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+///        },
+///        "type": {
+///          "type": "string",
+///          "const": "mcp.call"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
 ///        "requestId",
 ///        "type"
 ///      ],
@@ -7717,25 +8706,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        },
 ///        "tool": {
 ///          "type": "string",
-///          "enum": [
-///            "read_file",
-///            "list_files",
-///            "grep",
-///            "edit_file",
-///            "write_file",
-///            "apply_patch",
-///            "list_git_workspaces",
-///            "create_workspace",
-///            "attach_workspace",
-///            "detach_workspace",
-///            "remove_workspace",
-///            "run_command",
-///            "start_command",
-///            "get_command_output",
-///            "send_command_input",
-///            "kill_command",
-///            "list_skills"
-///          ]
+///          "maxLength": 128
 ///        },
 ///        "type": {
 ///          "type": "string",
@@ -7963,6 +8934,22 @@ pub enum ExeoraProtocolTypesRelayMessage {
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         workspace_slug: ::std::option::Option<::std::string::String>,
+    },
+    #[serde(rename = "mcp.call")]
+    McpCall {
+        arguments: ::serde_json::Value,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        client: ::std::option::Option<ExeoraProtocolTypesRelayMessageClient>,
+        #[serde(rename = "expiresAt")]
+        expires_at: i64,
+        #[serde(rename = "issuedAt")]
+        issued_at: i64,
+        #[serde(rename = "projectId")]
+        project_id: ::std::string::String,
+        #[serde(rename = "requestId")]
+        request_id: ::std::string::String,
+        server: ExeoraProtocolTypesRelayMessageServer,
+        tool: ExeoraProtocolTypesRelayMessageTool,
     },
     #[serde(rename = "cancel")]
     Cancel {
@@ -9744,6 +10731,78 @@ impl ::std::convert::TryFrom<::std::string::String>
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`ExeoraProtocolTypesRelayMessageServer`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageServer(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageServer {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageServer> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageServer) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageServer {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| {
+                ::regress::Regex::new("^[a-z0-9][a-z0-9-]{0,31}$").unwrap()
+            });
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9-]{0,31}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageServer {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageServer {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageServer {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`ExeoraProtocolTypesRelayMessageSessionId`
