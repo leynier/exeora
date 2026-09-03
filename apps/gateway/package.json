@@ -20,13 +20,13 @@
     "@modelcontextprotocol/server": "2.0.0",
     "agents": "0.21.0",
     "drizzle-orm": "0.45.2",
-    "hono": "4.13.4",
+    "hono": "4.13.5",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@types/node": "latest",
     "drizzle-kit": "latest",
-    "wrangler": "4.125.0"
+    "wrangler": "4.126.0"
   }
 }
