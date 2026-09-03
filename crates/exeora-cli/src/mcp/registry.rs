@@ -29,12 +29,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    McpClient,
-    McpLimits,
-    McpServerConfig,
-    McpTool,
-    NamedServer,
-    REQUEST_BUDGET,
+    McpClient, McpLimits, McpServerConfig, McpTool, NamedServer, REQUEST_BUDGET,
     config::load_project_config,
 };
 
@@ -42,7 +37,10 @@ use super::{
 const WARMUP_BUDGET: Duration = Duration::from_secs(20);
 
 enum ServerState {
-    Ready { client: McpClient, tools: Vec<McpTool> },
+    Ready {
+        client: McpClient,
+        tools: Vec<McpTool>,
+    },
     Error(String),
 }
 
@@ -98,11 +96,12 @@ impl McpRegistry {
                 // Entered anyway, as an empty server list: an empty frame is
                 // what clears whatever the relay remembered of a config that
                 // has since been emptied.
-                registry
-                    .projects
-                    .lock()
-                    .await
-                    .insert(project.id.clone(), Project { servers: Vec::new() });
+                registry.projects.lock().await.insert(
+                    project.id.clone(),
+                    Project {
+                        servers: Vec::new(),
+                    },
+                );
                 continue;
             }
             registry.starting.lock().await.insert(project.id.clone());
@@ -135,9 +134,7 @@ impl McpRegistry {
             )
             .await
             {
-                Ok((child, client, tools)) => {
-                    (Some(child), ServerState::Ready { client, tools })
-                }
+                Ok((child, client, tools)) => (Some(child), ServerState::Ready { client, tools }),
                 Err(reason) => (None, ServerState::Error(reason)),
             };
             handles.push(ServerHandle { name, child, state });
@@ -291,7 +288,10 @@ impl McpRegistry {
                 "This machine does not serve that project.",
             ));
         };
-        let Some(handle) = project.servers.iter_mut().find(|handle| handle.name == server)
+        let Some(handle) = project
+            .servers
+            .iter_mut()
+            .find(|handle| handle.name == server)
         else {
             return Err(ExeoraError::new(
                 ErrorCode::UnknownTool,
@@ -335,7 +335,12 @@ fn annotations(annotations: &Option<Value>) -> Value {
         return json!({});
     };
     let mut kept = serde_json::Map::new();
-    for key in ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] {
+    for key in [
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    ] {
         if let Some(hint) = annotations.get(key).and_then(Value::as_bool) {
             kept.insert(key.to_owned(), json!(hint));
         }

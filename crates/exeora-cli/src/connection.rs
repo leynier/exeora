@@ -682,7 +682,7 @@ async fn spawn_mcp_call(
         .and_then(Value::as_u64)
         .map(|expires| expires.saturating_sub(now_ms()).saturating_sub(1_000))
         .unwrap_or(30_000);
-    let budget = Duration::from_millis(budget_ms.max(1_000).min(60_000));
+    let budget = Duration::from_millis(budget_ms.clamp(1_000, 60_000));
     tokio::spawn(async move {
         let result = registry
             .call(&project_id, &server, &tool, arguments, budget, cancel)

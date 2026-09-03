@@ -269,13 +269,15 @@ impl McpClient {
         self.shared.pending.lock().await.remove(&id);
         match answer {
             Answer::Error(error) => Err(McpError::Protocol(
-                error
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .map_or_else(
-                        || format!("error {}", error.get("code").and_then(Value::as_i64).unwrap_or(0)),
-                        str::to_owned,
-                    ),
+                error.get("message").and_then(Value::as_str).map_or_else(
+                    || {
+                        format!(
+                            "error {}",
+                            error.get("code").and_then(Value::as_i64).unwrap_or(0)
+                        )
+                    },
+                    str::to_owned,
+                ),
             )),
             Answer::Closed => Err(McpError::Transport("the connection closed".into())),
             Answer::Result(result) => Ok(result),
@@ -293,7 +295,8 @@ impl McpClient {
 
     async fn write(&mut self, frame: &Value) -> Result<(), McpError> {
         let mut writer = self.shared.writer.lock().await;
-        let mut line = serde_json::to_vec(frame).map_err(|error| McpError::Transport(error.to_string()))?;
+        let mut line =
+            serde_json::to_vec(frame).map_err(|error| McpError::Transport(error.to_string()))?;
         line.push(b'\n');
         writer
             .write_all(&line)
@@ -306,10 +309,7 @@ impl McpClient {
     }
 }
 
-async fn read_loop(
-    reader: Box<dyn AsyncRead + Send + Unpin>,
-    shared: Arc<Shared>,
-) {
+async fn read_loop(reader: Box<dyn AsyncRead + Send + Unpin>, shared: Arc<Shared>) {
     let mut reader = BufReader::new(reader);
     loop {
         let line = match read_bounded_line(&mut reader).await {
@@ -408,7 +408,12 @@ async fn read_bounded_line(
  */
 fn parse_tool(entry: &Value) -> Option<McpTool> {
     let name = entry.get("name")?.as_str()?;
-    if name.is_empty() || name.len() > 64 || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') {
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
         return None;
     }
     let input_schema = entry.get("inputSchema")?;
@@ -466,7 +471,10 @@ mod tests {
             if let Some(id) = message.get("id").cloned() {
                 // The tuple is (method, response): the second element is the
                 // JSON this server answers with.
-                let scripted = script.iter().find(|(matches, _)| matches == method).cloned();
+                let scripted = script
+                    .iter()
+                    .find(|(matches, _)| matches == method)
+                    .cloned();
                 let reply = if let Some((_, result)) = scripted {
                     Some(json!({
                         "jsonrpc": "2.0", "id": id,
@@ -484,7 +492,10 @@ mod tests {
                     None
                 };
                 if let Some(reply) = reply {
-                    writer.write_all(format!("{}\n", reply).as_bytes()).await.unwrap();
+                    writer
+                        .write_all(format!("{}\n", reply).as_bytes())
+                        .await
+                        .unwrap();
                 }
             }
             if method == stop_after {
@@ -518,8 +529,14 @@ mod tests {
         client.initialize(Duration::from_secs(5)).await.unwrap();
         assert_eq!(client.protocol_version(), "2025-11-25");
         let seen = server.await.unwrap();
-        assert_eq!(seen[0].get("method").and_then(Value::as_str), Some("initialize"));
-        assert_eq!(seen[1].get("method").and_then(Value::as_str), Some("notifications/initialized"));
+        assert_eq!(
+            seen[0].get("method").and_then(Value::as_str),
+            Some("initialize")
+        );
+        assert_eq!(
+            seen[1].get("method").and_then(Value::as_str),
+            Some("notifications/initialized")
+        );
     }
 
     #[tokio::test]
@@ -552,7 +569,11 @@ mod tests {
                 let cursor = message.pointer("/params/cursor").and_then(Value::as_str);
                 let (tools, next) = if cursor.is_none() {
                     (
-                        vec![tool_entry("first"), json!({ "name": "not a name", "inputSchema": {} }), tool_entry("second")],
+                        vec![
+                            tool_entry("first"),
+                            json!({ "name": "not a name", "inputSchema": {} }),
+                            tool_entry("second"),
+                        ],
                         Some("page-2"),
                     )
                 } else {
@@ -582,7 +603,10 @@ mod tests {
         let (tools, skipped) = client.list_tools(Duration::from_secs(5), 64).await.unwrap();
         assert_eq!(server.await.unwrap(), 2);
         assert_eq!(
-            tools.iter().map(|tool| tool.name.as_str()).collect::<Vec<_>>(),
+            tools
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["first", "second", "third"]
         );
         assert_eq!(skipped, 1);
@@ -620,8 +644,14 @@ mod tests {
             .iter()
             .find(|message| message.get("method").and_then(Value::as_str) == Some("tools/call"))
             .unwrap();
-        assert_eq!(call.pointer("/params/name").and_then(Value::as_str), Some("compute"));
-        assert_eq!(call.pointer("/params/arguments/n").and_then(Value::as_i64), Some(41));
+        assert_eq!(
+            call.pointer("/params/name").and_then(Value::as_str),
+            Some("compute")
+        );
+        assert_eq!(
+            call.pointer("/params/arguments/n").and_then(Value::as_i64),
+            Some(41)
+        );
     }
 
     #[tokio::test]

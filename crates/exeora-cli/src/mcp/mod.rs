@@ -18,7 +18,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 pub use client::{McpClient, McpError, McpTool};
-pub use config::{load_project_config, McpServerConfig, NamedServer};
+pub use config::{McpServerConfig, NamedServer, load_project_config};
 pub use registry::McpRegistry;
 
 /** The MCP protocol revision this client offers a downstream server. */
@@ -40,9 +40,8 @@ pub struct McpLimits {
 
 impl McpLimits {
     pub fn from_contract() -> Self {
-        let contract: Value =
-            serde_json::from_str(include_str!("../../protocol/contract.json"))
-                .expect("generated contract is valid JSON");
+        let contract: Value = serde_json::from_str(include_str!("../../protocol/contract.json"))
+            .expect("generated contract is valid JSON");
         let limits = contract
             .get("limits")
             .cloned()
