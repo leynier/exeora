@@ -268,7 +268,8 @@ pub mod error {
 ///                  "exposedName": {
 ///                    "type": "string",
 ///                    "maxLength": 128,
-///                    "minLength": 1
+///                    "minLength": 1,
+///                    "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
 ///                  },
 ///                  "inputSchema": {
 ///                    "type": "object",
@@ -2666,7 +2667,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///              "exposedName": {
 ///                "type": "string",
 ///                "maxLength": 128,
-///                "minLength": 1
+///                "minLength": 1,
+///                "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
 ///              },
 ///              "inputSchema": {
 ///                "type": "object",
@@ -7135,7 +7137,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageSessio
 ///    "exposedName": {
 ///      "type": "string",
 ///      "maxLength": 128,
-///      "minLength": 1
+///      "minLength": 1,
+///      "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
 ///    },
 ///    "inputSchema": {
 ///      "type": "object",
@@ -7259,7 +7262,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageToolsI
 ///{
 ///  "type": "string",
 ///  "maxLength": 128,
-///  "minLength": 1
+///  "minLength": 1,
+///  "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
 ///}
 /// ```
 /// </details>
@@ -7287,6 +7291,17 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageToolsItemExposedN
         }
         if value.chars().count() < 1usize {
             return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| {
+                ::regress::Regex::new("^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$")
+                    .unwrap()
+            });
+        if PATTERN.find(value).is_none() {
+            return Err(
+                "doesn't match pattern \"^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$\""
+                    .into(),
+            );
         }
         Ok(Self(value.to_string()))
     }

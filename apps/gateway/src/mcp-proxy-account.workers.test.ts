@@ -39,7 +39,7 @@ const catalogs = [
   },
 ];
 
-function post(body: unknown, seen: Array<Record<string, unknown>> = []) {
+function post(body: unknown, seen: Array<Record<string, unknown>> = [], activeCatalogs = catalogs) {
   const request = new Request(`https://exeora.dev${ACCOUNT_MCP_ROUTE}`, {
     method: "POST",
     headers: {
@@ -60,7 +60,7 @@ function post(body: unknown, seen: Array<Record<string, unknown>> = []) {
     { REQUEST_STATE_SECRET: SECRET },
     new Set(),
     {
-      catalogs,
+      catalogs: activeCatalogs,
       dispatch: async (call, exposedName, args) => {
         seen.push({
           projectId: call.projectId,
@@ -101,13 +101,13 @@ describe("account MCP proxy tools", () => {
         expect.objectContaining({
           required: expect.arrayContaining(["query", "project"]),
           properties: expect.objectContaining({
-            project: expect.objectContaining({ enum: ["alpha"] }),
+            project: expect.objectContaining({ enum: ["alpha", "prj_alpha"] }),
           }),
         }),
         expect.objectContaining({
           required: expect.arrayContaining(["query", "project"]),
           properties: expect.objectContaining({
-            project: expect.objectContaining({ enum: ["beta"] }),
+            project: expect.objectContaining({ enum: ["beta", "prj_beta"] }),
           }),
         }),
       ]),
@@ -140,5 +140,84 @@ describe("account MCP proxy tools", () => {
       },
     ]);
     expect(body.result).toMatchObject({ content: [{ type: "text", text: "proxied" }] });
+  });
+
+  it("preserves upstream project and workspace fields by namespacing Exeora routing", async () => {
+    const reservedCatalogs = catalogs.map((catalog) => ({
+      ...catalog,
+      tools: catalog.tools.map((tool) => ({
+        ...tool,
+        inputSchema: {
+          ...tool.inputSchema,
+          properties: {
+            ...tool.inputSchema.properties,
+            project: { type: "string", description: "Upstream project value." },
+            workspace: { type: "string", description: "Upstream workspace value." },
+          },
+          required: [...tool.inputSchema.required, "project", "workspace"],
+        },
+      })),
+    }));
+    const listed = await payload(
+      await post({ jsonrpc: "2.0", id: 3, method: "tools/list" }, [], reservedCatalogs),
+    );
+    const tools = (
+      listed.result as {
+        tools: Array<{
+          name: string;
+          inputSchema: {
+            oneOf?: Array<{ properties?: Record<string, unknown>; required?: string[] }>;
+          };
+        }>;
+      }
+    ).tools;
+    const branches = tools.find((tool) => tool.name === NAME)?.inputSchema.oneOf ?? [];
+    for (const branch of branches) {
+      expect(branch.properties).toHaveProperty("project");
+      expect(branch.properties).toHaveProperty("workspace");
+      expect(branch.properties).toHaveProperty("__exeora_project");
+      expect(branch.properties).toHaveProperty("__exeora_workspace");
+      expect(branch.required).toEqual(
+        expect.arrayContaining(["query", "project", "workspace", "__exeora_project"]),
+      );
+    }
+
+    const seen: Array<Record<string, unknown>> = [];
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: {
+            name: NAME,
+            arguments: {
+              __exeora_project: "prj_beta",
+              __exeora_workspace: "feature",
+              project: "upstream-project",
+              workspace: "upstream-workspace",
+              query: "MCP",
+              limit: 3,
+            },
+          },
+        },
+        seen,
+        reservedCatalogs,
+      ),
+    );
+
+    expect(seen).toEqual([
+      {
+        projectId: "prj_beta",
+        workspace: "feature",
+        exposedName: NAME,
+        args: {
+          project: "upstream-project",
+          workspace: "upstream-workspace",
+          query: "MCP",
+          limit: 3,
+        },
+      },
+    ]);
   });
 });

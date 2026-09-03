@@ -91,8 +91,16 @@ enabled = false`}</code></pre>
   </p>
 
   <p>
+    Routing never replaces an upstream argument. If a tool already owns <code>workspace</code>, Exeora
+    exposes its routing selector as <code>__exeora_workspace</code> instead (and chooses another free
+    suffix if that name is also taken). On the account MCP URL the same rule applies to
+    <code>project</code>, normally falling back to <code>__exeora_project</code>. The actual field is
+    always visible in the schema returned by <code>tools/list</code>.
+  </p>
+
+  <p>
     On the account MCP URL, one tool name may exist in several projects. In that case Exeora adds a
-    required <code>project</code> selector and validates it against the projects that actually expose
+    required project selector and validates it against the project slug or id that actually exposes
     that tool.
   </p>
 

@@ -33,6 +33,14 @@ const CATALOG = [
 ];
 
 describe("MCP relay", () => {
+  it("filters malformed and duplicate catalog entries before registration", () => {
+    const valid = CATALOG[0];
+    if (!valid) throw new Error("catalog fixture is empty");
+    expect(
+      decodeMcpCatalog(JSON.stringify([valid, valid, { ...valid, exposedName: "grep" }])),
+    ).toEqual([valid]);
+  });
+
   it("stores the executor catalog and routes MCP calls independently from native tools", async () => {
     const executor = await attachFakeExecutor({
       capabilities: MCP_CAPABILITIES,

@@ -3,6 +3,7 @@ use crate::{
     config::{ConfigStore, McpServerConfig, ProjectEntry},
 };
 use anyhow::{Context, Result, anyhow, bail};
+use futures_util::future::join_all;
 use http::{HeaderName, HeaderValue, header::AUTHORIZATION};
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt,
@@ -21,14 +22,19 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
+    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{process::Command, sync::Mutex};
 
 const MAX_MCP_TOOLS_PER_PROJECT: usize = 256;
 const MAX_MCP_CATALOG_BYTES: usize = 1_500_000;
 const MAX_EXPOSED_NAME_LEN: usize = 128;
+const MCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const MCP_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
+const MCP_TOOL_CALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -100,11 +106,12 @@ impl McpManager {
             manager.servers.insert(project.id.clone(), servers.clone());
 
             let mut discovered = Vec::new();
-            for (server_name, server) in &servers {
-                match manager
-                    .connect_and_discover(project, &project.root, server_name, server)
-                    .await
-                {
+            let outcomes = join_all(servers.iter().map(|(server_name, server)| {
+                manager.connect_and_discover(project, &project.root, server_name, server)
+            }))
+            .await;
+            for ((server_name, _server), result) in servers.iter().zip(outcomes) {
+                match result {
                     Ok(mut tools) => discovered.append(&mut tools),
                     Err(error) => manager.warnings.push(format!(
                         "MCP server `{server_name}` for {} is unavailable: {error}",
@@ -192,10 +199,14 @@ impl McpManager {
             Value::Null => Map::new(),
             _ => bail!("MCP tool arguments must be an object"),
         };
-        let result = client
-            .call_tool(CallToolRequestParams::new(tool_name.to_owned()).with_arguments(args))
-            .await
-            .with_context(|| format!("MCP tool `{server_name}/{tool_name}` failed"))?;
+        let result = bounded_mcp(MCP_TOOL_CALL_TIMEOUT, async {
+            client
+                .call_tool(CallToolRequestParams::new(tool_name.to_owned()).with_arguments(args))
+                .await
+                .map_err(anyhow::Error::from)
+        })
+        .await
+        .with_context(|| format!("MCP tool `{server_name}/{tool_name}` failed"))?;
         serde_json::to_value(result).context("Could not encode the MCP tool result")
     }
 
@@ -207,10 +218,11 @@ impl McpManager {
         config: &McpServerConfig,
     ) -> Result<Vec<McpToolDescriptor>> {
         let client = self.client_for(project, root, server_name, config).await?;
-        let tools = client
-            .list_all_tools()
-            .await
-            .with_context(|| format!("Could not list tools from `{server_name}`"))?;
+        let tools = bounded_mcp(MCP_DISCOVERY_TIMEOUT, async {
+            client.list_all_tools().await.map_err(anyhow::Error::from)
+        })
+        .await
+        .with_context(|| format!("Could not list tools from `{server_name}`"))?;
 
         tools
             .into_iter()
@@ -242,18 +254,40 @@ impl McpManager {
             root: root.clone(),
             server: server_name.to_owned(),
         };
-        let mut clients = self.clients.lock().await;
-        if let Some(client) = clients.get(&key)
-            && !client.is_closed()
         {
-            return Ok(client.clone());
+            let clients = self.clients.lock().await;
+            if let Some(client) = clients.get(&key)
+                && !client.is_closed()
+            {
+                return Ok(client.clone());
+            }
         }
 
         validate_server(server_name, config)?;
-        let client = Arc::new(connect_server(config, &root).await?);
+        let client = Arc::new(
+            bounded_mcp(MCP_CONNECT_TIMEOUT, connect_server(config, &root))
+                .await
+                .with_context(|| format!("Could not connect to MCP server `{server_name}`"))?,
+        );
+        let mut clients = self.clients.lock().await;
+        if let Some(existing) = clients.get(&key)
+            && !existing.is_closed()
+        {
+            client.cancellation_token().cancel();
+            return Ok(existing.clone());
+        }
         clients.insert(key, client.clone());
         Ok(client)
     }
+}
+
+async fn bounded_mcp<T>(duration: Duration, future: impl Future<Output = Result<T>>) -> Result<T> {
+    tokio::time::timeout(duration, future).await.map_err(|_| {
+        anyhow!(
+            "MCP operation timed out after {} seconds",
+            duration.as_secs()
+        )
+    })?
 }
 
 fn bounded_catalog(tools: Vec<McpToolDescriptor>) -> Vec<McpToolDescriptor> {
@@ -533,5 +567,15 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_server("remote", &remote).is_err());
+    }
+
+    #[tokio::test]
+    async fn bounds_a_pending_upstream_operation() {
+        let result = bounded_mcp(Duration::from_millis(10), async {
+            std::future::pending::<Result<()>>().await
+        })
+        .await;
+
+        assert!(result.unwrap_err().to_string().contains("timed out"));
     }
 }

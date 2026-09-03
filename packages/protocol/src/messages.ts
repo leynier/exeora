@@ -74,10 +74,13 @@ export const ExecutorCapabilities = z.object({
 
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
 
+export const MCP_PROXY_TOOL_NAME_PATTERN =
+  /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$/;
+
 /** One upstream MCP tool the executor can proxy for a project. */
 export const McpToolDescriptor = z.object({
   /** Stable collision-free name Exeora exposes on its own MCP server. */
-  exposedName: z.string().min(1).max(128),
+  exposedName: z.string().min(1).max(128).regex(MCP_PROXY_TOOL_NAME_PATTERN),
   /** Configured upstream server name. */
   server: z.string().min(1).max(64),
   /** Original tool name on that upstream server. */

@@ -145,7 +145,8 @@
                   "exposedName": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 128
+                    "maxLength": 128,
+                    "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
                   },
                   "server": {
                     "type": "string",

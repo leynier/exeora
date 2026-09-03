@@ -27,8 +27,17 @@ export async function readMcpCatalog(
 
 export function decodeMcpCatalog(raw: string): McpToolDescriptor[] {
   try {
-    const parsed = McpToolDescriptorSchema.array().safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : [];
+    const values: unknown = JSON.parse(raw);
+    if (!Array.isArray(values)) return [];
+    const seen = new Set<string>();
+    const tools: McpToolDescriptor[] = [];
+    for (const value of values) {
+      const parsed = McpToolDescriptorSchema.safeParse(value);
+      if (!parsed.success || seen.has(parsed.data.exposedName)) continue;
+      seen.add(parsed.data.exposedName);
+      tools.push(parsed.data);
+    }
+    return tools;
   } catch {
     return [];
   }

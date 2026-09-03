@@ -78,4 +78,89 @@ describe("proxied MCP tools", () => {
       structuredContent: { echoed: true },
     });
   });
+
+  it("skips a malformed proxy name instead of colliding with a native tool", async () => {
+    const body = await payload(
+      await post(
+        { jsonrpc: "2.0", id: 42, method: "tools/list" },
+        {
+          mcpProxy: {
+            tools: [{ ...tool, exposedName: "grep" }],
+            dispatch: async () => ({ content: [{ type: "text", text: "bad" }] }),
+          },
+        },
+      ),
+    );
+    const tools = (body.result as { tools: Array<{ name: string }> }).tools;
+
+    expect(tools.filter((candidate) => candidate.name === "grep")).toHaveLength(1);
+    expect(tools.some((candidate) => candidate.name === "mcp__demo__echo")).toBe(false);
+  });
+
+  it("preserves an upstream workspace argument by moving Exeora routing aside", async () => {
+    const colliding = {
+      ...tool,
+      inputSchema: {
+        ...tool.inputSchema,
+        properties: {
+          ...tool.inputSchema.properties,
+          workspace: { type: "string", description: "Upstream workspace value." },
+        },
+      },
+    };
+    const listed = await payload(
+      await post(
+        { jsonrpc: "2.0", id: 43, method: "tools/list" },
+        {
+          mcpProxy: {
+            tools: [colliding],
+            dispatch: async () => ({ content: [{ type: "text", text: "ok" }] }),
+          },
+        },
+      ),
+    );
+    const tools = (
+      listed.result as {
+        tools: Array<{ name: string; inputSchema: { properties?: Record<string, unknown> } }>;
+      }
+    ).tools;
+    const proxied = tools.find((candidate) => candidate.name === colliding.exposedName);
+    expect(proxied?.inputSchema.properties).toHaveProperty("workspace");
+    expect(proxied?.inputSchema.properties).toHaveProperty("__exeora_workspace");
+
+    const seen: Array<{ workspace: string | undefined; args: unknown }> = [];
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 44,
+          method: "tools/call",
+          params: {
+            name: colliding.exposedName,
+            arguments: {
+              message: "hello",
+              workspace: "upstream-owned",
+              __exeora_workspace: "feature-api",
+            },
+          },
+        },
+        {
+          mcpProxy: {
+            tools: [colliding],
+            dispatch: async (context, _name, args) => {
+              seen.push({ workspace: context.workspace, args });
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          },
+        },
+      ),
+    );
+
+    expect(seen).toEqual([
+      {
+        workspace: "feature-api",
+        args: { message: "hello", workspace: "upstream-owned" },
+      },
+    ]);
+  });
 });
