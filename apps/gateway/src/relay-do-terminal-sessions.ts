@@ -20,8 +20,8 @@ const DETACHED_TOUCH_MS = 10_000;
 export type StoredTerminalSession = {
   sessionId: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   targetKey: string;
   startedAt: number;
   lastActivityAt: number;
@@ -32,16 +32,16 @@ export type StoredTerminalSession = {
 export type ListedTerminal = {
   sessionId: string;
   projectId: string;
-  worktreeId?: string;
-  worktreeSlug?: string;
+  workspaceId?: string;
+  workspaceSlug?: string;
   startedAt: number;
 };
 
 const replayBySocket = new WeakMap<WebSocket, { replay: string[]; replayBytes: number }>();
 const lastDetachedTouch = new Map<string, number>();
 
-export function terminalTargetKey(projectId: string, worktreeId: string | undefined): string {
-  return `${projectId}:${worktreeId ?? "main"}`;
+export function terminalTargetKey(projectId: string, workspaceId: string | undefined): string {
+  return `${projectId}:${workspaceId ?? "main"}`;
 }
 
 export async function listStoredTerminals(
@@ -57,8 +57,8 @@ export async function listTerminalSummaries(ctx: DurableObjectState): Promise<Li
   return (await listStoredTerminals(ctx)).map((session) => ({
     sessionId: session.sessionId,
     projectId: session.projectId,
-    ...(session.worktreeId ? { worktreeId: session.worktreeId } : {}),
-    ...(session.worktreeSlug ? { worktreeSlug: session.worktreeSlug } : {}),
+    ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+    ...(session.workspaceSlug ? { workspaceSlug: session.workspaceSlug } : {}),
     startedAt: session.startedAt,
   }));
 }
@@ -178,8 +178,8 @@ export async function persistDetachedTerminal(
   const stored = (await storedTerminalById(ctx, state.id)) ?? {
     sessionId: state.id,
     projectId: state.projectId,
-    ...(state.worktreeId ? { worktreeId: state.worktreeId } : {}),
-    ...(state.worktreeSlug ? { worktreeSlug: state.worktreeSlug } : {}),
+    ...(state.workspaceId ? { workspaceId: state.workspaceId } : {}),
+    ...(state.workspaceSlug ? { workspaceSlug: state.workspaceSlug } : {}),
     targetKey: state.targetKey,
     startedAt: state.startedAt,
     lastActivityAt: state.lastActivityAt,

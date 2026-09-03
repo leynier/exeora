@@ -28,15 +28,15 @@ export const ERROR_CODES = [
   "UNKNOWN_TOOL",
   /** The project id is not registered on this executor. */
   "UNKNOWN_PROJECT",
-  /** The requested worktree is not registered under the resolved project. */
-  "UNKNOWN_WORKTREE",
-  /** The worktree exists but this connected executor cannot currently serve it. */
-  "WORKTREE_UNAVAILABLE",
+  /** The requested workspace is not registered under the resolved project. */
+  "UNKNOWN_WORKSPACE",
+  /** The workspace exists but this connected executor cannot currently serve it. */
+  "WORKSPACE_UNAVAILABLE",
   /**
-   * No live process matches this call's project, worktree and caller.
+   * No live process matches this call's project, workspace and caller.
    *
    * The same answer whether the handle was never issued, already stopped, or
-   * belongs to a different worktree or client: telling those apart would let a
+   * belongs to a different workspace or client: telling those apart would let a
    * caller hunt across the machine, which is the guess this code exists to refuse.
    */
   "UNKNOWN_PROCESS",

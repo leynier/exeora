@@ -40,17 +40,17 @@ describe("tools/list", () => {
     expect(tools.find((tool) => tool.name === "run_command")?.annotations).toMatchObject({
       readOnlyHint: false,
     });
-    expect(tools.find((tool) => tool.name === "remove_worktree")?.annotations).toMatchObject({
+    expect(tools.find((tool) => tool.name === "remove_workspace")?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
     });
 
-    const create = tools.find((tool) => tool.name === "create_worktree");
-    expect(create?.inputSchema.required ?? []).not.toContain("worktree");
-    const remove = tools.find((tool) => tool.name === "remove_worktree");
-    expect(remove?.inputSchema.required).toContain("worktree");
-    const discovery = tools.find((tool) => tool.name === "list_git_worktrees");
-    expect(discovery?.inputSchema).not.toHaveProperty("properties.worktree");
+    const create = tools.find((tool) => tool.name === "create_workspace");
+    expect(create?.inputSchema.required ?? []).not.toContain("workspace");
+    const remove = tools.find((tool) => tool.name === "remove_workspace");
+    expect(remove?.inputSchema.required).toContain("workspace");
+    const discovery = tools.find((tool) => tool.name === "list_git_workspaces");
+    expect(discovery?.inputSchema).not.toHaveProperty("properties.workspace");
   });
 });
 
@@ -153,8 +153,8 @@ describe("tools/call", () => {
     expect(seen).toEqual([{ projectId: PROJECT, tool: "grep", args: { pattern: "TODO" } }]);
   });
 
-  it("routes a create source worktree without leaking the selector into executor arguments", async () => {
-    const seen: Array<{ worktree: string | undefined; args: unknown }> = [];
+  it("routes a create source workspace without leaking the selector into executor arguments", async () => {
+    const seen: Array<{ workspace: string | undefined; args: unknown }> = [];
 
     await payload(
       await post(
@@ -163,16 +163,16 @@ describe("tools/call", () => {
           id: 20,
           method: "tools/call",
           params: {
-            name: "create_worktree",
-            arguments: { branch: "feature/api", worktree: "develop" },
+            name: "create_workspace",
+            arguments: { branch: "feature/api", workspace: "develop" },
           },
         },
         {
           dispatch: async (context, _tool, args) => {
-            seen.push({ worktree: context.worktree, args });
+            seen.push({ workspace: context.workspace, args });
             return {
-              worktree: {
-                id: "wtr_feature",
+              workspace: {
+                id: "wsp_feature",
                 slug: "feature-api",
                 name: "feature/api",
                 branch: "feature/api",
@@ -185,7 +185,7 @@ describe("tools/call", () => {
       ),
     );
 
-    expect(seen).toEqual([{ worktree: "develop", args: { branch: "feature/api" } }]);
+    expect(seen).toEqual([{ workspace: "develop", args: { branch: "feature/api" } }]);
   });
 
   it("returns the executor's value as structured content", async () => {

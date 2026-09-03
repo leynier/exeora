@@ -6,7 +6,7 @@ import {
   serverInstructions,
   TOOL_DEFINITIONS,
   type ToolName,
-  WorktreeRef,
+  WorkspaceRef,
 } from "@exeora/protocol";
 import { McpServer, type ServerContext } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
@@ -28,33 +28,23 @@ import {
  * The per-project endpoint keeps a project out of reach by never naming it: the
  * id comes from the path and lives in a closure, so the separation is
  * structural rather than something the model is asked to respect. This one
- * cannot make that promise, because one URL has to reach several projects. The
- * boundary moves to the consent screen instead, where the person ticks the
- * projects one at a time and the ticks are the access list. A connection made
- * with a single project ticked is exactly as confined as a per-project one.
- *
- * What it buys is that a client is configured once and keeps working as
- * projects come and go, instead of one entry per repository that has to be
- * added by hand.
+ * offers the model a field for naming a project on every call, and gives it a
+ * tool for discovering what those names are.
  */
 export const ACCOUNT_MCP_ROUTE = "/mcp";
 
-/** Where a call should run, once the account endpoint has worked it out. */
-export interface AccountCall {
+export type AccountCall = {
   userId: string;
   caller: CallerIdentity;
-  /**
-   * The project named by this call, if it named one. The dispatcher permits an
-   * omission only when the connection reaches exactly one project.
-   */
+  /** Optional project selector for this call; omitted only when the token reaches one project. */
   project: string | undefined;
-  /** Optional worktree selector for this call; omitted means the project's main root. */
-  worktree?: string | undefined;
+  /** Optional workspace selector for this call; omitted means the project's main root. */
+  workspace?: string | undefined;
   /** The project an approval on this round was given for, if any. */
   approvedProjectId: string | undefined;
-  approvedWorktreeId?: string | undefined;
+  approvedWorkspaceId?: string | undefined;
   canElicit: boolean;
-}
+};
 
 export type AccountDispatchResult =
   | { kind: "value"; value: unknown }
@@ -64,7 +54,12 @@ export type AccountDispatchResult =
    * the person being asked has to be told, in words, which project the call
    * would land in. The dispatcher is the only side that knows either.
    */
-  | { kind: "needs-approval"; projectId: string; project: string; worktreeId?: string };
+  | {
+      kind: "needs-approval";
+      projectId: string;
+      project: string;
+      workspaceId?: string;
+    };
 
 /** Runs one executor tool, wherever the account endpoint decides that is. */
 export type AccountDispatcher = (
@@ -95,13 +90,13 @@ const projectArg = {
 };
 const routingArgs = {
   ...projectArg,
-  worktree: WorktreeRef.optional().describe(
-    "Run this call in a connected Git worktree by slug or id. Omit it, or use main, for the project root.",
+  workspace: WorkspaceRef.optional().describe(
+    "Run this call in a connected Git workspace by slug or id. Omit it, or use main, for the project root.",
   ),
 };
-const requiredWorktreeArgs = {
+const requiredWorkspaceArgs = {
   ...projectArg,
-  worktree: WorktreeRef.describe("The connected Git worktree to change, by slug or stable id."),
+  workspace: WorkspaceRef.describe("The connected Git workspace to change, by slug or stable id."),
 };
 
 export function createAccountMcpHandler(
@@ -142,7 +137,7 @@ export function createAccountMcpHandler(
        */
       const run = async (tool: ToolName, args: unknown, ctx: ServerContext) => {
         const props = propsOf();
-        const { project, worktree, rest } = splitRouting(args);
+        const { project, workspace, rest } = splitRouting(args);
         const approval = await approvalFor(ctx, tool, args);
 
         const result = await dispatch(
@@ -154,9 +149,9 @@ export function createAccountMcpHandler(
               mcp: mcpClientInfo(ctx),
             },
             project,
-            worktree,
+            workspace,
             approvedProjectId: approval?.projectId,
-            approvedWorktreeId: approval?.worktreeId,
+            approvedWorkspaceId: approval?.workspaceId,
             canElicit: request.era === "modern",
           },
           tool,
@@ -182,7 +177,7 @@ export function createAccountMcpHandler(
             tool,
             args,
             result.project,
-            result.worktreeId,
+            result.workspaceId,
           );
         }
 
@@ -235,12 +230,12 @@ export function createAccountMcpHandler(
       });
 
       server.registerTool(
-        "list_worktrees",
+        "list_workspaces",
         {
-          ...manageMeta("list_worktrees"),
-          inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_worktrees.inputSchema,
+          ...manageMeta("list_workspaces"),
+          inputSchema: ACCOUNT_TOOL_DEFINITIONS.list_workspaces.inputSchema,
         },
-        (args, ctx) => manage("list_worktrees", args, ctx),
+        (args, ctx) => manage("list_workspaces", args, ctx),
       );
       server.registerTool(
         "list_projects",
@@ -307,54 +302,56 @@ export function createAccountMcpHandler(
           (args, ctx) => run("apply_patch", args, ctx),
         );
       }
-      if (offers("list_git_worktrees")) {
+      if (offers("list_git_workspaces")) {
         server.registerTool(
-          "list_git_worktrees",
+          "list_git_workspaces",
           {
-            ...meta("list_git_worktrees"),
-            inputSchema: TOOL_DEFINITIONS.list_git_worktrees.inputSchema.extend(projectArg),
+            ...meta("list_git_workspaces"),
+            inputSchema: TOOL_DEFINITIONS.list_git_workspaces.inputSchema.extend(projectArg),
           },
-          (args, ctx) => run("list_git_worktrees", args, ctx),
+          (args, ctx) => run("list_git_workspaces", args, ctx),
         );
       }
-      if (offers("create_worktree")) {
+      if (offers("create_workspace")) {
         server.registerTool(
-          "create_worktree",
+          "create_workspace",
           {
-            ...meta("create_worktree"),
-            inputSchema: TOOL_DEFINITIONS.create_worktree.inputSchema.safeExtend(routingArgs),
+            ...meta("create_workspace"),
+            inputSchema: TOOL_DEFINITIONS.create_workspace.inputSchema.safeExtend(routingArgs),
           },
-          (args, ctx) => run("create_worktree", args, ctx),
+          (args, ctx) => run("create_workspace", args, ctx),
         );
       }
-      if (offers("attach_worktree")) {
+      if (offers("attach_workspace")) {
         server.registerTool(
-          "attach_worktree",
+          "attach_workspace",
           {
-            ...meta("attach_worktree"),
-            inputSchema: TOOL_DEFINITIONS.attach_worktree.inputSchema.safeExtend(projectArg),
+            ...meta("attach_workspace"),
+            inputSchema: TOOL_DEFINITIONS.attach_workspace.inputSchema.safeExtend(projectArg),
           },
-          (args, ctx) => run("attach_worktree", args, ctx),
+          (args, ctx) => run("attach_workspace", args, ctx),
         );
       }
-      if (offers("detach_worktree")) {
+      if (offers("detach_workspace")) {
         server.registerTool(
-          "detach_worktree",
+          "detach_workspace",
           {
-            ...meta("detach_worktree"),
-            inputSchema: TOOL_DEFINITIONS.detach_worktree.inputSchema.extend(requiredWorktreeArgs),
+            ...meta("detach_workspace"),
+            inputSchema:
+              TOOL_DEFINITIONS.detach_workspace.inputSchema.extend(requiredWorkspaceArgs),
           },
-          (args, ctx) => run("detach_worktree", args, ctx),
+          (args, ctx) => run("detach_workspace", args, ctx),
         );
       }
-      if (offers("remove_worktree")) {
+      if (offers("remove_workspace")) {
         server.registerTool(
-          "remove_worktree",
+          "remove_workspace",
           {
-            ...meta("remove_worktree"),
-            inputSchema: TOOL_DEFINITIONS.remove_worktree.inputSchema.extend(requiredWorktreeArgs),
+            ...meta("remove_workspace"),
+            inputSchema:
+              TOOL_DEFINITIONS.remove_workspace.inputSchema.extend(requiredWorkspaceArgs),
           },
-          (args, ctx) => run("remove_worktree", args, ctx),
+          (args, ctx) => run("remove_workspace", args, ctx),
         );
       }
       if (offers("run_command")) {
@@ -427,17 +424,17 @@ export function createAccountMcpHandler(
 /** Lifts gateway-only routing fields out, leaving the canonical executor input. */
 function splitRouting(args: unknown): {
   project: string | undefined;
-  worktree: string | undefined;
+  workspace: string | undefined;
   rest: unknown;
 } {
   if (!args || typeof args !== "object") {
-    return { project: undefined, worktree: undefined, rest: args };
+    return { project: undefined, workspace: undefined, rest: args };
   }
 
-  const { project, worktree, ...rest } = args as Record<string, unknown>;
+  const { project, workspace, ...rest } = args as Record<string, unknown>;
   return {
     project: typeof project === "string" ? project : undefined,
-    worktree: typeof worktree === "string" ? worktree : undefined,
+    workspace: typeof workspace === "string" ? workspace : undefined,
     rest,
   };
 }

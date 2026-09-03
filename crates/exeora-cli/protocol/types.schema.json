@@ -68,7 +68,7 @@
                     "maxLength": 64
                   }
                 },
-                "worktreeRouting": {
+                "workspaceRouting": {
                   "type": "boolean"
                 }
               },
@@ -180,8 +180,8 @@
                             "INVALID_ARGUMENTS",
                             "UNKNOWN_TOOL",
                             "UNKNOWN_PROJECT",
-                            "UNKNOWN_WORKTREE",
-                            "WORKTREE_UNAVAILABLE",
+                            "UNKNOWN_WORKSPACE",
+                            "WORKSPACE_UNAVAILABLE",
                             "UNKNOWN_PROCESS",
                             "NO_ACTIVE_PROJECT",
                             "FORBIDDEN",
@@ -402,7 +402,7 @@
                                 "type": "string"
                               }
                             },
-                            "gitWorktrees": {
+                            "gitWorkspaces": {
                               "default": [],
                               "type": "array",
                               "items": {
@@ -442,7 +442,7 @@
                             "files",
                             "branches",
                             "remotes",
-                            "gitWorktrees"
+                            "gitWorkspaces"
                           ],
                           "additionalProperties": false
                         },
@@ -656,7 +656,7 @@
                                     "type": "string"
                                   }
                                 },
-                                "gitWorktrees": {
+                                "gitWorkspaces": {
                                   "default": [],
                                   "type": "array",
                                   "items": {
@@ -696,11 +696,11 @@
                                 "files",
                                 "branches",
                                 "remotes",
-                                "gitWorktrees"
+                                "gitWorkspaces"
                               ],
                               "additionalProperties": false
                             },
-                            "worktree": {
+                            "workspace": {
                               "type": "object",
                               "properties": {
                                 "id": {
@@ -779,8 +779,8 @@
                             "INVALID_ARGUMENTS",
                             "UNKNOWN_TOOL",
                             "UNKNOWN_PROJECT",
-                            "UNKNOWN_WORKTREE",
-                            "WORKTREE_UNAVAILABLE",
+                            "UNKNOWN_WORKSPACE",
+                            "WORKSPACE_UNAVAILABLE",
                             "UNKNOWN_PROCESS",
                             "NO_ACTIVE_PROJECT",
                             "FORBIDDEN",
@@ -1000,10 +1000,10 @@
             "projectId": {
               "type": "string"
             },
-            "worktreeId": {
+            "workspaceId": {
               "type": "string"
             },
-            "worktreeSlug": {
+            "workspaceSlug": {
               "type": "string"
             },
             "tool": {
@@ -1015,11 +1015,11 @@
                 "edit_file",
                 "write_file",
                 "apply_patch",
-                "list_git_worktrees",
-                "create_worktree",
-                "attach_worktree",
-                "detach_worktree",
-                "remove_worktree",
+                "list_git_workspaces",
+                "create_workspace",
+                "attach_workspace",
+                "detach_workspace",
+                "remove_workspace",
                 "run_command",
                 "start_command",
                 "get_command_output",
@@ -1091,11 +1091,11 @@
                           "edit_file",
                           "write_file",
                           "apply_patch",
-                          "list_git_worktrees",
-                          "create_worktree",
-                          "attach_worktree",
-                          "detach_worktree",
-                          "remove_worktree",
+                          "list_git_workspaces",
+                          "create_workspace",
+                          "attach_workspace",
+                          "detach_workspace",
+                          "remove_workspace",
                           "run_command",
                           "start_command",
                           "get_command_output",
@@ -1156,10 +1156,10 @@
             "projectId": {
               "type": "string"
             },
-            "worktreeId": {
+            "workspaceId": {
               "type": "string"
             },
-            "worktreeSlug": {
+            "workspaceSlug": {
               "type": "string"
             },
             "action": {
@@ -1480,7 +1480,7 @@
                   "properties": {
                     "action": {
                       "type": "string",
-                      "const": "worktree_create"
+                      "const": "workspace_create"
                     },
                     "branch": {
                       "type": "string",
@@ -1585,10 +1585,10 @@
             "projectId": {
               "type": "string"
             },
-            "worktreeId": {
+            "workspaceId": {
               "type": "string"
             },
-            "worktreeSlug": {
+            "workspaceSlug": {
               "type": "string"
             },
             "tool": {
@@ -1600,11 +1600,11 @@
                 "edit_file",
                 "write_file",
                 "apply_patch",
-                "list_git_worktrees",
-                "create_worktree",
-                "attach_worktree",
-                "detach_worktree",
-                "remove_worktree",
+                "list_git_workspaces",
+                "create_workspace",
+                "attach_workspace",
+                "detach_workspace",
+                "remove_workspace",
                 "run_command",
                 "start_command",
                 "get_command_output",
@@ -1676,10 +1676,10 @@
             "projectId": {
               "type": "string"
             },
-            "worktreeId": {
+            "workspaceId": {
               "type": "string"
             },
-            "worktreeSlug": {
+            "workspaceSlug": {
               "type": "string"
             },
             "cols": {
@@ -1826,11 +1826,11 @@
                   "edit_file",
                   "write_file",
                   "apply_patch",
-                  "list_git_worktrees",
-                  "create_worktree",
-                  "attach_worktree",
-                  "detach_worktree",
-                  "remove_worktree",
+                  "list_git_workspaces",
+                  "create_workspace",
+                  "attach_workspace",
+                  "detach_workspace",
+                  "remove_workspace",
                   "run_command",
                   "start_command",
                   "get_command_output",
@@ -1897,11 +1897,11 @@
               "edit_file",
               "write_file",
               "apply_patch",
-              "list_git_worktrees",
-              "create_worktree",
-              "attach_worktree",
-              "detach_worktree",
-              "remove_worktree",
+              "list_git_workspaces",
+              "create_workspace",
+              "attach_workspace",
+              "detach_workspace",
+              "remove_workspace",
               "run_command",
               "start_command",
               "get_command_output",

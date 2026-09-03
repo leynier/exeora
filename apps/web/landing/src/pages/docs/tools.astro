@@ -70,15 +70,15 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
-    File, command and process tools accept <code>worktree</code>, naming a connected Git worktree by
+    File, command and process tools accept <code>workspace</code>, naming a connected Git workspace by
     slug or id; omit it or pass <code>main</code> for the project root.{" "}
-    <code>create_worktree</code> accepts it as an optional source, while{" "}
-    <code>detach_worktree</code> and <code>remove_worktree</code> require it as their target.{" "}
-    <code>list_git_worktrees</code> and <code>attach_worktree</code> do not take it. The gateway
+    <code>create_workspace</code> accepts it as an optional source, while{" "}
+    <code>detach_workspace</code> and <code>remove_workspace</code> require it as their target.{" "}
+    <code>list_git_workspaces</code> and <code>attach_workspace</code> do not take it. The gateway
     resolves selectors to stable ids and removes the routing field before executor validation.{" "}
-    <code>list_worktrees</code> remains the gateway inventory and works while the machine is offline;
-    <code>list_git_worktrees</code> requires the machine and includes unattached Git checkouts. A
-    worktree error never falls back to main.
+    <code>list_workspaces</code> remains the gateway inventory and works while the machine is offline;
+    <code>list_git_workspaces</code> requires the machine and includes unattached Git checkouts. A
+    workspace error never falls back to main.
   </p>
 
   {

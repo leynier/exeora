@@ -31,7 +31,7 @@ pub struct ProjectView {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WorktreeView {
+pub struct WorkspaceView {
     pub id: String,
     pub project_id: String,
     pub slug: String,
@@ -59,8 +59,8 @@ pub struct UserView {
 pub struct ToolCallView {
     pub id: String,
     pub project_id: String,
-    pub worktree_id: Option<String>,
-    pub worktree_slug: Option<String>,
+    pub workspace_id: Option<String>,
+    pub workspace_slug: Option<String>,
     pub tool: String,
     pub status: String,
     pub duration_ms: u64,
@@ -180,40 +180,40 @@ impl ApiClient {
         )
         .await
     }
-    pub async fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeView>> {
+    pub async fn list_workspaces(&self, project_id: &str) -> Result<Vec<WorkspaceView>> {
         self.request(
             reqwest::Method::GET,
-            &format!("/api/projects/{project_id}/worktrees"),
+            &format!("/api/projects/{project_id}/workspaces"),
             None,
         )
         .await
     }
-    pub async fn put_worktree(
+    pub async fn put_workspace(
         &self,
         project_id: &str,
-        worktree: &crate::config::WorktreeEntry,
-    ) -> Result<WorktreeView> {
+        workspace: &crate::config::WorkspaceEntry,
+    ) -> Result<WorkspaceView> {
         self.request(
             reqwest::Method::PUT,
-            &format!("/api/projects/{project_id}/worktrees/{}", worktree.id),
+            &format!("/api/projects/{project_id}/workspaces/{}", workspace.id),
             Some(serde_json::json!({
-                "slug": worktree.slug,
-                "name": worktree.name,
-                "branch": worktree.branch,
-                "localPath": worktree.root,
-                "managed": worktree.managed,
+                "slug": workspace.slug,
+                "name": workspace.name,
+                "branch": workspace.branch,
+                "localPath": workspace.root,
+                "managed": workspace.managed,
             })),
         )
         .await
     }
-    pub async fn remove_worktree(
+    pub async fn remove_workspace(
         &self,
         project_id: &str,
-        worktree_id: &str,
+        workspace_id: &str,
     ) -> Result<serde_json::Value> {
         self.request(
             reqwest::Method::DELETE,
-            &format!("/api/projects/{project_id}/worktrees/{worktree_id}"),
+            &format!("/api/projects/{project_id}/workspaces/{workspace_id}"),
             None,
         )
         .await

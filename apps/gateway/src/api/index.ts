@@ -11,7 +11,7 @@ import { me } from "./me.js";
 import { projects } from "./projects.js";
 import type { ApiEnv } from "./router.js";
 import { workspace } from "./workspace.js";
-import { worktrees } from "./worktrees.js";
+import { workspaces } from "./workspaces.js";
 
 /**
  * The dashboard and CLI API. Everything here runs behind `apiRoute`, so the
@@ -49,7 +49,7 @@ api.get("/api/health", (c) => c.json({ ok: true, service: "exeora-gateway" }));
 api.route("/", me);
 api.route("/", devices);
 api.route("/", projects);
-api.route("/", worktrees);
+api.route("/", workspaces);
 api.route("/", workspace);
 api.route("/", clients);
 api.route("/", accountClients);

@@ -48,8 +48,8 @@ export async function acceptTerminalSocket(
 ): Promise<Response> {
   const requestedId = url.searchParams.get("id");
   const projectId = url.searchParams.get("projectId");
-  const worktreeId = url.searchParams.get("worktreeId") ?? undefined;
-  const worktreeSlug = url.searchParams.get("worktreeSlug") ?? undefined;
+  const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+  const workspaceSlug = url.searchParams.get("workspaceSlug") ?? undefined;
   const cols = Number(url.searchParams.get("cols"));
   const rows = Number(url.searchParams.get("rows"));
   if (
@@ -64,8 +64,8 @@ export async function acceptTerminalSocket(
   ) {
     return new Response("Invalid terminal request.", { status: 400 });
   }
-  if ((worktreeId && !worktreeSlug) || (!worktreeId && worktreeSlug)) {
-    return new Response("Invalid worktree target.", { status: 400 });
+  if ((workspaceId && !workspaceSlug) || (!workspaceId && workspaceSlug)) {
+    return new Response("Invalid workspace target.", { status: 400 });
   }
 
   const executor = executorSocket(ctx);
@@ -74,14 +74,14 @@ export async function acceptTerminalSocket(
     !executor ||
     executorState?.role !== "executor" ||
     !executorState.capabilities?.features?.includes("terminal-v1") ||
-    (worktreeId !== undefined && !executorState.capabilities.worktreeRouting)
+    (workspaceId !== undefined && !executorState.capabilities.workspaceRouting)
   ) {
     return new Response("The connected CLI does not support web terminals.", { status: 409 });
   }
 
-  const targetKey = terminalTargetKey(projectId, worktreeId);
+  const targetKey = terminalTargetKey(projectId, workspaceId);
   if (liveTerminalForTarget(ctx, targetKey)) {
-    return new Response("A terminal is already open for this worktree.", { status: 409 });
+    return new Response("A terminal is already open for this workspace.", { status: 409 });
   }
 
   const stored = await storedTerminalByTarget(ctx, targetKey);
@@ -93,8 +93,8 @@ export async function acceptTerminalSocket(
     role: "terminal",
     id,
     projectId,
-    ...(worktreeId ? { worktreeId } : {}),
-    ...(worktreeSlug ? { worktreeSlug } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(workspaceSlug ? { workspaceSlug } : {}),
     targetKey,
     settled: false,
     startedAt,
@@ -105,8 +105,8 @@ export async function acceptTerminalSocket(
   const session = stored ?? {
     sessionId: id,
     projectId,
-    ...(worktreeId ? { worktreeId } : {}),
-    ...(worktreeSlug ? { worktreeSlug } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(workspaceSlug ? { workspaceSlug } : {}),
     targetKey,
     startedAt,
     lastActivityAt: now,
@@ -133,8 +133,8 @@ export async function acceptTerminalSocket(
         type: "terminal.open",
         sessionId: id,
         projectId,
-        worktreeId,
-        worktreeSlug,
+        workspaceId,
+        workspaceSlug,
         cols,
         rows,
       }),
@@ -227,8 +227,8 @@ export function handleTerminalCallerMessage(
 export async function issueTerminalTicket(
   ctx: DurableObjectState,
   projectId: string,
-  worktreeId: string | undefined,
-  worktreeSlug: string | undefined,
+  workspaceId: string | undefined,
+  workspaceSlug: string | undefined,
   origin: string,
 ): Promise<string | null> {
   const executor = executorSocket(ctx);
@@ -237,7 +237,7 @@ export async function issueTerminalTicket(
     !executor ||
     state?.role !== "executor" ||
     !state.capabilities?.features?.includes("terminal-v1") ||
-    (worktreeId !== undefined && !state.capabilities.worktreeRouting)
+    (workspaceId !== undefined && !state.capabilities.workspaceRouting)
   ) {
     return null;
   }
@@ -246,8 +246,8 @@ export async function issueTerminalTicket(
   const token = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   await ctx.storage.put(`${TERMINAL_TICKET_PREFIX}${token}`, {
     projectId,
-    worktreeId,
-    worktreeSlug,
+    workspaceId,
+    workspaceSlug,
     origin,
     expiresAt: Date.now() + TERMINAL_TICKET_MS,
   });
@@ -259,16 +259,16 @@ export async function consumeTerminalTicket(
   ctx: DurableObjectState,
   token: string,
   projectId: string,
-  worktreeId: string | undefined,
-  worktreeSlug: string | undefined,
+  workspaceId: string | undefined,
+  workspaceSlug: string | undefined,
   origin: string,
 ): Promise<boolean> {
   const consumed = await ctx.storage.transaction(async (transaction) => {
     const key = `${TERMINAL_TICKET_PREFIX}${token}`;
     const ticket = await transaction.get<{
       projectId: string;
-      worktreeId?: string;
-      worktreeSlug?: string;
+      workspaceId?: string;
+      workspaceSlug?: string;
       origin: string;
       expiresAt: number;
     }>(key);
@@ -276,8 +276,8 @@ export async function consumeTerminalTicket(
     return Boolean(
       ticket &&
         ticket.projectId === projectId &&
-        ticket.worktreeId === worktreeId &&
-        ticket.worktreeSlug === worktreeSlug &&
+        ticket.workspaceId === workspaceId &&
+        ticket.workspaceSlug === workspaceSlug &&
         ticket.origin === origin &&
         ticket.expiresAt >= Date.now(),
     );

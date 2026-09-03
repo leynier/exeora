@@ -1,4 +1,4 @@
-//! A process handle is only valid for the project, worktree and caller that
+//! A process handle is only valid for the project, workspace and caller that
 //! started it. Missing proof is a refusal, never a search.
 
 #![cfg(unix)]
@@ -16,7 +16,7 @@ async fn scoped(
     engine: &ToolEngine,
     root: &TempDir,
     project: &str,
-    worktree: &str,
+    workspace: &str,
     owner: Option<&str>,
     tool: ToolName,
     args: Value,
@@ -26,7 +26,7 @@ async fn scoped(
             root.path(),
             CallScope {
                 project,
-                worktree,
+                workspace,
                 owner,
             },
             tool,
@@ -40,14 +40,14 @@ async fn start(
     engine: &ToolEngine,
     root: &TempDir,
     project: &str,
-    worktree: &str,
+    workspace: &str,
     owner: Option<&str>,
 ) -> String {
     scoped(
         engine,
         root,
         project,
-        worktree,
+        workspace,
         owner,
         ToolName::StartCommand,
         json!({"command":"cat"}),
@@ -60,7 +60,7 @@ async fn start(
 }
 
 #[tokio::test]
-async fn a_handle_is_refused_from_another_worktree_with_the_same_words() {
+async fn a_handle_is_refused_from_another_workspace_with_the_same_words() {
     let root = TempDir::new().unwrap();
     let other = TempDir::new().unwrap();
     let engine = ToolEngine::new().unwrap();
@@ -94,7 +94,7 @@ async fn a_handle_is_refused_from_another_worktree_with_the_same_words() {
     assert_eq!(missing.to_string(), elsewhere.to_string());
     assert_eq!(
         missing.to_string(),
-        "No such process in this project and worktree."
+        "No such process in this project and workspace."
     );
 
     scoped(
@@ -174,16 +174,16 @@ async fn an_unattributed_process_is_reachable_by_any_caller_in_the_same_tuple() 
 }
 
 #[tokio::test]
-async fn a_stable_worktree_id_keeps_the_handle_when_the_slug_would_have_changed() {
+async fn a_stable_workspace_id_keeps_the_handle_when_the_slug_would_have_changed() {
     let root = TempDir::new().unwrap();
     let engine = ToolEngine::new().unwrap();
-    let id = start(&engine, &root, "prj_one", "wtr_active", None).await;
+    let id = start(&engine, &root, "prj_one", "wsp_active", None).await;
 
     scoped(
         &engine,
         &root,
         "prj_one",
-        "wtr_active",
+        "wsp_active",
         None,
         ToolName::GetCommandOutput,
         json!({"processId":id, "cursor":0}),
@@ -208,7 +208,7 @@ async fn a_stable_worktree_id_keeps_the_handle_when_the_slug_would_have_changed(
         &engine,
         &root,
         "prj_one",
-        "wtr_active",
+        "wsp_active",
         None,
         ToolName::KillCommand,
         json!({"processId":id}),
@@ -218,12 +218,12 @@ async fn a_stable_worktree_id_keeps_the_handle_when_the_slug_would_have_changed(
 }
 
 #[tokio::test]
-async fn a_full_worktree_does_not_spend_another_worktree_slot() {
+async fn a_full_workspace_does_not_spend_another_workspace_slot() {
     let root = TempDir::new().unwrap();
     let other = TempDir::new().unwrap();
     let engine = ToolEngine::new().unwrap();
     let mut feature = Vec::new();
-    for _ in 0..exeora_cli::protocol::MAX_PROCESSES_PER_WORKTREE {
+    for _ in 0..exeora_cli::protocol::MAX_PROCESSES_PER_WORKSPACE {
         feature.push(start(&engine, &root, "prj_one", "feature", None).await);
     }
 
@@ -238,7 +238,7 @@ async fn a_full_worktree_does_not_spend_another_worktree_slot() {
     )
     .await
     .unwrap_err();
-    assert!(overflow.to_string().contains("worktree"));
+    assert!(overflow.to_string().contains("workspace"));
 
     let main = start(&engine, &other, "prj_one", "main", None).await;
 

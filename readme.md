@@ -86,7 +86,7 @@ flowchart TD
 
 ## Tools
 
-`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `apply_patch` · `list_git_worktrees` · `create_worktree` · `attach_worktree` · `detach_worktree` · `remove_worktree` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
+`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `apply_patch` · `list_git_workspaces` · `create_workspace` · `attach_workspace` · `detach_workspace` · `remove_workspace` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
 
 On the account URL, `list_projects` shows the available targets. When it returns more than one, every executor tool call names its `project`, so concurrent conversations do not move each other.
 

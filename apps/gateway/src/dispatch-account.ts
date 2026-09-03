@@ -90,7 +90,7 @@ export async function dispatchAccountCall(
   const result = await dispatchToDevice(env, {
     userId,
     projectId: project.id,
-    worktree: call.worktree,
+    workspace: call.workspace,
     tool,
     args,
     caller,
@@ -98,7 +98,7 @@ export async function dispatchAccountCall(
     // anywhere else. Without this comparison, confirming `run_command` in one
     // project would confirm the same command in every other.
     approved: call.approvedProjectId === project.id,
-    approvedWorktreeId: call.approvedWorktreeId,
+    approvedWorkspaceId: call.approvedWorkspaceId,
     canElicit: call.canElicit,
     signal,
     endpoint: "account",
@@ -108,8 +108,8 @@ export async function dispatchAccountCall(
     ? {
         kind: "needs-approval",
         projectId: project.id,
-        project: result.worktreeSlug ? `${project.slug}/${result.worktreeSlug}` : project.slug,
-        ...(result.worktreeId ? { worktreeId: result.worktreeId } : {}),
+        project: result.workspaceSlug ? `${project.slug}/${result.workspaceSlug}` : project.slug,
+        ...(result.workspaceId ? { workspaceId: result.workspaceId } : {}),
       }
     : result;
 }
@@ -133,7 +133,7 @@ export async function answerAccountTool(
   // Bookkeeping only, and never a reason for the call to fail.
   const touch = () => touchAccountClient(env, entry, caller.mcp).catch(() => undefined);
 
-  if (tool === "list_worktrees") {
+  if (tool === "list_workspaces") {
     const named = (args as { project?: unknown } | null)?.project;
     const project = await resolveAccountProject(env, {
       ...entry,
@@ -141,16 +141,16 @@ export async function answerAccountTool(
     });
     const rows = await db(env)
       .select({
-        slug: schema.worktrees.slug,
-        name: schema.worktrees.name,
-        branch: schema.worktrees.branch,
-        managed: schema.worktrees.managed,
+        slug: schema.workspaces.slug,
+        name: schema.workspaces.name,
+        branch: schema.workspaces.branch,
+        managed: schema.workspaces.managed,
       })
-      .from(schema.worktrees)
-      .where(eq(schema.worktrees.projectId, project.id))
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.projectId, project.id))
       .all();
     await touch();
-    return { project: project.slug, worktrees: rows };
+    return { project: project.slug, workspaces: rows };
   }
 
   const reachable = await accountProjects(env, entry);

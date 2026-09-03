@@ -19,7 +19,17 @@ interface AuditEventBase extends Record<string, unknown> {
   created_at: string;
 }
 
-/** Versioned record written to the durable analytics stream. */
+/**
+ * Versioned record written to the durable analytics stream.
+ *
+ * `worktree_*` are the Iceberg column names in `tool_calls_v2`, which predates
+ * the workspace rename and cannot be renamed: a Pipelines stream schema is
+ * read-only once created, the pipeline SQL (`INSERT INTO sink SELECT * FROM
+ * stream`) is immutable and passes field names straight through, R2 SQL has no
+ * `ALTER`, and a new sink cannot target an existing table. Reads map back to
+ * workspace in `warehouse-calls.ts`; everything above this boundary says
+ * workspace.
+ */
 export type AuditEvent =
   | (AuditEventBase & { schema_version: 1 })
   | (AuditEventBase & {
@@ -55,8 +65,8 @@ export async function beginAudit(
   entry: {
     userId: string;
     projectId: string;
-    worktreeId?: string;
-    worktreeSlug?: string;
+    workspaceId?: string;
+    workspaceSlug?: string;
     tool: string;
     endpoint: "project" | "account" | "dashboard";
     caller: CallerIdentity;
@@ -72,8 +82,8 @@ export async function beginAudit(
       id,
       userId: entry.userId,
       projectId: entry.projectId,
-      worktreeId: entry.worktreeId,
-      worktreeSlug: entry.worktreeSlug,
+      workspaceId: entry.workspaceId,
+      workspaceSlug: entry.workspaceSlug,
       tool: entry.tool,
       endpoint: entry.endpoint,
       clientId: entry.caller.clientId,
@@ -136,7 +146,7 @@ export async function flushAuditOutbox(env: AuditEnv): Promise<number> {
         ORDER BY ready_at, id
         LIMIT ?4
      )
-     RETURNING id, user_id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code,
+     RETURNING id, user_id, project_id, workspace_id, workspace_slug, tool, status, duration_ms, error_code,
                client_id, client_name, endpoint, created_at, attempts`,
   )
     .bind(leaseToken, now + LEASE_MS, now, DELIVERY_BATCH)
@@ -224,8 +234,8 @@ export function auditEvent(
   entry: {
     userId: string;
     projectId: string;
-    worktreeId?: string;
-    worktreeSlug?: string;
+    workspaceId?: string;
+    workspaceSlug?: string;
     tool: string;
     status: "ok" | "error";
     durationMs: number;
@@ -241,8 +251,8 @@ export function auditEvent(
     id,
     user_id: entry.userId,
     project_id: entry.projectId,
-    ...(schemaVersion === 2 && entry.worktreeId ? { worktree_id: entry.worktreeId } : {}),
-    ...(schemaVersion === 2 && entry.worktreeSlug ? { worktree_slug: entry.worktreeSlug } : {}),
+    ...(schemaVersion === 2 && entry.workspaceId ? { worktree_id: entry.workspaceId } : {}),
+    ...(schemaVersion === 2 && entry.workspaceSlug ? { worktree_slug: entry.workspaceSlug } : {}),
     tool: entry.tool,
     status: entry.status,
     duration_ms: entry.durationMs,
@@ -258,8 +268,8 @@ interface OutboxRow {
   id: string;
   user_id: string;
   project_id: string;
-  worktree_id: string | null;
-  worktree_slug: string | null;
+  workspace_id: string | null;
+  workspace_slug: string | null;
   tool: string;
   status: "ok" | "error";
   duration_ms: number;
@@ -277,8 +287,8 @@ function eventFromOutbox(row: OutboxRow, schemaVersion: 1 | 2): AuditEvent {
     id: row.id,
     user_id: row.user_id,
     project_id: row.project_id,
-    ...(schemaVersion === 2 && row.worktree_id ? { worktree_id: row.worktree_id } : {}),
-    ...(schemaVersion === 2 && row.worktree_slug ? { worktree_slug: row.worktree_slug } : {}),
+    ...(schemaVersion === 2 && row.workspace_id ? { worktree_id: row.workspace_id } : {}),
+    ...(schemaVersion === 2 && row.workspace_slug ? { worktree_slug: row.workspace_slug } : {}),
     tool: row.tool,
     status: row.status,
     duration_ms: row.duration_ms,

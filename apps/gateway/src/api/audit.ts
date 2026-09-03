@@ -39,7 +39,7 @@ audit.get("/api/tool-calls", async (c) => {
   const userId = c.get("userId");
   const cursor = parseCallsCursor(c.req.query("cursor"));
   const projectId = c.req.query("projectId");
-  const worktreeId = c.req.query("worktreeId");
+  const workspaceId = c.req.query("workspaceId");
   const status = c.req.query("status");
   const clientId = c.req.query("clientId");
   const narrowStatus = status === "ok" || status === "error" ? status : undefined;
@@ -47,7 +47,7 @@ audit.get("/api/tool-calls", async (c) => {
   const page = await queryWarehouseCalls(c.env, {
     userId,
     projectId,
-    worktreeId,
+    workspaceId,
     status: narrowStatus,
     clientId,
     cursor,

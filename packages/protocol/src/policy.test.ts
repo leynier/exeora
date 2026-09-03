@@ -47,19 +47,19 @@ describe("read_only", () => {
     expect(policyAllows(readOnly, "read_file", { path: "a.ts" }).allowed).toBe(true);
     expect(policyAllows(readOnly, "list_files", {}).allowed).toBe(true);
     expect(policyAllows(readOnly, "grep", { pattern: "x" }).allowed).toBe(true);
-    expect(policyAllows(readOnly, "list_git_worktrees", {}).allowed).toBe(true);
+    expect(policyAllows(readOnly, "list_git_workspaces", {}).allowed).toBe(true);
   });
 
   it("refuses every tool that changes anything", () => {
     expect(policyAllows(readOnly, "edit_file", {}).allowed).toBe(false);
     expect(policyAllows(readOnly, "write_file", {}).allowed).toBe(false);
     expect(policyAllows(readOnly, "apply_patch", {}).allowed).toBe(false);
-    expect(policyAllows(readOnly, "create_worktree", { branch: "feature" }).allowed).toBe(false);
-    expect(policyAllows(readOnly, "attach_worktree", { path: "/work/feature" }).allowed).toBe(
+    expect(policyAllows(readOnly, "create_workspace", { branch: "feature" }).allowed).toBe(false);
+    expect(policyAllows(readOnly, "attach_workspace", { path: "/work/feature" }).allowed).toBe(
       false,
     );
-    expect(policyAllows(readOnly, "detach_worktree", {}).allowed).toBe(false);
-    expect(policyAllows(readOnly, "remove_worktree", {}).allowed).toBe(false);
+    expect(policyAllows(readOnly, "detach_workspace", {}).allowed).toBe(false);
+    expect(policyAllows(readOnly, "remove_workspace", {}).allowed).toBe(false);
     expect(policyAllows(readOnly, "run_command", { command: "ls" }).allowed).toBe(false);
   });
 
@@ -250,15 +250,15 @@ describe("tools", () => {
 
   it("means every tool when it is null, including one added later", () => {
     expect(DEFAULT_POLICY.tools).toBeNull();
-    expect(policyAllows(DEFAULT_POLICY, "create_worktree", { branch: "feature" }).allowed).toBe(
+    expect(policyAllows(DEFAULT_POLICY, "create_workspace", { branch: "feature" }).allowed).toBe(
       true,
     );
   });
 
   it("requires explicit allowlists to name lifecycle tools", () => {
-    const creating = policy({ tools: ["create_worktree"] });
-    expect(policyAllows(creating, "create_worktree", { branch: "feature" }).allowed).toBe(true);
-    expect(policyAllows(creating, "remove_worktree", {}).allowed).toBe(false);
+    const creating = policy({ tools: ["create_workspace"] });
+    expect(policyAllows(creating, "create_workspace", { branch: "feature" }).allowed).toBe(true);
+    expect(policyAllows(creating, "remove_workspace", {}).allowed).toBe(false);
   });
 
   it("refuses everything when the list is empty, rather than reading it as no restriction", () => {

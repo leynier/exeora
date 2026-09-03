@@ -47,18 +47,18 @@ export const MAX_PROCESS_BUFFER_BYTES = 256_000;
 export const MAX_PROCESS_CHUNK_BYTES = 100_000;
 
 /**
- * How many long-running processes one worktree may have at once.
+ * How many long-running processes one workspace may have at once.
  *
  * Low on purpose. These are dev servers and watch tasks, and an agent that has
  * started twenty of something has lost track rather than found a use for them.
- * Counted per worktree so one checkout cannot spend another checkout's slots.
+ * Counted per workspace so one checkout cannot spend another checkout's slots.
  */
-export const MAX_PROCESSES_PER_WORKTREE = 8;
+export const MAX_PROCESSES_PER_WORKSPACE = 8;
 
 /**
- * How many long-running processes one project may have at once, across worktrees.
+ * How many long-running processes one project may have at once, across workspaces.
  *
- * The worktree cap is the one an agent hits first. This is the backstop so eight
+ * The workspace cap is the one an agent hits first. This is the backstop so eight
  * checkouts cannot become sixty-four dev servers on one machine.
  */
 export const MAX_PROCESSES_PER_PROJECT = 16;

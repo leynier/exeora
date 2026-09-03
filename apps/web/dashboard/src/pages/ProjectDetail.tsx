@@ -14,7 +14,7 @@ import {
   StatusDot,
 } from "../components/ui.js";
 import { formatDate, formatDuration } from "../format.js";
-import { useClients, useDevices, useProjects, useToolCalls, useWorktrees } from "../queries.js";
+import { useClients, useDevices, useProjects, useToolCalls, useWorkspaces } from "../queries.js";
 
 /**
  * One project: where to point a client, which machine serves it, and what has
@@ -28,7 +28,7 @@ export function ProjectDetail() {
   // Narrowed by the server, so this is the project's most recent calls rather
   // than whichever of them happen to fall inside the account's most recent.
   const calls = useToolCalls(projectId ? { projectId } : {});
-  const worktrees = useWorktrees(projectId);
+  const workspaces = useWorkspaces(projectId);
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
 
@@ -37,7 +37,7 @@ export function ProjectDetail() {
     devices.isError ||
     clients.isError ||
     calls.isError ||
-    worktrees.isError
+    workspaces.isError
   ) {
     return <PageHeader title="Project" subtitle="Project data is temporarily unavailable." />;
   }
@@ -119,30 +119,30 @@ export function ProjectDetail() {
       </div>
 
       <div className="mt-6">
-        <Card title="Connected worktrees">
-          {(worktrees.data ?? []).length === 0 ? (
-            <EmptyState title="No worktrees connected">
-              Create one with <code className="font-mono">exeora worktree create</code> or attach an
-              existing Git worktree.
+        <Card title="Connected workspaces">
+          {(workspaces.data ?? []).length === 0 ? (
+            <EmptyState title="No workspaces connected">
+              Create one with <code className="font-mono">exeora workspace create</code> or attach
+              an existing Git workspace.
             </EmptyState>
           ) : (
             <Divided>
-              {(worktrees.data ?? []).map((worktree) => (
-                <Row key={worktree.id}>
+              {(workspaces.data ?? []).map((workspace) => (
+                <Row key={workspace.id}>
                   <div className="min-w-0">
-                    <p className="text-title-md truncate">{worktree.name}</p>
+                    <p className="text-title-md truncate">{workspace.name}</p>
                     <p className="text-body-md text-foreground-faint truncate font-mono">
-                      {worktree.slug}
-                      {worktree.branch ? ` · ${worktree.branch}` : " · detached HEAD"}
+                      {workspace.slug}
+                      {workspace.branch ? ` · ${workspace.branch}` : " · detached HEAD"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge tone={worktree.managed ? "success" : "neutral"}>
-                      {worktree.managed ? "managed" : "attached"}
+                    <Badge tone={workspace.managed ? "success" : "neutral"}>
+                      {workspace.managed ? "managed" : "attached"}
                     </Badge>
                     <Link
                       className="btn"
-                      to={`/workspace?project=${project.id}&worktree=${encodeURIComponent(worktree.slug)}`}
+                      to={`/workspace?project=${project.id}&workspace=${encodeURIComponent(workspace.slug)}`}
                     >
                       Open workspace
                     </Link>
@@ -208,7 +208,7 @@ export function ProjectDetail() {
                     <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
                     <code className="text-body-md truncate font-mono">{call.tool}</code>
                     <span className="text-body-md text-foreground-faint truncate font-mono">
-                      {call.worktreeSlug ?? "main"}
+                      {call.workspaceSlug ?? "main"}
                     </span>
                     {call.errorCode && (
                       <span className="text-body-md text-error truncate">{call.errorCode}</span>

@@ -25,8 +25,8 @@ import {
 export interface WarehouseCall {
   id: string;
   projectId: string;
-  worktreeId: string | null;
-  worktreeSlug: string | null;
+  workspaceId: string | null;
+  workspaceSlug: string | null;
   tool: string;
   status: "ok" | "error";
   durationMs: number;
@@ -56,7 +56,7 @@ export async function queryWarehouseCalls(
   filter: {
     userId: string;
     projectId?: string | undefined;
-    worktreeId?: string | undefined;
+    workspaceId?: string | undefined;
     status?: "ok" | "error" | undefined;
     clientId?: string | undefined;
     cursor?: { createdAt: number; id: string } | undefined;
@@ -73,7 +73,7 @@ export async function queryWarehouseCalls(
   // is a fact about today's call sites, not about this function.
   const conditions = [`user_id = ${sqlString(filter.userId)}`];
   if (filter.projectId) conditions.push(`project_id = ${sqlString(filter.projectId)}`);
-  if (filter.worktreeId) conditions.push(`worktree_id = ${sqlString(filter.worktreeId)}`);
+  if (filter.workspaceId) conditions.push(`worktree_id = ${sqlString(filter.workspaceId)}`);
   if (filter.status) conditions.push(`status = ${sqlString(filter.status)}`);
   if (filter.clientId) conditions.push(`client_id = ${sqlString(filter.clientId)}`);
 
@@ -133,8 +133,8 @@ function toCall(row: Record<string, unknown>, from: number, to: number): Warehou
   return {
     id,
     projectId,
-    worktreeId: optionalString(row.worktree_id),
-    worktreeSlug: optionalString(row.worktree_slug),
+    workspaceId: optionalString(row.worktree_id),
+    workspaceSlug: optionalString(row.worktree_slug),
     tool,
     status,
     durationMs,

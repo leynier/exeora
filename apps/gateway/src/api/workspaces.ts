@@ -5,9 +5,9 @@ import { z } from "zod";
 import { db, schema } from "../db/client.js";
 import type { ApiEnv } from "./router.js";
 
-export const worktrees = new Hono<ApiEnv>();
+export const workspaces = new Hono<ApiEnv>();
 
-const worktreeInput = z.object({
+const workspaceInput = z.object({
   slug: z
     .string()
     .min(1)
@@ -28,7 +28,7 @@ async function ownedProject(env: Pick<Env, "DB">, userId: string, projectId: str
     .get();
 }
 
-function view(row: typeof schema.worktrees.$inferSelect) {
+function view(row: typeof schema.workspaces.$inferSelect) {
   return {
     id: row.id,
     projectId: row.projectId,
@@ -42,53 +42,53 @@ function view(row: typeof schema.worktrees.$inferSelect) {
   };
 }
 
-worktrees.get("/api/projects/:projectId/worktrees", async (c) => {
+workspaces.get("/api/projects/:projectId/workspaces", async (c) => {
   const projectId = c.req.param("projectId");
   if (!(await ownedProject(c.env, c.get("userId"), projectId))) {
     return c.json({ error: "not_found" }, 404);
   }
   const rows = await db(c.env)
     .select()
-    .from(schema.worktrees)
-    .where(eq(schema.worktrees.projectId, projectId))
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.projectId, projectId))
     .all();
   return c.json(rows.map(view));
 });
 
-worktrees.put(
-  "/api/projects/:projectId/worktrees/:worktreeId",
-  zValidator("json", worktreeInput),
+workspaces.put(
+  "/api/projects/:projectId/workspaces/:workspaceId",
+  zValidator("json", workspaceInput),
   async (c) => {
     const projectId = c.req.param("projectId");
-    const worktreeId = c.req.param("worktreeId");
-    if (!/^wtr_[a-zA-Z0-9]+$/.test(worktreeId)) {
-      return c.json({ error: "invalid_worktree_id" }, 400);
+    const workspaceId = c.req.param("workspaceId");
+    if (!/^wsp_[a-zA-Z0-9]+$/.test(workspaceId)) {
+      return c.json({ error: "invalid_workspace_id" }, 400);
     }
     if (!(await ownedProject(c.env, c.get("userId"), projectId))) {
       return c.json({ error: "not_found" }, 404);
     }
     const body = c.req.valid("json");
     const existingById = await db(c.env)
-      .select({ projectId: schema.worktrees.projectId })
-      .from(schema.worktrees)
-      .where(eq(schema.worktrees.id, worktreeId))
+      .select({ projectId: schema.workspaces.projectId })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.id, workspaceId))
       .get();
     if (existingById && existingById.projectId !== projectId) {
       return c.json({ error: "not_found" }, 404);
     }
     const collision = await db(c.env)
-      .select({ id: schema.worktrees.id })
-      .from(schema.worktrees)
-      .where(and(eq(schema.worktrees.projectId, projectId), eq(schema.worktrees.slug, body.slug)))
+      .select({ id: schema.workspaces.id })
+      .from(schema.workspaces)
+      .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.workspaces.slug, body.slug)))
       .get();
-    if (collision && collision.id !== worktreeId) {
+    if (collision && collision.id !== workspaceId) {
       return c.json({ error: "slug_conflict" }, 409);
     }
     const now = new Date();
     await db(c.env)
-      .insert(schema.worktrees)
+      .insert(schema.workspaces)
       .values({
-        id: worktreeId,
+        id: workspaceId,
         projectId,
         slug: body.slug,
         name: body.name,
@@ -98,7 +98,7 @@ worktrees.put(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: schema.worktrees.id,
+        target: schema.workspaces.id,
         set: {
           slug: body.slug,
           name: body.name,
@@ -110,25 +110,25 @@ worktrees.put(
       });
     const row = await db(c.env)
       .select()
-      .from(schema.worktrees)
-      .where(and(eq(schema.worktrees.id, worktreeId), eq(schema.worktrees.projectId, projectId)))
+      .from(schema.workspaces)
+      .where(and(eq(schema.workspaces.id, workspaceId), eq(schema.workspaces.projectId, projectId)))
       .get();
     if (!row) return c.json({ error: "not_found" }, 404);
     return c.json(view(row));
   },
 );
 
-worktrees.delete("/api/projects/:projectId/worktrees/:worktreeId", async (c) => {
+workspaces.delete("/api/projects/:projectId/workspaces/:workspaceId", async (c) => {
   const projectId = c.req.param("projectId");
   if (!(await ownedProject(c.env, c.get("userId"), projectId))) {
     return c.json({ error: "not_found" }, 404);
   }
   await db(c.env)
-    .delete(schema.worktrees)
+    .delete(schema.workspaces)
     .where(
       and(
-        eq(schema.worktrees.id, c.req.param("worktreeId")),
-        eq(schema.worktrees.projectId, projectId),
+        eq(schema.workspaces.id, c.req.param("workspaceId")),
+        eq(schema.workspaces.projectId, projectId),
       ),
     );
   // Idempotent for CLI reconciliation: a pending delete can be retried safely.

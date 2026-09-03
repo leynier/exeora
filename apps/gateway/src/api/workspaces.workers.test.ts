@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
 import { api } from "./index.js";
 
-const USER = "usr_worktrees";
-const OTHER = "usr_worktrees_other";
+const USER = "usr_workspaces";
+const OTHER = "usr_workspaces_other";
 
 function call(path: string, userId = USER, method = "GET", body?: unknown) {
   const ctx = createExecutionContext();
@@ -32,20 +32,20 @@ beforeEach(async () => {
   await db(env)
     .insert(schema.users)
     .values([
-      { id: USER, email: "worktrees@example.com" },
-      { id: OTHER, email: "other-worktrees@example.com" },
+      { id: USER, email: "workspaces@example.com" },
+      { id: OTHER, email: "other-workspaces@example.com" },
     ])
     .run();
   await db(env)
     .insert(schema.devices)
-    .values({ id: "dev_worktrees", userId: USER, name: "box", platform: "linux" })
+    .values({ id: "dev_workspaces", userId: USER, name: "box", platform: "linux" })
     .run();
   await db(env)
     .insert(schema.projects)
     .values({
-      id: "prj_worktrees",
+      id: "prj_workspaces",
       userId: USER,
-      deviceId: "dev_worktrees",
+      deviceId: "dev_workspaces",
       name: "Repo",
       slug: "repo",
       localPath: "/work/repo",
@@ -53,34 +53,34 @@ beforeEach(async () => {
     .run();
 });
 
-describe("worktree inventory", () => {
-  it("upserts, lists and idempotently removes a project worktree", async () => {
-    const path = "/api/projects/prj_worktrees/worktrees/wtr_123";
+describe("workspace inventory", () => {
+  it("upserts, lists and idempotently removes a project workspace", async () => {
+    const path = "/api/projects/prj_workspaces/workspaces/wsp_123";
     const body = {
       slug: "feature-one",
       name: "Feature one",
       branch: "feature/one",
-      localPath: "/work/worktrees/feature-one",
+      localPath: "/work/workspaces/feature-one",
       managed: true,
     };
     expect((await call(path, USER, "PUT", body)).status).toBe(200);
 
-    const listed = (await (await call("/api/projects/prj_worktrees/worktrees")).json()) as Array<{
+    const listed = (await (await call("/api/projects/prj_workspaces/workspaces")).json()) as Array<{
       id: string;
       slug: string;
     }>;
-    expect(listed).toMatchObject([{ id: "wtr_123", slug: "feature-one" }]);
+    expect(listed).toMatchObject([{ id: "wsp_123", slug: "feature-one" }]);
 
     expect((await call(path, USER, "DELETE")).status).toBe(200);
     expect((await call(path, USER, "DELETE")).status).toBe(200);
   });
 
   it("does not expose or mutate another account's project", async () => {
-    const collection = "/api/projects/prj_worktrees/worktrees";
+    const collection = "/api/projects/prj_workspaces/workspaces";
     expect((await call(collection, OTHER)).status).toBe(404);
     expect(
       (
-        await call(`${collection}/wtr_123`, OTHER, "PUT", {
+        await call(`${collection}/wsp_123`, OTHER, "PUT", {
           slug: "stolen",
           name: "Stolen",
           localPath: "/tmp/stolen",
@@ -90,8 +90,23 @@ describe("worktree inventory", () => {
     ).toBe(404);
   });
 
+  it("rejects a workspace id that is not an id prefix", async () => {
+    const response = await call(
+      "/api/projects/prj_workspaces/workspaces/feature-one",
+      USER,
+      "PUT",
+      {
+        slug: "feature-one",
+        name: "Feature one",
+        localPath: "/work/workspaces/feature-one",
+        managed: true,
+      },
+    );
+    expect(response.status).toBe(400);
+  });
+
   it("reserves main for the primary project root", async () => {
-    const response = await call("/api/projects/prj_worktrees/worktrees/wtr_main", USER, "PUT", {
+    const response = await call("/api/projects/prj_workspaces/workspaces/wsp_main", USER, "PUT", {
       slug: "main",
       name: "Main",
       localPath: "/work/repo",

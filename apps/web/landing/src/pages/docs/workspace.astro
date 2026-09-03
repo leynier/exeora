@@ -8,26 +8,26 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/workspace/"
 >
   <p>
-    Open the <strong>Workspace</strong> tab in the dashboard. Choose a project, then a worktree,
+    Open the <strong>Workspace</strong> tab in the dashboard. Choose a project, then a workspace,
     from the dropdowns at the top of that page. Source Control and the terminal are available only
     to the signed-in owner of that project, while its Exeora CLI is connected. The
     <strong>project root</strong> is the directory you registered; it may be on any branch, not
-    necessarily <code>main</code>. Any other option is a Git worktree connected through{" "}
-    <code>exeora worktree</code> or created from Source Control. Project pages still offer{" "}
+    necessarily <code>main</code>. Any other option is a Git workspace connected through{" "}
+    <code>exeora workspace</code> or created from Source Control. Project pages still offer{" "}
     <strong>Open workspace</strong>, which lands on the same tab.
   </p>
 
   <h2>Source Control</h2>
 
   <p>
-    The dashboard reads Git's porcelain status from the selected worktree and presents it as a git
+    The dashboard reads Git's porcelain status from the selected workspace and presents it as a git
     client: the current branch in the toolbar, a commit composer above staged and unstaged files, and
     the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
     changes, delete individual untracked files, fetch, pull, and push. The branch control lists the
     current branch, other local branches, and remotes you can check out. Choosing a branch that is
-    already checked out in another connected worktree switches the workspace to that worktree rather
+    already checked out in another connected workspace switches the view to that workspace rather
     than running <code>git switch</code> in place. Type a name there to create a branch from HEAD,
-    delete a merged local branch, or create a new Git worktree from Source Control.
+    delete a merged local branch, or create a new Git workspace from Source Control.
   </p>
 
   <p>
@@ -51,7 +51,7 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     Opening a terminal requires an explicit confirmation. It starts the machine's default shell in a
-    real pseudo-terminal at the selected worktree's local path. Open terminals belong to the
+    real pseudo-terminal at the selected workspace's local path. Open terminals belong to the
     dashboard as a whole: the list stays in the chrome when you leave Workspace, switch project, or
     reload the tab. Closing the browser detaches the dashboard; the local process keeps running
     until you close that terminal, the CLI disconnects, the machine is revoked, or the session
@@ -60,8 +60,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     A terminal connection uses a one-time ticket that expires after 30 seconds and is bound to this
-    site's origin and selected worktree. One web terminal may be open per worktree, so the project
-    root and multiple connected worktrees can each have one. Idle sessions end after 30 minutes and
+    site's origin and selected workspace. One web terminal may be open per workspace, so the project
+    root and multiple connected workspaces can each have one. Idle sessions end after 30 minutes and
     every session ends after eight hours.
   </p>
 

@@ -4,12 +4,12 @@ import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
 import { WorkspaceTerminals } from "../components/WorkspaceTerminals.js";
-import { useGitStatus, useProjects, useWorkspaceCapabilities, useWorktrees } from "../queries.js";
+import { useGitStatus, useProjects, useWorkspaceCapabilities, useWorkspaces } from "../queries.js";
 import { projectRootBranch } from "../workspacePaths.js";
 
 const LAST_KEY = "exeora.last_workspace";
 
-type LastWorkspace = { projectId: string; worktree: string | null };
+type LastWorkspace = { projectId: string; workspace: string | null };
 
 function readLast(): LastWorkspace | null {
   try {
@@ -19,7 +19,7 @@ function readLast(): LastWorkspace | null {
     if (typeof parsed.projectId !== "string") return null;
     return {
       projectId: parsed.projectId,
-      worktree: typeof parsed.worktree === "string" ? parsed.worktree : null,
+      workspace: typeof parsed.workspace === "string" ? parsed.workspace : null,
     };
   } catch {
     return null;
@@ -38,8 +38,8 @@ export function WorkspaceRedirect() {
   const [search] = useSearchParams();
   const params = new URLSearchParams();
   if (projectId) params.set("project", projectId);
-  const worktree = search.get("worktree");
-  if (worktree) params.set("worktree", worktree);
+  const workspace = search.get("workspace");
+  if (workspace) params.set("workspace", workspace);
   return <Navigate to={{ pathname: "/workspace", search: params.toString() }} replace />;
 }
 
@@ -47,8 +47,8 @@ export function Workspace() {
   const [search, setSearch] = useSearchParams();
   const projects = useProjects();
   const projectId = search.get("project") ?? "";
-  const worktreeSlug = search.get("worktree");
-  const worktrees = useWorktrees(projectId || undefined);
+  const workspaceSlug = search.get("workspace");
+  const workspaces = useWorkspaces(projectId || undefined);
   const tab = search.get("view") === "terminal" ? "terminal" : "source";
   const setTab = (value: "source" | "terminal") => {
     const params = new URLSearchParams(search);
@@ -58,21 +58,21 @@ export function Workspace() {
   };
 
   const project = projects.data?.find((item) => item.id === projectId);
-  const selectedWorktree = worktrees.data?.find((item) => item.slug === worktreeSlug);
-  const targetReady = worktreeSlug === null || selectedWorktree !== undefined;
-  const targetId = selectedWorktree?.id;
+  const selectedWorkspace = workspaces.data?.find((item) => item.slug === workspaceSlug);
+  const targetReady = workspaceSlug === null || selectedWorkspace !== undefined;
+  const targetId = selectedWorkspace?.id;
   const targetKey = targetId ?? "main";
   const ready = Boolean(project) && targetReady;
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
   const status = useGitStatus(projectId, targetId, ready);
-  const targetLabel = selectedWorktree?.slug ?? "project root";
+  const targetLabel = selectedWorkspace?.slug ?? "project root";
 
   const restored = useMemo(() => {
     if (projectId || !projects.data) return null;
     const last = readLast();
     if (last && projects.data.some((item) => item.id === last.projectId)) return last;
     const only = projects.data.at(0);
-    if (projects.data.length === 1 && only) return { projectId: only.id, worktree: null };
+    if (projects.data.length === 1 && only) return { projectId: only.id, workspace: null };
     return null;
   }, [projectId, projects.data]);
 
@@ -80,17 +80,17 @@ export function Workspace() {
     if (!restored) return;
     const params = new URLSearchParams();
     params.set("project", restored.projectId);
-    if (restored.worktree) params.set("worktree", restored.worktree);
+    if (restored.workspace) params.set("workspace", restored.workspace);
     setSearch(params, { replace: true });
   }, [restored, setSearch]);
 
-  const select = (nextProject: string, nextWorktree: string | null) => {
+  const select = (nextProject: string, nextWorkspace: string | null) => {
     const params = new URLSearchParams();
     if (nextProject) params.set("project", nextProject);
-    if (nextWorktree) params.set("worktree", nextWorktree);
+    if (nextWorkspace) params.set("workspace", nextWorkspace);
     if (tab === "terminal") params.set("view", "terminal");
     setSearch(params, { replace: true });
-    if (nextProject) writeLast({ projectId: nextProject, worktree: nextWorktree });
+    if (nextProject) writeLast({ projectId: nextProject, workspace: nextWorkspace });
   };
 
   if (projects.isLoading) {
@@ -103,7 +103,7 @@ export function Workspace() {
         <div className="min-w-0">
           <h1 className="text-headline-md">Workspace</h1>
           <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
-            {selectedWorktree?.localPath ??
+            {selectedWorkspace?.localPath ??
               project?.localPath ??
               "Choose a project to open its git client."}
           </p>
@@ -111,15 +111,15 @@ export function Workspace() {
         <WorkspaceRootSelector
           projects={projects.data ?? []}
           projectId={project?.id ?? ""}
-          worktrees={worktrees.data ?? []}
-          selectedSlug={worktreeSlug}
+          workspaces={workspaces.data ?? []}
+          selectedSlug={workspaceSlug}
           projectRootBranch={projectRootBranch(
-            status.data?.gitWorktrees,
+            status.data?.gitWorkspaces,
             project?.localPath ?? "",
-            worktrees.data ?? [],
+            workspaces.data ?? [],
           )}
           onSelectProject={(id) => select(id, null)}
-          onSelectWorktree={(slug) => select(projectId, slug)}
+          onSelectWorkspace={(slug) => select(projectId, slug)}
         />
       </header>
 
@@ -127,7 +127,7 @@ export function Workspace() {
         <div className="border-border bg-surface flex-1 rounded-xl border">
           <EmptyState title={projects.data?.length ? "Select a project" : "No projects yet"}>
             {projects.data?.length
-              ? "The dropdowns above switch project and worktree without leaving this tab."
+              ? "The dropdowns above switch project and workspace without leaving this tab."
               : "Add one from the CLI, then it will appear in the project selector."}
           </EmptyState>
         </div>
@@ -151,20 +151,20 @@ export function Workspace() {
           </div>
           <WorkspaceTerminals
             projectId={projectId}
-            worktreeId={targetId}
-            worktreeSlug={worktreeSlug}
+            workspaceId={targetId}
+            workspaceSlug={workspaceSlug}
             targetLabel={targetLabel}
             available={capabilities.data?.terminal === true}
             visible={tab === "terminal"}
           />
-          {tab === "terminal" ? null : worktrees.isLoading ? (
+          {tab === "terminal" ? null : workspaces.isLoading ? (
             <Skeleton className="h-full w-full rounded-xl" />
-          ) : worktrees.isError ? (
-            <ErrorBanner error={worktrees.error} onRetry={() => worktrees.refetch()} />
+          ) : workspaces.isError ? (
+            <ErrorBanner error={workspaces.error} onRetry={() => workspaces.refetch()} />
           ) : !targetReady ? (
             <div className="border-border bg-surface flex-1 rounded-xl border">
-              <EmptyState title="That worktree is unavailable">
-                Worktree {worktreeSlug} is no longer connected.{" "}
+              <EmptyState title="That workspace is unavailable">
+                Workspace {workspaceSlug} is no longer connected.{" "}
                 <button
                   type="button"
                   className="underline"
@@ -191,15 +191,15 @@ export function Workspace() {
             <SourceControl
               key={targetKey}
               projectId={projectId}
-              worktree={targetId}
-              worktrees={worktrees.data ?? []}
+              workspace={targetId}
+              workspaces={workspaces.data ?? []}
               projectLocalPath={project.localPath}
               targetKey={targetKey}
               targetLabel={targetLabel}
               status={status.data}
               loading={status.isLoading}
               error={status.error}
-              onSelectWorktree={(slug) => select(projectId, slug)}
+              onSelectWorkspace={(slug) => select(projectId, slug)}
             />
           )}
         </>

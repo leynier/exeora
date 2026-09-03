@@ -213,7 +213,7 @@ impl GitWorkspace {
         result["branches"] = self.branches(root, cancel).await?;
         result["remotes"] = self.remotes(root, cancel).await?;
         result["operation"] = self.operation_state(root, cancel).await?.into();
-        result["gitWorktrees"] = self.git_worktrees(root, cancel).await?;
+        result["gitWorkspaces"] = self.git_worktrees(root, cancel).await?;
         Ok(result)
     }
 
@@ -601,7 +601,7 @@ fn parse_status(bytes: &[u8], prefix: &str) -> Result<Value, ExeoraError> {
         "kind": "status", "repository": true, "head": head, "oid": oid,
         "upstream": upstream, "ahead": ahead, "behind": behind,
         "operation": Value::Null, "files": files, "branches": [], "remotes": [],
-        "gitWorktrees": [],
+        "gitWorkspaces": [],
     }))
 }
 
@@ -662,7 +662,7 @@ fn empty_status() -> Value {
     json!({
         "kind": "status", "repository": false, "head": Value::Null, "oid": Value::Null,
         "upstream": Value::Null, "ahead": 0, "behind": 0, "operation": Value::Null,
-        "files": [], "branches": [], "remotes": [], "gitWorktrees": [],
+        "files": [], "branches": [], "remotes": [], "gitWorkspaces": [],
     })
 }
 
@@ -1052,9 +1052,9 @@ mod tests {
         assert_eq!(main_status["files"][0]["worktree"], "M");
         assert_eq!(feature_status["files"][0]["index"], "M");
         assert_eq!(feature_status["files"][0]["worktree"], ".");
-        let trees = main_status["gitWorktrees"]
+        let trees = main_status["gitWorkspaces"]
             .as_array()
-            .expect("git worktrees");
+            .expect("git workspaces");
         assert_eq!(trees.len(), 2);
         assert!(trees.iter().any(|tree| tree["branch"] == "feature"));
     }

@@ -56,26 +56,26 @@ describe("tool definitions", () => {
       "read_file",
       "list_files",
       "grep",
-      "list_git_worktrees",
+      "list_git_workspaces",
       "get_command_output",
       "list_skills",
     ]);
   });
 
-  it("validates worktree lifecycle combinations", () => {
+  it("validates workspace lifecycle combinations", () => {
     expect(
-      toolInputSchema("create_worktree").safeParse({
+      toolInputSchema("create_workspace").safeParse({
         branch: "feature/api",
         from: "main",
         reuseExistingBranch: true,
       }).success,
     ).toBe(false);
-    expect(toolInputSchema("attach_worktree").safeParse({ branch: "feature/api" }).success).toBe(
+    expect(toolInputSchema("attach_workspace").safeParse({ branch: "feature/api" }).success).toBe(
       true,
     );
-    expect(toolInputSchema("attach_worktree").safeParse({}).success).toBe(false);
+    expect(toolInputSchema("attach_workspace").safeParse({}).success).toBe(false);
     expect(
-      toolInputSchema("attach_worktree").safeParse({
+      toolInputSchema("attach_workspace").safeParse({
         path: "/work/feature-api",
         branch: "feature/api",
       }).success,

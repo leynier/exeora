@@ -35,13 +35,13 @@ export async function dispatchToDevice(
   call: {
     userId: string;
     projectId: string;
-    worktree?: string | undefined;
+    workspace?: string | undefined;
     tool: ToolName;
     args: unknown;
     caller: CallerIdentity;
     /** Whether the user has confirmed this exact call, on a previous round. */
     approved: boolean;
-    approvedWorktreeId?: string | undefined;
+    approvedWorkspaceId?: string | undefined;
     /** Whether this client can be asked over MCP, rather than out of band. */
     canElicit: boolean;
     signal?: AbortSignal | undefined;
@@ -84,8 +84,8 @@ export async function dispatchToDevice(
     );
   }
 
-  const worktree = await resolveWorktree(env, projectId, call.worktree);
-  const approved = call.approved && call.approvedWorktreeId === worktree?.id;
+  const workspace = await resolveWorkspace(env, projectId, call.workspace);
+  const approved = call.approved && call.approvedWorkspaceId === workspace?.id;
 
   // Checked here as well as on the machine, and both are necessary. This is
   // the only side that holds the account's policy, and an older CLI would
@@ -99,7 +99,12 @@ export async function dispatchToDevice(
     return {
       kind: "needs-approval",
       projectId,
-      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+      ...(workspace
+        ? {
+            workspaceId: workspace.id,
+            workspaceSlug: workspace.slug,
+          }
+        : {}),
     };
   }
 
@@ -111,7 +116,7 @@ export async function dispatchToDevice(
       tool,
       caller,
       endpoint,
-      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
     });
   } catch (error) {
     console.error("audit outbox begin failed", error);
@@ -155,9 +160,9 @@ export async function dispatchToDevice(
     const outcome = await requestRelayApproval(relay, {
       id: newId("apr"),
       projectId,
-      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
       tool,
-      prompt: `${describeCall(tool, args)}${worktree ? ` Worktree: ${worktree.slug}.` : ""}`,
+      prompt: `${describeCall(tool, args)}${workspace ? ` Workspace: ${workspace.slug}.` : ""}`,
       clientName: caller.clientName ?? caller.mcp?.name,
       client: callerLabel(caller),
     });
@@ -190,7 +195,7 @@ export async function dispatchToDevice(
     const value = await callRelayTool(relay, {
       requestId,
       projectId,
-      ...(worktree ? { worktreeId: worktree.id, worktreeSlug: worktree.slug } : {}),
+      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
       tool,
       args,
       client: callerLabel(caller),
@@ -216,26 +221,26 @@ export async function dispatchToDevice(
   }
 }
 
-async function resolveWorktree(
+async function resolveWorkspace(
   env: Pick<Env, "DB">,
   projectId: string,
   selector: string | undefined,
 ): Promise<{ id: string; slug: string } | null> {
   if (!selector || selector.toLowerCase() === "main") return null;
   const row = await db(env)
-    .select({ id: schema.worktrees.id, slug: schema.worktrees.slug })
-    .from(schema.worktrees)
+    .select({ id: schema.workspaces.id, slug: schema.workspaces.slug })
+    .from(schema.workspaces)
     .where(
       and(
-        eq(schema.worktrees.projectId, projectId),
-        selector.startsWith("wtr_")
-          ? eq(schema.worktrees.id, selector)
-          : eq(schema.worktrees.slug, selector),
+        eq(schema.workspaces.projectId, projectId),
+        selector.startsWith("wsp_")
+          ? eq(schema.workspaces.id, selector)
+          : eq(schema.workspaces.slug, selector),
       ),
     )
     .get();
   if (!row) {
-    throw new ExeoraError("UNKNOWN_WORKTREE", "That worktree is not available in this project.");
+    throw new ExeoraError("UNKNOWN_WORKSPACE", "That workspace is not available in this project.");
   }
   return row;
 }

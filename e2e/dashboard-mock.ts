@@ -32,8 +32,8 @@ export const otherProject = {
   mcpUrl: "https://exeora.test/p/prj_other/mcp",
 };
 
-export const worktree = {
-  id: "wtr_feature",
+export const workspace = {
+  id: "wsp_feature",
   projectId: project.id,
   slug: "feature-trees",
   name: "Feature trees",
@@ -44,8 +44,8 @@ export const worktree = {
   updatedAt: Date.now(),
 };
 
-export function gitStatus(target: "main" | "worktree") {
-  const feature = target === "worktree";
+export function gitStatus(target: "main" | "workspace") {
+  const feature = target === "workspace";
   return {
     kind: "status",
     repository: true,
@@ -112,7 +112,7 @@ export function gitStatus(target: "main" | "worktree") {
       },
     ],
     remotes: ["origin"],
-    gitWorktrees: [
+    gitWorkspaces: [
       { path: "/work/e2e", branch: "main" },
       { path: "/work/e2e/.worktrees/feature-trees", branch: "feature/trees" },
     ],
@@ -231,18 +231,18 @@ export async function mockApi(
     terminals?: Array<{
       sessionId: string;
       projectId: string;
-      worktreeId?: string;
-      worktreeSlug?: string;
+      workspaceId?: string;
+      workspaceSlug?: string;
       startedAt: number;
     }>;
   } = {},
 ) {
   const state = {
     main: gitStatus("main"),
-    worktree: gitStatus("worktree"),
+    workspace: gitStatus("workspace"),
   };
   const listed = options.projects ?? [project];
-  const connectedWorktrees = [worktree];
+  const connectedWorkspaces = [workspace];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -261,8 +261,8 @@ export async function mockApi(
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
       "/api/terminals": { items: options.terminals ?? [] },
-      [`/api/projects/${project.id}/worktrees`]: connectedWorktrees,
-      [`/api/projects/${otherProject.id}/worktrees`]: [],
+      [`/api/projects/${project.id}/workspaces`]: connectedWorkspaces,
+      [`/api/projects/${otherProject.id}/workspaces`]: [],
     };
     const body = bodies[path];
     if (body !== undefined) {
@@ -274,11 +274,11 @@ export async function mockApi(
       await new Promise(() => {});
       return;
     }
-    const target = url.searchParams.get("worktree") === worktree.id ? "worktree" : "main";
+    const target = url.searchParams.get("workspace") === workspace.id ? "workspace" : "main";
     if (path.endsWith("/workspace/capabilities")) {
       await route.fulfill({
         status: 200,
-        json: { online: true, sourceControl: true, terminal: true, worktreeRouting: true },
+        json: { online: true, sourceControl: true, terminal: true, workspaceRouting: true },
       });
       return;
     }
@@ -288,7 +288,7 @@ export async function mockApi(
     }
     if (path.endsWith("/workspace/diff")) {
       const requested = url.searchParams.get("path");
-      const file = requested ?? (target === "worktree" ? "feature-tree.txt" : "main.txt");
+      const file = requested ?? (target === "workspace" ? "feature-tree.txt" : "main.txt");
       const area = url.searchParams.get("area") ?? "working";
       await route.fulfill({
         status: 200,
@@ -311,9 +311,9 @@ export async function mockApi(
         branch?: string;
         remoteBranch?: string;
       };
-      if (action.action === "worktree_create" && action.branch) {
+      if (action.action === "workspace_create" && action.branch) {
         const created = {
-          id: "wtr_created",
+          id: "wsp_created",
           projectId: project.id,
           slug: "from-source-control",
           name: action.branch,
@@ -323,7 +323,7 @@ export async function mockApi(
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
-        connectedWorktrees.push(created);
+        connectedWorkspaces.push(created);
         await route.fulfill({
           status: 200,
           json: {
@@ -331,7 +331,7 @@ export async function mockApi(
             stdout: "",
             stderr: "",
             status: state[target],
-            worktree: created,
+            workspace: created,
           },
         });
         return;

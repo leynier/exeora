@@ -8,7 +8,7 @@ import { useToast } from "./toast.js";
 
 export function WebTerminal({
   projectId,
-  worktree,
+  workspace,
   targetLabel,
   available,
   active,
@@ -17,7 +17,7 @@ export function WebTerminal({
   onExit,
 }: {
   projectId: string;
-  worktree?: string;
+  workspace?: string;
   targetLabel: string;
   available: boolean;
   active: boolean;
@@ -103,7 +103,7 @@ export function WebTerminal({
       terminal.current = term;
       fit.current = fitAddon;
 
-      const ticket = await api.terminalTicket(projectId, worktree);
+      const ticket = await api.terminalTicket(projectId, workspace);
       if (attempt.current !== opening) return;
       const target = new URL(ticket.url);
       target.protocol = target.protocol === "https:" ? "wss:" : "ws:";

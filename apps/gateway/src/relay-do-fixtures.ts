@@ -127,8 +127,8 @@ export async function attachFakeExecutor(
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
   const workspaceSeen: Array<{
     requestId: string;
-    worktreeId?: string;
-    worktreeSlug?: string;
+    workspaceId?: string;
+    workspaceSlug?: string;
     action: unknown;
   }> = [];
   /** Request ids the relay asked us to stop working on. */
@@ -173,8 +173,8 @@ export async function attachFakeExecutor(
     if (message?.type === "workspace.call") {
       workspaceSeen.push({
         requestId: message.requestId,
-        ...(message.worktreeId ? { worktreeId: message.worktreeId } : {}),
-        ...(message.worktreeSlug ? { worktreeSlug: message.worktreeSlug } : {}),
+        ...(message.workspaceId ? { workspaceId: message.workspaceId } : {}),
+        ...(message.workspaceSlug ? { workspaceSlug: message.workspaceSlug } : {}),
         action: message.action,
       });
       if (!options.silent) {
@@ -197,7 +197,7 @@ export async function attachFakeExecutor(
                 files: [],
                 branches: [],
                 remotes: [],
-                gitWorktrees: [],
+                gitWorkspaces: [],
               },
             },
           }),

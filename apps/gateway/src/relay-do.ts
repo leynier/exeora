@@ -13,6 +13,7 @@ import {
 import { observeTool } from "./cost-metrics.js";
 import "./env.js";
 import { touchDevice } from "./presence.js";
+import { handleToolCallerMessage, handleWorkspaceCallerMessage } from "./relay-do-caller-starts.js";
 import {
   type ApprovalCallerState,
   type ApprovalView,
@@ -24,7 +25,6 @@ import {
   failCallers,
   hasOtherExecutor,
   offline,
-  relayError,
   replaceOtherExecutors,
   resolveTerminalApproval,
   type SocketState,
@@ -47,7 +47,6 @@ import {
   persistDetachedTerminal,
   scheduleWorkspaceAlarm,
 } from "./relay-do-terminal.js";
-import { handleWorkspaceCallerMessage } from "./relay-do-workspace.js";
 import { decodeCallerRequest } from "./relay-internal.js";
 
 /**
@@ -308,21 +307,21 @@ export class DeviceRelay extends DurableObject<Env> {
 
   async createTerminalTicket(
     projectId: string,
-    worktreeId: string | undefined,
-    worktreeSlug: string | undefined,
+    workspaceId: string | undefined,
+    workspaceSlug: string | undefined,
     origin: string,
   ): Promise<string | null> {
-    return issueTerminalTicket(this.ctx, projectId, worktreeId, worktreeSlug, origin);
+    return issueTerminalTicket(this.ctx, projectId, workspaceId, workspaceSlug, origin);
   }
 
   async consumeTerminalTicket(
     token: string,
     projectId: string,
-    worktreeId: string | undefined,
-    worktreeSlug: string | undefined,
+    workspaceId: string | undefined,
+    workspaceSlug: string | undefined,
     origin: string,
   ): Promise<boolean> {
-    return consumeTerminalTicket(this.ctx, token, projectId, worktreeId, worktreeSlug, origin);
+    return consumeTerminalTicket(this.ctx, token, projectId, workspaceId, workspaceSlug, origin);
   }
 
   async listTerminals() {
@@ -395,56 +394,7 @@ export class DeviceRelay extends DurableObject<Env> {
     }
 
     if (state.role === "tool" && message.type === "tool.start") {
-      if (message.requestId !== state.id || state.issuedAt !== undefined) return;
-      if (message.expiresAt <= Date.now()) {
-        settleCaller(socket, relayError("TOOL_TIMEOUT", "The tool call expired before dispatch."));
-        return;
-      }
-
-      const executor = executorSocket(this.ctx);
-      if (!executor) {
-        settleCaller(socket, offline("No Exeora CLI is connected for this project."));
-        return;
-      }
-      const executorState = attachmentOf(executor);
-      if (
-        message.worktreeId &&
-        executorState?.role === "executor" &&
-        !executorState.capabilities?.worktreeRouting
-      ) {
-        settleCaller(
-          socket,
-          relayError(
-            "WORKTREE_UNAVAILABLE",
-            "The connected Exeora CLI does not support worktree routing. Upgrade it and reconnect.",
-          ),
-        );
-        return;
-      }
-
-      socket.serializeAttachment({
-        ...state,
-        issuedAt: message.issuedAt,
-      } satisfies ToolCallerState);
-      try {
-        executor.send(
-          encodeMessage({
-            type: "tool.call",
-            requestId: message.requestId,
-            projectId: message.projectId,
-            worktreeId: message.worktreeId,
-            worktreeSlug: message.worktreeSlug,
-            tool: message.tool,
-            arguments: message.arguments,
-            client: message.client,
-            policy: message.policy,
-            issuedAt: message.issuedAt,
-            expiresAt: message.expiresAt,
-          }),
-        );
-      } catch {
-        settleCaller(socket, offline("The connection to the device failed."));
-      }
+      handleToolCallerMessage(this.ctx, socket, state, message);
       return;
     }
 
@@ -462,12 +412,14 @@ export class DeviceRelay extends DurableObject<Env> {
         return;
       }
 
+      const targetId = message.workspaceId;
+      const targetSlug = message.workspaceSlug;
       const view: ApprovalView = {
         id: message.id,
         deviceId: executorState.deviceId,
         projectId: message.projectId,
-        ...(message.worktreeId ? { worktreeId: message.worktreeId } : {}),
-        ...(message.worktreeSlug ? { worktreeSlug: message.worktreeSlug } : {}),
+        ...(targetId ? { workspaceId: targetId } : {}),
+        ...(targetSlug ? { workspaceSlug: targetSlug } : {}),
         tool: message.tool,
         prompt: message.prompt,
         ...(message.clientName ? { clientName: message.clientName } : {}),
@@ -483,8 +435,8 @@ export class DeviceRelay extends DurableObject<Env> {
               type: "approval.request",
               id: message.id,
               projectId: message.projectId,
-              worktreeId: message.worktreeId,
-              worktreeSlug: message.worktreeSlug,
+              workspaceId: targetId,
+              workspaceSlug: targetSlug,
               tool: message.tool,
               prompt: message.prompt,
               client: message.client,

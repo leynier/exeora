@@ -94,11 +94,11 @@ pub mod error {
 ///                  "edit_file",
 ///                  "write_file",
 ///                  "apply_patch",
-///                  "list_git_worktrees",
-///                  "create_worktree",
-///                  "attach_worktree",
-///                  "detach_worktree",
-///                  "remove_worktree",
+///                  "list_git_workspaces",
+///                  "create_workspace",
+///                  "attach_workspace",
+///                  "detach_workspace",
+///                  "remove_workspace",
 ///                  "run_command",
 ///                  "start_command",
 ///                  "get_command_output",
@@ -156,7 +156,7 @@ pub mod error {
 ///                  },
 ///                  "maxItems": 64
 ///                },
-///                "worktreeRouting": {
+///                "workspaceRouting": {
 ///                  "type": "boolean"
 ///                }
 ///              },
@@ -299,8 +299,8 @@ pub mod error {
 ///                            "INVALID_ARGUMENTS",
 ///                            "UNKNOWN_TOOL",
 ///                            "UNKNOWN_PROJECT",
-///                            "UNKNOWN_WORKTREE",
-///                            "WORKTREE_UNAVAILABLE",
+///                            "UNKNOWN_WORKSPACE",
+///                            "WORKSPACE_UNAVAILABLE",
 ///                            "UNKNOWN_PROCESS",
 ///                            "NO_ACTIVE_PROJECT",
 ///                            "FORBIDDEN",
@@ -370,7 +370,7 @@ pub mod error {
 ///                            "behind",
 ///                            "branches",
 ///                            "files",
-///                            "gitWorktrees",
+///                            "gitWorkspaces",
 ///                            "head",
 ///                            "kind",
 ///                            "oid",
@@ -475,7 +475,7 @@ pub mod error {
 ///                                "additionalProperties": false
 ///                              }
 ///                            },
-///                            "gitWorktrees": {
+///                            "gitWorkspaces": {
 ///                              "default": [],
 ///                              "type": "array",
 ///                              "items": {
@@ -624,7 +624,7 @@ pub mod error {
 ///                                "behind",
 ///                                "branches",
 ///                                "files",
-///                                "gitWorktrees",
+///                                "gitWorkspaces",
 ///                                "head",
 ///                                "kind",
 ///                                "oid",
@@ -729,7 +729,7 @@ pub mod error {
 ///                                    "additionalProperties": false
 ///                                  }
 ///                                },
-///                                "gitWorktrees": {
+///                                "gitWorkspaces": {
 ///                                  "default": [],
 ///                                  "type": "array",
 ///                                  "items": {
@@ -825,7 +825,7 @@ pub mod error {
 ///                            "stdout": {
 ///                              "type": "string"
 ///                            },
-///                            "worktree": {
+///                            "workspace": {
 ///                              "type": "object",
 ///                              "required": [
 ///                                "branch",
@@ -898,8 +898,8 @@ pub mod error {
 ///                            "INVALID_ARGUMENTS",
 ///                            "UNKNOWN_TOOL",
 ///                            "UNKNOWN_PROJECT",
-///                            "UNKNOWN_WORKTREE",
-///                            "WORKTREE_UNAVAILABLE",
+///                            "UNKNOWN_WORKSPACE",
+///                            "WORKSPACE_UNAVAILABLE",
 ///                            "UNKNOWN_PROCESS",
 ///                            "NO_ACTIVE_PROJECT",
 ///                            "FORBIDDEN",
@@ -1093,11 +1093,11 @@ pub mod error {
 ///              "edit_file",
 ///              "write_file",
 ///              "apply_patch",
-///              "list_git_worktrees",
-///              "create_worktree",
-///              "attach_worktree",
-///              "detach_worktree",
-///              "remove_worktree",
+///              "list_git_workspaces",
+///              "create_workspace",
+///              "attach_workspace",
+///              "detach_workspace",
+///              "remove_workspace",
 ///              "run_command",
 ///              "start_command",
 ///              "get_command_output",
@@ -1251,11 +1251,11 @@ pub mod error {
 ///                          "edit_file",
 ///                          "write_file",
 ///                          "apply_patch",
-///                          "list_git_worktrees",
-///                          "create_worktree",
-///                          "attach_worktree",
-///                          "detach_worktree",
-///                          "remove_worktree",
+///                          "list_git_workspaces",
+///                          "create_workspace",
+///                          "attach_workspace",
+///                          "detach_workspace",
+///                          "remove_workspace",
 ///                          "run_command",
 ///                          "start_command",
 ///                          "get_command_output",
@@ -1288,11 +1288,11 @@ pub mod error {
 ///                "edit_file",
 ///                "write_file",
 ///                "apply_patch",
-///                "list_git_worktrees",
-///                "create_worktree",
-///                "attach_worktree",
-///                "detach_worktree",
-///                "remove_worktree",
+///                "list_git_workspaces",
+///                "create_workspace",
+///                "attach_workspace",
+///                "detach_workspace",
+///                "remove_workspace",
 ///                "run_command",
 ///                "start_command",
 ///                "get_command_output",
@@ -1305,10 +1305,10 @@ pub mod error {
 ///              "type": "string",
 ///              "const": "tool.call"
 ///            },
-///            "worktreeId": {
+///            "workspaceId": {
 ///              "type": "string"
 ///            },
-///            "worktreeSlug": {
+///            "workspaceSlug": {
 ///              "type": "string"
 ///            }
 ///          },
@@ -1648,7 +1648,7 @@ pub mod error {
 ///                  "properties": {
 ///                    "action": {
 ///                      "type": "string",
-///                      "const": "worktree_create"
+///                      "const": "workspace_create"
 ///                    },
 ///                    "branch": {
 ///                      "type": "string",
@@ -1700,10 +1700,10 @@ pub mod error {
 ///              "type": "string",
 ///              "const": "workspace.call"
 ///            },
-///            "worktreeId": {
+///            "workspaceId": {
 ///              "type": "string"
 ///            },
-///            "worktreeSlug": {
+///            "workspaceSlug": {
 ///              "type": "string"
 ///            }
 ///          },
@@ -1789,11 +1789,11 @@ pub mod error {
 ///                "edit_file",
 ///                "write_file",
 ///                "apply_patch",
-///                "list_git_worktrees",
-///                "create_worktree",
-///                "attach_worktree",
-///                "detach_worktree",
-///                "remove_worktree",
+///                "list_git_workspaces",
+///                "create_workspace",
+///                "attach_workspace",
+///                "detach_workspace",
+///                "remove_workspace",
 ///                "run_command",
 ///                "start_command",
 ///                "get_command_output",
@@ -1806,10 +1806,10 @@ pub mod error {
 ///              "type": "string",
 ///              "const": "approval.request"
 ///            },
-///            "worktreeId": {
+///            "workspaceId": {
 ///              "type": "string"
 ///            },
-///            "worktreeSlug": {
+///            "workspaceSlug": {
 ///              "type": "string"
 ///            }
 ///          },
@@ -1864,10 +1864,10 @@ pub mod error {
 ///              "type": "string",
 ///              "const": "terminal.open"
 ///            },
-///            "worktreeId": {
+///            "workspaceId": {
 ///              "type": "string"
 ///            },
-///            "worktreeSlug": {
+///            "workspaceSlug": {
 ///              "type": "string"
 ///            }
 ///          },
@@ -2027,11 +2027,11 @@ pub struct ExeoraProtocolTypes {
 ///              "edit_file",
 ///              "write_file",
 ///              "apply_patch",
-///              "list_git_worktrees",
-///              "create_worktree",
-///              "attach_worktree",
-///              "detach_worktree",
-///              "remove_worktree",
+///              "list_git_workspaces",
+///              "create_workspace",
+///              "attach_workspace",
+///              "detach_workspace",
+///              "remove_workspace",
 ///              "run_command",
 ///              "start_command",
 ///              "get_command_output",
@@ -2153,11 +2153,11 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///    "edit_file",
 ///    "write_file",
 ///    "apply_patch",
-///    "list_git_worktrees",
-///    "create_worktree",
-///    "attach_worktree",
-///    "detach_worktree",
-///    "remove_worktree",
+///    "list_git_workspaces",
+///    "create_workspace",
+///    "attach_workspace",
+///    "detach_workspace",
+///    "remove_workspace",
 ///    "run_command",
 ///    "start_command",
 ///    "get_command_output",
@@ -2193,16 +2193,16 @@ pub enum ExeoraProtocolTypesCommandPolicyToolsItem {
     WriteFile,
     #[serde(rename = "apply_patch")]
     ApplyPatch,
-    #[serde(rename = "list_git_worktrees")]
-    ListGitWorktrees,
-    #[serde(rename = "create_worktree")]
-    CreateWorktree,
-    #[serde(rename = "attach_worktree")]
-    AttachWorktree,
-    #[serde(rename = "detach_worktree")]
-    DetachWorktree,
-    #[serde(rename = "remove_worktree")]
-    RemoveWorktree,
+    #[serde(rename = "list_git_workspaces")]
+    ListGitWorkspaces,
+    #[serde(rename = "create_workspace")]
+    CreateWorkspace,
+    #[serde(rename = "attach_workspace")]
+    AttachWorkspace,
+    #[serde(rename = "detach_workspace")]
+    DetachWorkspace,
+    #[serde(rename = "remove_workspace")]
+    RemoveWorkspace,
     #[serde(rename = "run_command")]
     RunCommand,
     #[serde(rename = "start_command")]
@@ -2225,11 +2225,11 @@ impl ::std::fmt::Display for ExeoraProtocolTypesCommandPolicyToolsItem {
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
             Self::ApplyPatch => f.write_str("apply_patch"),
-            Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
-            Self::CreateWorktree => f.write_str("create_worktree"),
-            Self::AttachWorktree => f.write_str("attach_worktree"),
-            Self::DetachWorktree => f.write_str("detach_worktree"),
-            Self::RemoveWorktree => f.write_str("remove_worktree"),
+            Self::ListGitWorkspaces => f.write_str("list_git_workspaces"),
+            Self::CreateWorkspace => f.write_str("create_workspace"),
+            Self::AttachWorkspace => f.write_str("attach_workspace"),
+            Self::DetachWorkspace => f.write_str("detach_workspace"),
+            Self::RemoveWorkspace => f.write_str("remove_workspace"),
             Self::RunCommand => f.write_str("run_command"),
             Self::StartCommand => f.write_str("start_command"),
             Self::GetCommandOutput => f.write_str("get_command_output"),
@@ -2249,11 +2249,11 @@ impl ::std::str::FromStr for ExeoraProtocolTypesCommandPolicyToolsItem {
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
             "apply_patch" => Ok(Self::ApplyPatch),
-            "list_git_worktrees" => Ok(Self::ListGitWorktrees),
-            "create_worktree" => Ok(Self::CreateWorktree),
-            "attach_worktree" => Ok(Self::AttachWorktree),
-            "detach_worktree" => Ok(Self::DetachWorktree),
-            "remove_worktree" => Ok(Self::RemoveWorktree),
+            "list_git_workspaces" => Ok(Self::ListGitWorkspaces),
+            "create_workspace" => Ok(Self::CreateWorkspace),
+            "attach_workspace" => Ok(Self::AttachWorkspace),
+            "detach_workspace" => Ok(Self::DetachWorkspace),
+            "remove_workspace" => Ok(Self::RemoveWorkspace),
             "run_command" => Ok(Self::RunCommand),
             "start_command" => Ok(Self::StartCommand),
             "get_command_output" => Ok(Self::GetCommandOutput),
@@ -2330,7 +2330,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///              },
 ///              "maxItems": 64
 ///            },
-///            "worktreeRouting": {
+///            "workspaceRouting": {
 ///              "type": "boolean"
 ///            }
 ///          },
@@ -2473,8 +2473,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "INVALID_ARGUMENTS",
 ///                        "UNKNOWN_TOOL",
 ///                        "UNKNOWN_PROJECT",
-///                        "UNKNOWN_WORKTREE",
-///                        "WORKTREE_UNAVAILABLE",
+///                        "UNKNOWN_WORKSPACE",
+///                        "WORKSPACE_UNAVAILABLE",
 ///                        "UNKNOWN_PROCESS",
 ///                        "NO_ACTIVE_PROJECT",
 ///                        "FORBIDDEN",
@@ -2544,7 +2544,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "behind",
 ///                        "branches",
 ///                        "files",
-///                        "gitWorktrees",
+///                        "gitWorkspaces",
 ///                        "head",
 ///                        "kind",
 ///                        "oid",
@@ -2649,7 +2649,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            "additionalProperties": false
 ///                          }
 ///                        },
-///                        "gitWorktrees": {
+///                        "gitWorkspaces": {
 ///                          "default": [],
 ///                          "type": "array",
 ///                          "items": {
@@ -2798,7 +2798,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            "behind",
 ///                            "branches",
 ///                            "files",
-///                            "gitWorktrees",
+///                            "gitWorkspaces",
 ///                            "head",
 ///                            "kind",
 ///                            "oid",
@@ -2903,7 +2903,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                "additionalProperties": false
 ///                              }
 ///                            },
-///                            "gitWorktrees": {
+///                            "gitWorkspaces": {
 ///                              "default": [],
 ///                              "type": "array",
 ///                              "items": {
@@ -2999,7 +2999,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "stdout": {
 ///                          "type": "string"
 ///                        },
-///                        "worktree": {
+///                        "workspace": {
 ///                          "type": "object",
 ///                          "required": [
 ///                            "branch",
@@ -3072,8 +3072,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "INVALID_ARGUMENTS",
 ///                        "UNKNOWN_TOOL",
 ///                        "UNKNOWN_PROJECT",
-///                        "UNKNOWN_WORKTREE",
-///                        "WORKTREE_UNAVAILABLE",
+///                        "UNKNOWN_WORKSPACE",
+///                        "WORKSPACE_UNAVAILABLE",
 ///                        "UNKNOWN_PROCESS",
 ///                        "NO_ACTIVE_PROJECT",
 ///                        "FORBIDDEN",
@@ -3329,7 +3329,7 @@ pub enum ExeoraProtocolTypesExecutorMessage {
 ///      },
 ///      "maxItems": 64
 ///    },
-///    "worktreeRouting": {
+///    "workspaceRouting": {
 ///      "type": "boolean"
 ///    }
 ///  },
@@ -3345,11 +3345,11 @@ pub struct ExeoraProtocolTypesExecutorMessageCapabilities {
     pub prompt: bool,
     pub tools: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageCapabilitiesToolsItem>,
     #[serde(
-        rename = "worktreeRouting",
+        rename = "workspaceRouting",
         default,
         skip_serializing_if = "::std::option::Option::is_none"
     )]
-    pub worktree_routing: ::std::option::Option<bool>,
+    pub workspace_routing: ::std::option::Option<bool>,
 }
 ///`ExeoraProtocolTypesExecutorMessageCapabilitiesFeaturesItem`
 ///
@@ -3712,8 +3712,8 @@ pub struct ExeoraProtocolTypesExecutorMessageProjectsItem {
 ///                "INVALID_ARGUMENTS",
 ///                "UNKNOWN_TOOL",
 ///                "UNKNOWN_PROJECT",
-///                "UNKNOWN_WORKTREE",
-///                "WORKTREE_UNAVAILABLE",
+///                "UNKNOWN_WORKSPACE",
+///                "WORKSPACE_UNAVAILABLE",
 ///                "UNKNOWN_PROCESS",
 ///                "NO_ACTIVE_PROJECT",
 ///                "FORBIDDEN",
@@ -3765,7 +3765,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "behind",
 ///        "branches",
 ///        "files",
-///        "gitWorktrees",
+///        "gitWorkspaces",
 ///        "head",
 ///        "kind",
 ///        "oid",
@@ -3870,7 +3870,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "additionalProperties": false
 ///          }
 ///        },
-///        "gitWorktrees": {
+///        "gitWorkspaces": {
 ///          "default": [],
 ///          "type": "array",
 ///          "items": {
@@ -4019,7 +4019,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "behind",
 ///            "branches",
 ///            "files",
-///            "gitWorktrees",
+///            "gitWorkspaces",
 ///            "head",
 ///            "kind",
 ///            "oid",
@@ -4124,7 +4124,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                "additionalProperties": false
 ///              }
 ///            },
-///            "gitWorktrees": {
+///            "gitWorkspaces": {
 ///              "default": [],
 ///              "type": "array",
 ///              "items": {
@@ -4220,7 +4220,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "stdout": {
 ///          "type": "string"
 ///        },
-///        "worktree": {
+///        "workspace": {
 ///          "type": "object",
 ///          "required": [
 ///            "branch",
@@ -4276,9 +4276,9 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         branches:
             ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueBranchesItem>,
         files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
-        #[serde(rename = "gitWorktrees")]
-        git_worktrees:
-            ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem>,
+        #[serde(rename = "gitWorkspaces")]
+        git_workspaces:
+            ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorkspacesItem>,
         head: ::std::option::Option<::std::string::String>,
         oid: ::std::option::Option<::std::string::String>,
         operation:
@@ -4301,8 +4301,8 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         stderr: ::std::string::String,
         stdout: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        worktree:
-            ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree>,
+        workspace:
+            ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspace>,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea`
@@ -4929,7 +4929,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorkspacesItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -4961,7 +4961,7 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorktreesItem {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorkspacesItem {
     pub branch: ::std::option::Option<::std::string::String>,
     pub path: ::std::string::String,
 }
@@ -5148,7 +5148,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///    "behind",
 ///    "branches",
 ///    "files",
-///    "gitWorktrees",
+///    "gitWorkspaces",
 ///    "head",
 ///    "kind",
 ///    "oid",
@@ -5253,7 +5253,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///        "additionalProperties": false
 ///      }
 ///    },
-///    "gitWorktrees": {
+///    "gitWorkspaces": {
 ///      "default": [],
 ///      "type": "array",
 ///      "items": {
@@ -5354,9 +5354,9 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
         ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusBranchesItem>,
     pub files:
         ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusFilesItem>,
-    #[serde(rename = "gitWorktrees")]
-    pub git_worktrees: ::std::vec::Vec<
-        ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem,
+    #[serde(rename = "gitWorkspaces")]
+    pub git_workspaces: ::std::vec::Vec<
+        ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorkspacesItem,
     >,
     pub head: ::std::option::Option<::std::string::String>,
     pub kind: ::std::string::String,
@@ -5938,7 +5938,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorkspacesItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -5970,7 +5970,7 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorktreesItem {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusGitWorkspacesItem {
     pub branch: ::std::option::Option<::std::string::String>,
     pub path: ::std::string::String,
 }
@@ -6067,7 +6067,7 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspace`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6115,15 +6115,15 @@ impl ::std::convert::TryFrom<::std::string::String>
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspace {
     pub branch: ::std::option::Option<::std::string::String>,
-    pub id: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId,
+    pub id: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId,
     #[serde(rename = "localPath")]
-    pub local_path: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath,
-    pub name: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName,
-    pub slug: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug,
+    pub local_path: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath,
+    pub name: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName,
+    pub slug: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug,
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6136,21 +6136,21 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktree {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId(::std::string::String);
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() < 1usize {
@@ -6160,7 +6160,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -6168,7 +6168,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6178,7 +6178,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6188,7 +6188,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceId
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -6201,7 +6201,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6214,24 +6214,26 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath) -> Self {
+    fn from(
+        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath,
+    ) -> Self {
         value.0
     }
 }
 impl ::std::str::FromStr
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath
 {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -6242,7 +6244,7 @@ impl ::std::str::FromStr
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -6250,7 +6252,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6260,7 +6262,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6270,7 +6272,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeLocalPath
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceLocalPath
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -6283,7 +6285,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6296,21 +6298,23 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName(::std::string::String);
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() < 1usize {
@@ -6320,7 +6324,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -6328,7 +6332,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6338,7 +6342,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6348,7 +6352,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeName
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceName
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -6361,7 +6365,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -6374,21 +6378,23 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug(::std::string::String);
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug {
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug(
+    ::std::string::String,
+);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() < 1usize {
@@ -6398,7 +6404,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -6406,7 +6412,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6416,7 +6422,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -6426,7 +6432,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorktreeSlug
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspaceSlug
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -6463,8 +6469,8 @@ impl<'de> ::serde::Deserialize<'de>
 ///        "INVALID_ARGUMENTS",
 ///        "UNKNOWN_TOOL",
 ///        "UNKNOWN_PROJECT",
-///        "UNKNOWN_WORKTREE",
-///        "WORKTREE_UNAVAILABLE",
+///        "UNKNOWN_WORKSPACE",
+///        "WORKSPACE_UNAVAILABLE",
 ///        "UNKNOWN_PROCESS",
 ///        "NO_ACTIVE_PROJECT",
 ///        "FORBIDDEN",
@@ -6504,8 +6510,8 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant1Error {
 ///    "INVALID_ARGUMENTS",
 ///    "UNKNOWN_TOOL",
 ///    "UNKNOWN_PROJECT",
-///    "UNKNOWN_WORKTREE",
-///    "WORKTREE_UNAVAILABLE",
+///    "UNKNOWN_WORKSPACE",
+///    "WORKSPACE_UNAVAILABLE",
 ///    "UNKNOWN_PROCESS",
 ///    "NO_ACTIVE_PROJECT",
 ///    "FORBIDDEN",
@@ -6547,10 +6553,10 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant1ErrorCode {
     UnknownTool,
     #[serde(rename = "UNKNOWN_PROJECT")]
     UnknownProject,
-    #[serde(rename = "UNKNOWN_WORKTREE")]
-    UnknownWorktree,
-    #[serde(rename = "WORKTREE_UNAVAILABLE")]
-    WorktreeUnavailable,
+    #[serde(rename = "UNKNOWN_WORKSPACE")]
+    UnknownWorkspace,
+    #[serde(rename = "WORKSPACE_UNAVAILABLE")]
+    WorkspaceUnavailable,
     #[serde(rename = "UNKNOWN_PROCESS")]
     UnknownProcess,
     #[serde(rename = "NO_ACTIVE_PROJECT")]
@@ -6576,8 +6582,8 @@ impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             Self::InvalidArguments => f.write_str("INVALID_ARGUMENTS"),
             Self::UnknownTool => f.write_str("UNKNOWN_TOOL"),
             Self::UnknownProject => f.write_str("UNKNOWN_PROJECT"),
-            Self::UnknownWorktree => f.write_str("UNKNOWN_WORKTREE"),
-            Self::WorktreeUnavailable => f.write_str("WORKTREE_UNAVAILABLE"),
+            Self::UnknownWorkspace => f.write_str("UNKNOWN_WORKSPACE"),
+            Self::WorkspaceUnavailable => f.write_str("WORKSPACE_UNAVAILABLE"),
             Self::UnknownProcess => f.write_str("UNKNOWN_PROCESS"),
             Self::NoActiveProject => f.write_str("NO_ACTIVE_PROJECT"),
             Self::Forbidden => f.write_str("FORBIDDEN"),
@@ -6600,8 +6606,8 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant1Err
             "INVALID_ARGUMENTS" => Ok(Self::InvalidArguments),
             "UNKNOWN_TOOL" => Ok(Self::UnknownTool),
             "UNKNOWN_PROJECT" => Ok(Self::UnknownProject),
-            "UNKNOWN_WORKTREE" => Ok(Self::UnknownWorktree),
-            "WORKTREE_UNAVAILABLE" => Ok(Self::WorktreeUnavailable),
+            "UNKNOWN_WORKSPACE" => Ok(Self::UnknownWorkspace),
+            "WORKSPACE_UNAVAILABLE" => Ok(Self::WorkspaceUnavailable),
             "UNKNOWN_PROCESS" => Ok(Self::UnknownProcess),
             "NO_ACTIVE_PROJECT" => Ok(Self::NoActiveProject),
             "FORBIDDEN" => Ok(Self::Forbidden),
@@ -6759,11 +6765,11 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageSessio
 ///          "edit_file",
 ///          "write_file",
 ///          "apply_patch",
-///          "list_git_worktrees",
-///          "create_worktree",
-///          "attach_worktree",
-///          "detach_worktree",
-///          "remove_worktree",
+///          "list_git_workspaces",
+///          "create_workspace",
+///          "attach_workspace",
+///          "detach_workspace",
+///          "remove_workspace",
 ///          "run_command",
 ///          "start_command",
 ///          "get_command_output",
@@ -6898,11 +6904,11 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesLocal
 ///    "edit_file",
 ///    "write_file",
 ///    "apply_patch",
-///    "list_git_worktrees",
-///    "create_worktree",
-///    "attach_worktree",
-///    "detach_worktree",
-///    "remove_worktree",
+///    "list_git_workspaces",
+///    "create_workspace",
+///    "attach_workspace",
+///    "detach_workspace",
+///    "remove_workspace",
 ///    "run_command",
 ///    "start_command",
 ///    "get_command_output",
@@ -6938,16 +6944,16 @@ pub enum ExeoraProtocolTypesLocalCommandPolicyToolsItem {
     WriteFile,
     #[serde(rename = "apply_patch")]
     ApplyPatch,
-    #[serde(rename = "list_git_worktrees")]
-    ListGitWorktrees,
-    #[serde(rename = "create_worktree")]
-    CreateWorktree,
-    #[serde(rename = "attach_worktree")]
-    AttachWorktree,
-    #[serde(rename = "detach_worktree")]
-    DetachWorktree,
-    #[serde(rename = "remove_worktree")]
-    RemoveWorktree,
+    #[serde(rename = "list_git_workspaces")]
+    ListGitWorkspaces,
+    #[serde(rename = "create_workspace")]
+    CreateWorkspace,
+    #[serde(rename = "attach_workspace")]
+    AttachWorkspace,
+    #[serde(rename = "detach_workspace")]
+    DetachWorkspace,
+    #[serde(rename = "remove_workspace")]
+    RemoveWorkspace,
     #[serde(rename = "run_command")]
     RunCommand,
     #[serde(rename = "start_command")]
@@ -6970,11 +6976,11 @@ impl ::std::fmt::Display for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
             Self::ApplyPatch => f.write_str("apply_patch"),
-            Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
-            Self::CreateWorktree => f.write_str("create_worktree"),
-            Self::AttachWorktree => f.write_str("attach_worktree"),
-            Self::DetachWorktree => f.write_str("detach_worktree"),
-            Self::RemoveWorktree => f.write_str("remove_worktree"),
+            Self::ListGitWorkspaces => f.write_str("list_git_workspaces"),
+            Self::CreateWorkspace => f.write_str("create_workspace"),
+            Self::AttachWorkspace => f.write_str("attach_workspace"),
+            Self::DetachWorkspace => f.write_str("detach_workspace"),
+            Self::RemoveWorkspace => f.write_str("remove_workspace"),
             Self::RunCommand => f.write_str("run_command"),
             Self::StartCommand => f.write_str("start_command"),
             Self::GetCommandOutput => f.write_str("get_command_output"),
@@ -6994,11 +7000,11 @@ impl ::std::str::FromStr for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
             "apply_patch" => Ok(Self::ApplyPatch),
-            "list_git_worktrees" => Ok(Self::ListGitWorktrees),
-            "create_worktree" => Ok(Self::CreateWorktree),
-            "attach_worktree" => Ok(Self::AttachWorktree),
-            "detach_worktree" => Ok(Self::DetachWorktree),
-            "remove_worktree" => Ok(Self::RemoveWorktree),
+            "list_git_workspaces" => Ok(Self::ListGitWorkspaces),
+            "create_workspace" => Ok(Self::CreateWorkspace),
+            "attach_workspace" => Ok(Self::AttachWorkspace),
+            "detach_workspace" => Ok(Self::DetachWorkspace),
+            "remove_workspace" => Ok(Self::RemoveWorkspace),
             "run_command" => Ok(Self::RunCommand),
             "start_command" => Ok(Self::StartCommand),
             "get_command_output" => Ok(Self::GetCommandOutput),
@@ -7180,11 +7186,11 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                      "edit_file",
 ///                      "write_file",
 ///                      "apply_patch",
-///                      "list_git_worktrees",
-///                      "create_worktree",
-///                      "attach_worktree",
-///                      "detach_worktree",
-///                      "remove_worktree",
+///                      "list_git_workspaces",
+///                      "create_workspace",
+///                      "attach_workspace",
+///                      "detach_workspace",
+///                      "remove_workspace",
 ///                      "run_command",
 ///                      "start_command",
 ///                      "get_command_output",
@@ -7217,11 +7223,11 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "edit_file",
 ///            "write_file",
 ///            "apply_patch",
-///            "list_git_worktrees",
-///            "create_worktree",
-///            "attach_worktree",
-///            "detach_worktree",
-///            "remove_worktree",
+///            "list_git_workspaces",
+///            "create_workspace",
+///            "attach_workspace",
+///            "detach_workspace",
+///            "remove_workspace",
 ///            "run_command",
 ///            "start_command",
 ///            "get_command_output",
@@ -7234,10 +7240,10 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///          "type": "string",
 ///          "const": "tool.call"
 ///        },
-///        "worktreeId": {
+///        "workspaceId": {
 ///          "type": "string"
 ///        },
-///        "worktreeSlug": {
+///        "workspaceSlug": {
 ///          "type": "string"
 ///        }
 ///      },
@@ -7577,7 +7583,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///              "properties": {
 ///                "action": {
 ///                  "type": "string",
-///                  "const": "worktree_create"
+///                  "const": "workspace_create"
 ///                },
 ///                "branch": {
 ///                  "type": "string",
@@ -7629,10 +7635,10 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///          "type": "string",
 ///          "const": "workspace.call"
 ///        },
-///        "worktreeId": {
+///        "workspaceId": {
 ///          "type": "string"
 ///        },
-///        "worktreeSlug": {
+///        "workspaceSlug": {
 ///          "type": "string"
 ///        }
 ///      },
@@ -7718,11 +7724,11 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "edit_file",
 ///            "write_file",
 ///            "apply_patch",
-///            "list_git_worktrees",
-///            "create_worktree",
-///            "attach_worktree",
-///            "detach_worktree",
-///            "remove_worktree",
+///            "list_git_workspaces",
+///            "create_workspace",
+///            "attach_workspace",
+///            "detach_workspace",
+///            "remove_workspace",
 ///            "run_command",
 ///            "start_command",
 ///            "get_command_output",
@@ -7735,10 +7741,10 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///          "type": "string",
 ///          "const": "approval.request"
 ///        },
-///        "worktreeId": {
+///        "workspaceId": {
 ///          "type": "string"
 ///        },
-///        "worktreeSlug": {
+///        "workspaceSlug": {
 ///          "type": "string"
 ///        }
 ///      },
@@ -7793,10 +7799,10 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///          "type": "string",
 ///          "const": "terminal.open"
 ///        },
-///        "worktreeId": {
+///        "workspaceId": {
 ///          "type": "string"
 ///        },
-///        "worktreeSlug": {
+///        "workspaceSlug": {
 ///          "type": "string"
 ///        }
 ///      },
@@ -7922,17 +7928,17 @@ pub enum ExeoraProtocolTypesRelayMessage {
         request_id: ::std::string::String,
         tool: ExeoraProtocolTypesRelayMessageTool,
         #[serde(
-            rename = "worktreeId",
+            rename = "workspaceId",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_id: ::std::option::Option<::std::string::String>,
+        workspace_id: ::std::option::Option<::std::string::String>,
         #[serde(
-            rename = "worktreeSlug",
+            rename = "workspaceSlug",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_slug: ::std::option::Option<::std::string::String>,
+        workspace_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "workspace.call")]
     WorkspaceCall {
@@ -7946,17 +7952,17 @@ pub enum ExeoraProtocolTypesRelayMessage {
         #[serde(rename = "requestId")]
         request_id: ::std::string::String,
         #[serde(
-            rename = "worktreeId",
+            rename = "workspaceId",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_id: ::std::option::Option<::std::string::String>,
+        workspace_id: ::std::option::Option<::std::string::String>,
         #[serde(
-            rename = "worktreeSlug",
+            rename = "workspaceSlug",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_slug: ::std::option::Option<::std::string::String>,
+        workspace_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "cancel")]
     Cancel {
@@ -7977,17 +7983,17 @@ pub enum ExeoraProtocolTypesRelayMessage {
         prompt: ::std::string::String,
         tool: ExeoraProtocolTypesRelayMessageTool,
         #[serde(
-            rename = "worktreeId",
+            rename = "workspaceId",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_id: ::std::option::Option<::std::string::String>,
+        workspace_id: ::std::option::Option<::std::string::String>,
         #[serde(
-            rename = "worktreeSlug",
+            rename = "workspaceSlug",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_slug: ::std::option::Option<::std::string::String>,
+        workspace_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "approval.resolved")]
     ApprovalResolved { id: ::std::string::String },
@@ -8000,17 +8006,17 @@ pub enum ExeoraProtocolTypesRelayMessage {
         #[serde(rename = "sessionId")]
         session_id: ExeoraProtocolTypesRelayMessageSessionId,
         #[serde(
-            rename = "worktreeId",
+            rename = "workspaceId",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_id: ::std::option::Option<::std::string::String>,
+        workspace_id: ::std::option::Option<::std::string::String>,
         #[serde(
-            rename = "worktreeSlug",
+            rename = "workspaceSlug",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
-        worktree_slug: ::std::option::Option<::std::string::String>,
+        workspace_slug: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "terminal.input")]
     TerminalInput {
@@ -8359,7 +8365,7 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///      "properties": {
 ///        "action": {
 ///          "type": "string",
-///          "const": "worktree_create"
+///          "const": "workspace_create"
 ///        },
 ///        "branch": {
 ///          "type": "string",
@@ -8467,8 +8473,8 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
     BranchDelete {
         name: ExeoraProtocolTypesRelayMessageActionName,
     },
-    #[serde(rename = "worktree_create")]
-    WorktreeCreate {
+    #[serde(rename = "workspace_create")]
+    WorkspaceCreate {
         branch: ExeoraProtocolTypesRelayMessageActionBranch,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         from: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionFrom>,
@@ -9477,11 +9483,11 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageData {
 ///              "edit_file",
 ///              "write_file",
 ///              "apply_patch",
-///              "list_git_worktrees",
-///              "create_worktree",
-///              "attach_worktree",
-///              "detach_worktree",
-///              "remove_worktree",
+///              "list_git_workspaces",
+///              "create_workspace",
+///              "attach_workspace",
+///              "detach_workspace",
+///              "remove_workspace",
 ///              "run_command",
 ///              "start_command",
 ///              "get_command_output",
@@ -9603,11 +9609,11 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
 ///    "edit_file",
 ///    "write_file",
 ///    "apply_patch",
-///    "list_git_worktrees",
-///    "create_worktree",
-///    "attach_worktree",
-///    "detach_worktree",
-///    "remove_worktree",
+///    "list_git_workspaces",
+///    "create_workspace",
+///    "attach_workspace",
+///    "detach_workspace",
+///    "remove_workspace",
 ///    "run_command",
 ///    "start_command",
 ///    "get_command_output",
@@ -9643,16 +9649,16 @@ pub enum ExeoraProtocolTypesRelayMessagePolicyToolsItem {
     WriteFile,
     #[serde(rename = "apply_patch")]
     ApplyPatch,
-    #[serde(rename = "list_git_worktrees")]
-    ListGitWorktrees,
-    #[serde(rename = "create_worktree")]
-    CreateWorktree,
-    #[serde(rename = "attach_worktree")]
-    AttachWorktree,
-    #[serde(rename = "detach_worktree")]
-    DetachWorktree,
-    #[serde(rename = "remove_worktree")]
-    RemoveWorktree,
+    #[serde(rename = "list_git_workspaces")]
+    ListGitWorkspaces,
+    #[serde(rename = "create_workspace")]
+    CreateWorkspace,
+    #[serde(rename = "attach_workspace")]
+    AttachWorkspace,
+    #[serde(rename = "detach_workspace")]
+    DetachWorkspace,
+    #[serde(rename = "remove_workspace")]
+    RemoveWorkspace,
     #[serde(rename = "run_command")]
     RunCommand,
     #[serde(rename = "start_command")]
@@ -9675,11 +9681,11 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
             Self::ApplyPatch => f.write_str("apply_patch"),
-            Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
-            Self::CreateWorktree => f.write_str("create_worktree"),
-            Self::AttachWorktree => f.write_str("attach_worktree"),
-            Self::DetachWorktree => f.write_str("detach_worktree"),
-            Self::RemoveWorktree => f.write_str("remove_worktree"),
+            Self::ListGitWorkspaces => f.write_str("list_git_workspaces"),
+            Self::CreateWorkspace => f.write_str("create_workspace"),
+            Self::AttachWorkspace => f.write_str("attach_workspace"),
+            Self::DetachWorkspace => f.write_str("detach_workspace"),
+            Self::RemoveWorkspace => f.write_str("remove_workspace"),
             Self::RunCommand => f.write_str("run_command"),
             Self::StartCommand => f.write_str("start_command"),
             Self::GetCommandOutput => f.write_str("get_command_output"),
@@ -9699,11 +9705,11 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
             "apply_patch" => Ok(Self::ApplyPatch),
-            "list_git_worktrees" => Ok(Self::ListGitWorktrees),
-            "create_worktree" => Ok(Self::CreateWorktree),
-            "attach_worktree" => Ok(Self::AttachWorktree),
-            "detach_worktree" => Ok(Self::DetachWorktree),
-            "remove_worktree" => Ok(Self::RemoveWorktree),
+            "list_git_workspaces" => Ok(Self::ListGitWorkspaces),
+            "create_workspace" => Ok(Self::CreateWorkspace),
+            "attach_workspace" => Ok(Self::AttachWorkspace),
+            "detach_workspace" => Ok(Self::DetachWorkspace),
+            "remove_workspace" => Ok(Self::RemoveWorkspace),
             "run_command" => Ok(Self::RunCommand),
             "start_command" => Ok(Self::StartCommand),
             "get_command_output" => Ok(Self::GetCommandOutput),
@@ -9826,11 +9832,11 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageSessionId
 ///    "edit_file",
 ///    "write_file",
 ///    "apply_patch",
-///    "list_git_worktrees",
-///    "create_worktree",
-///    "attach_worktree",
-///    "detach_worktree",
-///    "remove_worktree",
+///    "list_git_workspaces",
+///    "create_workspace",
+///    "attach_workspace",
+///    "detach_workspace",
+///    "remove_workspace",
 ///    "run_command",
 ///    "start_command",
 ///    "get_command_output",
@@ -9866,16 +9872,16 @@ pub enum ExeoraProtocolTypesRelayMessageTool {
     WriteFile,
     #[serde(rename = "apply_patch")]
     ApplyPatch,
-    #[serde(rename = "list_git_worktrees")]
-    ListGitWorktrees,
-    #[serde(rename = "create_worktree")]
-    CreateWorktree,
-    #[serde(rename = "attach_worktree")]
-    AttachWorktree,
-    #[serde(rename = "detach_worktree")]
-    DetachWorktree,
-    #[serde(rename = "remove_worktree")]
-    RemoveWorktree,
+    #[serde(rename = "list_git_workspaces")]
+    ListGitWorkspaces,
+    #[serde(rename = "create_workspace")]
+    CreateWorkspace,
+    #[serde(rename = "attach_workspace")]
+    AttachWorkspace,
+    #[serde(rename = "detach_workspace")]
+    DetachWorkspace,
+    #[serde(rename = "remove_workspace")]
+    RemoveWorkspace,
     #[serde(rename = "run_command")]
     RunCommand,
     #[serde(rename = "start_command")]
@@ -9898,11 +9904,11 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageTool {
             Self::EditFile => f.write_str("edit_file"),
             Self::WriteFile => f.write_str("write_file"),
             Self::ApplyPatch => f.write_str("apply_patch"),
-            Self::ListGitWorktrees => f.write_str("list_git_worktrees"),
-            Self::CreateWorktree => f.write_str("create_worktree"),
-            Self::AttachWorktree => f.write_str("attach_worktree"),
-            Self::DetachWorktree => f.write_str("detach_worktree"),
-            Self::RemoveWorktree => f.write_str("remove_worktree"),
+            Self::ListGitWorkspaces => f.write_str("list_git_workspaces"),
+            Self::CreateWorkspace => f.write_str("create_workspace"),
+            Self::AttachWorkspace => f.write_str("attach_workspace"),
+            Self::DetachWorkspace => f.write_str("detach_workspace"),
+            Self::RemoveWorkspace => f.write_str("remove_workspace"),
             Self::RunCommand => f.write_str("run_command"),
             Self::StartCommand => f.write_str("start_command"),
             Self::GetCommandOutput => f.write_str("get_command_output"),
@@ -9922,11 +9928,11 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageTool {
             "edit_file" => Ok(Self::EditFile),
             "write_file" => Ok(Self::WriteFile),
             "apply_patch" => Ok(Self::ApplyPatch),
-            "list_git_worktrees" => Ok(Self::ListGitWorktrees),
-            "create_worktree" => Ok(Self::CreateWorktree),
-            "attach_worktree" => Ok(Self::AttachWorktree),
-            "detach_worktree" => Ok(Self::DetachWorktree),
-            "remove_worktree" => Ok(Self::RemoveWorktree),
+            "list_git_workspaces" => Ok(Self::ListGitWorkspaces),
+            "create_workspace" => Ok(Self::CreateWorkspace),
+            "attach_workspace" => Ok(Self::AttachWorkspace),
+            "detach_workspace" => Ok(Self::DetachWorkspace),
+            "remove_workspace" => Ok(Self::RemoveWorkspace),
             "run_command" => Ok(Self::RunCommand),
             "start_command" => Ok(Self::StartCommand),
             "get_command_output" => Ok(Self::GetCommandOutput),

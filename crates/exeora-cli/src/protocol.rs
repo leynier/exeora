@@ -17,7 +17,7 @@ pub const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 60_000;
 pub const MAX_COMMAND_TIMEOUT_MS: u64 = 300_000;
 pub const MAX_PROCESS_BUFFER_BYTES: usize = 256_000;
 pub const MAX_PROCESS_CHUNK_BYTES: usize = 100_000;
-pub const MAX_PROCESSES_PER_WORKTREE: usize = 8;
+pub const MAX_PROCESSES_PER_WORKSPACE: usize = 8;
 pub const MAX_PROCESSES_PER_PROJECT: usize = 16;
 pub const MAX_PATCH_OPS: usize = 20;
 pub const MAX_PATCH_BYTES: usize = 1_000_000;
@@ -31,11 +31,11 @@ pub enum ToolName {
     EditFile,
     WriteFile,
     ApplyPatch,
-    ListGitWorktrees,
-    CreateWorktree,
-    AttachWorktree,
-    DetachWorktree,
-    RemoveWorktree,
+    ListGitWorkspaces,
+    CreateWorkspace,
+    AttachWorkspace,
+    DetachWorkspace,
+    RemoveWorkspace,
     RunCommand,
     StartCommand,
     GetCommandOutput,
@@ -52,11 +52,11 @@ impl ToolName {
         Self::EditFile,
         Self::WriteFile,
         Self::ApplyPatch,
-        Self::ListGitWorktrees,
-        Self::CreateWorktree,
-        Self::AttachWorktree,
-        Self::DetachWorktree,
-        Self::RemoveWorktree,
+        Self::ListGitWorkspaces,
+        Self::CreateWorkspace,
+        Self::AttachWorkspace,
+        Self::DetachWorkspace,
+        Self::RemoveWorkspace,
         Self::RunCommand,
         Self::StartCommand,
         Self::GetCommandOutput,
@@ -73,11 +73,11 @@ impl ToolName {
             Self::EditFile => "edit_file",
             Self::WriteFile => "write_file",
             Self::ApplyPatch => "apply_patch",
-            Self::ListGitWorktrees => "list_git_worktrees",
-            Self::CreateWorktree => "create_worktree",
-            Self::AttachWorktree => "attach_worktree",
-            Self::DetachWorktree => "detach_worktree",
-            Self::RemoveWorktree => "remove_worktree",
+            Self::ListGitWorkspaces => "list_git_workspaces",
+            Self::CreateWorkspace => "create_workspace",
+            Self::AttachWorkspace => "attach_workspace",
+            Self::DetachWorkspace => "detach_workspace",
+            Self::RemoveWorkspace => "remove_workspace",
             Self::RunCommand => "run_command",
             Self::StartCommand => "start_command",
             Self::GetCommandOutput => "get_command_output",
@@ -93,20 +93,20 @@ impl ToolName {
             Self::ReadFile
                 | Self::ListFiles
                 | Self::Grep
-                | Self::ListGitWorktrees
+                | Self::ListGitWorkspaces
                 | Self::GetCommandOutput
                 | Self::ListSkills
         )
     }
 
-    pub const fn is_worktree_tool(self) -> bool {
+    pub const fn is_workspace_tool(self) -> bool {
         matches!(
             self,
-            Self::ListGitWorktrees
-                | Self::CreateWorktree
-                | Self::AttachWorktree
-                | Self::DetachWorktree
-                | Self::RemoveWorktree
+            Self::ListGitWorkspaces
+                | Self::CreateWorkspace
+                | Self::AttachWorkspace
+                | Self::DetachWorkspace
+                | Self::RemoveWorkspace
         )
     }
 }

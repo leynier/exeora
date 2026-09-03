@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { GitBranch, GitStatus, WorkspaceAction, Worktree } from "../api.js";
-import { worktreeSlugForBranch } from "../workspacePaths.js";
+import type { GitBranch, GitStatus, Workspace, WorkspaceAction } from "../api.js";
+import { workspaceSlugForBranch } from "../workspacePaths.js";
 
 /**
  * Branch switching belongs in the toolbar, the way GitHub Desktop and Fork
@@ -12,19 +12,19 @@ export function SourceControlBranchPicker({
   status,
   pending,
   projectLocalPath,
-  worktrees,
+  workspaces,
   onRun,
-  onSelectWorktree,
-  onCreateWorktree,
+  onSelectWorkspace,
+  onCreateWorkspace,
   onConfirmDelete,
 }: {
   status: GitStatus;
   pending: boolean;
   projectLocalPath: string;
-  worktrees: Worktree[];
+  workspaces: Workspace[];
   onRun: (action: WorkspaceAction) => Promise<void>;
-  onSelectWorktree: (slug: string | null) => void;
-  onCreateWorktree: () => void;
+  onSelectWorkspace: (slug: string | null) => void;
+  onCreateWorkspace: () => void;
   onConfirmDelete: (name: string) => void;
 }) {
   const panelId = useId();
@@ -112,9 +112,9 @@ export function SourceControlBranchPicker({
 
   const close = () => panel.current?.hidePopover();
   const openBranch = (name: string) => {
-    const slug = worktreeSlugForBranch(name, status.gitWorktrees, projectLocalPath, worktrees);
+    const slug = workspaceSlugForBranch(name, status.gitWorkspaces, projectLocalPath, workspaces);
     if (slug !== undefined) {
-      onSelectWorktree(slug);
+      onSelectWorkspace(slug);
       close();
       return;
     }
@@ -240,7 +240,7 @@ export function SourceControlBranchPicker({
         <div className="border-border-subtle shrink-0 space-y-2 border-t px-3 py-2">
           {!canCreate ? (
             <p className="text-label-md text-foreground-faint">
-              Type a name to create a branch from {head}, or open a separate Git worktree.
+              Type a name to create a branch from {head}, or open a separate Git workspace.
             </p>
           ) : null}
           <button
@@ -249,10 +249,10 @@ export function SourceControlBranchPicker({
             disabled={pending}
             onClick={() => {
               panel.current?.hidePopover();
-              onCreateWorktree();
+              onCreateWorkspace();
             }}
           >
-            Create worktree
+            Create workspace
           </button>
         </div>
       </div>
