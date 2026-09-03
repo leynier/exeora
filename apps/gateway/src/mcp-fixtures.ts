@@ -1,4 +1,5 @@
 import { createExecutionContext } from "cloudflare:test";
+import type { McpServerTools } from "@exeora/protocol";
 import {
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
@@ -6,6 +7,7 @@ import {
 } from "@modelcontextprotocol/server";
 import {
   createProjectMcpHandler,
+  type McpDispatcher,
   type McpToolContext,
   mcpRoute,
   type ToolDispatcher,
@@ -49,6 +51,19 @@ export function post(
     protocol?: string;
     /** Extra headers, for the ones the 2026-07-28 wire requires. */
     headers?: Record<string, string>;
+    /** Downstream MCP servers to republish, and what their calls answer. */
+    mcp?: {
+      servers: McpServerTools[];
+      dispatch?: (
+        context: McpToolContext,
+        server: string,
+        tool: string,
+        args: unknown,
+        readOnlyHint: boolean | undefined,
+      ) => Promise<unknown>;
+      /** For the approval flow, where the dispatcher's answer is not a value. */
+      rawDispatch?: McpDispatcher;
+    };
   } = {},
 ) {
   const project = options.project ?? PROJECT;
@@ -61,6 +76,27 @@ export function post(
       kind: "value",
       value: await answer(context, tool, args),
     }));
+
+  const mcp =
+    options.mcp === undefined
+      ? undefined
+      : {
+          servers: options.mcp.servers,
+          dispatch:
+            options.mcp.rawDispatch ??
+            (async (
+              context: McpToolContext,
+              server: string,
+              tool: string,
+              args: unknown,
+              readOnlyHint: boolean | undefined,
+            ) => ({
+              kind: "value" as const,
+              value: options.mcp?.dispatch
+                ? await options.mcp.dispatch(context, server, tool, args, readOnlyHint)
+                : { server, tool, args, readOnlyHint },
+            })),
+        };
 
   const request = new Request(`https://exeora.dev${mcpRoute(project)}`, {
     method: "POST",
@@ -84,7 +120,14 @@ export function post(
   // approval tests below assert that a state was minted, never what it says.
   const env = { REQUEST_STATE_SECRET: "test-secret-that-is-at-least-32-bytes-long" };
 
-  return createProjectMcpHandler(project, dispatch, env)(request, {}, ctx);
+  return createProjectMcpHandler(
+    project,
+    dispatch,
+    env,
+    undefined,
+    undefined,
+    mcp,
+  )(request, {}, ctx);
 }
 
 /**
@@ -98,7 +141,7 @@ export function post(
  */
 export function postModern(
   body: { params: { name: string; arguments?: unknown } } & Record<string, unknown>,
-  options: { rawDispatch?: ToolDispatcher; project?: string } = {},
+  options: Parameters<typeof post>[1] = {},
 ) {
   return post(
     {

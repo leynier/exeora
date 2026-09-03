@@ -13,14 +13,19 @@ import {
   callerSocket,
   callerTag,
   executorSocket,
+  hasOtherExecutor,
+  resolveTerminalApproval,
+  sendCancel,
   type TerminalCallerState,
 } from "./relay-do-callers.js";
 import {
   destroyTerminalSession,
+  dropExecutor,
   forgetStoredTerminal,
   listStoredTerminals,
   liveTerminalForSession,
   liveTerminalForTarget,
+  persistDetachedTerminal,
   putStoredTerminal,
   recordSocketReplay,
   scheduleWorkspaceAlarm,
@@ -325,6 +330,64 @@ export async function expireWorkspaceSessions(ctx: DurableObjectState): Promise<
     await destroyTerminalSession(ctx, session.sessionId);
   }
   await scheduleWorkspaceAlarm(ctx);
+}
+
+/**
+ * What the relay owes each socket when it closes, executor or caller.
+ *
+ * Lives here rather than in the class so `DeviceRelay` stays inside the file
+ * length budget; every duty it names is one of the functions beside it.
+ */
+export async function handleSocketClose(
+  ctx: DurableObjectState,
+  env: Env,
+  socket: WebSocket,
+): Promise<void> {
+  const state = attachmentOf(socket);
+  if (!state) return;
+  if (state.role === "executor") {
+    await dropExecutor(
+      ctx,
+      env,
+      state.deviceId,
+      hasOtherExecutor(ctx, socket),
+      "The device disconnected while the call was in flight.",
+    );
+    return;
+  }
+  if (!state.settled) {
+    if (state.role === "tool" || state.role === "workspace") sendCancel(ctx, state.id);
+    else if (state.role === "terminal") await persistDetachedTerminal(ctx, socket, state);
+    else resolveTerminalApproval(ctx, state.id);
+  } else if (state.role === "terminal") await scheduleWorkspaceAlarm(ctx);
+}
+
+/**
+ * The same duties for a socket that failed. A failed socket is gone whether or
+ * not a close frame follows, and the runtime does not promise one, so the
+ * executor drop is recorded here as well — idempotently.
+ */
+export async function handleSocketError(
+  ctx: DurableObjectState,
+  env: Env,
+  socket: WebSocket,
+): Promise<void> {
+  const state = attachmentOf(socket);
+  if (state?.role === "executor") {
+    await dropExecutor(
+      ctx,
+      env,
+      state.deviceId,
+      hasOtherExecutor(ctx, socket),
+      "The connection to the device failed.",
+    );
+  } else if ((state?.role === "tool" || state?.role === "workspace") && !state.settled) {
+    sendCancel(ctx, state.id);
+  } else if (state?.role === "terminal" && !state.settled) {
+    await persistDetachedTerminal(ctx, socket, state);
+  } else if (state?.role === "approval" && !state.settled) {
+    resolveTerminalApproval(ctx, state.id);
+  }
 }
 
 export {

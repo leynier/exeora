@@ -120,11 +120,22 @@ export async function attachFakeExecutor(
     capabilities?: ExecutorCapabilities;
     /** Omitted leaves an `approval.request` unanswered, like an empty chair. */
     answerApproval?: boolean;
+    /** Like `silent`, for downstream MCP calls. */
+    mcpSilent?: boolean;
+    /** Like `respond`, for downstream MCP calls. */
+    mcpRespond?: (call: {
+      requestId: string;
+      server: string;
+      tool: string;
+      args: unknown;
+    }) => ToolResultMessage["result"];
   } = {},
 ) {
   const socket = await dial();
 
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
+  /** Downstream MCP calls the relay asked this executor to run. */
+  const mcpSeen: Array<{ requestId: string; server: string; tool: string; args: unknown }> = [];
   const workspaceSeen: Array<{
     requestId: string;
     workspaceId?: string;
@@ -206,7 +217,30 @@ export async function attachFakeExecutor(
       return;
     }
 
-    if (message?.type !== "tool.call") return;
+    if (message?.type !== "tool.call" && message?.type !== "mcp.call") return;
+
+    if (message.type === "mcp.call") {
+      const call = {
+        requestId: message.requestId,
+        server: message.server,
+        tool: message.tool,
+        args: message.arguments,
+      };
+      mcpSeen.push(call);
+      if (options.mcpSilent) return;
+      socket.send(
+        encodeMessage({
+          type: "tool.result",
+          requestId: message.requestId,
+          durationMs: 1,
+          result: options.mcpRespond?.(call) ?? {
+            ok: true,
+            value: { content: [{ type: "text", text: `downstream ${call.tool}` }] },
+          },
+        }),
+      );
+      return;
+    }
 
     const call = { requestId: message.requestId, tool: message.tool, args: message.arguments };
     seen.push(call);
@@ -234,7 +268,7 @@ export async function attachFakeExecutor(
     }),
   );
 
-  return { socket, seen, workspaceSeen, cancelled, asked, resolved, ack };
+  return { socket, seen, mcpSeen, workspaceSeen, cancelled, asked, resolved, ack };
 }
 
 /** A machine with a terminal someone could be asked at. */

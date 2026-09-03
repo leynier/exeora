@@ -1,7 +1,12 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { advertisedAccountTools, advertisedTools } from "./advertised.js";
+import {
+  advertisedAccountMcpTools,
+  advertisedAccountTools,
+  advertisedMcpTools,
+  advertisedTools,
+} from "./advertised.js";
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
 import { reconcileAuditOutbox } from "./audit.js";
 import { rememberAccountMcpClient, rememberMcpClient } from "./clients.js";
@@ -9,6 +14,7 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
+import { dispatchAccountMcpCall, dispatchMcpToDevice } from "./dispatch-mcp.js";
 import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
 import { CLI_SCOPES, DASHBOARD_SCOPES } from "./oauth/clients.js";
@@ -116,6 +122,12 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
     method === "tools/list"
       ? await advertisedTools(c.env, propsOf(c.executionCtx).userId, projectId)
       : undefined;
+  // The downstream MCP servers the machine announced, on the same ask-only
+  // cadence and for the same reason.
+  const mcpServers =
+    method === "tools/list"
+      ? ((await advertisedMcpTools(c.env, propsOf(c.executionCtx).userId, projectId)) ?? undefined)
+      : undefined;
 
   const handler = createProjectMcpHandler(
     projectId,
@@ -147,6 +159,22 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
         .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.projects.userId, userId)))
         .all();
       return { project: projectId, workspaces: rows };
+    },
+    mcpServers && {
+      servers: mcpServers,
+      dispatch: (context, server, tool, args, readOnlyHint) =>
+        dispatchMcpToDevice(c.env, {
+          userId: context.userId,
+          projectId,
+          server,
+          tool,
+          args,
+          readOnlyHint,
+          caller: context.caller,
+          approved: context.approved,
+          canElicit: context.canElicit,
+          signal,
+        }),
     },
   );
 
@@ -192,12 +220,36 @@ authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
 
   const advertised =
     method === "tools/list" ? await advertisedAccountTools(c.env, userId, clientId) : undefined;
+  // Downstream MCP tools only when the connection reaches exactly one project:
+  // with several, one name could mean a different server on a different
+  // machine, and one registration cannot be both.
+  const accountMcp =
+    method === "tools/list" ? await advertisedAccountMcpTools(c.env, userId, clientId) : null;
 
   const handler = createAccountMcpHandler(
     (call, tool, args) => dispatchAccountCall(c.env, call, tool, args, signal),
     (call, tool, args) => answerAccountTool(c.env, call, tool, args),
     c.env,
     advertised,
+    accountMcp
+      ? {
+          projectId: accountMcp.projectId,
+          servers: accountMcp.servers,
+          dispatch: (call, server, tool, args, readOnlyHint) =>
+            dispatchAccountMcpCall(c.env, {
+              userId: call.userId,
+              projectId: accountMcp.projectId,
+              server,
+              tool,
+              args,
+              readOnlyHint,
+              caller: call.caller,
+              approved: call.approvedProjectId === accountMcp.projectId,
+              canElicit: call.canElicit,
+              signal,
+            }),
+        }
+      : undefined,
   );
 
   const peek = c.req.raw.clone();

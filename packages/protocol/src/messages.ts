@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ERROR_CODES } from "./errors.js";
+import { McpCallMessage, McpToolsMessage } from "./mcp.js";
 import { CommandPolicy } from "./policy.js";
 import { TOOL_NAMES } from "./tools.js";
 import {
@@ -170,6 +171,7 @@ export const ExecutorMessage = z.discriminatedUnion("type", [
   ToolResultMessage,
   WorkspaceResultMessage,
   ApprovalAnswerMessage,
+  McpToolsMessage,
   TerminalOpenedMessage,
   TerminalOutputMessage,
   TerminalExitMessage,
@@ -297,7 +299,13 @@ export const ApprovalRequestMessage = z.object({
   projectId: z.string(),
   workspaceId: z.string().optional(),
   workspaceSlug: z.string().optional(),
-  tool: z.enum(TOOL_NAMES),
+  /**
+   * The tool being confirmed. A plain string rather than the enum because it
+   * may name a downstream MCP tool (`mcp__server__tool`), which no enum can
+   * list. An older CLI drops the frame rather than acting on it, which fails
+   * closed: the question times out and the call is refused.
+   */
+  tool: z.string().max(128),
   /** One line, already written for a person: "Run `npm test`?" */
   prompt: z.string(),
   /** Which AI client is asking, when the gateway could name one. */
@@ -327,6 +335,7 @@ export const RelayMessage = z.discriminatedUnion("type", [
   HeartbeatAckMessage,
   ToolCallMessage,
   WorkspaceCallMessage,
+  McpCallMessage,
   CancelMessage,
   ShutdownMessage,
   ApprovalRequestMessage,

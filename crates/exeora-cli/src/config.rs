@@ -289,24 +289,39 @@ pub fn config_path() -> Result<PathBuf> {
     if let Some(path) = env::var_os("EXEORA_CONFIG_PATH") {
         return Ok(PathBuf::from(path));
     }
+    base_config_path("config.json")
+}
 
+/** Where the user's downstream MCP servers are configured, machine-wide. */
+pub fn mcp_config_path() -> Result<PathBuf> {
+    if let Some(path) = env::var_os("EXEORA_CONFIG_PATH") {
+        // A redirected config directory redirects this too: one EXEORA_CONFIG_PATH
+        // should move every file the CLI reads, not all but one.
+        return Ok(PathBuf::from(path).with_file_name("mcp.json"));
+    }
+    base_config_path("mcp.json")
+}
+
+fn base_config_path(filename: &str) -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let base = env::var_os("APPDATA")
             .or_else(|| env::var_os("USERPROFILE"))
             .context("Neither APPDATA nor USERPROFILE is set")?;
-        return Ok(PathBuf::from(base).join("exeora/config.json"));
+        return Ok(PathBuf::from(base).join("exeora").join(filename));
     }
     #[cfg(target_os = "macos")]
     {
-        return Ok(home_dir()?.join("Library/Preferences/exeora/config.json"));
+        return Ok(home_dir()?
+            .join("Library/Preferences/exeora")
+            .join(filename));
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let base = env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or(home_dir()?.join(".config"));
-        Ok(base.join("exeora/config.json"))
+        Ok(base.join("exeora").join(filename))
     }
 }
 

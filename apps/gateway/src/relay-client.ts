@@ -15,6 +15,130 @@ import { type CallerRequest, decodeCallerResponse } from "./relay-internal.js";
 
 type RelayStub = DurableObjectStub<DeviceRelay>;
 
+/**
+ * A call to a downstream MCP tool, over the same caller socket a canonical
+ * tool call uses, answered by the same `tool.result` frame. Separate function
+ * rather than a flag on `callRelayTool` because the request it dials with is a
+ * different wire type, and a caller that got the two mixed up would send a
+ * frame the relay silently drops.
+ */
+export async function callRelayMcpTool(
+  relay: RelayStub,
+  options: {
+    requestId: string;
+    projectId: string;
+    server: string;
+    tool: string;
+    args: unknown;
+    client?: { id?: string; name?: string; version?: string } | undefined;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<unknown> {
+  if (options.signal?.aborted) throw cancelled();
+
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + RELAY_TIMEOUT_MS;
+  const socket = await dial(relay, "tool", options.requestId);
+  const remainingMs = expiresAt - Date.now();
+  if (remainingMs <= 0) {
+    close(socket);
+    throw new ExeoraError("TOOL_TIMEOUT", "The relay did not open before the deadline.");
+  }
+  const request: CallerRequest = {
+    type: "mcp.start",
+    requestId: options.requestId,
+    projectId: options.projectId,
+    server: options.server,
+    tool: options.tool,
+    arguments: options.args,
+    client: options.client,
+    issuedAt,
+    expiresAt,
+  };
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (answer: { value: unknown } | { error: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+      close(socket);
+      if ("error" in answer) reject(answer.error);
+      else resolve(answer.value);
+    };
+    const cancel = () => {
+      if (settled) return;
+      observeRelayTermination(options.requestId, Date.now() - issuedAt, "cancelled", {
+        caller: 2,
+        executor: 2,
+      });
+      send(socket, { type: "cancel" });
+      finish({ error: cancelled() });
+    };
+    const abort = () => cancel();
+    const timeout = () => {
+      if (settled) return;
+      observeRelayTermination(options.requestId, Date.now() - issuedAt, "timeout", {
+        caller: 2,
+        executor: 2,
+      });
+      send(socket, { type: "cancel" });
+      finish({
+        error: new ExeoraError("TOOL_TIMEOUT", "The device did not answer before the deadline."),
+      });
+    };
+    const timer = setTimeout(timeout, remainingMs);
+
+    socket.addEventListener("message", (event) => {
+      if (settled) return;
+      const response = decodeCallerResponse(String(event.data));
+      if (response?.type === "tool.result") {
+        if (response.result.ok) finish({ value: response.result.value });
+        else
+          finish({
+            error: new ExeoraError(response.result.error.code, response.result.error.message),
+          });
+      } else if (response?.type === "error") {
+        observeRelayTermination(
+          options.requestId,
+          Date.now() - issuedAt,
+          response.error.code === "TOOL_TIMEOUT" ? "timeout" : "offline",
+          { caller: 2, executor: 0 },
+        );
+        finish({ error: new ExeoraError(response.error.code, response.error.message) });
+      } else if (Date.now() >= expiresAt) {
+        timeout();
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (!settled) {
+        observeRelayTermination(options.requestId, Date.now() - issuedAt, "offline", {
+          caller: 1,
+          executor: 1,
+        });
+      }
+      finish({
+        error: options.signal?.aborted
+          ? cancelled()
+          : new ExeoraError(
+              "LOCAL_EXECUTOR_OFFLINE",
+              "The relay connection closed while the call was in flight.",
+            ),
+      });
+    });
+    socket.addEventListener("error", () =>
+      finish({ error: newError("The relay connection failed.").error }),
+    );
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
+    send(socket, request);
+  });
+}
+
 export async function callRelayWorkspace(
   relay: RelayStub,
   options: {
@@ -235,7 +359,11 @@ export async function requestRelayApproval(
     projectId: string;
     workspaceId?: string | undefined;
     workspaceSlug?: string | undefined;
-    tool: ToolName;
+    /**
+     * The tool being confirmed. A string rather than the enum because it may
+     * name a downstream MCP tool (`mcp__server__tool`), which no enum lists.
+     */
+    tool: string;
     prompt: string;
     clientName?: string | undefined;
     client?: { id?: string; name?: string; version?: string } | undefined;

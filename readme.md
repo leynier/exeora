@@ -92,6 +92,8 @@ On the account URL, `list_projects` shows the available targets. When it returns
 
 Both URLs also carry `get_agent_prompt`, which reaches no machine: it hands back Exeora's own coding-agent instructions, for a client that arrived without any. See [the agent prompt](#the-agent-prompt).
 
+Exeora is also an MCP **client**: servers configured in `.exeora/mcp.json` at the project root or `mcp.json` beside the CLI's config are launched on the machine, and their tools are republished under the same endpoints as `mcp__<server>__<tool>` — same OAuth token, same policy, same audit log. See [MCP servers](https://exeora.dev/docs/mcp/).
+
 Full reference: [exeora.dev/docs/tools](https://exeora.dev/docs/tools/).
 
 ## Clients

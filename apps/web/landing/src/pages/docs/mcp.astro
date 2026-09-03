@@ -1,0 +1,156 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="MCP servers"
+  description="Expose the MCP servers a project or a user configures through Exeora, so one connection reaches them all."
+  canonicalPath="/docs/mcp/"
+>
+  <p>
+    Exeora can be a client of other MCP servers and republish their tools through its own MCP
+    endpoint. Configure a server on the machine that runs <code>exeora connect</code>, and its tools
+    appear next to the seventeen built-in ones, under a prefixed name:
+    <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.
+  </p>
+
+  <p>
+    One connection then reaches the project's files, its commands, and its other MCP servers. The
+    AI client never learns how to reach a downstream server directly: every call travels the same
+    relay, under the same OAuth token, and lands in the same audit log.
+  </p>
+
+  <h2>Configuring servers</h2>
+
+  <p>
+    The file is the same shape at both levels, and the same shape the wider ecosystem already uses:
+    a <code>mcpServers</code> object where each entry launches a local process over stdio.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Level</th><th>File</th><th>Applies to</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>User</td>
+        <td><code>~/.config/exeora/mcp.json</code></td>
+        <td>Every project this machine serves.</td>
+      </tr>
+      <tr>
+        <td>Project</td>
+        <td><code>&lt;project root&gt;/.exeora/mcp.json</code></td>
+        <td>That project alone.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    A name defined at both levels resolves to the project's entry, because the project is the more
+    specific opinion. Server names are lowercase letters, digits and dashes.
+  </p>
+
+  <pre>{`{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "env": { "DEFAULT_MINIMUM_TOKENS": "10000" }
+    },
+    "postgres": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "postgres-mcp"],
+      "env": { "DATABASE_URL": "postgres://localhost/app" }
+    }
+  }
+}`}</pre>
+
+  <p>
+    <strong>Only stdio servers.</strong> The server has to be a process this machine can launch.
+    A remote HTTP server is not reachable this way today.
+  </p>
+
+  <p>
+    Environment entries are added to the environment <code>connect</code> already runs with, so a
+    server inherits <code>PATH</code> and anything else the terminal had. Values are literal
+    strings; nothing is expanded.
+  </p>
+
+  <h2>How the tools appear</h2>
+
+  <p>
+    After <code>exeora connect</code> starts, it launches each configured server, performs the MCP
+    handshake, and asks for its tools. On the next <code>tools/list</code> the client sees them,
+    with the server's own argument schemas, descriptions and annotations, under the prefixed name.
+    Two servers offering a tool with the same name is fine: the prefix keeps them apart.
+  </p>
+
+  <p>
+    A configured server that fails to start is reported in <code>exeora connect</code>'s output and
+    offers no tools, rather than offering tools that fail. The announcement is refreshed on every
+    reconnect, so editing the file and restarting <code>connect</code> is the whole deployment.
+  </p>
+
+  <p>
+    On the account URL (<code>/mcp</code>), downstream tools are offered only when the connection
+    reaches exactly one project, because with several, one <code>mcp__github__create_issue</code>
+    could name a different server on a different machine.
+  </p>
+
+  <h2>What a policy does to them</h2>
+
+  <p>
+    A project's policy applies to downstream tools the way it applies to Exeora's own:
+  </p>
+
+  <ul>
+    <li>
+      <strong>Read only.</strong> A downstream tool runs only if its server marked it
+      <code>readOnlyHint</code>. A tool that made no claim is treated as one that changes things,
+      which is the safe reading.
+    </li>
+    <li>
+      <strong>Confirm before it runs.</strong> With confirmation on, every downstream tool that did
+      not claim to be read only is confirmed first: in the conversation, on the terminal running
+      <code>connect</code>, or in the dashboard.
+    </li>
+    <li>
+      <strong>Allow and deny lists</strong> are about commands and do not apply. Whether a server
+      exists at all is a decision the person who wrote the MCP configuration made.
+    </li>
+  </ul>
+
+  <p>
+    A local <code>exeora.toml</code> can narrow these further, as it can for the built-in tools.
+  </p>
+
+  <h2>Limits</h2>
+
+  <table>
+    <thead>
+      <tr><th>What</th><th>Bound</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Servers per project</td><td>16</td></tr>
+      <tr><td>Tools per server</td><td>64</td></tr>
+      <tr><td>One tool's input schema</td><td>16 KB</td></tr>
+      <tr><td>Whole announcement</td><td>100 KB</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    A server past a bound is reported as an error in its announcement entry, not silently
+    shortened: an agent that could see three of nine tools would have no way to know it was shown a
+    subset.
+  </p>
+
+  <h2>Security</h2>
+
+  <p>
+    A configured MCP server is a program you chose to run, with the access any local process has.
+    Exeora adds the boundaries it can: the server runs with the project root as its working
+    directory, its tools pass through the project's policy and confirmation, every call is audited
+    under the prefixed name, and revoking the machine closes the relay path to every downstream
+    server with it.
+  </p>
+</Doc>

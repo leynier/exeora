@@ -189,6 +189,22 @@ pub fn policy_allows(policy: &CommandPolicy, tool: ToolName, args: &Value) -> Po
     command_allowed(policy, command)
 }
 
+/**
+ * The same question for a downstream MCP tool, whose read-only-ness arrives as
+ * an annotation from its server rather than from our own contract.
+ *
+ * An annotation is a claim, so a missing one is read as "changes something",
+ * which is the safe direction. The `tools` allow list is not consulted: it is
+ * a list of Exeora's own tool names, and whether a downstream server exists at
+ * all is a decision the person who wrote the MCP configuration already made.
+ */
+pub fn mcp_policy_allows(policy: &CommandPolicy, read_only_hint: bool) -> PolicyVerdict {
+    if !read_only_hint && policy.mode == PolicyMode::ReadOnly {
+        return PolicyVerdict::no("This project is read only. It allows no tool that changes it.");
+    }
+    PolicyVerdict::yes()
+}
+
 pub fn command_allowed(policy: &CommandPolicy, command: &str) -> PolicyVerdict {
     if policy.mode == PolicyMode::ReadOnly {
         return PolicyVerdict::no("This project is read only. It runs no commands.");

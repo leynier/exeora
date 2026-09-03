@@ -130,6 +130,40 @@ export function needsApproval(policy: CommandPolicy, tool: ToolName): boolean {
 }
 
 /**
+ * The same two questions for a downstream MCP tool.
+ *
+ * A separate pair because neither can lean on `TOOL_DEFINITIONS`: a downstream
+ * tool's read-only-ness arrives as an annotation from its server, and an
+ * annotation is a claim rather than a contract, so absence is read as
+ * "changes something" — the safe direction, and the same one the canonical
+ * tools' own definitions would give a tool nobody had annotated.
+ *
+ * The `tools` allow list is deliberately not consulted. It is a list of Exeora's
+ * own tool names and cannot name a downstream one; the thing that decides
+ * whether a downstream server exists at all is the machine's MCP configuration,
+ * which is a decision the person running the CLI made by writing it.
+ */
+export function mcpPolicyAllows(
+  policy: CommandPolicy,
+  readOnlyHint: boolean | undefined,
+): PolicyVerdict {
+  if (!readOnlyHint && policy.mode === "read_only") {
+    return {
+      allowed: false,
+      reason: "This project is read only. It allows no tool that changes it.",
+    };
+  }
+  return ALLOWED;
+}
+
+export function needsMcpApproval(
+  policy: CommandPolicy,
+  readOnlyHint: boolean | undefined,
+): boolean {
+  return policy.approve && !readOnlyHint;
+}
+
+/**
  * Characters that give a shell a second command, a substitution, or a file to
  * write. Any one of them makes the first word of a command a poor description
  * of what it will do.

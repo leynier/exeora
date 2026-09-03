@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "ports": { "preview": 3000, "additional": {} },
+  "scripts": {
+    "setup": {
+      "enabled": true,
+      "command": "bun install && mise install rust@1.98.0 && mise use -g rust@1.98.0"
+    },
+    "run": { "enabled": true, "command": null },
+    "archive": { "enabled": true, "command": null },
+    "check": { "enabled": true, "command": null }
+  },
+  "mcpServers": []
+}
