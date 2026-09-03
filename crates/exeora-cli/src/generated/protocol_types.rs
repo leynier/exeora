@@ -103,7 +103,8 @@ pub mod error {
 ///                  "start_command",
 ///                  "get_command_output",
 ///                  "send_command_input",
-///                  "kill_command"
+///                  "kill_command",
+///                  "list_skills"
 ///                ]
 ///              }
 ///            },
@@ -1101,7 +1102,8 @@ pub mod error {
 ///              "start_command",
 ///              "get_command_output",
 ///              "send_command_input",
-///              "kill_command"
+///              "kill_command",
+///              "list_skills"
 ///            ]
 ///          }
 ///        }
@@ -1258,7 +1260,8 @@ pub mod error {
 ///                          "start_command",
 ///                          "get_command_output",
 ///                          "send_command_input",
-///                          "kill_command"
+///                          "kill_command",
+///                          "list_skills"
 ///                        ]
 ///                      }
 ///                    },
@@ -1294,7 +1297,8 @@ pub mod error {
 ///                "start_command",
 ///                "get_command_output",
 ///                "send_command_input",
-///                "kill_command"
+///                "kill_command",
+///                "list_skills"
 ///              ]
 ///            },
 ///            "type": {
@@ -1794,7 +1798,8 @@ pub mod error {
 ///                "start_command",
 ///                "get_command_output",
 ///                "send_command_input",
-///                "kill_command"
+///                "kill_command",
+///                "list_skills"
 ///              ]
 ///            },
 ///            "type": {
@@ -2031,7 +2036,8 @@ pub struct ExeoraProtocolTypes {
 ///              "start_command",
 ///              "get_command_output",
 ///              "send_command_input",
-///              "kill_command"
+///              "kill_command",
+///              "list_skills"
 ///            ]
 ///          }
 ///        },
@@ -2156,7 +2162,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///    "start_command",
 ///    "get_command_output",
 ///    "send_command_input",
-///    "kill_command"
+///    "kill_command",
+///    "list_skills"
 ///  ]
 ///}
 /// ```
@@ -2206,6 +2213,8 @@ pub enum ExeoraProtocolTypesCommandPolicyToolsItem {
     SendCommandInput,
     #[serde(rename = "kill_command")]
     KillCommand,
+    #[serde(rename = "list_skills")]
+    ListSkills,
 }
 impl ::std::fmt::Display for ExeoraProtocolTypesCommandPolicyToolsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -2226,6 +2235,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesCommandPolicyToolsItem {
             Self::GetCommandOutput => f.write_str("get_command_output"),
             Self::SendCommandInput => f.write_str("send_command_input"),
             Self::KillCommand => f.write_str("kill_command"),
+            Self::ListSkills => f.write_str("list_skills"),
         }
     }
 }
@@ -2249,6 +2259,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesCommandPolicyToolsItem {
             "get_command_output" => Ok(Self::GetCommandOutput),
             "send_command_input" => Ok(Self::SendCommandInput),
             "kill_command" => Ok(Self::KillCommand),
+            "list_skills" => Ok(Self::ListSkills),
             _ => Err("invalid value".into()),
         }
     }
@@ -6757,7 +6768,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageSessio
 ///          "start_command",
 ///          "get_command_output",
 ///          "send_command_input",
-///          "kill_command"
+///          "kill_command",
+///          "list_skills"
 ///        ]
 ///      }
 ///    }
@@ -6895,7 +6907,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesLocal
 ///    "start_command",
 ///    "get_command_output",
 ///    "send_command_input",
-///    "kill_command"
+///    "kill_command",
+///    "list_skills"
 ///  ]
 ///}
 /// ```
@@ -6945,6 +6958,8 @@ pub enum ExeoraProtocolTypesLocalCommandPolicyToolsItem {
     SendCommandInput,
     #[serde(rename = "kill_command")]
     KillCommand,
+    #[serde(rename = "list_skills")]
+    ListSkills,
 }
 impl ::std::fmt::Display for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -6965,6 +6980,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             Self::GetCommandOutput => f.write_str("get_command_output"),
             Self::SendCommandInput => f.write_str("send_command_input"),
             Self::KillCommand => f.write_str("kill_command"),
+            Self::ListSkills => f.write_str("list_skills"),
         }
     }
 }
@@ -6988,6 +7004,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesLocalCommandPolicyToolsItem {
             "get_command_output" => Ok(Self::GetCommandOutput),
             "send_command_input" => Ok(Self::SendCommandInput),
             "kill_command" => Ok(Self::KillCommand),
+            "list_skills" => Ok(Self::ListSkills),
             _ => Err("invalid value".into()),
         }
     }
@@ -7172,7 +7189,8 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                      "start_command",
 ///                      "get_command_output",
 ///                      "send_command_input",
-///                      "kill_command"
+///                      "kill_command",
+///                      "list_skills"
 ///                    ]
 ///                  }
 ///                },
@@ -7208,7 +7226,8 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "start_command",
 ///            "get_command_output",
 ///            "send_command_input",
-///            "kill_command"
+///            "kill_command",
+///            "list_skills"
 ///          ]
 ///        },
 ///        "type": {
@@ -7708,7 +7727,8 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            "start_command",
 ///            "get_command_output",
 ///            "send_command_input",
-///            "kill_command"
+///            "kill_command",
+///            "list_skills"
 ///          ]
 ///        },
 ///        "type": {
@@ -9466,7 +9486,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageData {
 ///              "start_command",
 ///              "get_command_output",
 ///              "send_command_input",
-///              "kill_command"
+///              "kill_command",
+///              "list_skills"
 ///            ]
 ///          }
 ///        },
@@ -9591,7 +9612,8 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
 ///    "start_command",
 ///    "get_command_output",
 ///    "send_command_input",
-///    "kill_command"
+///    "kill_command",
+///    "list_skills"
 ///  ]
 ///}
 /// ```
@@ -9641,6 +9663,8 @@ pub enum ExeoraProtocolTypesRelayMessagePolicyToolsItem {
     SendCommandInput,
     #[serde(rename = "kill_command")]
     KillCommand,
+    #[serde(rename = "list_skills")]
+    ListSkills,
 }
 impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -9661,6 +9685,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             Self::GetCommandOutput => f.write_str("get_command_output"),
             Self::SendCommandInput => f.write_str("send_command_input"),
             Self::KillCommand => f.write_str("kill_command"),
+            Self::ListSkills => f.write_str("list_skills"),
         }
     }
 }
@@ -9684,6 +9709,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessagePolicyToolsItem {
             "get_command_output" => Ok(Self::GetCommandOutput),
             "send_command_input" => Ok(Self::SendCommandInput),
             "kill_command" => Ok(Self::KillCommand),
+            "list_skills" => Ok(Self::ListSkills),
             _ => Err("invalid value".into()),
         }
     }
@@ -9809,7 +9835,8 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageSessionId
 ///    "start_command",
 ///    "get_command_output",
 ///    "send_command_input",
-///    "kill_command"
+///    "kill_command",
+///    "list_skills"
 ///  ]
 ///}
 /// ```
@@ -9859,6 +9886,8 @@ pub enum ExeoraProtocolTypesRelayMessageTool {
     SendCommandInput,
     #[serde(rename = "kill_command")]
     KillCommand,
+    #[serde(rename = "list_skills")]
+    ListSkills,
 }
 impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageTool {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -9879,6 +9908,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageTool {
             Self::GetCommandOutput => f.write_str("get_command_output"),
             Self::SendCommandInput => f.write_str("send_command_input"),
             Self::KillCommand => f.write_str("kill_command"),
+            Self::ListSkills => f.write_str("list_skills"),
         }
     }
 }
@@ -9902,6 +9932,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageTool {
             "get_command_output" => Ok(Self::GetCommandOutput),
             "send_command_input" => Ok(Self::SendCommandInput),
             "kill_command" => Ok(Self::KillCommand),
+            "list_skills" => Ok(Self::ListSkills),
             _ => Err("invalid value".into()),
         }
     }

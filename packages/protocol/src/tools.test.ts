@@ -58,6 +58,7 @@ describe("tool definitions", () => {
       "grep",
       "list_git_worktrees",
       "get_command_output",
+      "list_skills",
     ]);
   });
 

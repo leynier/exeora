@@ -41,10 +41,11 @@ pub enum ToolName {
     GetCommandOutput,
     SendCommandInput,
     KillCommand,
+    ListSkills,
 }
 
 impl ToolName {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::ReadFile,
         Self::ListFiles,
         Self::Grep,
@@ -61,6 +62,7 @@ impl ToolName {
         Self::GetCommandOutput,
         Self::SendCommandInput,
         Self::KillCommand,
+        Self::ListSkills,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -81,6 +83,7 @@ impl ToolName {
             Self::GetCommandOutput => "get_command_output",
             Self::SendCommandInput => "send_command_input",
             Self::KillCommand => "kill_command",
+            Self::ListSkills => "list_skills",
         }
     }
 
@@ -92,6 +95,7 @@ impl ToolName {
                 | Self::Grep
                 | Self::ListGitWorktrees
                 | Self::GetCommandOutput
+                | Self::ListSkills
         )
     }
 

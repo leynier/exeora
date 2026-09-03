@@ -201,6 +201,7 @@ describe("tool registry", () => {
       "get_command_output",
       "send_command_input",
       "kill_command",
+      "list_skills",
     ]);
   });
 

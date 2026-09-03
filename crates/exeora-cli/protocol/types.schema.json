@@ -1024,7 +1024,8 @@
                 "start_command",
                 "get_command_output",
                 "send_command_input",
-                "kill_command"
+                "kill_command",
+                "list_skills"
               ]
             },
             "arguments": {},
@@ -1099,7 +1100,8 @@
                           "start_command",
                           "get_command_output",
                           "send_command_input",
-                          "kill_command"
+                          "kill_command",
+                          "list_skills"
                         ]
                       }
                     },
@@ -1607,7 +1609,8 @@
                 "start_command",
                 "get_command_output",
                 "send_command_input",
-                "kill_command"
+                "kill_command",
+                "list_skills"
               ]
             },
             "prompt": {
@@ -1832,7 +1835,8 @@
                   "start_command",
                   "get_command_output",
                   "send_command_input",
-                  "kill_command"
+                  "kill_command",
+                  "list_skills"
                 ]
               }
             },
@@ -1902,7 +1906,8 @@
               "start_command",
               "get_command_output",
               "send_command_input",
-              "kill_command"
+              "kill_command",
+              "list_skills"
             ]
           }
         }

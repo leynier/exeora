@@ -51,10 +51,12 @@ export function agentPrompt(options: AgentPromptOptions = {}): string {
   return [
     OPENING,
     PROJECT,
+    INSTRUCTIONS_FILES,
     FINDING,
     CHANGING,
     RUNNING,
     POLICY,
+    SKILLS,
     WORK,
     OBJECTIVITY,
     ANSWERING,
@@ -117,10 +119,26 @@ Your tools run on the user's own machine, inside one project directory, over a c
 
 const PROJECT = `## Working in the project
 
-- Every path is relative to the project root: \`src/index.ts\`, never \`/home/you/repo/src/index.ts\`.
-- Absolute paths, and anything climbing out with \`..\`, are resolved and refused with \`PATH_ESCAPE\` before they touch the disk. There is nothing outside the project for you to reach.
-- There is no working directory to change. Commands already run at the project root.
+- Project paths are relative to the project root: \`src/index.ts\`, never \`/home/you/repo/src/index.ts\`.
+- \`read_file\`, \`list_files\`, \`grep\`, and the \`cwd\` of \`run_command\` / \`start_command\` may also use \`~/.agents/AGENTS.md\` and paths under \`~/.agents/skills/\`. Writes (\`edit_file\`, \`write_file\`, \`apply_patch\`) cannot. Anything else absolute, or climbing out with \`..\`, is refused with \`PATH_ESCAPE\`.
+- There is no working directory to change. Commands already run at the project root unless you pass \`cwd\`.
 - Read before you write. You are joining a codebase that exists, and the conventions in front of you outrank the ones you would have picked.`;
+
+const INSTRUCTIONS_FILES = `## Project instructions
+
+- Before any other work (you may call \`get_agent_prompt\` or \`list_skills\` first), \`read_file\` these paths in this order. If a file is not there, continue. If \`~/.agents/AGENTS.md\` is \`PATH_ESCAPE\`, this executor does not offer that extra root: continue, and do not retry it as a project path.
+  1. \`~/.agents/AGENTS.md\`
+  2. \`.agents/AGENTS.md\`
+  3. \`AGENTS.md\`
+- If you are about to read or change files under a subdirectory, also \`read_file\` \`AGENTS.md\` in each directory from the project root down to that subdirectory, after the three above, skipping the root \`AGENTS.md\` already read. Do not walk the rest of the tree looking for every \`AGENTS.md\`.
+- The files concatenate. When they disagree, the later, more specific one wins. Direct user or system instructions still outrank them.`;
+
+const SKILLS = `## Skills
+
+- Call \`list_skills\` once near the start of a session. It lists Agent Skills from \`~/.agents/skills/\` and \`.agents/skills/\` in the project (project wins on a name collision).
+- When a skill's description matches the task, \`read_file\` the \`path\` it returned and follow those instructions before doing the work.
+- Paths inside a skill are relative to the directory that contains \`SKILL.md\`. Use \`read_file\`, \`list_files\` or \`grep\` for bundled files, and \`run_command\` / \`start_command\` with \`cwd\` set to that directory for scripts.
+- An empty list means there are no skills. Do not search the disk for \`SKILL.md\`. If \`list_skills\` is not in your tool list, skip it.`;
 
 const FINDING = `## Finding things
 
@@ -204,7 +222,7 @@ const CAVEAT = `Not every tool named here is necessarily offered on this connect
 
 const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside one project directory. There is no sandbox and no copy: edits land on real files they keep.
 
-- Paths are relative to the project root. Absolute paths and \`..\` are refused with \`PATH_ESCAPE\`.
+- Project paths are relative to the project root. Reads and command \`cwd\` may also use \`~/.agents/AGENTS.md\` and \`~/.agents/skills/\`; writes cannot. Other absolute paths and \`..\` are \`PATH_ESCAPE\`. Read \`AGENTS.md\` first (skip PATH_ESCAPE); call \`list_skills\` once.
 - Search with \`grep\` before reading. \`list_files\` for shape, \`read_file\` last; when a read comes back \`truncated\`, continue with \`offset\`.
 - \`edit_file\` for a file that exists, \`write_file\` only for one you are creating, \`apply_patch\` when several files must change together. \`oldString\` must be unique; when an edit is refused, add surrounding lines rather than retrying it.
 - \`run_command\` for anything that finishes (stdin closed, killed at ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)}). \`start_command\` with \`get_command_output\`, \`send_command_input\` and \`kill_command\` for dev servers, watchers and anything interactive. Follow-up process calls must repeat the same project and worktree. Kill what you start. \`UNKNOWN_PROCESS\` means this call does not own that handle: report it and stop.

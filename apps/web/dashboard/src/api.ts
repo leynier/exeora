@@ -11,7 +11,7 @@ export interface Device {
   createdAt: number;
 }
 
-/** Restated from `@exeora/protocol` so the dashboard bundle does not pull in zod. */
+/** Restated from `@exeora/protocol` so the dashboard bundle skips zod. */
 export interface CommandPolicy {
   mode: "allow_all" | "allow_list" | "read_only";
   allow: string[];
@@ -33,9 +33,9 @@ export const TOOL_NAMES = [
   "get_command_output",
   "send_command_input",
   "kill_command",
+  "list_skills",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
-
 export interface Project {
   id: string;
   slug: string;
