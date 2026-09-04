@@ -5,6 +5,11 @@ use crate::{
 use anyhow::{Context, Result, anyhow, bail};
 use futures_util::future::join_all;
 use http::{HeaderName, HeaderValue, header::AUTHORIZATION};
+#[cfg(windows)]
+use process_wrap::tokio::JobObject;
+#[cfg(unix)]
+use process_wrap::tokio::ProcessGroup;
+use process_wrap::tokio::{CommandWrap, KillOnDrop};
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt,
     model::{
@@ -306,6 +311,16 @@ fn bounded_catalog(tools: Vec<McpToolDescriptor>) -> Vec<McpToolDescriptor> {
     kept
 }
 
+fn wrap_stdio_command(command: Command) -> CommandWrap {
+    let mut wrapped = CommandWrap::from(command);
+    wrapped.wrap(KillOnDrop);
+    #[cfg(unix)]
+    wrapped.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    wrapped.wrap(JobObject);
+    wrapped
+}
+
 async fn connect_server(config: &McpServerConfig, root: &Path) -> Result<McpClient> {
     let info = ClientInfo::new(
         ClientCapabilities::default(),
@@ -325,7 +340,8 @@ async fn connect_server(config: &McpServerConfig, root: &Path) -> Result<McpClie
         for (key, value) in &config.env {
             command.env(key, expand_env(value)?);
         }
-        let transport = TokioChildProcess::new(command).context("Could not start MCP server")?;
+        let transport = TokioChildProcess::new(wrap_stdio_command(command))
+            .context("Could not start MCP server")?;
         return info
             .serve_with_lifecycle(transport, lifecycle())
             .await
@@ -567,6 +583,16 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_server("remote", &remote).is_err());
+    }
+
+    #[test]
+    fn stdio_servers_are_wrapped_for_process_tree_cleanup() {
+        let wrapped = wrap_stdio_command(Command::new("does-not-run"));
+        assert!(wrapped.has_wrap::<KillOnDrop>());
+        #[cfg(unix)]
+        assert!(wrapped.has_wrap::<ProcessGroup>());
+        #[cfg(windows)]
+        assert!(wrapped.has_wrap::<JobObject>());
     }
 
     #[tokio::test]
