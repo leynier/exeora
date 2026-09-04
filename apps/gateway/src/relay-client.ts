@@ -228,6 +228,102 @@ export async function callRelayTool(
   });
 }
 
+export async function callRelayMcpTool(
+  relay: RelayStub,
+  options: {
+    requestId: string;
+    projectId: string;
+    workspaceId?: string | undefined;
+    workspaceSlug?: string | undefined;
+    server: string;
+    tool: string;
+    args: unknown;
+    client?: { id?: string; name?: string; version?: string } | undefined;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<unknown> {
+  if (options.signal?.aborted) throw cancelled();
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + RELAY_TIMEOUT_MS;
+  const socket = await dial(relay, "tool", options.requestId);
+  const remainingMs = expiresAt - Date.now();
+  if (remainingMs <= 0) {
+    close(socket);
+    throw new ExeoraError("TOOL_TIMEOUT", "The relay did not open before the deadline.");
+  }
+  const request: CallerRequest = {
+    type: "mcp.start",
+    requestId: options.requestId,
+    projectId: options.projectId,
+    workspaceId: options.workspaceId,
+    workspaceSlug: options.workspaceSlug,
+    server: options.server,
+    tool: options.tool,
+    arguments: options.args,
+    client: options.client,
+    issuedAt,
+    expiresAt,
+  };
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (answer: { value: unknown } | { error: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+      close(socket);
+      if ("error" in answer) reject(answer.error);
+      else resolve(answer.value);
+    };
+    const cancel = () => {
+      if (settled) return;
+      send(socket, { type: "cancel" });
+      finish({ error: cancelled() });
+    };
+    const abort = () => cancel();
+    const timer = setTimeout(() => {
+      if (settled) return;
+      send(socket, { type: "cancel" });
+      finish({
+        error: new ExeoraError("TOOL_TIMEOUT", "The device did not answer before the deadline."),
+      });
+    }, remainingMs);
+
+    socket.addEventListener("message", (event) => {
+      const response = decodeCallerResponse(String(event.data));
+      if (response?.type === "tool.result") {
+        if (response.result.ok) finish({ value: response.result.value });
+        else
+          finish({
+            error: new ExeoraError(response.result.error.code, response.result.error.message),
+          });
+      } else if (response?.type === "error") {
+        finish({ error: new ExeoraError(response.error.code, response.error.message) });
+      }
+    });
+    socket.addEventListener("close", () => {
+      finish({
+        error: options.signal?.aborted
+          ? cancelled()
+          : new ExeoraError(
+              "LOCAL_EXECUTOR_OFFLINE",
+              "The relay connection closed while the MCP call was in flight.",
+            ),
+      });
+    });
+    socket.addEventListener("error", () =>
+      finish(newError("The relay connection failed while the MCP call was in flight.")),
+    );
+    if (options.signal?.aborted) {
+      cancel();
+      return;
+    }
+    options.signal?.addEventListener("abort", abort, { once: true });
+    send(socket, request);
+  });
+}
+
 export async function requestRelayApproval(
   relay: RelayStub,
   options: {

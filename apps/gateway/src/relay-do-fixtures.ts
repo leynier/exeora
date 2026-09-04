@@ -5,6 +5,8 @@ import {
   decodeRelayMessage,
   type ExecutorCapabilities,
   encodeMessage,
+  type McpToolDescriptor,
+  type McpToolResultMessage,
   PROTOCOL_VERSION,
   type ToolResultMessage,
 } from "@exeora/protocol";
@@ -115,6 +117,13 @@ export async function attachFakeExecutor(
       tool: string;
       args: unknown;
     }) => ToolResultMessage["result"];
+    mcpRespond?: (call: {
+      requestId: string;
+      server: string;
+      tool: string;
+      args: unknown;
+    }) => McpToolResultMessage["result"];
+    mcpCatalog?: McpToolDescriptor[];
     silent?: boolean;
     /** Omitted stands for a CLI built before capabilities existed. */
     capabilities?: ExecutorCapabilities;
@@ -125,6 +134,7 @@ export async function attachFakeExecutor(
   const socket = await dial();
 
   const seen: Array<{ requestId: string; tool: string; args: unknown }> = [];
+  const mcpSeen: Array<{ requestId: string; server: string; tool: string; args: unknown }> = [];
   const workspaceSeen: Array<{
     requestId: string;
     workspaceId?: string;
@@ -148,6 +158,11 @@ export async function attachFakeExecutor(
 
     if (message?.type === "hello.ack") {
       acknowledge(message);
+      if (options.mcpCatalog) {
+        socket.send(
+          encodeMessage({ type: "mcp.catalog", projectId: "prj_test", tools: options.mcpCatalog }),
+        );
+      }
       return;
     }
 
@@ -206,6 +221,30 @@ export async function attachFakeExecutor(
       return;
     }
 
+    if (message?.type === "mcp.call") {
+      const call = {
+        requestId: message.requestId,
+        server: message.server,
+        tool: message.tool,
+        args: message.arguments,
+      };
+      mcpSeen.push(call);
+      if (!options.silent) {
+        socket.send(
+          encodeMessage({
+            type: "mcp.result",
+            requestId: message.requestId,
+            durationMs: 1,
+            result: options.mcpRespond?.(call) ?? {
+              ok: true,
+              value: { content: [{ type: "text", text: "proxied" }] },
+            },
+          }),
+        );
+      }
+      return;
+    }
+
     if (message?.type !== "tool.call") return;
 
     const call = { requestId: message.requestId, tool: message.tool, args: message.arguments };
@@ -234,7 +273,7 @@ export async function attachFakeExecutor(
     }),
   );
 
-  return { socket, seen, workspaceSeen, cancelled, asked, resolved, ack };
+  return { socket, seen, mcpSeen, workspaceSeen, cancelled, asked, resolved, ack };
 }
 
 /** A machine with a terminal someone could be asked at. */

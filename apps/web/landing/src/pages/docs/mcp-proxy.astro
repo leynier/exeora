@@ -1,0 +1,125 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Use other MCP servers through Exeora"
+  description="Configure local or remote MCP servers once and expose their tools through Exeora's MCP endpoint."
+  canonicalPath="/docs/mcp-proxy/"
+>
+  <p>
+    Exeora can act as an MCP client as well as an MCP server. The CLI connects to MCP servers
+    configured on the machine, discovers their tools, and publishes those tools through the same
+    Exeora MCP URL your agent already uses.
+  </p>
+
+  <p>
+    The upstream connection stays on your machine. A stdio MCP process is started there, and a
+    remote Streamable HTTP MCP is called from there. The gateway stores only the tool catalog it
+    needs for discovery and routes calls back to the connected CLI.
+  </p>
+
+  <h2>Project MCP servers</h2>
+
+  <p>
+    Put project-specific servers in <code>exeora.toml</code>. A stdio server starts with the project
+    root as its working directory, or with the selected Git workspace as its working directory when
+    a call names one.
+  </p>
+
+  <pre><code>{`[mcp.servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "\${GITHUB_TOKEN}" }
+
+[mcp.servers.internal]
+url = "https://mcp.example.com/mcp"
+headers = { Authorization = "Bearer \${INTERNAL_MCP_TOKEN}" }`}</code></pre>
+
+  <p>
+    Values may reference environment variables as <code>{"${NAME}"}</code>. Keep secrets in the
+    environment rather than committing them to <code>exeora.toml</code>.
+  </p>
+
+  <h2>User-wide MCP servers</h2>
+
+  <p>
+    Add user-wide servers to Exeora's local <code>config.json</code> under <code>mcpServers</code>.
+    They are available to every project served by that <code>exeora connect</code> process.
+  </p>
+
+  <pre><code>{`{
+  "mcpServers": {
+    "context": {
+      "command": "uvx",
+      "args": ["my-context-server"],
+      "env": { "API_KEY": "\${CONTEXT_API_KEY}" }
+    }
+  }
+}`}</code></pre>
+
+  <table>
+    <thead><tr><th>Platform</th><th>Default config path</th></tr></thead>
+    <tbody>
+      <tr><td>Linux</td><td><code>~/.config/exeora/config.json</code></td></tr>
+      <tr><td>macOS</td><td><code>~/Library/Preferences/exeora/config.json</code></td></tr>
+      <tr><td>Windows</td><td><code>%APPDATA%\exeora\config.json</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>EXEORA_CONFIG_PATH</code> overrides that location. Edit the existing JSON rather than
+    replacing it, because it also contains the machine's other Exeora settings.
+  </p>
+
+  <h2>Override or disable a global server</h2>
+
+  <p>
+    A project entry with the same name replaces the user-wide entry for that project. Set
+    <code>enabled = false</code> to exclude a global server from one project.
+  </p>
+
+  <pre><code>{`[mcp.servers.context]
+enabled = false`}</code></pre>
+
+  <h2>What the agent sees</h2>
+
+  <p>
+    Upstream tools are namespaced as <code>mcp__server__tool</code>. Exeora preserves the upstream
+    input schema and MCP tool result, and adds its optional <code>workspace</code> routing argument.
+    Names that would collide after normalization receive a stable suffix.
+  </p>
+
+  <p>
+    Routing never replaces an upstream argument. If a tool already owns <code>workspace</code>, Exeora
+    exposes its routing selector as <code>__exeora_workspace</code> instead (and chooses another free
+    suffix if that name is also taken). On the account MCP URL the same rule applies to
+    <code>project</code>, normally falling back to <code>__exeora_project</code>. The actual field is
+    always visible in the schema returned by <code>tools/list</code>.
+  </p>
+
+  <p>
+    On the account MCP URL, one tool name may exist in several projects. In that case Exeora adds a
+    required project selector and validates it against the project slug or id that actually exposes
+    that tool.
+  </p>
+
+  <h2>Transport and protocol compatibility</h2>
+
+  <p>
+    Configure either <code>command</code> for stdio or <code>url</code> for Streamable HTTP, never
+    both. HTTP <code>Authorization</code> currently accepts Bearer tokens. Exeora prefers MCP
+    2026-07-28 and automatically falls back to the legacy lifecycle for older MCP servers.
+  </p>
+
+  <p>
+    If one configured MCP server is unavailable, <code>exeora connect</code> keeps serving the rest
+    and prints a warning. Restart <code>exeora connect</code> after changing MCP configuration so the
+    catalog and upstream connections are rebuilt.
+  </p>
+
+  <p>
+    This feature proxies upstream <strong>tools</strong>. Prompts and resources from another MCP
+    server are not re-published by Exeora.
+  </p>
+</Doc>

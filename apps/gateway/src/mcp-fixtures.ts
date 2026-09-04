@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/server";
 import {
   createProjectMcpHandler,
+  type McpProxyOptions,
   type McpToolContext,
   mcpRoute,
   type ToolDispatcher,
@@ -43,6 +44,7 @@ export function post(
     dispatch?: ValueDispatcher;
     /** For the approval flow, where the dispatcher's answer is not a value. */
     rawDispatch?: ToolDispatcher;
+    mcpProxy?: McpProxyOptions;
     project?: string;
     props?: Record<string, string>;
     /** The protocol revision the client claims. Defaults to the 2025 one. */
@@ -84,7 +86,14 @@ export function post(
   // approval tests below assert that a state was minted, never what it says.
   const env = { REQUEST_STATE_SECRET: "test-secret-that-is-at-least-32-bytes-long" };
 
-  return createProjectMcpHandler(project, dispatch, env)(request, {}, ctx);
+  return createProjectMcpHandler(
+    project,
+    dispatch,
+    env,
+    undefined,
+    undefined,
+    options.mcpProxy,
+  )(request, {}, ctx);
 }
 
 /**

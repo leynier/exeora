@@ -176,7 +176,164 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "mcp.catalog"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "tools": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "exposedName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
+                  },
+                  "server": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "inputSchema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "exposedName",
+                  "server",
+                  "name",
+                  "inputSchema"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "projectId",
+            "tools"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "tool.result"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "result": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "ok",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "LOCAL_EXECUTOR_OFFLINE",
+                            "TOOL_TIMEOUT",
+                            "CANCELLED",
+                            "PATH_ESCAPE",
+                            "PATH_NOT_FOUND",
+                            "TOOL_FAILED",
+                            "INVALID_ARGUMENTS",
+                            "UNKNOWN_TOOL",
+                            "UNKNOWN_PROJECT",
+                            "UNKNOWN_WORKSPACE",
+                            "WORKSPACE_UNAVAILABLE",
+                            "UNKNOWN_PROCESS",
+                            "NO_ACTIVE_PROJECT",
+                            "FORBIDDEN",
+                            "APPROVAL_DECLINED",
+                            "APPROVAL_TIMEOUT",
+                            "INTERNAL_ERROR"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "durationMs",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "mcp.result"
             },
             "requestId": {
               "type": "string"
@@ -1181,6 +1338,74 @@
             "type",
             "requestId",
             "projectId",
+            "tool",
+            "arguments",
+            "issuedAt",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "mcp.call"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "workspaceId": {
+              "type": "string"
+            },
+            "workspaceSlug": {
+              "type": "string"
+            },
+            "server": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "arguments": {},
+            "client": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "issuedAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "projectId",
+            "server",
             "tool",
             "arguments",
             "issuedAt",

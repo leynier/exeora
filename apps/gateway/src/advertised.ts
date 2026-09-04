@@ -1,8 +1,9 @@
-import { TOOL_NAMES, type ToolName } from "@exeora/protocol";
+import { type McpToolDescriptor, TOOL_NAMES, type ToolName } from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
 import { accountProjects } from "./client-targets.js";
 import { db, schema } from "./db/client.js";
+import { decodeMcpCatalog } from "./relay-mcp.js";
 import "./env.js";
 
 /**
@@ -71,4 +72,46 @@ export async function advertisedAccountTools(
   const chosen = reachable.length === 1 ? reachable[0] : undefined;
 
   return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
+}
+
+/** Upstream MCP tools most recently announced by this project's executor. */
+export async function advertisedMcpTools(
+  env: Env,
+  userId: string | undefined,
+  projectId: string,
+): Promise<McpToolDescriptor[]> {
+  if (!userId) return [];
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+  if (!project) return [];
+  const raw = await env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).mcpTools(
+    projectId,
+  );
+  return decodeMcpCatalog(raw);
+}
+
+export interface AccountMcpCatalog {
+  projectId: string;
+  project: string;
+  tools: McpToolDescriptor[];
+}
+
+/** Dynamic MCP catalogs for every project an account-level client may reach. */
+export async function advertisedAccountMcpTools(
+  env: Env,
+  userId: string | undefined,
+  clientId: string | undefined,
+): Promise<AccountMcpCatalog[]> {
+  if (!userId || !clientId) return [];
+  const reachable = await accountProjects(env, { userId, clientId });
+  return Promise.all(
+    reachable.map(async (project) => ({
+      projectId: project.id,
+      project: project.slug,
+      tools: await advertisedMcpTools(env, userId, project.id),
+    })),
+  );
 }
