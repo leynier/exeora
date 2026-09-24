@@ -110,7 +110,11 @@ impl TerminalRegistry {
             let (input, keystrokes) = std_mpsc::channel::<Vec<u8>>();
             std::thread::spawn(move || {
                 while let Ok(data) = keystrokes.recv() {
-                    if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
+                    if writer
+                        .write_all(&data)
+                        .and_then(|_| writer.flush())
+                        .is_err()
+                    {
                         break;
                     }
                 }
