@@ -1,4 +1,8 @@
+import { eq } from "drizzle-orm";
+import { AUDIT_INCOMPLETE_AFTER_MS, AUDIT_INCOMPLETE_CODE } from "./audit-stream.js";
+import { db, schema } from "./db/client.js";
 import "./env.js";
+import { limitsFor } from "./plans.js";
 import {
   auditSource,
   epochMsWithin,
@@ -11,15 +15,10 @@ import {
 /**
  * Activity, read from the archive instead of from D1.
  *
- * The alternative was telling people their history is an archive and showing
- * them nothing, which is a worse product than the one this replaces. R2 SQL can
- * answer the question, so it answers it.
- *
- * Two properties of that engine shape everything here. There is no `OFFSET`, so
- * paging is keyset on `(created_at, id)`, which is what the D1 version already
- * did and why the cursor format is unchanged. And every query is billed on
- * compressed bytes scanned with a 10 MB floor, so each one carries the tightest
- * time bounds it can honestly claim.
+ * An intent and its outcome share an id. Resolve them before status filtering
+ * or paging, otherwise a successful tool's intent could appear as an error or
+ * consume a second row. Legacy one-event records use the same read path.
+ * Every query carries the account's retention bound to limit bytes scanned.
  */
 
 export interface WarehouseCall {
@@ -45,6 +44,7 @@ export interface WarehouseCallsPage {
 export async function queryWarehouseCalls(
   env: Pick<
     Env,
+    | "DB"
     | "CLOUDFLARE_ACCOUNT_ID"
     | "AUDIT_R2_BUCKET"
     | "AUDIT_R2_WAREHOUSE"
@@ -60,6 +60,8 @@ export async function queryWarehouseCalls(
     status?: "ok" | "error" | undefined;
     clientId?: string | undefined;
     cursor?: { createdAt: number; id: string } | undefined;
+    /** Derived from the account plan by the gateway, never a query parameter. */
+    retentionDays?: number;
     pageSize: number;
   },
   options: { config?: WarehouseConfig; fetcher?: typeof fetch; now?: Date } = {},
@@ -67,46 +69,75 @@ export async function queryWarehouseCalls(
   const config = options.config ?? warehouseConfig(env);
   const fetcher = options.fetcher ?? fetch;
   const now = options.now ?? new Date();
+  // Resolve centrally so the user Activity route and the admin detail route
+  // enforce the same target account's plan, not the viewing admin's plan.
+  const account =
+    filter.retentionDays === undefined
+      ? await db(env)
+          .select({ plan: schema.users.plan })
+          .from(schema.users)
+          .where(eq(schema.users.id, filter.userId))
+          .get()
+      : undefined;
+  const retentionDays = filter.retentionDays ?? limitsFor(account?.plan).retentionDays;
+  if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+    throw new Error("Audit retention must be a positive number of days");
+  }
 
-  // Every value is escaped, including `userId`. It arrives from a validated
-  // token rather than from the query string, but the difference between the two
-  // is a fact about today's call sites, not about this function.
+  const windowStart = Math.max(
+    Date.parse(`${config.startDay}T00:00:00.000Z`),
+    now.getTime() - retentionDays * 86_400_000,
+  );
+  // An old cursor cannot widen retention or force a billed archive scan.
+  if (filter.cursor && filter.cursor.createdAt < windowStart) {
+    return { items: [], last: undefined };
+  }
+  const from = new Date(windowStart).toISOString();
+  const to = filter.cursor ? new Date(filter.cursor.createdAt).toISOString() : null;
+
+  // Identity filters are invariant between intent and outcome, so push them
+  // down into the scan. Status is not invariant and must be applied afterward.
   const conditions = [`user_id = ${sqlString(filter.userId)}`];
   if (filter.projectId) conditions.push(`project_id = ${sqlString(filter.projectId)}`);
   if (filter.workspaceId) conditions.push(`worktree_id = ${sqlString(filter.workspaceId)}`);
-  if (filter.status) conditions.push(`status = ${sqlString(filter.status)}`);
   if (filter.clientId) conditions.push(`client_id = ${sqlString(filter.clientId)}`);
-
-  // The lower bound is the table's own first day: always true, and the point is
-  // that it is stated, so nothing older than the archive is ever scanned. The
-  // cursor supplies the upper bound and prunes everything newer than the page.
-  const from = `${config.startDay}T00:00:00.000Z`;
-  const to = filter.cursor ? new Date(filter.cursor.createdAt).toISOString() : null;
-
   conditions.push(`created_at >= ${sqlString(from)}`);
+  conditions.push(`created_at <= ${sqlString(now.toISOString())}`);
   if (to) {
-    // `<=` then a tiebreak, rather than `<`: two calls can land in the same
-    // millisecond, and dropping the boundary row would hide it behind the seam.
     conditions.push(
       `(created_at < ${sqlString(to)} OR (created_at = ${sqlString(to)} AND id < ${sqlString(filter.cursor?.id ?? "")}))`,
     );
   }
 
-  // One more than the page, so the caller learns whether a next page exists
-  // without a second, separately billed query.
-  const query = `SELECT id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, created_at
-	FROM ${auditSource(config, true)}
-	WHERE ${conditions.join("\n  AND ")}
-	GROUP BY id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, created_at
-	ORDER BY created_at DESC, id DESC
+  const stale = sqlString(new Date(now.getTime() - AUDIT_INCOMPLETE_AFTER_MS).toISOString());
+  const resolved = [
+    "audit_rank = 1",
+    `(error_code IS NULL OR error_code <> ${sqlString(AUDIT_INCOMPLETE_CODE)} OR created_at <= ${stale})`,
+  ];
+  if (filter.status) resolved.push(`status = ${sqlString(filter.status)}`);
+
+  // ROW_NUMBER also collapses at-least-once delivery duplicates. A final
+  // outcome wins over an incomplete intent even if it arrived out of order.
+  const columns =
+    "id, project_id, worktree_id, worktree_slug, tool, status, duration_ms, error_code, client_id, client_name, created_at";
+  const query = `WITH ranked_calls AS (
+  SELECT ${columns},
+    ROW_NUMBER() OVER (
+      PARTITION BY id
+      ORDER BY CASE WHEN error_code = ${sqlString(AUDIT_INCOMPLETE_CODE)} THEN 0 ELSE 1 END DESC,
+        duration_ms DESC, status DESC, COALESCE(error_code, '') DESC
+    ) AS audit_rank
+  FROM ${auditSource(config, true)}
+  WHERE ${conditions.join("\n    AND ")}
+)
+SELECT ${columns}
+FROM ranked_calls
+WHERE ${resolved.join("\n  AND ")}
+ORDER BY created_at DESC, id DESC
 LIMIT ${filter.pageSize + 1}`;
 
   const rows = await runQuery(config, query, fetcher);
-
-  const windowStart = Date.parse(from);
-  const windowEnd = now.getTime() + 86_400_000;
-  const parsed = rows.map((row) => toCall(row, windowStart, windowEnd));
-
+  const parsed = rows.map((row) => toCall(row, windowStart, now.getTime() + 1));
   const items = parsed.slice(0, filter.pageSize);
   return { items, last: parsed.length > filter.pageSize ? items.at(-1) : undefined };
 }
@@ -125,7 +156,10 @@ function toCall(row: Record<string, unknown>, from: number, to: number): Warehou
     typeof tool !== "string" ||
     (status !== "ok" && status !== "error") ||
     !Number.isFinite(durationMs) ||
-    createdAt === null
+    durationMs < 0 ||
+    createdAt === null ||
+    createdAt < from ||
+    createdAt >= to
   ) {
     throw new Error("R2 SQL returned an invalid tool call row");
   }

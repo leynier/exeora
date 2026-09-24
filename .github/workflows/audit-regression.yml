@@ -1,0 +1,47 @@
+name: Audit regressions
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/audit-regression.yml"
+      - "apps/gateway/**"
+      - "packages/**"
+      - "apps/web/**"
+      - "scripts/audit-maintenance/**"
+      - "e2e/**"
+      - "playwright.config.ts"
+      - "package.json"
+      - "bun.lock"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-regressions-${{ github.ref }}
+  cancel-in-progress: true
+
+# Lint, typecheck and the workerd suites already run in ci.yml's `check` job.
+jobs:
+  maintenance-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Test maintenance without production credentials
+        run: uv run -p 3.12 python -m unittest discover -s scripts/audit-maintenance -p 'test_*.py'
+
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Exercise the existing browser suite
+        run: bun run test:e2e

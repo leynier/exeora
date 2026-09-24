@@ -82,9 +82,9 @@ Matching addresses are promoted when they register; everyone else stays ordinary
 
 ## 6. Provision the required audit archive
 
-Tool execution has a durable producer outbox in D1 and a long-lived Iceberg archive in R2. The archive is not an optional analytics add-on: Activity, usage limits, retention and account erasure depend on it.
+Tool execution first persists an intent to the Pipelines stream, with a durable D1 outbox as fallback, and uses an Iceberg archive in R2 for queryable history. The archive is not an optional analytics add-on: Activity, usage limits, retention and account erasure depend on it.
 
-Follow [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md) to create the `exeora_audit` Pipeline, its `exeora-audit` bucket and `default.tool_calls` table, then copy the generated stream binding and archive coordinates into `apps/gateway/wrangler.jsonc`.
+Follow [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md) to create the Pipeline, its bucket and the matching versioned table, then copy the generated stream binding and archive coordinates into `apps/gateway/wrangler.jsonc`.
 
 Create separate read-only and read-write R2 Data Catalog tokens. Only the read-only token reaches the Worker:
 
@@ -103,7 +103,7 @@ Use the same random `AUDIT_MAINTENANCE_SECRET` in the Worker and maintenance run
 | `GATEWAY_URL` | Your public gateway origin |
 | `AUDIT_MAINTENANCE_SECRET` | The same random value set on the Worker |
 
-If the outbox cannot be persisted, a tool is not executed. A transient Pipeline failure stays queued for retry. Archive erasure is claimed with leases and needs two successful catalog passes at least 24 hours apart; retention pauses automatically unless the usage rollup has consumed every complete day through yesterday.
+If neither the stream nor the D1 fallback acknowledges the intent, a tool is not executed. A failed outcome send stays queued for retry. Archive erasure is claimed with leases and needs two successful catalog passes at least 24 hours apart; retention pauses automatically unless the usage rollup has consumed every complete day through yesterday.
 
 ## 7. Migrate and deploy
 
@@ -163,6 +163,8 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Audit storage
 
-The transient D1 outbox is the fail-closed delivery boundary; Iceberg is the durable, queryable history. Accepted outbox rows are retained for seven days and then removed, while warehouse reads deduplicate the stable id used by retries. Setup is in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md), and what the contract does and does not promise is in [`audit-architecture.md`](audit-architecture.md).
+Confirmed stream ingestion is the normal fail-closed boundary; D1 is the fallback outbox. Accepted outbox rows are retained for 24 hours and then removed. Undelivered rows remain available for recovery. Iceberg readers resolve the intent and final outcome into one execution and deduplicate retries by the same stable id. Setup is in [`apps/gateway/pipelines/readme.md`](../apps/gateway/pipelines/readme.md), and the full contract is in [`audit-architecture.md`](audit-architecture.md).
+
+Free Activity shows a rolling 24 hours, while physical cleanup is asynchronous. Catalog maintenance, snapshots, stream buffering and undelivered retries have separate lifetimes; a one-day visibility window is not a guarantee that every stored copy disappears within one day.
 
 Erasing an account from that archive needs a job that cannot run inside a Worker, because R2 SQL cannot delete. A self-hosted deployment therefore needs the included workflow or an equivalent recurring runner; without it, deletion debts and retention remain visible but undrained.

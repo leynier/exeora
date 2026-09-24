@@ -32,7 +32,7 @@ function row(overrides: Record<string, unknown> = {}) {
     error_code: null,
     client_id: "client_claude",
     client_name: "Claude",
-    created_at: "2026-02-01T10:00:00.000Z",
+    created_at: "2026-03-01T10:00:00.000Z",
     ...overrides,
   };
 }
@@ -51,7 +51,15 @@ async function page(
   filter: Parameters<typeof queryWarehouseCalls>[1],
 ) {
   const { fetcher, queries } = sink(rows);
-  const result = await queryWarehouseCalls(env, filter, { config, fetcher, now: NOW });
+  const result = await queryWarehouseCalls(
+    env,
+    { retentionDays: 1, ...filter },
+    {
+      config,
+      fetcher,
+      now: NOW,
+    },
+  );
   return { ...result, query: queries[0] ?? "" };
 }
 
@@ -71,20 +79,19 @@ describe("reading a page", () => {
         errorCode: null,
         clientId: "client_claude",
         clientName: "Claude",
-        createdAt: Date.parse("2026-02-01T10:00:00.000Z"),
+        createdAt: Date.parse("2026-03-01T10:00:00.000Z"),
       },
     ]);
   });
 
   it("reads a numeric timestamp, whatever unit the archive used", async () => {
-    // Iceberg stores timestamps as int64 and the unit is not in the response.
-    const micros = Date.parse("2026-02-01T10:00:00.000Z") * 1_000;
+    const micros = Date.parse("2026-03-01T10:00:00.000Z") * 1_000;
     const { items } = await page([row({ created_at: micros })], {
       userId: "usr_1",
       pageSize: 50,
     });
 
-    expect(items[0]?.createdAt).toBe(Date.parse("2026-02-01T10:00:00.000Z"));
+    expect(items[0]?.createdAt).toBe(Date.parse("2026-03-01T10:00:00.000Z"));
   });
 
   it("scopes every query to the caller", async () => {
@@ -102,12 +109,18 @@ describe("reading a page", () => {
     expect(query).toContain("project_id = 'prj'' OR ''1''=''1'");
   });
 
-  it("bounds the scan at the archive's first day", async () => {
+  it("bounds a free account scan to a rolling day, not the entire archive", async () => {
     const { query } = await page([], { userId: "usr_1", pageSize: 50 });
+    expect(query).toContain("created_at >= '2026-02-28T12:00:00.000Z'");
+    expect(query).toContain("created_at <= '2026-03-01T12:00:00.000Z'");
+  });
+
+  it("never scans before the archive's first day", async () => {
+    const { query } = await page([], { userId: "usr_1", pageSize: 50, retentionDays: 365 });
     expect(query).toContain("created_at >= '2026-01-01T00:00:00.000Z'");
   });
 
-  it("passes the filters through", async () => {
+  it("passes identity filters through, but applies status after resolving intent and outcome", async () => {
     const { query } = await page([], {
       userId: "usr_1",
       projectId: "prj_1",
@@ -119,15 +132,14 @@ describe("reading a page", () => {
 
     expect(query).toContain("project_id = 'prj_1'");
     expect(query).toContain("worktree_id = 'wsp_1'");
-    expect(query).toContain("status = 'error'");
     expect(query).toContain("client_id = 'client_x'");
+    expect(query.indexOf("status = 'error'")).toBeGreaterThan(query.indexOf("FROM ranked_calls"));
   });
 });
 
 describe("paging", () => {
   it("reports no next page when the archive returns less than a full one", async () => {
     const { items, last } = await page([row()], { userId: "usr_1", pageSize: 2 });
-
     expect(items).toHaveLength(1);
     expect(last).toBeUndefined();
   });
@@ -135,27 +147,33 @@ describe("paging", () => {
   it("asks for one more than the page, and hands back the row to page from", async () => {
     const rows = [row({ id: "call_3" }), row({ id: "call_2" }), row({ id: "call_1" })];
     const { items, last, query } = await page(rows, { userId: "usr_1", pageSize: 2 });
-
     expect(query).toContain("LIMIT 3");
     expect(items.map((call) => call.id)).toEqual(["call_3", "call_2"]);
-    // The last row of the page, not the extra row that was only a probe.
     expect(last?.id).toBe("call_2");
   });
 
   it("pages by keyset rather than by offset, breaking ties on id", async () => {
-    // Two calls can land in the same millisecond, and R2 SQL has no OFFSET,
-    // so the tiebreak is what keeps the boundary row from being skipped.
-    const at = Date.parse("2026-02-01T10:00:00.000Z");
+    const at = Date.parse("2026-03-01T10:00:00.000Z");
     const { query } = await page([], {
       userId: "usr_1",
       cursor: { createdAt: at, id: "call_2" },
       pageSize: 50,
     });
-
     expect(query).not.toContain("OFFSET");
-    expect(query).toContain("created_at < '2026-02-01T10:00:00.000Z'");
-    expect(query).toContain("created_at = '2026-02-01T10:00:00.000Z' AND id < 'call_2'");
+    expect(query).toContain("created_at < '2026-03-01T10:00:00.000Z'");
+    expect(query).toContain("created_at = '2026-03-01T10:00:00.000Z' AND id < 'call_2'");
     expect(query).toContain("ORDER BY created_at DESC, id DESC");
+  });
+
+  it("returns an empty page without a billed scan for an expired cursor", async () => {
+    const { items, last, query } = await page([], {
+      userId: "usr_1",
+      cursor: { createdAt: Date.parse("2026-02-01T10:00:00.000Z"), id: "call_2" },
+      pageSize: 50,
+    });
+    expect(items).toEqual([]);
+    expect(last).toBeUndefined();
+    expect(query).toBe("");
   });
 });
 
@@ -169,6 +187,12 @@ describe("a row the archive should never have returned", () => {
   it("refuses a status outside the two it can be", async () => {
     await expect(
       page([row({ status: "maybe" })], { userId: "usr_1", pageSize: 50 }),
+    ).rejects.toThrow("invalid tool call row");
+  });
+
+  it("refuses ISO timestamps outside the account's retention window", async () => {
+    await expect(
+      page([row({ created_at: "2026-02-01T10:00:00.000Z" })], { userId: "usr_1", pageSize: 50 }),
     ).rejects.toThrow("invalid tool call row");
   });
 });
