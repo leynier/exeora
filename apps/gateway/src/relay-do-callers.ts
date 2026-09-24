@@ -250,3 +250,39 @@ export function resolveTerminalApproval(ctx: DurableObjectState, id: string): vo
     // Best effort: the prompt goes away on its own deadline regardless.
   }
 }
+
+/**
+ * Settles the caller of a result frame that did not decode.
+ *
+ * Dropping it, as any other malformed frame is dropped, left the caller waiting
+ * out the whole relay timeout for an answer that had already arrived. The CLI
+ * and the gateway ship separately, so a result can be valid to one and not the
+ * other; the caller hears that at once rather than minutes later.
+ */
+export function failUnreadableResult(ctx: DurableObjectState, raw: string): void {
+  let frame: unknown;
+  try {
+    frame = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (typeof frame !== "object" || frame === null) return;
+  const { type, requestId } = frame as { type?: unknown; requestId?: unknown };
+  if (typeof requestId !== "string") return;
+  const role =
+    type === "workspace.result"
+      ? "workspace"
+      : type === "tool.result" || type === "mcp.result"
+        ? "tool"
+        : null;
+  if (!role) return;
+  const caller = callerSocket(ctx, role, requestId);
+  if (!caller) return;
+  settleCaller(caller, {
+    type: "error",
+    error: {
+      code: "INTERNAL_ERROR",
+      message: "The Exeora CLI sent a result this gateway could not read. Update the CLI.",
+    },
+  });
+}

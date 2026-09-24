@@ -27,6 +27,7 @@ import {
   type ExecutorSocketState,
   executorSocket,
   failCallers,
+  failUnreadableResult,
   hasOtherExecutor,
   offline,
   replaceOtherExecutors,
@@ -140,7 +141,11 @@ export class DeviceRelay extends DurableObject<Env> {
     }
 
     const message = decodeExecutorMessage(raw);
-    if (!message) return; // malformed frame: drop it, keep the connection
+    if (!message) {
+      // Malformed: keep the connection, but a result still answers its caller.
+      failUnreadableResult(this.ctx, raw);
+      return;
+    }
 
     switch (message.type) {
       case "hello": {

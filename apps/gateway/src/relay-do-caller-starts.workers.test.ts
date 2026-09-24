@@ -97,6 +97,69 @@ describe("workspace relay", () => {
     expect(hasOtherExecutor(legacyCtx, closing)).toBe(true);
   });
 
+  const statusFrame = (requestId: string, files: unknown[]) => ({
+    type: "workspace.result",
+    requestId,
+    durationMs: 1,
+    result: {
+      ok: true,
+      value: {
+        kind: "status",
+        repository: true,
+        head: "main",
+        oid: "abc123",
+        upstream: null,
+        ahead: 0,
+        behind: 0,
+        operation: null,
+        files,
+        branches: [],
+        remotes: [],
+        gitWorkspaces: [],
+      },
+    },
+  });
+
+  it("reads the null original path every CLI up to 0.16.0 sends for a dirty tree", async () => {
+    await attachFakeExecutor({
+      capabilities: WORKSPACE_CAPABILITIES,
+      workspaceFrame: (requestId) =>
+        statusFrame(requestId, [
+          {
+            path: "notes.txt",
+            originalPath: null,
+            index: "?",
+            worktree: "?",
+            kind: "untracked",
+            submodule: false,
+          },
+        ]),
+    });
+    const value = await callRelayWorkspace(relay(), {
+      requestId: "req_dirty",
+      projectId: "prj_test",
+      action: { action: "status" },
+    });
+
+    expect(value).toMatchObject({ kind: "status", files: [{ path: "notes.txt" }] });
+  });
+
+  it("answers at once when the CLI sends a result the gateway cannot read", async () => {
+    await attachFakeExecutor({
+      capabilities: WORKSPACE_CAPABILITIES,
+      workspaceFrame: (requestId) => statusFrame(requestId, [{ path: 42 }]),
+    });
+    const error = await failureOf(() =>
+      callRelayWorkspace(relay(), {
+        requestId: "req_unreadable",
+        projectId: "prj_test",
+        action: { action: "status" },
+      }),
+    );
+
+    expect(error.code).toBe("INTERNAL_ERROR");
+  });
+
   it("requires a current CLI before dispatching source-control work", async () => {
     await attachFakeExecutor({ capabilities: BASELINE_CAPABILITIES });
     const error = await failureOf(() =>

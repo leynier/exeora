@@ -68,7 +68,7 @@ export interface WorkspaceCapabilities {
 
 export interface GitFileState {
   path: string;
-  originalPath?: string;
+  originalPath?: string | null;
   index: string;
   /** Git porcelain XY working-tree letter, not an Exeora workspace id. */
   worktree: string;
