@@ -46,7 +46,9 @@ export function Settings() {
             </Row>
             <Row>
               <p className="text-body-md text-foreground-muted">Audit retention</p>
-              <p className="text-title-md tabular-nums">{user.limits.retentionDays} days</p>
+              <p className="text-title-md tabular-nums">
+                {user.limits.retentionDays} {user.limits.retentionDays === 1 ? "day" : "days"}
+              </p>
             </Row>
             <Row>
               <p className="text-body-md text-foreground-muted">Tool calls this month</p>

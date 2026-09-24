@@ -6,6 +6,13 @@ import { api } from "../api.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { useToast } from "./toast.js";
 
+// Restated from `@exeora/protocol` so the bundle skips zod. The relay answers
+// this exact frame itself, without waking, and the traffic keeps idle proxies
+// from dropping a quiet shell.
+const HEARTBEAT_REQUEST = '{"type":"heartbeat"}';
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const HEARTBEAT_TIMEOUT_MS = 90_000;
+
 export function WebTerminal({
   projectId,
   workspace,
@@ -72,7 +79,8 @@ export function WebTerminal({
     try {
       const term = new Terminal({
         cursorBlink: true,
-        convertEol: true,
+        // A PTY already sends CRLF; converting bare LFs breaks full-screen TUIs.
+        convertEol: false,
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
         fontSize: 13,
         lineHeight: 1.28,
@@ -111,11 +119,31 @@ export function WebTerminal({
       target.searchParams.set("rows", String(term.rows));
       const ws = new WebSocket(target);
       socket.current = ws;
+      let ended = false;
+      let lastAck = Date.now();
+      const heartbeat = window.setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (Date.now() - lastAck > HEARTBEAT_TIMEOUT_MS) {
+          ws.close(4001, "heartbeat timeout");
+          return;
+        }
+        ws.send(HEARTBEAT_REQUEST);
+      }, HEARTBEAT_INTERVAL_MS);
+      ws.addEventListener("close", () => window.clearInterval(heartbeat), { once: true });
 
       ws.addEventListener("message", (event) => {
         if (attempt.current !== opening) return;
         const message = JSON.parse(String(event.data)) as Record<string, unknown>;
-        if (message.type === "terminal.opened" && typeof message.sessionId === "string") {
+        if (message.type === "heartbeat.ack") {
+          lastAck = Date.now();
+        } else if (message.type === "terminal.detached" && typeof message.message === "string") {
+          // Another window took this shell over. It keeps running there, so
+          // this viewer stops without closing the session.
+          ended = true;
+          term.write(`\r\n\x1b[90m${message.message}\x1b[0m\r\n`);
+          setConnected(false);
+          setConnecting(false);
+        } else if (message.type === "terminal.opened" && typeof message.sessionId === "string") {
           sessionId.current = message.sessionId;
           setConnected(true);
           setConnecting(false);
@@ -123,10 +151,12 @@ export function WebTerminal({
         } else if (message.type === "terminal.output" && typeof message.data === "string") {
           term.write(base64Bytes(message.data));
         } else if (message.type === "terminal.exit") {
+          ended = true;
           term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
           setConnected(false);
           onExitRef.current?.();
         } else if (message.type === "terminal.error" && typeof message.message === "string") {
+          ended = true;
           term.write(`\r\n\x1b[31m${message.message}\x1b[0m\r\n`);
           toast(message.message, "error");
           setConnecting(false);
@@ -135,6 +165,9 @@ export function WebTerminal({
       });
       ws.addEventListener("close", () => {
         if (attempt.current !== opening) return;
+        if (!ended && sessionId.current) {
+          term.write("\r\n\x1b[90m[connection lost; reopen the terminal to reattach]\x1b[0m\r\n");
+        }
         setConnected(false);
         setConnecting(false);
       });

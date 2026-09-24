@@ -1,4 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
+import {
+  AUDIT_INCOMPLETE_AFTER_MS,
+  AUDIT_INCOMPLETE_CODE,
+  finishStreamIntent,
+  tryStreamIntent,
+} from "./audit-stream.js";
 import type { CallerIdentity } from "./clients.js";
 import { observePipeline } from "./cost-metrics.js";
 import { db, schema } from "./db/client.js";
@@ -41,6 +47,8 @@ export type AuditEvent =
 export interface AuditHandle {
   id: string;
   startedAt: number;
+  /** Present only after the stream has durably acknowledged the intent. */
+  intent?: AuditEvent;
 }
 
 type AuditEnv = Pick<Env, "DB"> & {
@@ -50,18 +58,18 @@ type AuditEnv = Pick<Env, "DB"> & {
 
 const DELIVERY_BATCH = 25;
 const LEASE_MS = 60_000;
-const STALE_STARTED_MS = 15 * 60_000;
-const ACCEPTED_GRACE_MS = 7 * 24 * 60 * 60_000;
+const STALE_STARTED_MS = AUDIT_INCOMPLETE_AFTER_MS;
+const ACCEPTED_GRACE_MS = 24 * 60 * 60_000;
 
 /**
- * Persists the audit intent before a tool is allowed to execute.
+ * Persists an argument-free intent before a tool is allowed to execute.
  *
- * This write is the fail-closed boundary. If it fails, dispatch returns without
- * touching the user's machine. Everything after it is recoverable by the
- * outbox sweeper, including a Worker dying after the command itself finished.
+ * Prefer confirmed stream ingestion, avoiding D1 on the normal path. If the
+ * stream is unavailable, the existing durable outbox is the fallback. Failure
+ * of both stores is still fail-closed: dispatch never touches the executor.
  */
 export async function beginAudit(
-  env: Pick<Env, "DB">,
+  env: AuditEnv,
   entry: {
     userId: string;
     projectId: string;
@@ -75,6 +83,16 @@ export async function beginAudit(
   const id = newId("call");
   const startedAt = Date.now();
   const clientName = entry.caller.clientName ?? entry.caller.mcp?.name;
+  const intent: AuditEvent = {
+    ...auditEvent(
+      id,
+      { ...entry, status: "error", durationMs: 0, errorCode: AUDIT_INCOMPLETE_CODE },
+      auditSchemaVersion(env),
+    ),
+    created_at: new Date(startedAt).toISOString(),
+  };
+
+  if (await tryStreamIntent(env, intent)) return { id, startedAt, intent };
 
   await db(env)
     .insert(schema.auditOutbox)
@@ -96,12 +114,17 @@ export async function beginAudit(
   return { id, startedAt };
 }
 
-/** Makes a started row ready for delivery without changing the command result. */
+/** Completes the durable intent without changing the command result. */
 export async function finishAudit(
   env: AuditEnv,
   handle: AuditHandle,
   outcome: { status: "ok" | "error"; errorCode?: string },
 ): Promise<void> {
+  if (handle.intent) {
+    await finishStreamIntent(env, handle.intent, handle.startedAt, outcome);
+    return;
+  }
+
   const now = Date.now();
   await db(env)
     .update(schema.auditOutbox)

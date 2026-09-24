@@ -120,6 +120,20 @@ export function SourceControlBranchPicker({
     }
     void onRun({ action: "branch_switch", name }).then(close);
   };
+  // `switch --track -c` refuses a name that already exists, which is the usual
+  // case for origin/main. An existing local branch is opened instead.
+  const checkoutRemote = (remoteBranch: string) => {
+    const name = localNameForRemote(remoteBranch);
+    if (current?.name === name) {
+      close();
+      return;
+    }
+    if (local.some((branch) => branch.name === name)) {
+      openBranch(name);
+      return;
+    }
+    void onRun({ action: "branch_track", remoteBranch, name }).then(close);
+  };
   const create = () =>
     void onRun({
       action: "branch_create",
@@ -223,13 +237,7 @@ export function SourceControlBranchPicker({
                   key={branch.name}
                   branch={branch}
                   hint="Checkout"
-                  onPick={() =>
-                    void onRun({
-                      action: "branch_track",
-                      remoteBranch: branch.name,
-                      name: localNameForRemote(branch.name),
-                    }).then(close)
-                  }
+                  onPick={() => checkoutRemote(branch.name)}
                 />
               ))}
             </BranchGroup>

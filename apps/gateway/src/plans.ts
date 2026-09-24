@@ -7,7 +7,7 @@
  *
  * `null` on a numeric limit means unlimited. Retention is always a number of
  * days: an audit trail that never ends is a storage problem nobody has asked
- * for, and the nightly prune needs a cutoff.
+ * for, and the maintenance job needs a cutoff.
  */
 
 export const PLAN_IDS = ["free", "pro"] as const;
@@ -19,7 +19,7 @@ export interface PlanLimits {
   maxDevices: number | null;
   /** Projects owned by the account. Null means no cap. */
   maxProjects: number | null;
-  /** How long an audit row is kept, in days. */
+  /** How long an audit row remains visible, in rolling 24-hour days. */
   retentionDays: number;
 }
 
@@ -28,16 +28,15 @@ export interface PlanDefinition extends PlanLimits {
 }
 
 /**
- * Generous free defaults on purpose: they reproduce what the product did
- * before plans existed for every realistic account, while staying finite so
- * the enforcement path is real and testable. Tighten them when billing lands.
+ * Free keeps one day of detailed Activity; durable daily usage totals outlive
+ * that window. Device and project caps remain unchanged.
  */
 export const PLANS: Record<PlanId, PlanDefinition> = {
   free: {
     id: "free",
     maxDevices: 10,
     maxProjects: 25,
-    retentionDays: 90,
+    retentionDays: 1,
   },
   pro: {
     id: "pro",
@@ -58,7 +57,7 @@ export function limitsFor(plan: PlanId | string | null | undefined): PlanLimits 
   return { maxDevices, maxProjects, retentionDays };
 }
 
-/** Every distinct retention window, for the nightly prune to walk. */
+/** Every distinct retention window, for archive maintenance to walk. */
 export function retentionTiers(): Array<{ plan: PlanId; retentionDays: number }> {
   return PLAN_IDS.map((plan) => ({ plan, retentionDays: PLANS[plan].retentionDays }));
 }

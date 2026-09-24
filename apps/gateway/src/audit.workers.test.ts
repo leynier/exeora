@@ -72,18 +72,22 @@ describe("audit pipeline event", () => {
     expect(send).toHaveBeenCalledWith([event]);
   });
 
-  it("persists before delivery and acknowledges the same stable event id", async () => {
+  it("persists before fallback delivery and acknowledges the same stable event id", async () => {
     const send = sender();
     const auditEnv = { DB: env.DB, AUDIT_STREAM: { send } };
-    const handle = await beginAudit(auditEnv, {
-      userId: "usr_1",
-      projectId: "prj_1",
-      workspaceId: "wkt_1",
-      workspaceSlug: "feature-one",
-      tool: "read_file",
-      endpoint: "project",
-      caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
-    });
+    // No stream at begin: exercise recovery of a D1-backed intent.
+    const handle = await beginAudit(
+      { DB: env.DB },
+      {
+        userId: "usr_1",
+        projectId: "prj_1",
+        workspaceId: "wkt_1",
+        workspaceSlug: "feature-one",
+        tool: "read_file",
+        endpoint: "project",
+        caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
+      },
+    );
 
     const started = await db(env)
       .select()
@@ -117,15 +121,18 @@ describe("audit pipeline event", () => {
       AUDIT_STREAM: { send },
       AUDIT_SCHEMA_VERSION: "2",
     };
-    const handle = await beginAudit(auditEnv, {
-      userId: "usr_1",
-      projectId: "prj_1",
-      workspaceId: "wkt_1",
-      workspaceSlug: "feature-one",
-      tool: "read_file",
-      endpoint: "dashboard",
-      caller: { clientId: undefined, clientName: undefined, mcp: undefined },
-    });
+    const handle = await beginAudit(
+      { DB: env.DB },
+      {
+        userId: "usr_1",
+        projectId: "prj_1",
+        workspaceId: "wkt_1",
+        workspaceSlug: "feature-one",
+        tool: "read_file",
+        endpoint: "dashboard",
+        caller: { clientId: undefined, clientName: undefined, mcp: undefined },
+      },
+    );
 
     await finishAudit(auditEnv, handle, { status: "ok" });
 

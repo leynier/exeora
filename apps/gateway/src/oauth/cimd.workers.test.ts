@@ -26,7 +26,7 @@ import { NEGOTIABLE_CLIENT, REDIRECT_URI, UNUSABLE_CLIENT } from "./cimd-fixture
  * provider before the auth method is reached, so a request without it would
  * pass or fail for the wrong reason.
  */
-function ask(clientId: string): Promise<Response> {
+function ask(clientId: string, configured = true): Promise<Response> {
   const url = new URL("https://exeora.dev/oauth/authorize");
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
@@ -37,7 +37,16 @@ function ask(clientId: string): Promise<Response> {
   url.searchParams.set("resource", "https://exeora.dev/mcp");
   url.searchParams.set("state", "state-1");
 
-  return worker.fetch(new Request(url), env as unknown as Env, createExecutionContext());
+  // The test stops at the sign-in page; no upstream login is performed. Do not
+  // depend on an untracked .dev.vars file to configure an identity provider.
+  const bindings = {
+    ...env,
+    GITHUB_CLIENT_ID: configured ? "cimd-test-client" : "",
+    GITHUB_CLIENT_SECRET: configured ? "cimd-test-secret" : "",
+    GOOGLE_CLIENT_ID: "",
+    GOOGLE_CLIENT_SECRET: "",
+  } as unknown as Env;
+  return worker.fetch(new Request(url), bindings, createExecutionContext());
 }
 
 const REFUSAL = "accepted token endpoint authentication method";
@@ -57,5 +66,12 @@ describe("a client identified by a metadata document", () => {
 
     expect(response.status).toBe(400);
     expect(await response.text()).toContain(REFUSAL);
+  });
+
+  it("does not offer sign-in without a configured identity provider", async () => {
+    const response = await ask(NEGOTIABLE_CLIENT, false);
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("Sign in to continue");
   });
 });

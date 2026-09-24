@@ -14,7 +14,7 @@ import Legal from "../layouts/Legal.astro";
   title="Privacy"
   description="What Exeora stores, what it deliberately does not, and how to have it removed."
   canonicalPath="/privacy/"
-  updated="8 August 2026"
+  updated="23 September 2026"
 >
   <p>
     Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico, who is the data
@@ -61,9 +61,7 @@ import Legal from "../layouts/Legal.astro";
       each called itself, when it was authorized and when it was last used.
     </li>
     <li>
-      <strong>The activity log.</strong> One record per tool call: which tool, whether it succeeded,
-      how long it took, an error code when it failed, and which client asked. Never the arguments,
-      never the output. These records are deleted after 90 days.
+      <strong>The activity log.</strong> Which tool was attempted, whether its outcome is known, whether it succeeded, how long it took, an error code when it failed, and which client asked. Never the arguments, never the output. An intent and its outcome are stored separately and shown as one execution. Free Activity shows the last 24 hours; physical cleanup is described below.
     </li>
   </ul>
 
@@ -97,13 +95,10 @@ import Legal from "../layouts/Legal.astro";
   </p>
   <ul>
     <li>
-      <strong>Access.</strong> Everything stored about you is shown in the dashboard, on the
-      machines, projects, clients and activity screens.
+      <strong>Access.</strong> Your account data and recent activity are shown in the dashboard, on the machines, projects, clients and activity screens. Contact us for other retained data.
     </li>
     <li>
-      <strong>Deletion.</strong> Deleting your account from the dashboard removes all of it: your
-      identity, machines, projects, authorizations and activity records. It is immediate and cannot
-      be undone.
+      <strong>Deletion.</strong> Deleting your account removes its active identity, machines, projects and authorizations, and queues erasure of its audit archive. Archive erasure is asynchronous and includes a later pass to catch events already in flight. Account deletion cannot be undone.
     </li>
   </ul>
   <p>
@@ -114,8 +109,10 @@ import Legal from "../layouts/Legal.astro";
 
   <h2>How long it is kept</h2>
   <p>
-    Activity records are deleted after 90 days. Everything else is kept while your account exists and
-    is removed when you delete it.
+    Free Activity exposes a rolling 24 hours; accounts on a longer plan use that plan's window. A recurring maintenance job removes expired rows through the archive catalog once usage accounting has consumed them. Physical copies can remain longer in stream buffers, recovery records and snapshots, and while maintenance is delayed. The visibility window is not a guarantee that all copies are physically deleted within 24 hours.
+  </p>
+  <p>
+    Daily usage totals outlive detailed activity so the dashboard can report monthly usage. Account metadata and those totals are kept while the account exists; archive erasure is requested when the account is deleted.
   </p>
 
   <h2>Cookies</h2>

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { AUDIT_INCOMPLETE_CODE } from "./audit-stream.js";
 import { observeD1 } from "./cost-metrics.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
@@ -201,10 +202,15 @@ async function queryDayPage(
 ): Promise<DayCount[]> {
   const end = addUtcDays(day, 1);
   const afterClause = afterUserId ? `\n  AND user_id > ${sqlString(afterUserId)}` : "";
+  // An intent is evidence of an attempt, not a failed command. Incomplete
+  // outcomes never increment the monotonic error counter: a delayed success
+  // must not leave behind an error that a later replay cannot subtract.
   const query = `SELECT
   user_id,
   COUNT(DISTINCT id) AS tool_calls,
-  COUNT(DISTINCT CASE WHEN status = 'error' THEN id END) AS errors,
+  COUNT(DISTINCT CASE WHEN status = 'error'
+    AND (error_code IS NULL OR error_code <> ${sqlString(AUDIT_INCOMPLETE_CODE)})
+    THEN id END) AS errors,
   MAX(created_at) AS last_activity_at
 FROM ${auditSource(config, false)}
 WHERE created_at >= '${day}T00:00:00.000Z'

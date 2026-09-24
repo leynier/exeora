@@ -38,6 +38,7 @@ import {
 } from "./relay-do-callers.js";
 import {
   acceptTerminalSocket,
+  closeTerminalTarget,
   consumeTerminalTicket,
   expireWorkspaceSessions,
   forgetAllStoredTerminals,
@@ -47,6 +48,7 @@ import {
   handleTerminalCallerMessage,
   issueTerminalTicket,
   listTerminalSummaries,
+  resetExecutorTerminals,
 } from "./relay-do-terminal.js";
 import { decodeCallerRequest } from "./relay-internal.js";
 
@@ -170,6 +172,7 @@ export class DeviceRelay extends DurableObject<Env> {
           active: true,
           ...(message.capabilities ? { capabilities: message.capabilities } : {}),
         } satisfies ExecutorSocketState);
+        await resetExecutorTerminals(this.ctx);
 
         socket.send(
           encodeMessage({
@@ -315,6 +318,10 @@ export class DeviceRelay extends DurableObject<Env> {
 
   async listTerminals() {
     return listTerminalSummaries(this.ctx);
+  }
+
+  async closeTerminal(projectId: string, workspaceId: string | undefined): Promise<boolean> {
+    return closeTerminalTarget(this.ctx, projectId, workspaceId);
   }
 
   override async alarm(): Promise<void> {

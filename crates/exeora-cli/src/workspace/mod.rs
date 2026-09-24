@@ -1,6 +1,8 @@
 mod git;
 mod terminal;
 
+pub(crate) use terminal::send_control;
+
 use crate::error::ExeoraError;
 use serde_json::Value;
 use std::{path::Path, sync::Arc};
