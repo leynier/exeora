@@ -80,11 +80,7 @@ AUDIT_MAINTENANCE_SECRET   (secret, shared with the deletion job)
 
 Set `AUDIT_WAREHOUSE_START_DAY` to the day the stream starts receiving events. It is the first UTC day the table can contain, and dating it earlier only makes the rollup query empty days every night.
 
-Switch `AUDIT_STREAM`, `AUDIT_R2_TABLE`, `AUDIT_R2_LEGACY_TABLE` and
-`AUDIT_SCHEMA_VERSION` in the same Worker deploy. Until then, keep
-`AUDIT_SCHEMA_VERSION=1`: the producer omits worktree fields and remains compatible with the
-immutable v1 stream. Stream-first delivery does not require a schema migration. Monitor rejected
-record metrics: an ingestion acknowledgement alone does not validate an incompatible schema.
+Switch `AUDIT_STREAM`, `AUDIT_R2_TABLE`, `AUDIT_R2_LEGACY_TABLE` and `AUDIT_SCHEMA_VERSION` in the same Worker deploy. Until then, keep `AUDIT_SCHEMA_VERSION=1`: the producer omits worktree fields and remains compatible with the immutable v1 stream. Stream-first delivery does not require a schema migration. Monitor rejected record metrics: an ingestion acknowledgement alone does not validate an incompatible schema.
 
 `AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret. It is what the deletion job authenticates with, and while it is unset the `/internal/*` routes answer 404 rather than advertising themselves.
 

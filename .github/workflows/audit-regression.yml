@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/audit-regression.yml"
       - "apps/gateway/**"
+      - "packages/**"
       - "apps/web/**"
       - "scripts/audit-maintenance/**"
       - "e2e/**"
@@ -19,27 +20,8 @@ concurrency:
   group: audit-regressions-${{ github.ref }}
   cancel-in-progress: true
 
+# Lint, typecheck and the workerd suites already run in ci.yml's `check` job.
 jobs:
-  gateway-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Install locked dependencies
-        id: install
-        run: bun install --frozen-lockfile
-      - name: Check formatting, lint and file lengths
-        run: bun run check && bun run check:file-length
-      - name: Typecheck
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: bun run typecheck
-      - name: Build and test the gateway
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: bun run --cwd apps/web build && bun run test
-
   maintenance-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
