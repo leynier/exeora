@@ -545,9 +545,16 @@
                                     "maxLength": 4096
                                   },
                                   "originalPath": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 4096
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 4096
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "index": {
                                     "type": "string",
@@ -799,9 +806,16 @@
                                         "maxLength": 4096
                                       },
                                       "originalPath": {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "maxLength": 4096
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 4096
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
                                       },
                                       "index": {
                                         "type": "string",

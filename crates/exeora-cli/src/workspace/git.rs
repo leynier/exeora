@@ -727,14 +727,17 @@ fn file_json(
     let path = project_relative(path, prefix)?;
     let original = original.and_then(|value| project_relative(value, prefix));
     let mut chars = xy.chars();
-    Some(json!({
+    let mut file = json!({
         "path": path,
-        "originalPath": original,
         "index": chars.next().unwrap_or('.').to_string(),
         "worktree": chars.next().unwrap_or('.').to_string(),
         "kind": kind,
         "submodule": sub != "N...",
-    }))
+    });
+    if let Some(original) = original {
+        file["originalPath"] = json!(original);
+    }
+    Some(file)
 }
 
 fn project_relative(path: &str, prefix: &str) -> Option<String> {
@@ -863,6 +866,9 @@ mod tests {
         assert_eq!(status["files"][0]["path"], "file with spaces.txt");
         assert_eq!(status["files"][1]["originalPath"], "old.txt");
         assert_eq!(status["files"][2]["kind"], "untracked");
+        // Absent rather than null: the protocol reads it as an optional string.
+        assert!(status["files"][0].get("originalPath").is_none());
+        assert!(status["files"][2].get("originalPath").is_none());
     }
 
     #[test]

@@ -125,6 +125,8 @@ export async function attachFakeExecutor(
       args: unknown;
     }) => McpToolResultMessage["result"];
     mcpCatalog?: McpToolDescriptor[];
+    /** Replaces the whole `workspace.result` frame, sent as raw JSON. */
+    workspaceFrame?: (requestId: string) => unknown;
     silent?: boolean;
     /** Omitted stands for a CLI built before capabilities existed. */
     capabilities?: ExecutorCapabilities;
@@ -199,7 +201,9 @@ export async function attachFakeExecutor(
         ...(message.workspaceSlug ? { workspaceSlug: message.workspaceSlug } : {}),
         action: message.action,
       });
-      if (!options.silent) {
+      if (options.workspaceFrame) {
+        socket.send(JSON.stringify(options.workspaceFrame(message.requestId)));
+      } else if (!options.silent) {
         socket.send(
           encodeMessage({
             type: "workspace.result",

@@ -6,7 +6,8 @@ const optionalRef = z.string().min(1).max(512).optional();
 
 export const GitFileState = z.object({
   path,
-  originalPath: path.optional(),
+  // Null is what every CLI up to 0.16.0 sends for a file that was not renamed.
+  originalPath: path.nullish(),
   index: z.string().length(1),
   worktree: z.string().length(1),
   kind: z.enum(["tracked", "untracked", "conflict"]),

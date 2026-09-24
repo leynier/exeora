@@ -629,9 +629,16 @@ pub mod error {
 ///                                    ]
 ///                                  },
 ///                                  "originalPath": {
-///                                    "type": "string",
-///                                    "maxLength": 4096,
-///                                    "minLength": 1
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "string",
+///                                        "maxLength": 4096,
+///                                        "minLength": 1
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
 ///                                  },
 ///                                  "path": {
 ///                                    "type": "string",
@@ -883,9 +890,16 @@ pub mod error {
 ///                                        ]
 ///                                      },
 ///                                      "originalPath": {
-///                                        "type": "string",
-///                                        "maxLength": 4096,
-///                                        "minLength": 1
+///                                        "anyOf": [
+///                                          {
+///                                            "type": "string",
+///                                            "maxLength": 4096,
+///                                            "minLength": 1
+///                                          },
+///                                          {
+///                                            "type": "null"
+///                                          }
+///                                        ]
 ///                                      },
 ///                                      "path": {
 ///                                        "type": "string",
@@ -3106,9 +3120,16 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                ]
 ///                              },
 ///                              "originalPath": {
-///                                "type": "string",
-///                                "maxLength": 4096,
-///                                "minLength": 1
+///                                "anyOf": [
+///                                  {
+///                                    "type": "string",
+///                                    "maxLength": 4096,
+///                                    "minLength": 1
+///                                  },
+///                                  {
+///                                    "type": "null"
+///                                  }
+///                                ]
 ///                              },
 ///                              "path": {
 ///                                "type": "string",
@@ -3360,9 +3381,16 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                    ]
 ///                                  },
 ///                                  "originalPath": {
-///                                    "type": "string",
-///                                    "maxLength": 4096,
-///                                    "minLength": 1
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "string",
+///                                        "maxLength": 4096,
+///                                        "minLength": 1
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
 ///                                  },
 ///                                  "path": {
 ///                                    "type": "string",
@@ -4341,9 +4369,16 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                ]
 ///              },
 ///              "originalPath": {
-///                "type": "string",
-///                "maxLength": 4096,
-///                "minLength": 1
+///                "anyOf": [
+///                  {
+///                    "type": "string",
+///                    "maxLength": 4096,
+///                    "minLength": 1
+///                  },
+///                  {
+///                    "type": "null"
+///                  }
+///                ]
 ///              },
 ///              "path": {
 ///                "type": "string",
@@ -4595,9 +4630,16 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                    ]
 ///                  },
 ///                  "originalPath": {
-///                    "type": "string",
-///                    "maxLength": 4096,
-///                    "minLength": 1
+///                    "anyOf": [
+///                      {
+///                        "type": "string",
+///                        "maxLength": 4096,
+///                        "minLength": 1
+///                      },
+///                      {
+///                        "type": "null"
+///                      }
+///                    ]
 ///                  },
 ///                  "path": {
 ///                    "type": "string",
@@ -4954,9 +4996,16 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueBranchesItem {
 ///      ]
 ///    },
 ///    "originalPath": {
-///      "type": "string",
-///      "maxLength": 4096,
-///      "minLength": 1
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
 ///    },
 ///    "path": {
 ///      "type": "string",
@@ -5724,9 +5773,16 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///            ]
 ///          },
 ///          "originalPath": {
-///            "type": "string",
-///            "maxLength": 4096,
-///            "minLength": 1
+///            "anyOf": [
+///              {
+///                "type": "string",
+///                "maxLength": 4096,
+///                "minLength": 1
+///              },
+///              {
+///                "type": "null"
+///              }
+///            ]
 ///          },
 ///          "path": {
 ///            "type": "string",
@@ -5940,9 +5996,16 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusBranchesIt
 ///      ]
 ///    },
 ///    "originalPath": {
-///      "type": "string",
-///      "maxLength": 4096,
-///      "minLength": 1
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
 ///    },
 ///    "path": {
 ///      "type": "string",
