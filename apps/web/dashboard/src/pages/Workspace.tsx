@@ -64,7 +64,14 @@ export function Workspace() {
   const targetKey = targetId ?? "main";
   const ready = Boolean(project) && targetReady;
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
-  const status = useGitStatus(projectId, targetId, ready);
+  // Every poll runs a status on the machine: only while the list is on screen
+  // and the CLI can answer it.
+  const status = useGitStatus(
+    projectId,
+    targetId,
+    ready,
+    tab === "source" && capabilities.data?.sourceControl !== false,
+  );
   const targetLabel = selectedWorkspace?.slug ?? "project root";
 
   const restored = useMemo(() => {

@@ -9,6 +9,13 @@ use tokio_util::sync::CancellationToken;
 
 const MAX_GIT_OUTPUT: usize = 900_000;
 const GIT_TIMEOUT: Duration = Duration::from_secs(300);
+/// ssh reads host-key and passphrase prompts from the terminal, which
+/// `GIT_TERMINAL_PROMPT` does not cover; they would block until the timeout.
+const NON_INTERACTIVE_SSH: &str = "ssh -o BatchMode=yes";
+#[cfg(windows)]
+const NULL_DEVICE: &str = "NUL";
+#[cfg(not(windows))]
+const NULL_DEVICE: &str = "/dev/null";
 
 pub struct GitWorkspace {
     operation: Mutex<()>,
@@ -16,6 +23,7 @@ pub struct GitWorkspace {
 
 struct GitOutput {
     success: bool,
+    code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
 }
@@ -33,11 +41,17 @@ impl GitWorkspace {
         action: Value,
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
-        let _guard = self.operation.lock().await;
         let name = action
             .get("action")
             .and_then(Value::as_str)
             .ok_or_else(|| invalid("A workspace action is required."))?;
+        // Reads skip the lock (and take no optional index locks), so the
+        // dashboard's status poll never queues behind a slow push or pull.
+        let _guard = if matches!(name, "status" | "diff") {
+            None
+        } else {
+            Some(self.operation.lock().await)
+        };
         match name {
             "status" => self.status(root, &cancel).await,
             "diff" => {
@@ -105,7 +119,7 @@ impl GitWorkspace {
                     validate_ref(remote)?;
                     args.push(remote);
                 }
-                self.mutate(root, &args, &[], None, &cancel).await
+                self.network(root, &args, &cancel).await
             }
             "pull" => {
                 let mut args = vec!["pull"];
@@ -122,7 +136,7 @@ impl GitWorkspace {
                     validate_ref(branch)?;
                     args.push(branch);
                 }
-                self.mutate(root, &args, &[], None, &cancel).await
+                self.network(root, &args, &cancel).await
             }
             "push" => {
                 let mut args = vec!["push"];
@@ -141,12 +155,13 @@ impl GitWorkspace {
                     validate_ref(remote)?;
                     args.push(remote);
                 }
-                self.mutate(root, &args, &[], None, &cancel).await
+                self.network(root, &args, &cancel).await
             }
             "branch_create" => {
                 let name = required_string(&action, "name")?;
                 self.validate_branch(root, name, &cancel).await?;
-                let mut args = vec!["branch", name];
+                // Create and check out, the way a git client's branch picker does.
+                let mut args = vec!["switch", "-c", name];
                 if let Some(start) = action.get("startPoint").and_then(Value::as_str) {
                     validate_ref(start)?;
                     args.push(start);
@@ -240,8 +255,37 @@ impl GitWorkspace {
             _ => return Err(invalid("Diff area must be working or staged.")),
         }
         args.extend(["--", relative.as_str()]);
-        let output = self.run(root, &args, None, cancel).await?;
+        let mut output = self.run(root, &args, None, cancel).await?;
         ensure_success(&output)?;
+        if area == "working"
+            && output.stdout.is_empty()
+            && self.is_untracked(root, &relative, cancel).await?
+        {
+            // `git diff` never shows a file the index does not know. Compared
+            // with the null device, a new file reads as all additions.
+            output = self
+                .run(
+                    root,
+                    &[
+                        "diff",
+                        "--no-index",
+                        "--no-ext-diff",
+                        "--no-textconv",
+                        "--no-color",
+                        "--unified=3",
+                        "--",
+                        NULL_DEVICE,
+                        relative.as_str(),
+                    ],
+                    None,
+                    cancel,
+                )
+                .await?;
+            // With --no-index, 1 means "the files differ", not a failure.
+            if !output.success && output.code != Some(1) {
+                ensure_success(&output)?;
+            }
+        }
         let truncated = output.stdout.len() > MAX_GIT_OUTPUT;
         let bytes = &output.stdout[..output.stdout.len().min(MAX_GIT_OUTPUT)];
         let patch = String::from_utf8_lossy(bytes).into_owned();
@@ -255,6 +299,46 @@ impl GitWorkspace {
         }))
     }
 
+    async fn is_untracked(
+        &self,
+        root: &Path,
+        relative: &str,
+        cancel: &CancellationToken,
+    ) -> Result<bool, ExeoraError> {
+        let output = self
+            .run(
+                root,
+                &["ls-files", "--others", "--exclude-standard", "--", relative],
+                None,
+                cancel,
+            )
+            .await?;
+        Ok(output.success && !output.stdout.is_empty())
+    }
+
+    /// Fetch, pull and push, with ssh unable to stop and ask for input.
+    async fn network(
+        &self,
+        root: &Path,
+        args: &[&str],
+        cancel: &CancellationToken,
+    ) -> Result<Value, ExeoraError> {
+        // Only when the user has not chosen an ssh command: setting
+        // GIT_SSH_COMMAND would override theirs.
+        let configured = std::env::var_os("GIT_SSH_COMMAND").is_some()
+            || self
+                .run(root, &["config", "--get", "core.sshCommand"], None, cancel)
+                .await?
+                .success;
+        let env: &[(&str, &str)] = if configured {
+            &[]
+        } else {
+            &[("GIT_SSH_COMMAND", NON_INTERACTIVE_SSH)]
+        };
+        self.mutate_with_env(root, args, &[], None, env, cancel)
+            .await
+    }
+
     async fn mutate(
         &self,
         root: &Path,
@@ -263,9 +347,22 @@ impl GitWorkspace {
         stdin: Option<&[u8]>,
         cancel: &CancellationToken,
     ) -> Result<Value, ExeoraError> {
+        self.mutate_with_env(root, prefix, paths, stdin, &[], cancel)
+            .await
+    }
+
+    async fn mutate_with_env(
+        &self,
+        root: &Path,
+        prefix: &[&str],
+        paths: &[String],
+        stdin: Option<&[u8]>,
+        env: &[(&str, &str)],
+        cancel: &CancellationToken,
+    ) -> Result<Value, ExeoraError> {
         let mut args = prefix.to_vec();
         args.extend(paths.iter().map(String::as_str));
-        let output = self.run(root, &args, stdin, cancel).await?;
+        let output = self.run_with_env(root, &args, stdin, env, cancel).await?;
         ensure_success(&output)?;
         let status = self.status(root, cancel).await?;
         Ok(json!({
@@ -491,12 +588,25 @@ impl GitWorkspace {
         stdin: Option<&[u8]>,
         cancel: &CancellationToken,
     ) -> Result<GitOutput, ExeoraError> {
+        self.run_with_env(root, args, stdin, &[], cancel).await
+    }
+
+    async fn run_with_env(
+        &self,
+        root: &Path,
+        args: &[&str],
+        stdin: Option<&[u8]>,
+        env: &[(&str, &str)],
+        cancel: &CancellationToken,
+    ) -> Result<GitOutput, ExeoraError> {
         let mut command = Command::new("git");
         command
             .current_dir(root)
             .args(args)
             .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_OPTIONAL_LOCKS", "0")
             .env("LC_ALL", "C")
+            .envs(env.iter().copied())
             .stdin(if stdin.is_some() {
                 Stdio::piped()
             } else {
@@ -525,6 +635,7 @@ impl GitWorkspace {
         };
         Ok(GitOutput {
             success: output.status.success(),
+            code: output.status.code(),
             stdout: output.stdout,
             stderr: output.stderr,
         })
@@ -826,6 +937,62 @@ mod tests {
             .await;
         assert!(refused.is_err());
         assert!(directory.path().join("tracked.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn diffs_untracked_files_and_switches_to_a_created_branch() {
+        let directory = tempdir().unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec!["config", "user.name", "Exeora Test"],
+            vec!["config", "user.email", "test@exeora.dev"],
+            vec!["commit", "-q", "--allow-empty", "-m", "initial"],
+        ] {
+            assert!(
+                Command::new("git")
+                    .current_dir(directory.path())
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        fs::create_dir(directory.path().join("src")).unwrap();
+        fs::write(directory.path().join("src/new.txt"), "first line\n").unwrap();
+        let workspace = GitWorkspace::new();
+        let cancel = CancellationToken::new();
+
+        let diff = workspace
+            .execute(
+                directory.path(),
+                json!({ "action": "diff", "path": "src/new.txt", "area": "working" }),
+                cancel.clone(),
+            )
+            .await
+            .unwrap();
+        let patch = diff["patch"].as_str().unwrap();
+        assert!(patch.contains("+first line"), "{patch}");
+        assert_eq!(diff["binary"], false);
+
+        let staged = workspace
+            .execute(
+                directory.path(),
+                json!({ "action": "diff", "path": "src/new.txt", "area": "staged" }),
+                cancel.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(staged["patch"], "");
+
+        let created = workspace
+            .execute(
+                directory.path(),
+                json!({ "action": "branch_create", "name": "feature", "startPoint": "main" }),
+                cancel,
+            )
+            .await
+            .unwrap();
+        assert_eq!(created["status"]["head"], "feature");
     }
 
     #[tokio::test]

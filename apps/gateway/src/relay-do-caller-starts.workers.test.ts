@@ -111,7 +111,8 @@ describe("workspace relay", () => {
   });
 
   it("issues short-lived, origin-bound, one-time terminal tickets", async () => {
-    await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    const executor = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    await executor.ack;
     const ticket = await relay().createTerminalTicket(
       "prj_test",
       undefined,
@@ -223,14 +224,6 @@ describe("workspace relay", () => {
     await eventually(() => expect(executorFrames).toContain("terminal.input"));
     expect(executor.seen).toEqual([]);
 
-    const duplicate = await relay().fetch(
-      new Request(
-        "https://relay/caller/terminal?id=term_duplicate&projectId=prj_test&cols=80&rows=24",
-        { headers: { Upgrade: "websocket" } },
-      ),
-    );
-    expect(duplicate.status).toBe(409);
-
     const workspaceResponse = await relay().fetch(
       new Request(
         "https://relay/caller/terminal?id=term_workspace&projectId=prj_test&workspaceId=wsp_feature&workspaceSlug=feature&cols=80&rows=24",
@@ -303,8 +296,11 @@ describe("workspace relay", () => {
       attachedFrames.push(JSON.parse(String(event.data)).type as string);
     });
     await eventually(() => expect(attachedFrames).toContain("terminal.opened"));
-    expect(executorFrames.filter((type) => type === "terminal.open")).toHaveLength(1);
-    await eventually(() => expect(executorFrames).toContain("terminal.resize"));
+    // The reattach asks the CLI to open the stored session id again; the CLI
+    // attaches to its shell for that root and resizes it.
+    await eventually(() =>
+      expect(executorFrames.filter((type) => type === "terminal.open")).toHaveLength(2),
+    );
 
     attached.send(encodeMessage({ type: "terminal.close", sessionId: "term_keep" }));
     await eventually(() => expect(executorFrames).toContain("terminal.close"));

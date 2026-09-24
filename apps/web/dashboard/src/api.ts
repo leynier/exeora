@@ -400,6 +400,10 @@ export const api = {
     ),
   terminals: () =>
     request<{ items: import("./workspacePaths.js").ListedTerminal[] }>("/api/terminals"),
+  closeTerminal: (id: string, workspace?: string) =>
+    request<{ closed: boolean }>(`/api/projects/${id}/terminal${workspaceTarget(workspace)}`, {
+      method: "DELETE",
+    }),
 
   toolCalls: (filters: ToolCallFilters = {}, cursor?: string) => {
     const query = new URLSearchParams();
@@ -462,7 +466,6 @@ export const api = {
     }),
 
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),
-
   /** Only accepted once the client is revoked; the server returns 409 if not. */
   deleteClient: (id: string) =>
     request<{ ok: true }>(`/api/clients/${id}/permanently`, { method: "DELETE" }),
@@ -470,13 +473,10 @@ export const api = {
   adminOverview: () => request<AdminOverview>("/api/admin/overview"),
   adminUsers: () => request<AdminUserSummary[]>("/api/admin/users"),
   adminUser: (id: string) => request<AdminUserDetail>(`/api/admin/users/${id}`),
-
   adminRevokeDevice: (userId: string, deviceId: string) =>
     request<{ ok: true }>(`/api/admin/users/${userId}/devices/${deviceId}`, { method: "DELETE" }),
-
   adminRevokeClient: (userId: string, clientId: string) =>
     request<{ ok: true }>(`/api/admin/users/${userId}/clients/${clientId}`, { method: "DELETE" }),
-
   adminDeleteUser: (userId: string) =>
     request<{ ok: true }>(`/api/admin/users/${userId}`, { method: "DELETE" }),
 };

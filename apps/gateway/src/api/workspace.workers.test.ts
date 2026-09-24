@@ -9,13 +9,13 @@ const OTHER = "usr_workspace_other";
 const DEVICE = "dev_workspace";
 const PROJECT = "prj_workspace";
 
-function call(path: string, userId = OWNER) {
+function call(path: string, userId = OWNER, method = "GET") {
   const context = createExecutionContext();
   (context as { props?: { userId: string; scopes: string[] } }).props = {
     userId,
     scopes: ["dashboard:manage"],
   };
-  return api.fetch(new Request(`https://exeora.dev${path}`), env, context);
+  return api.fetch(new Request(`https://exeora.dev${path}`, { method }), env, context);
 }
 
 beforeEach(async () => {
@@ -69,8 +69,16 @@ describe("workspace ownership and availability", () => {
   });
 
   it("never issues another owner a terminal ticket", async () => {
-    const response = await call(`/api/projects/${PROJECT}/terminal-ticket`, OTHER);
+    const response = await call(`/api/projects/${PROJECT}/terminal-ticket`, OTHER, "POST");
     expect(response.status).toBe(404);
+  });
+
+  it("closes terminals only for the owner, and reports when none was open", async () => {
+    const other = await call(`/api/projects/${PROJECT}/terminal`, OTHER, "DELETE");
+    expect(other.status).toBe(404);
+    const owner = await call(`/api/projects/${PROJECT}/terminal`, OWNER, "DELETE");
+    expect(owner.status).toBe(200);
+    expect(await owner.json()).toEqual({ closed: false });
   });
 
   it("lists no terminals while none are open", async () => {

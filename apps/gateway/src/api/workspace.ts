@@ -100,14 +100,29 @@ workspace.get("/api/terminals", async (c) => {
     .from(schema.devices)
     .where(and(eq(schema.devices.userId, userId), isNull(schema.devices.revokedAt)))
     .all();
-  const items = (
-    await Promise.all(
-      devices.map((device) =>
-        c.env.DEVICE_RELAY.getByName(relayName(userId, device.id)).listTerminals(),
-      ),
-    )
-  ).flat();
+  // One unreachable relay must not hide every other machine's terminals.
+  const results = await Promise.allSettled(
+    devices.map((device) =>
+      c.env.DEVICE_RELAY.getByName(relayName(userId, device.id)).listTerminals(),
+    ),
+  );
+  const items = results.flatMap((result) => {
+    if (result.status === "fulfilled") return result.value;
+    console.error("listing terminals failed", result.reason);
+    return [];
+  });
   return c.json({ items });
+});
+
+workspace.delete("/api/projects/:id/terminal", zValidator("query", targetQuery), async (c) => {
+  const userId = c.get("userId");
+  const projectId = c.req.param("id");
+  const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
+  if (!target) return c.json({ error: "not_found" }, 404);
+  const closed = await c.env.DEVICE_RELAY.getByName(
+    relayName(userId, target.deviceId),
+  ).closeTerminal(projectId, target.workspaceId);
+  return c.json({ closed });
 });
 
 workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQuery), async (c) => {

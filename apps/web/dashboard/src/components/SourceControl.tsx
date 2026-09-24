@@ -71,10 +71,18 @@ export function SourceControl({
   );
   const chosenFile = status?.files.find((file) => file.path === chosen?.path);
 
-  const run = async (action: WorkspaceAction) => {
+  // Several actions run one after another under one pending state, which is
+  // how a bulk stage larger than the per-request path limit goes out.
+  const run = async (actions: WorkspaceAction | WorkspaceAction[]) => {
+    const batch = Array.isArray(actions) ? actions : [actions];
+    const action = batch[0];
+    if (!action) return;
     setPending(true);
     try {
-      const result = await api.workspaceAction(projectId, action, workspace);
+      let result = await api.workspaceAction(projectId, action, workspace);
+      for (const next of batch.slice(1)) {
+        result = await api.workspaceAction(projectId, next, workspace);
+      }
       client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
       await client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] });
       if (action.action === "commit") setCommitMessage("");
@@ -222,9 +230,7 @@ export function SourceControl({
               onSelect={setSelected}
               onAction={(file) => void run({ action: "unstage", paths: [file.path] })}
               actionLabel="Unstage"
-              onActionAll={() =>
-                void run({ action: "unstage", paths: staged.map((file) => file.path) })
-              }
+              onActionAll={() => void run(inChunks("unstage", staged))}
               actionAllLabel="Unstage all"
               disabled={pending}
             />
@@ -236,9 +242,7 @@ export function SourceControl({
               onSelect={setSelected}
               onAction={(file) => void run({ action: "stage", paths: [file.path] })}
               actionLabel="Stage"
-              onActionAll={() =>
-                void run({ action: "stage", paths: changes.map((file) => file.path) })
-              }
+              onActionAll={() => void run(inChunks("stage", changes))}
               actionAllLabel="Stage all"
               disabled={pending}
             />
@@ -266,6 +270,7 @@ export function SourceControl({
                   <button
                     type="button"
                     className="btn btn-danger"
+                    disabled={pending}
                     onClick={() =>
                       setConfirm({
                         action: { action: "delete_untracked", paths: [chosen.path] },
@@ -281,6 +286,7 @@ export function SourceControl({
                   <button
                     type="button"
                     className="btn btn-danger"
+                    disabled={pending}
                     onClick={() =>
                       setConfirm({
                         action: { action: "discard", paths: [chosen.path] },
@@ -362,4 +368,16 @@ export function SourceControl({
       />
     </div>
   );
+}
+
+/** The protocol caps one request at 1,000 paths; "Stage all" is not capped. */
+const MAX_PATHS_PER_ACTION = 1_000;
+
+function inChunks(action: "stage" | "unstage", files: { path: string }[]): WorkspaceAction[] {
+  const actions: WorkspaceAction[] = [];
+  for (let start = 0; start < files.length; start += MAX_PATHS_PER_ACTION) {
+    const paths = files.slice(start, start + MAX_PATHS_PER_ACTION).map((file) => file.path);
+    actions.push({ action, paths });
+  }
+  return actions;
 }
