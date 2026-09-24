@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { type Location, useLocation, useNavigate } from "react-router";
+import { api } from "../api.js";
 import { useOpenTerminals, useProjects } from "../queries.js";
 import { type ListedTerminal, terminalSessionKey } from "../workspacePaths.js";
 import { type OpenTerminalSession, OpenTerminals } from "./OpenTerminals.js";
@@ -55,6 +56,9 @@ export function TerminalsProvider({ children }: { children: ReactNode }) {
   const closeSession = useCallback((session: OpenTerminalSession) => {
     closed.current.add(session.key);
     setKilling(session.key);
+    // The socket only reaches the shell when it is attached. Ending it on the
+    // server as well covers a session this tab never managed to attach to.
+    void api.closeTerminal(session.projectId, session.workspaceId).catch(() => undefined);
   }, []);
 
   const focusSession = useCallback(

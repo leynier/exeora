@@ -6,18 +6,47 @@ use std::{
     collections::HashMap,
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex as StdMutex},
+    sync::{Arc, Mutex as StdMutex, mpsc as std_mpsc},
+    time::Duration,
 };
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{
+    Mutex,
+    mpsc::{self, error::TrySendError},
+};
 
 const OUTPUT_CHUNK_BYTES: usize = 16 * 1024;
+/// How long the exit frame waits for the reader to drain the final output. A
+/// background job can hold the PTY open past the shell, so this is bounded.
+const OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 
 struct TerminalSession {
     id: Arc<StdMutex<String>>,
     root: PathBuf,
     master: StdMutex<Box<dyn MasterPty + Send>>,
-    writer: StdMutex<Box<dyn Write + Send>>,
+    /// Keystrokes go to a writer thread. A shell that is not reading its input
+    /// fills the PTY buffer, and writing inline would stall the relay loop.
+    input: std_mpsc::Sender<Vec<u8>>,
     killer: StdMutex<Box<dyn ChildKiller + Send + Sync>>,
+}
+
+/// Queues a control frame without waiting for room in the output channel.
+///
+/// The relay loop is the only thing that drains that channel, and it is also
+/// the caller here. Awaiting a full channel from inside it, which one noisy
+/// shell is enough to cause, would stop every socket read, heartbeat and tool
+/// call on the machine. Returns false only when the relay connection is gone.
+pub(crate) fn send_control(outgoing: &mpsc::Sender<Value>, message: Value) -> bool {
+    match outgoing.try_send(message) {
+        Ok(()) => true,
+        Err(TrySendError::Full(message)) => {
+            let outgoing = outgoing.clone();
+            tokio::spawn(async move {
+                let _ = outgoing.send(message).await;
+            });
+            true
+        }
+        Err(TrySendError::Closed(_)) => false,
+    }
 }
 
 #[derive(Clone)]
@@ -75,23 +104,31 @@ impl TerminalRegistry {
             let reader = pair.master.try_clone_reader().map_err(|error| {
                 ExeoraError::tool(format!("Could not read from the PTY: {error}"))
             })?;
-            let writer = pair.master.take_writer().map_err(|error| {
+            let mut writer = pair.master.take_writer().map_err(|error| {
                 ExeoraError::tool(format!("Could not write to the PTY: {error}"))
             })?;
+            let (input, keystrokes) = std_mpsc::channel::<Vec<u8>>();
+            std::thread::spawn(move || {
+                while let Ok(data) = keystrokes.recv() {
+                    if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
+                        break;
+                    }
+                }
+            });
             let killer = child.clone_killer();
-            Ok::<_, ExeoraError>((pair.master, reader, writer, killer, child))
+            Ok::<_, ExeoraError>((pair.master, reader, input, killer, child))
         })
         .await
         .map_err(|error| ExeoraError::tool(format!("PTY startup failed: {error}")))??;
 
-        let (master, mut reader, writer, killer, mut child) = opened;
+        let (master, mut reader, input, killer, mut child) = opened;
         let session_key = Arc::new(StdMutex::new(session_id.clone()));
         let wait_id = session_key.clone();
         let session = Arc::new(TerminalSession {
             id: session_key.clone(),
             root,
             master: StdMutex::new(master),
-            writer: StdMutex::new(writer),
+            input,
             killer: StdMutex::new(killer),
         });
         self.sessions
@@ -99,11 +136,10 @@ impl TerminalRegistry {
             .await
             .insert(session_id.clone(), session);
 
-        if outgoing
-            .send(json!({ "type": "terminal.opened", "sessionId": session_id }))
-            .await
-            .is_err()
-        {
+        if !send_control(
+            &outgoing,
+            json!({ "type": "terminal.opened", "sessionId": session_id }),
+        ) {
             self.close(&session_id).await;
             return Err(ExeoraError::tool(
                 "Relay connection closed while opening the terminal.",
@@ -111,7 +147,9 @@ impl TerminalRegistry {
         }
 
         let read_outgoing = outgoing.clone();
+        let (drained, reader_done) = std_mpsc::channel::<()>();
         tokio::task::spawn_blocking(move || {
+            let _drained = drained;
             let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
             loop {
                 match reader.read(&mut buffer) {
@@ -137,6 +175,9 @@ impl TerminalRegistry {
         let sessions = self.sessions.clone();
         tokio::task::spawn_blocking(move || {
             let exit_code = child.wait().ok().map(|status| status.exit_code());
+            // The reader and this thread race. Without the wait, the exit frame
+            // can overtake the last chunk and the browser drops the tail.
+            let _ = reader_done.recv_timeout(OUTPUT_DRAIN_TIMEOUT);
             let session_id = wait_id.lock().map(|id| id.clone()).unwrap_or_default();
             let _ = wait_outgoing.blocking_send(json!({
                 "type": "terminal.exit",
@@ -180,9 +221,10 @@ impl TerminalRegistry {
         sessions.insert(session_id.to_owned(), session);
         drop(sessions);
         let _ = self.resize(session_id, cols, rows).await;
-        let _ = outgoing
-            .send(json!({ "type": "terminal.opened", "sessionId": session_id }))
-            .await;
+        send_control(
+            &outgoing,
+            json!({ "type": "terminal.opened", "sessionId": session_id }),
+        );
         Ok(true)
     }
 
@@ -191,14 +233,10 @@ impl TerminalRegistry {
             return Err(invalid("Terminal input is too large."));
         }
         let session = self.session(session_id).await?;
-        let mut writer = session
-            .writer
-            .lock()
-            .map_err(|_| ExeoraError::tool("Terminal writer is unavailable."))?;
-        writer
-            .write_all(data)
-            .and_then(|_| writer.flush())
-            .map_err(|error| ExeoraError::tool(format!("Could not write to the terminal: {error}")))
+        session
+            .input
+            .send(data.to_vec())
+            .map_err(|_| ExeoraError::tool("Could not write to the terminal."))
     }
 
     pub async fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), ExeoraError> {
@@ -350,6 +388,58 @@ mod tests {
         assert!(registry.input("first", b"pwd\n").await.is_err());
         assert!(registry.input("second", b"printf ok\n").await.is_ok());
         registry.kill_all().await;
+    }
+
+    #[tokio::test]
+    async fn opening_does_not_wait_for_a_full_output_channel() {
+        let directory = tempdir().unwrap();
+        let registry = TerminalRegistry::new();
+        let (outgoing, mut incoming) = mpsc::channel(1);
+        outgoing
+            .send(serde_json::json!({ "type": "terminal.output" }))
+            .await
+            .unwrap();
+        // The relay loop drains this channel and is also the caller, so an
+        // open that awaited room here would never return.
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            registry.open("full".to_owned(), directory.path(), 80, 24, outgoing),
+        )
+        .await
+        .expect("open must not block on a full channel")
+        .unwrap();
+        assert_eq!(incoming.recv().await.unwrap()["type"], "terminal.output");
+        assert_eq!(incoming.recv().await.unwrap()["type"], "terminal.opened");
+        registry.kill_all().await;
+    }
+
+    #[tokio::test]
+    async fn sends_the_final_output_before_the_exit() {
+        let directory = tempdir().unwrap();
+        let registry = TerminalRegistry::new();
+        let (outgoing, mut incoming) = mpsc::channel(256);
+        registry
+            .open("tail".to_owned(), directory.path(), 80, 24, outgoing)
+            .await
+            .unwrap();
+        registry
+            .input("tail", b"printf 'EXEORA_TAIL_%s\\n' done; exit\n")
+            .await
+            .unwrap();
+        let mut output = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(message) = incoming.recv().await {
+                if message["type"] == "terminal.output" {
+                    output.extend(STANDARD.decode(message["data"].as_str().unwrap()).unwrap());
+                }
+                if message["type"] == "terminal.exit" {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(String::from_utf8_lossy(&output).contains("EXEORA_TAIL_done"));
     }
 
     #[tokio::test]

@@ -1076,9 +1076,10 @@ async fn handle_terminal_message(
 }
 
 async fn send_terminal_error(outgoing: &mpsc::Sender<Value>, session_id: &str, message: &str) {
-    let _ = outgoing
-        .send(json!({ "type": "terminal.error", "sessionId": session_id, "message": message }))
-        .await;
+    crate::workspace::send_control(
+        outgoing,
+        json!({ "type": "terminal.error", "sessionId": session_id, "message": message }),
+    );
 }
 
 fn resolve_target(

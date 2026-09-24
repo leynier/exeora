@@ -117,13 +117,18 @@ export const useWorkspaceCapabilities = (
   });
 };
 
-export const useGitStatus = (id: string, workspace: string | undefined, enabled = true) => {
+export const useGitStatus = (
+  id: string,
+  workspace: string | undefined,
+  enabled = true,
+  live = true,
+) => {
   const target = workspace ?? "main";
   return useQuery({
     queryKey: keys.gitStatus(id, target),
     queryFn: () => api.gitStatus(id, workspace),
     enabled: enabled && id.length > 0,
-    refetchInterval: LIVE,
+    refetchInterval: live ? LIVE : false,
   });
 };
 

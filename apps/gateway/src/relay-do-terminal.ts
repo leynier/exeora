@@ -17,10 +17,13 @@ import {
 } from "./relay-do-callers.js";
 import {
   destroyTerminalSession,
+  flushDetachedSession,
   forgetStoredTerminal,
+  lastTerminalActivity,
   listStoredTerminals,
   liveTerminalForSession,
   liveTerminalForTarget,
+  persistDetachedTerminal,
   putStoredTerminal,
   recordSocketReplay,
   scheduleWorkspaceAlarm,
@@ -80,10 +83,13 @@ export async function acceptTerminalSocket(
   }
 
   const targetKey = terminalTargetKey(projectId, workspaceId);
-  if (liveTerminalForTarget(ctx, targetKey)) {
-    return new Response("A terminal is already open for this workspace.", { status: 409 });
-  }
+  // The newest viewer wins. A second tab, or a socket left half-open by a
+  // sleeping laptop, would otherwise lock the terminal until it expired.
+  const previous = liveTerminalForTarget(ctx, targetKey);
+  if (previous) await detachViewer(ctx, previous, "The terminal was attached in another window.");
 
+  const pending = await storedTerminalByTarget(ctx, targetKey);
+  if (pending) await flushDetachedSession(ctx, pending.sessionId);
   const stored = await storedTerminalByTarget(ctx, targetKey);
   const id = stored?.sessionId ?? requestedId;
   const now = Date.now();
@@ -123,11 +129,13 @@ export async function acceptTerminalSocket(
       for (const data of session.replay) {
         server.send(encodeMessage({ type: "terminal.output", sessionId: id, data }));
       }
-      executor.send(encodeMessage({ type: "terminal.resize", sessionId: id, cols, rows }));
     } catch {
-      // The browser or executor dropped during attach; the PTY stays for retry.
+      // The browser dropped during attach; the PTY stays for retry.
     }
-  } else {
+  }
+  // Also on reattach: the CLI attaches to the shell it has for this root and
+  // resizes it, and starts a fresh one when a stale row outlived its PTY.
+  try {
     executor.send(
       encodeMessage({
         type: "terminal.open",
@@ -139,6 +147,8 @@ export async function acceptTerminalSocket(
         rows,
       }),
     );
+  } catch {
+    // The executor's close handler detaches this viewer.
   }
   await scheduleWorkspaceAlarm(ctx);
   return new Response(null, { status: 101, webSocket: client });
@@ -298,7 +308,7 @@ export async function expireWorkspaceSessions(ctx: DurableObjectState): Promise<
 
   for (const session of await listStoredTerminals(ctx)) {
     if (
-      now - session.lastActivityAt < TERMINAL_IDLE_MS &&
+      now - lastTerminalActivity(ctx, session) < TERMINAL_IDLE_MS &&
       now - session.startedAt < TERMINAL_MAX_DURATION_MS
     ) {
       continue;
@@ -327,11 +337,57 @@ export async function expireWorkspaceSessions(ctx: DurableObjectState): Promise<
   await scheduleWorkspaceAlarm(ctx);
 }
 
+/** Hands the terminal to another viewer, keeping its output for the next one. */
+async function detachViewer(
+  ctx: DurableObjectState,
+  socket: WebSocket,
+  message: string,
+): Promise<void> {
+  const state = attachmentOf(socket);
+  if (state?.role !== "terminal") return;
+  socket.serializeAttachment({ ...state, settled: true } satisfies TerminalCallerState);
+  await persistDetachedTerminal(ctx, socket, state);
+  try {
+    // Browser-only frame: the viewer stops without treating the shell as gone.
+    socket.send(JSON.stringify({ type: "terminal.detached", sessionId: state.id, message }));
+    socket.close(4000, "terminal attached elsewhere");
+  } catch {
+    // Already disconnected.
+  }
+}
+
+/** Ends the PTY for one target, including one no browser can attach to. */
+export async function closeTerminalTarget(
+  ctx: DurableObjectState,
+  projectId: string,
+  workspaceId: string | undefined,
+): Promise<boolean> {
+  const targetKey = terminalTargetKey(projectId, workspaceId);
+  const socket = liveTerminalForTarget(ctx, targetKey);
+  const state = socket ? attachmentOf(socket) : null;
+  if (socket && state?.role === "terminal") {
+    socket.serializeAttachment({ ...state, settled: true } satisfies TerminalCallerState);
+    try {
+      // Another window may be showing it; the shell is gone for everyone.
+      socket.send(encodeMessage({ type: "terminal.exit", sessionId: state.id, exitCode: null }));
+      socket.close(1000, "terminal closed");
+    } catch {
+      // Already disconnected.
+    }
+  }
+  const stored = await storedTerminalByTarget(ctx, targetKey);
+  const sessionId = stored?.sessionId ?? (state?.role === "terminal" ? state.id : undefined);
+  if (sessionId) await destroyTerminalSession(ctx, sessionId);
+  await scheduleWorkspaceAlarm(ctx);
+  return sessionId !== undefined;
+}
+
 export {
   dropExecutor,
   forgetAllStoredTerminals,
   type ListedTerminal,
   listTerminalSummaries,
   persistDetachedTerminal,
+  resetExecutorTerminals,
   scheduleWorkspaceAlarm,
 } from "./relay-do-terminal-sessions.js";
