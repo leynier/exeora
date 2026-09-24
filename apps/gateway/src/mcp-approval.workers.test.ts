@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hashArguments } from "./approval.js";
-import { isApproved, type ToolDispatcher } from "./mcp.js";
+import { hashArguments, isApproved } from "./approval.js";
+import type { ToolDispatcher } from "./mcp.js";
 import { PROJECT, payload, post, postModern } from "./mcp-fixtures.js";
 
 /**

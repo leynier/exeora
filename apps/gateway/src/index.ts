@@ -1,7 +1,12 @@
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { advertisedAccountTools, advertisedTools } from "./advertised.js";
+import {
+  advertisedAccountMcpTools,
+  advertisedAccountTools,
+  advertisedMcpTools,
+  advertisedTools,
+} from "./advertised.js";
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
 import { reconcileAuditOutbox } from "./audit.js";
 import { rememberAccountMcpClient, rememberMcpClient } from "./clients.js";
@@ -9,6 +14,7 @@ import { db, schema } from "./db/client.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
+import { dispatchMcpToDevice } from "./dispatch-mcp.js";
 import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
 import { CLI_SCOPES, DASHBOARD_SCOPES } from "./oauth/clients.js";
@@ -103,7 +109,7 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
 /** One MCP endpoint per project. */
 authenticated.all("/p/:projectId/mcp", async (c) => {
   const projectId = c.req.param("projectId");
-  const { method, required } = await inspectMcpAccess(c.req.raw.clone());
+  const { method, required, needsMcpCatalog } = await inspectMcpAccess(c.req.raw.clone());
   if (!hasScope(propsOf(c.executionCtx), required)) return insufficientScope([required]);
 
   // The request's signal, so a client that hangs up stops the work rather than
@@ -116,6 +122,11 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
     method === "tools/list"
       ? await advertisedTools(c.env, propsOf(c.executionCtx).userId, projectId)
       : undefined;
+  // Proxied MCP tools are registered from the executor's catalog, so a call to
+  // one needs it loaded; a native tool call never pays for it.
+  const mcpTools = needsMcpCatalog
+    ? await advertisedMcpTools(c.env, propsOf(c.executionCtx).userId, projectId)
+    : [];
 
   const handler = createProjectMcpHandler(
     projectId,
@@ -147,6 +158,10 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
         .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.projects.userId, userId)))
         .all();
       return { project: projectId, workspaces: rows };
+    },
+    {
+      tools: mcpTools,
+      dispatch: (call) => dispatchMcpToDevice(c.env, { ...call, projectId, signal }),
     },
   );
 
@@ -187,17 +202,24 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
 authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
   const { signal } = c.req.raw;
   const { userId, clientId } = propsOf(c.executionCtx);
-  const { method, required } = await inspectMcpAccess(c.req.raw.clone());
+  const { method, required, needsMcpCatalog } = await inspectMcpAccess(c.req.raw.clone());
   if (!hasScope(propsOf(c.executionCtx), required)) return insufficientScope([required]);
 
   const advertised =
     method === "tools/list" ? await advertisedAccountTools(c.env, userId, clientId) : undefined;
+  const mcpCatalogs = needsMcpCatalog
+    ? await advertisedAccountMcpTools(c.env, userId, clientId)
+    : [];
 
   const handler = createAccountMcpHandler(
     (call, tool, args) => dispatchAccountCall(c.env, call, tool, args, signal),
     (call, tool, args) => answerAccountTool(c.env, call, tool, args),
     c.env,
     advertised,
+    {
+      catalogs: mcpCatalogs,
+      dispatch: (call) => dispatchMcpToDevice(c.env, { ...call, signal, endpoint: "account" }),
+    },
   );
 
   const peek = c.req.raw.clone();

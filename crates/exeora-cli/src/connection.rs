@@ -4,7 +4,8 @@ use crate::{
     auth::AuthManager,
     config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     error::{ErrorCode, ExeoraError},
-    policy::{CommandPolicy, effective_policy, policy_allows},
+    mcp::McpManager,
+    policy::{CommandPolicy, effective_policy, mcp_policy_allows, policy_allows},
     protocol::{
         HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES,
         PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
@@ -58,6 +59,20 @@ pub async fn connect_forever(
     let _awake = acquire_keep_awake(json_output);
     let engine = Arc::new(ToolEngine::new()?);
     let workspace = Arc::new(WorkspaceEngine::new());
+    let mcp = Arc::new(McpManager::load(config.path(), &projects));
+    for warning in mcp.warnings() {
+        mcp_notice(json_output, warning);
+    }
+    // Started now rather than on the first `hello.ack`, so upstream servers
+    // boot while the relay connects. Nothing waits for it.
+    if !mcp.is_empty() {
+        let mcp = mcp.clone();
+        tokio::spawn(async move {
+            for message in mcp.discover().await {
+                mcp_notice(json_output, &message);
+            }
+        });
+    }
     let lifecycle_lock = Arc::new(Mutex::new(()));
     let config_path = config.path().to_path_buf();
     let gateway = config.gateway_url();
@@ -82,6 +97,7 @@ pub async fn connect_forever(
             api.clone(),
             engine.clone(),
             workspace.clone(),
+            mcp.clone(),
             lifecycle_lock.clone(),
             stop.clone(),
             json_output,
@@ -115,10 +131,49 @@ pub async fn connect_forever(
     }
     engine.kill_all().await;
     workspace.kill_all().await;
+    mcp.shutdown().await;
     if !json_output {
         println!("Disconnected.");
     }
     Ok(())
+}
+
+fn mcp_notice(json_output: bool, message: &str) {
+    emit_event(json_output, "notice", json!({ "message": message }));
+    if !json_output {
+        eprintln!("warning: {message}");
+    }
+}
+
+/// Publishes every project's MCP catalog on this connection.
+///
+/// Run on each `hello.ack`, because the relay forgets catalogs whenever a new
+/// executor session says hello. Discovery first retries servers that failed,
+/// then the catalogs go out through the same queue as every other frame. The
+/// connection loop never waits for it.
+fn publish_mcp_catalogs(
+    mcp: Arc<McpManager>,
+    outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
+) {
+    if mcp.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        for message in mcp.discover().await {
+            mcp_notice(json_output, &message);
+        }
+        let (catalogs, warnings) = mcp.catalogs();
+        for warning in warnings {
+            mcp_notice(json_output, &warning);
+        }
+        for (project_id, tools) in catalogs {
+            let frame = json!({ "type": "mcp.catalog", "projectId": project_id, "tools": tools });
+            if outgoing.send(frame).is_err() {
+                return;
+            }
+        }
+    });
 }
 
 fn acquire_keep_awake(json_output: bool) -> Option<keepawake::KeepAwake> {
@@ -211,6 +266,7 @@ async fn connect_once(
     api: crate::api::ApiClient,
     engine: Arc<ToolEngine>,
     workspace: Arc<WorkspaceEngine>,
+    mcp: Arc<McpManager>,
     lifecycle_lock: LifecycleLock,
     stop: CancellationToken,
     json_output: bool,
@@ -246,7 +302,7 @@ async fn connect_once(
         "capabilities": {
             "prompt": can_prompt,
             "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "features": ["source-control-v1", "terminal-v1"],
+            "features": ["source-control-v1", "terminal-v1", "mcp-proxy-v1"],
             "workspaceRouting": true,
         },
     }))?.into())).await?;
@@ -305,6 +361,7 @@ async fn connect_once(
                             Some("hello.ack") => {
                                 heartbeat_auto = message.get("heartbeatMode").and_then(Value::as_str) == Some("auto");
                                 last_ack = now_ms();
+                                publish_mcp_catalogs(mcp.clone(), out_tx.clone(), json_output);
                                 if let Some(latest) = message.get("latestCliVersion").and_then(Value::as_str)
                                     && is_outdated(CLI_VERSION, latest) {
                                         let notice = format!("A newer Exeora CLI is available ({CLI_VERSION} → {latest}). Run `exeora upgrade`.");
@@ -331,7 +388,10 @@ async fn connect_once(
                                 return Ok(ConnectOutcome::Rejected(reason.to_owned()));
                             }
                             Some("tool.call") => {
-                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), mcp.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                            }
+                            Some("mcp.call") => {
+                                spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             Some("workspace.call") => {
                                 spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone()).await;
@@ -354,7 +414,7 @@ async fn connect_once(
                 }
             }
             _ = roots_tick.tick() => {
-                reconcile_roots(&config_path, &engine, &workspace, &in_flight, &mut known_roots).await;
+                reconcile_roots(&config_path, &engine, &workspace, &mcp, &in_flight, &mut known_roots).await;
             }
         }
     }
@@ -371,6 +431,7 @@ async fn spawn_tool_call(
     api: ApiClient,
     engine: Arc<ToolEngine>,
     workspace: Arc<WorkspaceEngine>,
+    mcp: Arc<McpManager>,
     lifecycle_lock: LifecycleLock,
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
@@ -463,6 +524,7 @@ async fn spawn_tool_call(
         cancel_root(&in_flight, &root).await;
         engine.kill_root(&root).await;
         workspace.kill_root(&root).await;
+        mcp.kill_root(&root).await;
     }
 
     let cancel = CancellationToken::new();
@@ -537,6 +599,169 @@ async fn spawn_tool_call(
         );
         if !json_output {
             println!("{} {tool_name} {elapsed}ms", if ok { "✓" } else { "✗" });
+        }
+    });
+}
+
+async fn spawn_mcp_call(
+    message: Value,
+    config_path: PathBuf,
+    mcp: Arc<McpManager>,
+    in_flight: InFlight,
+    outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
+) {
+    let Some(request_id) = message
+        .get("requestId")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    let started = now_ms();
+    let send_error = |code: ErrorCode, text: &str| {
+        let _ = outgoing.send(mcp_result_frame(
+            &request_id,
+            started,
+            Err(ExeoraError::new(code, text)),
+        ));
+    };
+    if message
+        .get("expiresAt")
+        .and_then(Value::as_u64)
+        .is_some_and(|expires| now_ms() > expires)
+    {
+        send_error(
+            ErrorCode::ToolTimeout,
+            "The MCP request expired before it was received.",
+        );
+        return;
+    }
+    let Some(project_id) = message.get("projectId").and_then(Value::as_str) else {
+        return;
+    };
+    let target = match resolve_target(
+        &config_path,
+        project_id,
+        message.get("workspaceId").and_then(Value::as_str),
+        message.get("workspaceSlug").and_then(Value::as_str),
+    ) {
+        Ok(target) => target,
+        Err(error) => {
+            send_error(error.code, &error.message);
+            return;
+        }
+    };
+    let Some(server) = message
+        .get("server")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        send_error(ErrorCode::UnknownTool, "The MCP server was not specified.");
+        return;
+    };
+    let Some(tool) = message
+        .get("tool")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+    else {
+        send_error(ErrorCode::UnknownTool, "The MCP tool was not specified.");
+        return;
+    };
+    let arguments = message
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let ResolvedTarget {
+        project,
+        root,
+        workspace_slug,
+        ..
+    } = target;
+    // The catalog this process published is the authority on what the tool
+    // is, including whether it changes anything, not the frame that named it.
+    let Some(descriptor) = mcp.tool(&project.id, &server, &tool) else {
+        send_error(
+            ErrorCode::UnknownTool,
+            "That MCP tool is not exposed for this project.",
+        );
+        return;
+    };
+    let remote = message
+        .get("policy")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<CommandPolicy>(value).ok());
+    let (policy, problem) = effective_policy(&root, remote);
+    if let Some(problem) = problem {
+        emit_event(json_output, "error", json!({ "message": problem }));
+    }
+    let read_only = descriptor
+        .annotations
+        .as_ref()
+        .and_then(|hints| hints.read_only_hint);
+    let verdict = mcp_policy_allows(&policy, read_only);
+    if !verdict.allowed {
+        send_error(
+            ErrorCode::Forbidden,
+            verdict
+                .reason
+                .as_deref()
+                .unwrap_or("This project does not allow that."),
+        );
+        return;
+    }
+    let cancel = CancellationToken::new();
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: root.clone(),
+        },
+    );
+    let exposed = descriptor.exposed_name;
+    emit_event(
+        json_output,
+        "call",
+        json!({ "tool": exposed, "project": project.slug, "workspace": workspace_slug, "client": describe_client(message.get("client")) }),
+    );
+    if !json_output {
+        println!(
+            "→ MCP {server}/{tool} ({}/{})",
+            project.slug,
+            workspace_slug.as_deref().unwrap_or("main")
+        );
+    }
+    tokio::spawn(async move {
+        let result = tokio::select! {
+            _ = cancel.cancelled() => Err(ExeoraError::new(
+                ErrorCode::Cancelled,
+                "The MCP call was cancelled.",
+            )),
+            result = mcp.call(&project.id, &root, &server, &tool, arguments) => result.map_err(|error| {
+                ExeoraError::new(
+                    ErrorCode::ToolFailed,
+                    format!("Upstream MCP call failed: {error:#}"),
+                )
+            }),
+        };
+        in_flight.lock().await.remove(&request_id);
+        let elapsed = now_ms().saturating_sub(started);
+        let frame = mcp_result_frame(&request_id, started, result);
+        let ok = frame
+            .pointer("/result/ok")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let _ = outgoing.send(frame);
+        emit_event(
+            json_output,
+            "result",
+            json!({ "tool": exposed, "ok": ok, "durationMs": elapsed }),
+        );
+        if !json_output {
+            println!(
+                "{} MCP {server}/{tool} {elapsed}ms",
+                if ok { "✓" } else { "✗" }
+            );
         }
     });
 }
@@ -1175,6 +1400,12 @@ fn workspace_result_frame(
     json!({ "type": "workspace.result", "requestId": request_id, "durationMs": now_ms().saturating_sub(started), "result": result })
 }
 
+fn mcp_result_frame(request_id: &str, started: u64, result: Result<Value, ExeoraError>) -> Value {
+    let mut frame = result_frame(request_id, started, result);
+    frame["type"] = json!("mcp.result");
+    frame
+}
+
 fn result_frame(request_id: &str, started: u64, result: Result<Value, ExeoraError>) -> Value {
     let result = match result {
         Ok(value)
@@ -1229,6 +1460,7 @@ async fn reconcile_roots(
     config_path: &std::path::Path,
     engine: &ToolEngine,
     workspace: &WorkspaceEngine,
+    mcp: &McpManager,
     in_flight: &InFlight,
     known_roots: &mut HashSet<PathBuf>,
 ) {
@@ -1258,6 +1490,7 @@ async fn reconcile_roots(
     for root in removed {
         engine.kill_root(&root).await;
         workspace.kill_root(&root).await;
+        mcp.kill_root(&root).await;
     }
 }
 

@@ -67,12 +67,18 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
  * matters for large tool arguments, which the bounded method peek deliberately
  * refuses to buffer.
  */
-export async function inspectMcpAccess(
-  request: Request,
-): Promise<{ method: string | undefined; required: "tools:read" | "tools:execute" }> {
-  if (request.method !== "POST") return { method: undefined, required: "tools:read" };
+export async function inspectMcpAccess(request: Request): Promise<{
+  method: string | undefined;
+  required: "tools:read" | "tools:execute";
+  /** Whether this request may need the proxied MCP catalog to be answered. */
+  needsMcpCatalog: boolean;
+}> {
+  if (request.method !== "POST") {
+    return { method: undefined, required: "tools:read", needsMcpCatalog: false };
+  }
 
-  const bodyMethod = await peekMethod(request.clone());
+  const peeked = await peekMethod(request.clone());
+  const bodyMethod = peeked?.method;
   const modern = request.headers.get("MCP-Protocol-Version") === "2026-07-28";
   const headerMethod = modern ? (request.headers.get("Mcp-Method") ?? undefined) : undefined;
   const mismatched =
@@ -80,7 +86,16 @@ export async function inspectMcpAccess(
   const method = headerMethod ?? bodyMethod;
   const required =
     method === undefined || mismatched || method === "tools/call" ? "tools:execute" : "tools:read";
-  return { method, required };
+  // A body too large to peek could be a proxied call with large arguments, so
+  // it loads the catalog; a native call the peek could read never does.
+  const headerName = modern ? (request.headers.get("Mcp-Name") ?? undefined) : undefined;
+  const name = mismatched ? undefined : (headerName ?? peeked?.name);
+  const needsMcpCatalog =
+    method === "tools/list" ||
+    method === undefined ||
+    mismatched ||
+    (method === "tools/call" && (name === undefined || name.startsWith("mcp__")));
+  return { method, required, needsMcpCatalog };
 }
 
 /** RFC 6750 response used by protected handlers when the token is valid but too narrow. */

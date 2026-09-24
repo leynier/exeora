@@ -21,6 +21,9 @@ pub const MAX_PROCESSES_PER_WORKSPACE: usize = 8;
 pub const MAX_PROCESSES_PER_PROJECT: usize = 16;
 pub const MAX_PATCH_OPS: usize = 20;
 pub const MAX_PATCH_BYTES: usize = 1_000_000;
+pub const MAX_MCP_TOOLS_PER_PROJECT: usize = 256;
+pub const MAX_MCP_CATALOG_BYTES: usize = 1_500_000;
+pub const MAX_MCP_TOOL_NAME_LENGTH: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

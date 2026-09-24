@@ -114,4 +114,39 @@ describe("OAuth scope ceilings", () => {
     });
     expect((await inspectMcpAccess(mismatch)).required).toBe("tools:execute");
   });
+
+  it("loads the proxied MCP catalog only when the call could name a proxied tool", async () => {
+    const callTo = (name: string) => {
+      const body = JSON.stringify({ jsonrpc: "2.0", method: "tools/call", params: { name } });
+      return new Request("https://exeora.dev/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(new TextEncoder().encode(body).byteLength),
+        },
+        body,
+      });
+    };
+    expect((await inspectMcpAccess(callTo("read_file"))).needsMcpCatalog).toBe(false);
+    expect((await inspectMcpAccess(callTo("mcp__demo__echo"))).needsMcpCatalog).toBe(true);
+
+    const tooLargeToPeek = new Request("https://exeora.dev/mcp", {
+      method: "POST",
+      headers: { "content-length": "65537" },
+      body: "{}",
+    });
+    expect((await inspectMcpAccess(tooLargeToPeek)).needsMcpCatalog).toBe(true);
+
+    const modern = new Request("https://exeora.dev/mcp", {
+      method: "POST",
+      headers: {
+        "content-length": "65537",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "write_file",
+      },
+      body: "{}",
+    });
+    expect((await inspectMcpAccess(modern)).needsMcpCatalog).toBe(false);
+  });
 });

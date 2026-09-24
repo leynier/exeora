@@ -1,8 +1,10 @@
-import { TOOL_NAMES, type ToolName } from "@exeora/protocol";
-import { and, eq } from "drizzle-orm";
+import { type McpToolDescriptor, TOOL_NAMES, type ToolName } from "@exeora/protocol";
+import { and, eq, isNull } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
 import { accountProjects } from "./client-targets.js";
 import { db, schema } from "./db/client.js";
+import type { ProjectMcpCatalog } from "./mcp-proxy-account-tools.js";
+import { decodeMcpCatalogs } from "./relay-mcp.js";
 import "./env.js";
 
 /**
@@ -71,4 +73,79 @@ export async function advertisedAccountTools(
   const chosen = reachable.length === 1 ? reachable[0] : undefined;
 
   return chosen ? advertisedTools(env, userId, chosen.id) : undefined;
+}
+
+/** Upstream MCP tools most recently announced by this project's executor. */
+export async function advertisedMcpTools(
+  env: Env,
+  userId: string | undefined,
+  projectId: string,
+): Promise<McpToolDescriptor[]> {
+  if (!userId) return [];
+  const project = await db(env)
+    .select({ deviceId: schema.projects.deviceId })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+  if (!project) return [];
+  const raw = await env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).mcpCatalogs([
+    projectId,
+  ]);
+  return decodeMcpCatalogs(raw)[projectId] ?? [];
+}
+
+/**
+ * Proxied MCP catalogs for every project an account-level client may reach.
+ *
+ * One query for the projects and their machines, then one relay round trip per
+ * machine rather than per project. Which project a call means is only known
+ * once the tool is registered and its routing field read, so every reachable
+ * catalog is loaded; the grouping is what keeps that cheap.
+ */
+export async function advertisedAccountMcpTools(
+  env: Env,
+  userId: string | undefined,
+  clientId: string | undefined,
+): Promise<ProjectMcpCatalog[]> {
+  if (!userId || !clientId) return [];
+  const rows = await db(env)
+    .select({
+      id: schema.projects.id,
+      slug: schema.projects.slug,
+      deviceId: schema.projects.deviceId,
+    })
+    .from(schema.projectClients)
+    .innerJoin(schema.projects, eq(schema.projects.id, schema.projectClients.projectId))
+    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
+    .where(
+      and(
+        eq(schema.projectClients.userId, userId),
+        eq(schema.projectClients.clientId, clientId),
+        eq(schema.projectClients.endpoint, "account"),
+        isNull(schema.projectClients.revokedAt),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
+    .orderBy(schema.projects.name)
+    .all();
+
+  const byDevice = new Map<string, string[]>();
+  for (const row of rows)
+    byDevice.set(row.deviceId, [...(byDevice.get(row.deviceId) ?? []), row.id]);
+  const catalogs = Object.assign(
+    {},
+    ...(await Promise.all(
+      [...byDevice].map(async ([deviceId, projectIds]) =>
+        decodeMcpCatalogs(
+          await env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).mcpCatalogs(projectIds),
+        ),
+      ),
+    )),
+  ) as Record<string, McpToolDescriptor[]>;
+
+  return rows.map((row) => ({
+    projectId: row.id,
+    project: row.slug,
+    tools: catalogs[row.id] ?? [],
+  }));
 }

@@ -34,6 +34,7 @@ jsonschema = { version = "0.49.1", default-features = false }
 keepawake = "0.6.0"
 keyring = "4.1.5"
 memchr = "2.7.6"
+http = "1.3.1"
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
 open = "5.3.2"
 process-wrap = { version = "9.1.0", default-features = false, features = ["tokio1", "kill-on-drop", "process-group", "process-session", "job-object", "creation-flags"] }
@@ -41,6 +42,7 @@ portable-pty = "0.9.0"
 regex-syntax = "0.8.11"
 regress = { version = "0.11.1", features = ["utf16"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "form", "rustls", "system-proxy"] }
+rmcp = { version = "3.2.0", default-features = false, features = ["client", "reqwest", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 semver = "1.0.27"

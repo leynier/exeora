@@ -13,7 +13,11 @@ import {
 import { observeTool } from "./cost-metrics.js";
 import "./env.js";
 import { touchDevice } from "./presence.js";
-import { handleToolCallerMessage, handleWorkspaceCallerMessage } from "./relay-do-caller-starts.js";
+import {
+  handleMcpCallerMessage,
+  handleToolCallerMessage,
+  handleWorkspaceCallerMessage,
+} from "./relay-do-caller-starts.js";
 import {
   type ApprovalCallerState,
   type ApprovalView,
@@ -50,6 +54,7 @@ import {
   scheduleWorkspaceAlarm,
 } from "./relay-do-terminal.js";
 import { decodeCallerRequest } from "./relay-internal.js";
+import { clearMcpCatalogs, readMcpCatalogs, replaceMcpCatalog } from "./relay-mcp.js";
 
 /**
  * One instance per `userId:deviceId`. Holds the single outbound WebSocket the
@@ -165,6 +170,7 @@ export class DeviceRelay extends DurableObject<Env> {
         }
 
         replaceOtherExecutors(this.ctx, socket);
+        await clearMcpCatalogs(this.ctx);
         socket.serializeAttachment({
           role: "executor",
           deviceId: state.deviceId || message.deviceId,
@@ -207,6 +213,13 @@ export class DeviceRelay extends DurableObject<Env> {
         return;
       }
 
+      case "mcp.catalog": {
+        if (!(await replaceMcpCatalog(this.ctx, message.projectId, message.tools))) {
+          console.error(`MCP catalog for ${message.projectId} exceeded the byte budget`);
+        }
+        return;
+      }
+
       case "approval.answer": {
         // Unknown ids are normal: the dashboard may have answered first, or the
         // question expired while someone was reading it.
@@ -214,7 +227,8 @@ export class DeviceRelay extends DurableObject<Env> {
         return;
       }
 
-      case "tool.result": {
+      case "tool.result":
+      case "mcp.result": {
         const caller = callerSocket(this.ctx, "tool", message.requestId);
         if (!caller) return;
         const callerState = attachmentOf(caller);
@@ -308,6 +322,11 @@ export class DeviceRelay extends DurableObject<Env> {
     return state?.role === "executor" ? (state.capabilities ?? BASELINE_CAPABILITIES) : null;
   }
 
+  /** The proxied MCP catalogs of these projects, as JSON keyed by project id. */
+  async mcpCatalogs(projectIds: string[]): Promise<string> {
+    return JSON.stringify(await readMcpCatalogs(this.ctx, projectIds));
+  }
+
   async createTerminalTicket(
     projectId: string,
     workspaceId: string | undefined,
@@ -371,6 +390,7 @@ export class DeviceRelay extends DurableObject<Env> {
     }
     failCallers(this.ctx, "This device was revoked.");
     await forgetAllStoredTerminals(this.ctx);
+    await clearMcpCatalogs(this.ctx);
   }
 
   // ---------------------------------------------------------------------
@@ -402,6 +422,11 @@ export class DeviceRelay extends DurableObject<Env> {
 
     if (state.role === "tool" && message.type === "tool.start") {
       handleToolCallerMessage(this.ctx, socket, state, message);
+      return;
+    }
+
+    if (state.role === "tool" && message.type === "mcp.start") {
+      handleMcpCallerMessage(this.ctx, socket, state, message);
       return;
     }
 

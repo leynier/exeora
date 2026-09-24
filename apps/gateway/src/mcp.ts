@@ -5,36 +5,27 @@ import {
   AGENT_PROMPT_TOOL,
   agentPrompt,
   ExeoraError,
+  type McpToolDescriptor,
   serverInstructions,
   type ToolName,
 } from "@exeora/protocol";
-import {
-  acceptedContent,
-  CLIENT_INFO_META_KEY,
-  inputRequired,
-  McpServer,
-  type ServerContext,
-} from "@modelcontextprotocol/server";
+import { CLIENT_INFO_META_KEY, McpServer, type ServerContext } from "@modelcontextprotocol/server";
 import { createMcpHandler, getMcpAuthContext } from "agents/mcp/server";
-import {
-  APPROVAL_KEY,
-  APPROVAL_SCHEMA,
-  type ApprovalState,
-  approvalCodec,
-  describeCall,
-  hashArguments,
-} from "./approval.js";
+import { approvalCodec, approvalFor, askToConfirm } from "./approval.js";
 import type { CallerIdentity, McpClientInfo } from "./clients.js";
 import "./env.js";
 import { registerExecutorTools } from "./mcp-executor-tools.js";
+import {
+  answerMcpProxyCall,
+  type McpProxyDispatcher,
+  registerMcpProxyTools,
+} from "./mcp-proxy-tools.js";
 
 /**
  * One MCP endpoint per project: `exeora.dev/p/:projectId/mcp`.
  *
- * The handler is stateless, so building one per request costs nothing and lets
- * `route` carry the project id. Isolating projects at the URL means an agent
- * connected to one project has no way to name another; the separation is
- * structural rather than something the model is asked to respect.
+ * The stateless handler carries project isolation in its URL rather than in a
+ * model-selected argument.
  *
  * `legacy: "stateless"` is the SDK default and is what makes today's clients
  * work: claude.ai and ChatGPT still speak the 2025-era protocol, and the same
@@ -99,6 +90,11 @@ export type ToolDispatcher = (
   args: unknown,
 ) => Promise<DispatchResult>;
 
+export interface McpProxyOptions {
+  tools: readonly McpToolDescriptor[];
+  dispatch: McpProxyDispatcher;
+}
+
 /**
  * `env` is threaded in rather than reached for. The handler factory runs inside
  * the SDK, and `getMcpAuthContext()` carries only the grant's props, so this is
@@ -120,6 +116,7 @@ export function createProjectMcpHandler(
   listWorkspaces?: (
     context: Pick<McpToolContext, "userId" | "projectId" | "caller">,
   ) => Promise<unknown>,
+  mcpProxy?: McpProxyOptions,
 ) {
   return createMcpHandler(
     (request) => {
@@ -220,6 +217,24 @@ export function createProjectMcpHandler(
 
       registerExecutorTools(server, offers, run);
 
+      if (mcpProxy) {
+        registerMcpProxyTools(server, mcpProxy.tools, (invocation) => {
+          const props = propsOf();
+          return answerMcpProxyCall(invocation, {
+            codec,
+            canElicit: request.era === "modern",
+            dispatch: mcpProxy.dispatch,
+            userId: String(props.userId ?? ""),
+            caller: {
+              clientId: props.clientId,
+              clientName: props.clientName,
+              mcp: mcpClientInfo(invocation.ctx),
+            },
+            projectId,
+          });
+        });
+      }
+
       return server;
     },
     { route: mcpRoute(projectId) },
@@ -278,98 +293,6 @@ export function toolResult(value: unknown) {
 }
 
 /**
- * Asks the client to confirm this exact call, on this exact project.
- *
- * `where` names the project in the question, and is given only where the
- * question needs it. A per-project URL reaches one project and the person
- * approving already knows which; the account URL reaches several, so "Run
- * `rm -rf build`?" on its own asks someone to approve a command without saying
- * which repository it lands in, which is not a question anybody can answer.
- */
-export async function askToConfirm(
-  codec: ReturnType<typeof approvalCodec>,
-  ctx: ServerContext,
-  projectId: string,
-  tool: ToolName,
-  args: unknown,
-  where?: string,
-  workspaceId?: string,
-) {
-  const question = describeCall(tool, args);
-
-  return inputRequired({
-    inputRequests: {
-      [APPROVAL_KEY]: inputRequired.elicit({
-        message: where ? `In ${where}: ${question}` : question,
-        requestedSchema: APPROVAL_SCHEMA,
-      }),
-    },
-    requestState: await codec.mint(
-      {
-        projectId,
-        ...(workspaceId ? { workspaceId } : {}),
-        tool,
-        argsHash: await hashArguments(args),
-      },
-      ctx,
-    ),
-  });
-}
-
-/**
- * The confirmation this round carries, if it is one for this exact call, and
- * the project it was given for.
- *
- * Every condition has to hold, and the argument hash is the one that matters
- * most. Without comparing the arguments, a client could have `ls` approved and
- * retry with `rm -rf ~` carrying the same state: the signature would verify,
- * the tool would match, and the approval would be for a call nobody ever saw.
- *
- * The project is returned rather than compared, because the account endpoint
- * does not know which project the call is for until the dispatcher resolves it.
- * Whoever does know still has to compare: an approval carries one project and
- * is worth nothing anywhere else.
- *
- * The state itself has already been verified by the seam, since the server is
- * built with `requestState.verify`; a forged or expired one never reaches here.
- */
-export async function approvalFor(
-  ctx: Pick<ServerContext, "mcpReq">,
-  tool: ToolName,
-  args: unknown,
-): Promise<{ projectId: string; workspaceId?: string } | null> {
-  const state = ctx.mcpReq.requestState<ApprovalState>();
-  if (!state || typeof state !== "object") return null;
-  if (state.tool !== tool) return null;
-
-  const answer = acceptedContent<{ [APPROVAL_KEY]?: unknown }>(
-    ctx.mcpReq.inputResponses,
-    APPROVAL_KEY,
-  );
-  // `undefined` covers a declined or cancelled elicitation as well as a missing
-  // one, which is right: none of them is a yes.
-  if (answer?.[APPROVAL_KEY] !== true) return null;
-
-  if (state.argsHash !== (await hashArguments(args))) return null;
-
-  return {
-    projectId: state.projectId,
-    ...(state.workspaceId ? { workspaceId: state.workspaceId } : {}),
-  };
-}
-
-/** Whether this round confirms this exact call on this project. */
-export async function isApproved(
-  ctx: Pick<ServerContext, "mcpReq">,
-  projectId: string,
-  tool: ToolName,
-  args: unknown,
-): Promise<boolean> {
-  const approval = await approvalFor(ctx, tool, args);
-  return approval?.projectId === projectId;
-}
-
-/**
  * The `clientInfo` from an `initialize` body, if that is what this is.
  *
  * Reading the raw request is the only seam that works here. `initialize` is
@@ -399,7 +322,9 @@ const MAX_HANDSHAKE_BYTES = 64 * 1024;
  * not one and never needs buffering to rule out. That is what keeps this off
  * the path a `write_file` carrying a whole file takes.
  */
-export async function peekMethod(request: Request): Promise<string | undefined> {
+export async function peekMethod(
+  request: Request,
+): Promise<{ method: string; name?: string } | undefined> {
   if (request.method !== "POST") return undefined;
 
   const declared = Number(request.headers.get("Content-Length") ?? Number.NaN);
@@ -412,8 +337,13 @@ export async function peekMethod(request: Request): Promise<string | undefined> 
     return undefined;
   }
 
-  const method = (body as { method?: unknown } | null)?.method;
-  return typeof method === "string" ? method : undefined;
+  // The tool's name too, for `tools/call`: only a proxied MCP tool needs the
+  // catalog loaded before the call can be registered and answered.
+  const message = body as { method?: unknown; params?: { name?: unknown } } | null;
+  const method = message?.method;
+  if (typeof method !== "string") return undefined;
+  const name = message?.params?.name;
+  return { method, ...(typeof name === "string" ? { name } : {}) };
 }
 
 export async function handshakeClientInfo(request: Request): Promise<McpClientInfo | undefined> {
