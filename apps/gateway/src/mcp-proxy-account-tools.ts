@@ -1,4 +1,9 @@
-import { ExeoraError, MCP_PROXY_TOOL_NAME_PATTERN, type McpToolDescriptor } from "@exeora/protocol";
+import {
+  ExeoraError,
+  MCP_PROXY_TOOL_NAME_PATTERN,
+  type McpToolAnnotations,
+  type McpToolDescriptor,
+} from "@exeora/protocol";
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
   type McpProxyInvocation,
@@ -63,6 +68,7 @@ export function registerAccountMcpProxyTools(
         : {
             ...first.tool,
             description: `${first.tool.description ?? `Tool \`${first.tool.name}\`.`} Available in: ${group.map((entry) => entry.catalog.project).join(", ")}.`,
+            annotations: mergedAnnotations(group),
           };
 
     registerProxyTool(server, described, schema, async (args, ctx) => {
@@ -98,6 +104,30 @@ function selectProject(group: CatalogTool[], selector: unknown): CatalogTool {
     "INVALID_ARGUMENTS",
     "This MCP tool is available in several projects. Pass the project slug or id for this call.",
   );
+}
+
+/**
+ * What several projects' variants of one tool can honestly claim together.
+ *
+ * A client may run a tool marked read only without asking, so a hint survives
+ * the merge only when every variant states the same value; otherwise it is
+ * left out and the MCP default applies, which is the cautious reading for each
+ * of them. Dispatch still applies the policy to the variant a call selects.
+ */
+function mergedAnnotations(group: readonly CatalogTool[]): McpToolAnnotations {
+  const hints = group.map((entry) => entry.tool.annotations ?? {});
+  const agreed = (key: keyof McpToolAnnotations) => {
+    const first = hints[0]?.[key];
+    return first !== undefined && hints.every((hint) => hint[key] === first)
+      ? { [key]: first }
+      : {};
+  };
+  return {
+    ...agreed("readOnlyHint"),
+    ...agreed("destructiveHint"),
+    ...agreed("idempotentHint"),
+    ...agreed("openWorldHint"),
+  };
 }
 
 function projectSchema(group: readonly CatalogTool[]) {

@@ -108,6 +108,29 @@ describe("account MCP proxy tools", () => {
     });
   });
 
+  it("advertises a merged tool as read only only when every project's variant is", async () => {
+    const annotate = (hints: Array<Record<string, boolean> | undefined>) =>
+      catalogs.map((catalog, index) => ({
+        ...catalog,
+        tools: catalog.tools.map((tool) => ({ ...tool, annotations: hints[index] })),
+      }));
+    const listed = async (active: ReturnType<typeof annotate>) => {
+      const body = await payload(
+        await post({ jsonrpc: "2.0", id: 7, method: "tools/list" }, [], active),
+      );
+      return (
+        body.result as { tools: Array<{ name: string; annotations?: Record<string, unknown> }> }
+      ).tools.find((tool) => tool.name === NAME)?.annotations;
+    };
+
+    expect(await listed(annotate([{ readOnlyHint: true }, undefined]))).toMatchObject({
+      readOnlyHint: false,
+    });
+    expect(await listed(annotate([{ readOnlyHint: true }, { readOnlyHint: true }]))).toMatchObject({
+      readOnlyHint: true,
+    });
+  });
+
   it("keeps one project's full schema, with an optional project field", async () => {
     const first = catalogs[0];
     if (!first) throw new Error("fixture is empty");

@@ -96,9 +96,9 @@ Full reference: [exeora.dev/docs/tools](https://exeora.dev/docs/tools/).
 
 ### Proxy other MCP servers
 
-Exeora can also connect to MCP servers configured on the machine and re-publish their tools through its own MCP endpoint. Configure project servers in `exeora.toml` or user-wide servers under `mcpServers` in Exeora's local `config.json`; stdio and Streamable HTTP are supported. Upstream tools are namespaced as `mcp__server__tool` and keep their original input schema and MCP result.
+Exeora can also start the MCP servers configured on your machine and re-publish their tools through its own MCP endpoint. List them in `mcp.json` next to Exeora's `config.json`, in the `mcpServers` shape other clients use; stdio and Streamable HTTP are supported. Upstream tools appear as `mcp__server__tool`, keep their schema and result, and follow the project's policy: a tool not marked read only is refused in a read-only project and confirmed where the project asks before changes.
 
-See [proxy other MCP servers](https://exeora.dev/docs/mcp-proxy/) for configuration examples, environment-variable secrets, project overrides, and protocol compatibility.
+See [proxy other MCP servers](https://exeora.dev/docs/mcp-proxy/) for configuration, project servers and their trust setting, and limits.
 
 ## Clients
 
