@@ -73,13 +73,11 @@ export async function queryWarehouseCalls(
   // enforce the same target account's plan, not the viewing admin's plan.
   const account =
     filter.retentionDays === undefined
-      ? (
-          await db(env)
-            .select({ plan: schema.users.plan })
-            .from(schema.users)
-            .where(eq(schema.users.id, filter.userId))
-            .get()
-        )
+      ? await db(env)
+          .select({ plan: schema.users.plan })
+          .from(schema.users)
+          .where(eq(schema.users.id, filter.userId))
+          .get()
       : undefined;
   const retentionDays = filter.retentionDays ?? limitsFor(account?.plan).retentionDays;
   if (!Number.isInteger(retentionDays) || retentionDays < 1) {

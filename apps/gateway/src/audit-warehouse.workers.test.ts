@@ -89,7 +89,9 @@ describe("resolved audit history", () => {
     await insert("call_success", "ok");
     await insert("call_failure", "error", AUDIT_INCOMPLETE_CODE);
     await insert("call_failure", "error", "TOOL_FAILED");
-    expect((await page({ status: "error" })).items.map((item) => item.id)).toEqual(["call_failure"]);
+    expect((await page({ status: "error" })).items.map((item) => item.id)).toEqual([
+      "call_failure",
+    ]);
   });
 
   it("hides recent pending intents but exposes interrupted execution after the deadline", async () => {

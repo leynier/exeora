@@ -29,9 +29,16 @@ jobs:
         with:
           bun-version: 1.3.14
       - name: Install locked dependencies
+        id: install
         run: bun install --frozen-lockfile
-      - name: Check, typecheck, build and test the gateway
-        run: bun run ci
+      - name: Check formatting, lint and file lengths
+        run: bun run check && bun run check:file-length
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bun run typecheck
+      - name: Build and test the gateway
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bun run --cwd apps/web build && bun run test
 
   maintenance-tests:
     runs-on: ubuntu-latest

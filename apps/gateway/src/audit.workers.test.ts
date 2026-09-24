@@ -15,7 +15,8 @@ beforeEach(async () => {
   await db(env).delete(schema.auditOutbox).run();
 });
 
-const sender = () => vi.fn<(events: Record<string, unknown>[]) => Promise<void>>(async () => undefined);
+const sender = () =>
+  vi.fn<(events: Record<string, unknown>[]) => Promise<void>>(async () => undefined);
 
 describe("audit pipeline event", () => {
   it("emits the versioned, argument-free warehouse schema", () => {
