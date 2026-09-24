@@ -158,6 +158,17 @@ describe("terminal sessions", () => {
         expect([...rows.values()][0]?.replay).toEqual(["b25lCg=="]);
       });
     });
+    // Output then stops. The trailing alarm writes the rest without waiting
+    // for a reattach, since hibernation would drop the in-memory copy.
+    await eventually(async () => {
+      await runDurableObjectAlarm(relay());
+      await runInDurableObject(relay(), async (_instance, state) => {
+        const rows = await state.storage.list<StoredTerminalSession>({
+          prefix: TERMINAL_SESSION_PREFIX,
+        });
+        expect([...rows.values()][0]?.replay).toEqual(["b25lCg==", "dHdvCg==", "dGhyZWUK"]);
+      });
+    });
 
     const again = await openViewer("term_again");
     await eventually(() =>

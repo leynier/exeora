@@ -17,6 +17,7 @@ import {
 } from "./relay-do-callers.js";
 import {
   destroyTerminalSession,
+  flushAllDetached,
   flushDetachedSession,
   forgetStoredTerminal,
   lastTerminalActivity,
@@ -297,6 +298,7 @@ export async function consumeTerminalTicket(
 }
 
 export async function expireWorkspaceSessions(ctx: DurableObjectState): Promise<void> {
+  await flushAllDetached(ctx);
   const now = Date.now();
   const tickets = await ctx.storage.list<{ expiresAt: number }>({
     prefix: TERMINAL_TICKET_PREFIX,

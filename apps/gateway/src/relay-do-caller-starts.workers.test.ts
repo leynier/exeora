@@ -111,7 +111,8 @@ describe("workspace relay", () => {
   });
 
   it("issues short-lived, origin-bound, one-time terminal tickets", async () => {
-    await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    const executor = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    await executor.ack;
     const ticket = await relay().createTerminalTicket(
       "prj_test",
       undefined,

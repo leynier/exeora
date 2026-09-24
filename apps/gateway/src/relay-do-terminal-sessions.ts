@@ -15,7 +15,9 @@ export const TERMINAL_TICKET_PREFIX = "terminal-ticket:";
 export const TERMINAL_SESSION_PREFIX = "terminal-session:";
 
 const MAX_REPLAY_BYTES = 32 * 1024;
-const DETACHED_TOUCH_MS = 10_000;
+// Below the roughly ten idle seconds after which a hibernatable object leaves
+// memory, so the trailing flush alarm fires before buffered output could go.
+const DETACHED_TOUCH_MS = 5_000;
 
 export type StoredTerminalSession = {
   sessionId: string;
@@ -194,6 +196,8 @@ export async function persistDetachedTerminal(
     replayBytes: 0,
   };
   stored.lastActivityAt = Math.max(stored.lastActivityAt, state.lastActivityAt);
+  // The socket's buffer is newer than anything queued while nobody watched.
+  pendingDetached.delete(state.id);
   const buffer = socketReplay(socket);
   if (buffer?.seeded) {
     stored.replay = buffer.replay;
@@ -215,14 +219,29 @@ export async function touchDetachedSession(
   const now = Date.now();
   if (chunk) appendReplay(stored, chunk);
   stored.lastActivityAt = now;
+  const queued = pendingDetached.has(sessionId);
   pendingDetached.set(sessionId, stored);
   // A busy detached shell (a build, `tail -f`) would otherwise write storage on
-  // every chunk. Anything newer than the last write lives in memory and is
-  // flushed before a reattach reads the row.
+  // every chunk. Anything newer than the last write lives in memory until the
+  // window ends, a reattach reads the row, or the trailing alarm flushes it.
   const previous = lastDetachedTouch.get(sessionId) ?? 0;
-  if (now - previous < DETACHED_TOUCH_MS) return;
-  await flushDetachedSession(ctx, sessionId);
-  await scheduleWorkspaceAlarm(ctx);
+  if (now - previous >= DETACHED_TOUCH_MS) {
+    await flushDetachedSession(ctx, sessionId);
+    await scheduleWorkspaceAlarm(ctx);
+    return;
+  }
+  if (queued) return;
+  // Nothing else wakes the object once output stops, and hibernation would
+  // drop the buffer, so the end of the window is an alarm.
+  const due = previous + DETACHED_TOUCH_MS;
+  const alarm = await ctx.storage.getAlarm();
+  if (alarm === null || alarm > due) await ctx.storage.setAlarm(due);
+}
+
+export async function flushAllDetached(ctx: DurableObjectState): Promise<void> {
+  for (const sessionId of [...pendingDetached.keys()]) {
+    await flushDetachedSession(ctx, sessionId);
+  }
 }
 
 export async function flushDetachedSession(
@@ -266,6 +285,9 @@ export async function scheduleWorkspaceAlarm(ctx: DurableObjectState): Promise<v
       lastTerminalActivity(ctx, session) + TERMINAL_IDLE_MS,
       session.startedAt + TERMINAL_MAX_DURATION_MS,
     );
+  }
+  for (const sessionId of pendingDetached.keys()) {
+    deadlines.push((lastDetachedTouch.get(sessionId) ?? 0) + DETACHED_TOUCH_MS);
   }
   const tickets = await ctx.storage.list<{ expiresAt: number }>({
     prefix: TERMINAL_TICKET_PREFIX,

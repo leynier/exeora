@@ -165,13 +165,13 @@ export class DeviceRelay extends DurableObject<Env> {
         }
 
         replaceOtherExecutors(this.ctx, socket);
-        await resetExecutorTerminals(this.ctx);
         socket.serializeAttachment({
           role: "executor",
           deviceId: state.deviceId || message.deviceId,
           active: true,
           ...(message.capabilities ? { capabilities: message.capabilities } : {}),
         } satisfies ExecutorSocketState);
+        await resetExecutorTerminals(this.ctx);
 
         socket.send(
           encodeMessage({
