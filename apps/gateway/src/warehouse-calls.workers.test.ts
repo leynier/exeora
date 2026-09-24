@@ -51,11 +51,15 @@ async function page(
   filter: Parameters<typeof queryWarehouseCalls>[1],
 ) {
   const { fetcher, queries } = sink(rows);
-  const result = await queryWarehouseCalls(env, { retentionDays: 1, ...filter }, {
-    config,
-    fetcher,
-    now: NOW,
-  });
+  const result = await queryWarehouseCalls(
+    env,
+    { retentionDays: 1, ...filter },
+    {
+      config,
+      fetcher,
+      now: NOW,
+    },
+  );
   return { ...result, query: queries[0] ?? "" };
 }
 

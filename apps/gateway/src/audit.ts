@@ -3,7 +3,6 @@ import {
   AUDIT_INCOMPLETE_AFTER_MS,
   AUDIT_INCOMPLETE_CODE,
   finishStreamIntent,
-  sendAuditStream,
   tryStreamIntent,
 } from "./audit-stream.js";
 import type { CallerIdentity } from "./clients.js";
@@ -240,7 +239,17 @@ export async function writeAuditEvent(
   env: Pick<AuditEnv, "AUDIT_STREAM">,
   event: AuditEvent,
 ): Promise<void> {
-  await sendAuditStream(env, event);
+  if (!env.AUDIT_STREAM) {
+    observePipeline(event.id, "failed");
+    throw new Error("AUDIT_STREAM is not configured");
+  }
+  try {
+    await env.AUDIT_STREAM.send([event]);
+    observePipeline(event.id, "accepted");
+  } catch (error) {
+    observePipeline(event.id, "failed");
+    throw error;
+  }
 }
 
 export function auditEvent(

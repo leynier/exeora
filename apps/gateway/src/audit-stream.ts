@@ -76,7 +76,7 @@ export async function finishStreamIntent(
   }
 }
 
-export async function sendAuditStream(
+async function sendAuditStream(
   env: { AUDIT_STREAM?: Env["AUDIT_STREAM"] },
   event: AuditEvent,
 ): Promise<void> {

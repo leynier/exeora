@@ -89,9 +89,7 @@ describe("resolved audit history", () => {
     await insert("call_success", "ok");
     await insert("call_failure", "error", AUDIT_INCOMPLETE_CODE);
     await insert("call_failure", "error", "TOOL_FAILED");
-    expect((await page({ status: "error" })).items.map((item) => item.id)).toEqual([
-      "call_failure",
-    ]);
+    expect((await page({ status: "error" })).items.map((item) => item.id)).toEqual(["call_failure"]);
   });
 
   it("hides recent pending intents but exposes interrupted execution after the deadline", async () => {
@@ -106,10 +104,7 @@ describe("resolved audit history", () => {
     await insert("call_expired", "ok", null, "2026-02-28T11:59:59.999Z");
     await insert("call_boundary", "ok", null, "2026-02-28T12:00:00.000Z");
     await insert("call_recent", "ok");
-    expect((await page()).items.map((item) => item.id)).toEqual([
-      "call_recent",
-      "call_boundary",
-    ]);
+    expect((await page()).items.map((item) => item.id)).toEqual(["call_recent", "call_boundary"]);
 
     await db(env).update(schema.users).set({ plan: "pro" }).where(eq(schema.users.id, USER)).run();
     expect((await page()).items.map((item) => item.id)).toEqual([

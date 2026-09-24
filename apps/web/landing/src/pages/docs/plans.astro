@@ -9,8 +9,8 @@ import Doc from "../../layouts/Doc.astro";
 >
   <p>
     Every account is on a plan. Plans decide how many machines and projects you may keep, and how
-    long the audit log is retained. There is no self-serve billing yet: the free plan is the default
-    for everyone.
+    long the audit log remains visible. There is no self-serve billing yet: the free plan is the
+    default for everyone.
   </p>
 
   <h2>Free</h2>
@@ -21,7 +21,7 @@ import Doc from "../../layouts/Doc.astro";
         <th></th>
         <th>Live machines</th>
         <th>Projects</th>
-        <th>Audit retention</th>
+        <th>Audit history</th>
       </tr>
     </thead>
     <tbody>
@@ -29,14 +29,21 @@ import Doc from "../../layouts/Doc.astro";
         <td><code>free</code></td>
         <td>10</td>
         <td>25</td>
-        <td>90 days</td>
+        <td>24 hours</td>
       </tr>
     </tbody>
   </table>
 
   <p>
-    The free caps are deliberately generous: they are there so the enforcement path is real, not to
-    constrain ordinary personal use. They will tighten when billing lands.
+    The free machine and project caps are deliberately generous: they are there so the enforcement
+    path is real, not to constrain ordinary personal use. They will tighten when billing lands.
+  </p>
+
+  <p>
+    Activity uses a rolling 24-hour window, enforced by the server. Physical cleanup is
+    asynchronous: archive maintenance, recovery records and snapshot expiration have separate
+    lifetimes, so the visibility window is not a promise that every stored copy disappears at
+    exactly 24 hours.
   </p>
 
   <h2>Pro - coming soon</h2>

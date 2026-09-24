@@ -1,8 +1,8 @@
 import { env } from "cloudflare:test";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUDIT_INCOMPLETE_CODE } from "./audit-stream.js";
 import { beginAudit, finishAudit, flushAuditOutbox } from "./audit.js";
+import { AUDIT_INCOMPLETE_CODE } from "./audit-stream.js";
 import { db, schema } from "./db/client.js";
 
 const entry = {

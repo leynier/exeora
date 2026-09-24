@@ -73,11 +73,13 @@ export async function queryWarehouseCalls(
   // enforce the same target account's plan, not the viewing admin's plan.
   const account =
     filter.retentionDays === undefined
-      ? await db(env)
-          .select({ plan: schema.users.plan })
-          .from(schema.users)
-          .where(eq(schema.users.id, filter.userId))
-          .get()
+      ? (
+          await db(env)
+            .select({ plan: schema.users.plan })
+            .from(schema.users)
+            .where(eq(schema.users.id, filter.userId))
+            .get()
+        )
       : undefined;
   const retentionDays = filter.retentionDays ?? limitsFor(account?.plan).retentionDays;
   if (!Number.isInteger(retentionDays) || retentionDays < 1) {
@@ -109,11 +111,10 @@ export async function queryWarehouseCalls(
     );
   }
 
-  const incomplete = sqlString(AUDIT_INCOMPLETE_CODE);
   const stale = sqlString(new Date(now.getTime() - AUDIT_INCOMPLETE_AFTER_MS).toISOString());
   const resolved = [
     "audit_rank = 1",
-    `(error_code IS NULL OR error_code <> ${incomplete} OR created_at <= ${stale})`,
+    `(error_code IS NULL OR error_code <> ${sqlString(AUDIT_INCOMPLETE_CODE)} OR created_at <= ${stale})`,
   ];
   if (filter.status) resolved.push(`status = ${sqlString(filter.status)}`);
 
@@ -125,7 +126,7 @@ export async function queryWarehouseCalls(
   SELECT ${columns},
     ROW_NUMBER() OVER (
       PARTITION BY id
-      ORDER BY CASE WHEN error_code = ${incomplete} THEN 0 ELSE 1 END DESC,
+      ORDER BY CASE WHEN error_code = ${sqlString(AUDIT_INCOMPLETE_CODE)} THEN 0 ELSE 1 END DESC,
         duration_ms DESC, status DESC, COALESCE(error_code, '') DESC
     ) AS audit_rank
   FROM ${auditSource(config, true)}

@@ -15,8 +15,7 @@ beforeEach(async () => {
   await db(env).delete(schema.auditOutbox).run();
 });
 
-const sender = () =>
-  vi.fn<(events: Record<string, unknown>[]) => Promise<void>>(async () => undefined);
+const sender = () => vi.fn<(events: Record<string, unknown>[]) => Promise<void>>(async () => undefined);
 
 describe("audit pipeline event", () => {
   it("emits the versioned, argument-free warehouse schema", () => {
@@ -76,15 +75,18 @@ describe("audit pipeline event", () => {
     const send = sender();
     const auditEnv = { DB: env.DB, AUDIT_STREAM: { send } };
     // No stream at begin: exercise recovery of a D1-backed intent.
-    const handle = await beginAudit({ DB: env.DB }, {
-      userId: "usr_1",
-      projectId: "prj_1",
-      workspaceId: "wkt_1",
-      workspaceSlug: "feature-one",
-      tool: "read_file",
-      endpoint: "project",
-      caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
-    });
+    const handle = await beginAudit(
+      { DB: env.DB },
+      {
+        userId: "usr_1",
+        projectId: "prj_1",
+        workspaceId: "wkt_1",
+        workspaceSlug: "feature-one",
+        tool: "read_file",
+        endpoint: "project",
+        caller: { clientId: "client_1", clientName: "Claude", mcp: undefined },
+      },
+    );
 
     const started = await db(env)
       .select()
@@ -118,15 +120,18 @@ describe("audit pipeline event", () => {
       AUDIT_STREAM: { send },
       AUDIT_SCHEMA_VERSION: "2",
     };
-    const handle = await beginAudit({ DB: env.DB }, {
-      userId: "usr_1",
-      projectId: "prj_1",
-      workspaceId: "wkt_1",
-      workspaceSlug: "feature-one",
-      tool: "read_file",
-      endpoint: "dashboard",
-      caller: { clientId: undefined, clientName: undefined, mcp: undefined },
-    });
+    const handle = await beginAudit(
+      { DB: env.DB },
+      {
+        userId: "usr_1",
+        projectId: "prj_1",
+        workspaceId: "wkt_1",
+        workspaceSlug: "feature-one",
+        tool: "read_file",
+        endpoint: "dashboard",
+        caller: { clientId: undefined, clientName: undefined, mcp: undefined },
+      },
+    );
 
     await finishAudit(auditEnv, handle, { status: "ok" });
 

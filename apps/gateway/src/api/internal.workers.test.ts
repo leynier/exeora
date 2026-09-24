@@ -93,7 +93,7 @@ describe("the retention it serves", () => {
       exemptUserIds: string[];
     }>();
 
-    expect(body.shortestDays).toBe(90);
+    expect(body.shortestDays).toBe(1);
     expect(body.longestDays).toBe(365);
     // Only the longer-plan account is named. Listing the free ones instead is
     // the version of this that stops working once there are a lot of them.
