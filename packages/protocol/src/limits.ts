@@ -130,3 +130,23 @@ export const HEARTBEAT_TIMEOUT_MS = 90_000;
  * room to raise it if a real command needs it.
  */
 export const MAX_APPROVAL_PROMPT_LENGTH = 2_048;
+
+/** Upstream MCP tools one project may publish through Exeora. */
+export const MAX_MCP_TOOLS_PER_PROJECT = 256;
+
+/**
+ * Largest serialized MCP catalog one project may publish, in bytes.
+ *
+ * The catalog is stored as one Durable Object value, and this keeps a margin
+ * under that value limit. The executor trims to it before sending, and the
+ * relay refuses a catalog above it rather than failing the write.
+ */
+export const MAX_MCP_CATALOG_BYTES = 1_500_000;
+
+/**
+ * Longest name an upstream MCP tool is exposed under.
+ *
+ * Several MCP clients reject tool names longer than 64 characters, and one
+ * rejected name can make a client drop the whole server.
+ */
+export const MAX_MCP_TOOL_NAME_LENGTH = 64;

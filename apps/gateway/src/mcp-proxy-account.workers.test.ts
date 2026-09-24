@@ -1,0 +1,267 @@
+import { createExecutionContext } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
+
+const SECRET = "test-secret-that-is-at-least-32-bytes-long";
+const NAME = "mcp__search__query";
+const catalogs = [
+  {
+    projectId: "prj_alpha",
+    project: "alpha",
+    tools: [
+      {
+        exposedName: NAME,
+        server: "search",
+        name: "query",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+        },
+      },
+    ],
+  },
+  {
+    projectId: "prj_beta",
+    project: "beta",
+    tools: [
+      {
+        exposedName: NAME,
+        server: "search",
+        name: "query",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" }, limit: { type: "number" } },
+          required: ["query"],
+        },
+      },
+    ],
+  },
+];
+
+function post(body: unknown, seen: Array<Record<string, unknown>> = [], activeCatalogs = catalogs) {
+  const request = new Request(`https://exeora.dev${ACCOUNT_MCP_ROUTE}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      "MCP-Protocol-Version": "2025-06-18",
+    },
+    body: JSON.stringify(body),
+  });
+  const ctx = createExecutionContext();
+  (ctx as { props?: Record<string, string> }).props = {
+    userId: "usr_test",
+    clientId: "cli_test",
+  };
+  const handler = createAccountMcpHandler(
+    async () => ({ kind: "value", value: {} }),
+    async () => ({}),
+    { REQUEST_STATE_SECRET: SECRET },
+    new Set(),
+    {
+      catalogs: activeCatalogs,
+      dispatch: async (call) => {
+        seen.push({
+          projectId: call.projectId,
+          workspace: call.workspace,
+          exposedName: call.tool.exposedName,
+          args: call.args,
+        });
+        return { kind: "value", value: { content: [{ type: "text", text: "proxied" }] } };
+      },
+    },
+  );
+  return handler(request, {}, ctx);
+}
+
+async function payload(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  const line = text
+    .split("\n")
+    .find((candidate) => candidate.startsWith("data: ") || candidate.startsWith("{"));
+  if (!line) throw new Error(`no JSON-RPC payload in: ${text.slice(0, 200)}`);
+  return JSON.parse(line.startsWith("data: ") ? line.slice(6) : line);
+}
+
+describe("account MCP proxy tools", () => {
+  it("merges several projects' schemas into one object schema that requires the project", async () => {
+    const body = await payload(await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }));
+    const tools = (
+      body.result as {
+        tools: Array<{ name: string; inputSchema: Record<string, unknown> }>;
+      }
+    ).tools;
+    const schema = tools.find((tool) => tool.name === NAME)?.inputSchema;
+
+    // A root `oneOf` is rejected by the Anthropic and OpenAI tool APIs.
+    expect(schema).not.toHaveProperty("oneOf");
+    expect(schema).toMatchObject({
+      type: "object",
+      required: ["project"],
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number" },
+        project: { enum: ["alpha", "prj_alpha", "beta", "prj_beta"] },
+        workspace: { type: "string" },
+      },
+    });
+  });
+
+  it("advertises a merged tool as read only only when every project's variant is", async () => {
+    const annotate = (hints: Array<Record<string, boolean> | undefined>) =>
+      catalogs.map((catalog, index) => ({
+        ...catalog,
+        tools: catalog.tools.map((tool) => ({ ...tool, annotations: hints[index] })),
+      }));
+    const listed = async (active: ReturnType<typeof annotate>) => {
+      const body = await payload(
+        await post({ jsonrpc: "2.0", id: 7, method: "tools/list" }, [], active),
+      );
+      return (
+        body.result as { tools: Array<{ name: string; annotations?: Record<string, unknown> }> }
+      ).tools.find((tool) => tool.name === NAME)?.annotations;
+    };
+
+    expect(await listed(annotate([{ readOnlyHint: true }, undefined]))).toMatchObject({
+      readOnlyHint: false,
+    });
+    expect(await listed(annotate([{ readOnlyHint: true }, { readOnlyHint: true }]))).toMatchObject({
+      readOnlyHint: true,
+    });
+  });
+
+  it("keeps one project's full schema, with an optional project field", async () => {
+    const first = catalogs[0];
+    if (!first) throw new Error("fixture is empty");
+    const body = await payload(
+      await post({ jsonrpc: "2.0", id: 5, method: "tools/list" }, [], [first]),
+    );
+    const schema = (
+      body.result as { tools: Array<{ name: string; inputSchema: Record<string, unknown> }> }
+    ).tools.find((tool) => tool.name === NAME)?.inputSchema;
+
+    expect(schema).toMatchObject({
+      type: "object",
+      required: ["query"],
+      properties: { project: { enum: ["alpha", "prj_alpha"] } },
+    });
+  });
+
+  it("asks for the project when a shared tool is called without one", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const body = await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 6,
+          method: "tools/call",
+          params: { name: NAME, arguments: { query: "MCP" } },
+        },
+        seen,
+      ),
+    );
+    expect(seen).toEqual([]);
+    expect(JSON.stringify(body)).toMatch(/project/);
+  });
+
+  it("routes the selected project and removes account routing fields upstream", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const body = await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: NAME,
+            arguments: { project: "beta", workspace: "feature", query: "MCP", limit: 3 },
+          },
+        },
+        seen,
+      ),
+    );
+
+    expect(seen).toEqual([
+      {
+        projectId: "prj_beta",
+        workspace: "feature",
+        exposedName: NAME,
+        args: { query: "MCP", limit: 3 },
+      },
+    ]);
+    expect(body.result).toMatchObject({ content: [{ type: "text", text: "proxied" }] });
+  });
+
+  it("preserves upstream project and workspace fields by namespacing Exeora routing", async () => {
+    const reservedCatalogs = catalogs.map((catalog) => ({
+      ...catalog,
+      tools: catalog.tools.map((tool) => ({
+        ...tool,
+        inputSchema: {
+          ...tool.inputSchema,
+          properties: {
+            ...tool.inputSchema.properties,
+            project: { type: "string", description: "Upstream project value." },
+            workspace: { type: "string", description: "Upstream workspace value." },
+          },
+          required: [...tool.inputSchema.required, "project", "workspace"],
+        },
+      })),
+    }));
+    const listed = await payload(
+      await post({ jsonrpc: "2.0", id: 3, method: "tools/list" }, [], reservedCatalogs),
+    );
+    const schema = (
+      listed.result as {
+        tools: Array<{
+          name: string;
+          inputSchema: { properties?: Record<string, unknown>; required?: string[] };
+        }>;
+      }
+    ).tools.find((tool) => tool.name === NAME)?.inputSchema;
+    expect(schema?.properties).toHaveProperty("project");
+    expect(schema?.properties).toHaveProperty("workspace");
+    expect(schema?.properties).toHaveProperty("__exeora_project");
+    expect(schema?.properties).toHaveProperty("__exeora_workspace");
+    expect(schema?.required).toEqual(["__exeora_project"]);
+
+    const seen: Array<Record<string, unknown>> = [];
+    await payload(
+      await post(
+        {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: {
+            name: NAME,
+            arguments: {
+              __exeora_project: "prj_beta",
+              __exeora_workspace: "feature",
+              project: "upstream-project",
+              workspace: "upstream-workspace",
+              query: "MCP",
+              limit: 3,
+            },
+          },
+        },
+        seen,
+        reservedCatalogs,
+      ),
+    );
+
+    expect(seen).toEqual([
+      {
+        projectId: "prj_beta",
+        workspace: "feature",
+        exposedName: NAME,
+        args: {
+          project: "upstream-project",
+          workspace: "upstream-workspace",
+          query: "MCP",
+          limit: 3,
+        },
+      },
+    ]);
+  });
+});

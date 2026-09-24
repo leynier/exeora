@@ -6,6 +6,7 @@ pub mod connection;
 pub mod error;
 #[allow(dead_code, clippy::all)]
 pub mod generated;
+pub mod mcp;
 pub mod policy;
 pub mod protocol;
 pub mod tools;

@@ -221,7 +221,7 @@ export async function dispatchToDevice(
   }
 }
 
-async function resolveWorkspace(
+export async function resolveWorkspace(
   env: Pick<Env, "DB">,
   projectId: string,
   selector: string | undefined,
@@ -253,7 +253,7 @@ async function resolveWorkspace(
  * started it. Absent when the gateway cannot name one, which is a real state:
  * the process is then unattributed rather than guessed into the next caller.
  */
-function callerLabel(
+export function callerLabel(
   caller: CallerIdentity,
 ): { id?: string; name?: string; version?: string } | undefined {
   const name = caller.clientName ?? caller.mcp?.name;

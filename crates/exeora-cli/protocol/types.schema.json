@@ -131,7 +131,182 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "mcp.catalog"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "tools": {
+              "maxItems": 256,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "exposedName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$"
+                  },
+                  "server": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "inputSchema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "annotations": {
+                    "type": "object",
+                    "properties": {
+                      "readOnlyHint": {
+                        "type": "boolean"
+                      },
+                      "destructiveHint": {
+                        "type": "boolean"
+                      },
+                      "idempotentHint": {
+                        "type": "boolean"
+                      },
+                      "openWorldHint": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "exposedName",
+                  "server",
+                  "name",
+                  "inputSchema"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "projectId",
+            "tools"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "tool.result"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "result": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "value": {}
+                  },
+                  "required": [
+                    "ok",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "LOCAL_EXECUTOR_OFFLINE",
+                            "TOOL_TIMEOUT",
+                            "CANCELLED",
+                            "PATH_ESCAPE",
+                            "PATH_NOT_FOUND",
+                            "TOOL_FAILED",
+                            "INVALID_ARGUMENTS",
+                            "UNKNOWN_TOOL",
+                            "UNKNOWN_PROJECT",
+                            "UNKNOWN_WORKSPACE",
+                            "WORKSPACE_UNAVAILABLE",
+                            "UNKNOWN_PROCESS",
+                            "NO_ACTIVE_PROJECT",
+                            "FORBIDDEN",
+                            "APPROVAL_DECLINED",
+                            "APPROVAL_TIMEOUT",
+                            "INTERNAL_ERROR"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "durationMs",
+            "result"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "mcp.result"
             },
             "requestId": {
               "type": "string"
@@ -1148,6 +1323,152 @@
           "properties": {
             "type": {
               "type": "string",
+              "const": "mcp.call"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "workspaceId": {
+              "type": "string"
+            },
+            "workspaceSlug": {
+              "type": "string"
+            },
+            "server": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "arguments": {},
+            "client": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "policy": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "allow_all",
+                    "allow_list",
+                    "read_only"
+                  ]
+                },
+                "allow": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deny": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "shell": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "approve": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "tools": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "read_file",
+                          "list_files",
+                          "grep",
+                          "edit_file",
+                          "write_file",
+                          "apply_patch",
+                          "list_git_workspaces",
+                          "create_workspace",
+                          "attach_workspace",
+                          "detach_workspace",
+                          "remove_workspace",
+                          "run_command",
+                          "start_command",
+                          "get_command_output",
+                          "send_command_input",
+                          "kill_command",
+                          "list_skills"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "mode",
+                "allow",
+                "deny",
+                "shell",
+                "approve",
+                "tools"
+              ],
+              "additionalProperties": false
+            },
+            "issuedAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "requestId",
+            "projectId",
+            "server",
+            "tool",
+            "arguments",
+            "policy",
+            "issuedAt",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "workspace.call"
             },
             "requestId": {
@@ -1593,25 +1914,7 @@
             },
             "tool": {
               "type": "string",
-              "enum": [
-                "read_file",
-                "list_files",
-                "grep",
-                "edit_file",
-                "write_file",
-                "apply_patch",
-                "list_git_workspaces",
-                "create_workspace",
-                "attach_workspace",
-                "detach_workspace",
-                "remove_workspace",
-                "run_command",
-                "start_command",
-                "get_command_output",
-                "send_command_input",
-                "kill_command",
-                "list_skills"
-              ]
+              "maxLength": 128
             },
             "prompt": {
               "type": "string"

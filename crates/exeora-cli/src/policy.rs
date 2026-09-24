@@ -189,6 +189,15 @@ pub fn policy_allows(policy: &CommandPolicy, tool: ToolName, args: &Value) -> Po
     command_allowed(policy, command)
 }
 
+/// The same check for a tool proxied from an upstream MCP server, whose
+/// `readOnlyHint` is a claim: anything short of `Some(true)` changes things.
+pub fn mcp_policy_allows(policy: &CommandPolicy, read_only_hint: Option<bool>) -> PolicyVerdict {
+    if read_only_hint != Some(true) && policy.mode == PolicyMode::ReadOnly {
+        return PolicyVerdict::no("This project is read only. It allows no tool that changes it.");
+    }
+    PolicyVerdict::yes()
+}
+
 pub fn command_allowed(policy: &CommandPolicy, command: &str) -> PolicyVerdict {
     if policy.mode == PolicyMode::ReadOnly {
         return PolicyVerdict::no("This project is read only. It runs no commands.");
@@ -313,4 +322,21 @@ fn is_shell_syntax(c: char) -> bool {
 pub fn validate_tool_set(tools: &[ToolName]) -> bool {
     let unique: HashSet<_> = tools.iter().collect();
     unique.len() == tools.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_read_only_project_runs_only_upstream_tools_that_claim_to_be_read_only() {
+        let read_only = CommandPolicy {
+            mode: PolicyMode::ReadOnly,
+            ..CommandPolicy::default()
+        };
+        assert!(!mcp_policy_allows(&read_only, None).allowed);
+        assert!(!mcp_policy_allows(&read_only, Some(false)).allowed);
+        assert!(mcp_policy_allows(&read_only, Some(true)).allowed);
+        assert!(mcp_policy_allows(&CommandPolicy::default(), None).allowed);
+    }
 }

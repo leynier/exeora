@@ -187,6 +187,38 @@ export function policyAllows(policy: CommandPolicy, tool: ToolName, args: unknow
 }
 
 /**
+ * The same two questions for a tool proxied from an upstream MCP server.
+ *
+ * Neither can lean on `TOOL_DEFINITIONS`: whether an upstream tool changes
+ * anything arrives as its server's `readOnlyHint`, which is a claim rather than
+ * a contract, so an absent hint is read as "changes something". That is the
+ * safe direction, and the one a native tool nobody had classified would get.
+ *
+ * The `tools` list is not consulted. It names Exeora's own tools and cannot
+ * name an upstream one; whether an upstream server exists at all is decided by
+ * the MCP configuration the person running the CLI wrote.
+ */
+export function mcpPolicyAllows(
+  policy: CommandPolicy,
+  readOnlyHint: boolean | undefined,
+): PolicyVerdict {
+  if (readOnlyHint !== true && policy.mode === "read_only") {
+    return {
+      allowed: false,
+      reason: "This project is read only. It allows no tool that changes it.",
+    };
+  }
+  return ALLOWED;
+}
+
+export function needsMcpApproval(
+  policy: CommandPolicy,
+  readOnlyHint: boolean | undefined,
+): boolean {
+  return policy.approve && readOnlyHint !== true;
+}
+
+/**
  * Whether an `allow_list` policy permits one command string.
  *
  * Exported on its own so the dashboard can show what a list would do to an

@@ -1,0 +1,87 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Use other MCP servers through Exeora"
+  description="Configure local or remote MCP servers once and expose their tools through Exeora's MCP endpoint."
+  canonicalPath="/docs/mcp-proxy/"
+>
+  <p>Exeora can act as an MCP client as well as an MCP server. <code>exeora connect</code> starts the MCP servers configured on the machine, discovers their tools, and publishes them through the same Exeora MCP URL your agent already uses.</p>
+
+  <p>The upstream connection stays on your machine. A stdio server runs there as a child process, and a remote Streamable HTTP server is called from there. The gateway stores only the tool catalog, and routes each call back to the connected CLI.</p>
+
+  <h2>Your MCP servers</h2>
+
+  <p>List your servers in <code>mcp.json</code>, next to Exeora's <code>config.json</code>. The shape is the <code>mcpServers</code> object most MCP clients already use, so an existing entry can be pasted in. Each server has either a <code>command</code> (stdio) or a <code>url</code> (Streamable HTTP), never both.</p>
+
+  <pre><code>{`{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "\${GITHUB_TOKEN}" }
+    },
+    "internal": {
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer \${INTERNAL_MCP_TOKEN}" }
+    }
+  }
+}`}</code></pre>
+
+  <table>
+    <thead><tr><th>Platform</th><th>Default path</th></tr></thead>
+    <tbody>
+      <tr><td>Linux</td><td><code>~/.config/exeora/mcp.json</code></td></tr>
+      <tr><td>macOS</td><td><code>~/Library/Preferences/exeora/mcp.json</code></td></tr>
+      <tr><td>Windows</td><td><code>%APPDATA%\exeora\mcp.json</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>When <code>EXEORA_CONFIG_PATH</code> moves <code>config.json</code>, <code>mcp.json</code> is read from the same directory. Values may reference environment variables as <code>{"${NAME}"}</code>, so secrets stay in the environment. Set <code>"enabled": false</code> to keep an entry without starting it.</p>
+
+  <p>A stdio server runs with the project root as its working directory, or with the Git workspace a call names. On Windows, launchers such as <code>npx</code> and <code>uvx</code> are found through <code>PATHEXT</code>, the way a shell finds them.</p>
+
+  <h2>Project servers</h2>
+
+  <p>A project's <code>exeora.toml</code> can switch one of your servers off for that project, which never needs permission because it only narrows what runs:</p>
+
+  <pre><code>{`[mcp.servers.github]
+enabled = false`}</code></pre>
+
+  <p>It can also define servers of its own, but that file travels with the repository, and loading it would let anyone who can commit to the project start processes on your machine. So project servers are started only when <code>mcp.json</code> says <code>"trustProjectServers": true</code>, and <code>exeora connect</code> prints a warning naming the servers it skipped. Even when trusted, a project entry never expands <code>{"${NAME}"}</code>: a repository must not be able to send your environment to a URL it chose.</p>
+
+  <pre><code>{`[mcp.servers.docs]
+command = "uvx"
+args = ["project-docs-mcp"]`}</code></pre>
+
+  <p>A trusted project entry with the same name replaces your entry for that project.</p>
+
+  <h2>What the agent sees</h2>
+
+  <p>Upstream tools are named <code>mcp__server__tool</code>, sanitized to letters, digits, <code>_</code> and <code>-</code>, and capped at 64 characters, the limit several MCP clients enforce. A name that would be longer, or that would collide with another after sanitizing, is shortened with a stable hash suffix.</p>
+
+  <p>Each tool keeps its upstream input schema, annotations and result, including images, structured content and <code>isError</code>. Exeora adds an optional <code>workspace</code> field to route the call to a connected Git workspace. If the upstream tool already owns that name, the routing field is <code>__exeora_workspace</code> instead, and the schema from <code>tools/list</code> always shows which one applies.</p>
+
+  <p>On the account MCP URL, a tool may exist in several projects. With one project, its full schema is kept and <code>project</code> is optional. With several, the schema merges their properties and requires <code>project</code>, and each upstream server still validates its own arguments.</p>
+
+  <h2>Policy and confirmation</h2>
+
+  <p>Proxied tools follow <a href="/docs/policy/">the project's policy</a>. Whether a tool changes anything comes from its server's <code>readOnlyHint</code>, and a tool without one is treated as one that does.</p>
+
+  <ul>
+    <li>A <code>read_only</code> project runs only proxied tools marked read only.</li>
+    <li>A project that asks before changes asks before every proxied tool not marked read only. The question names the server and the tool and previews the arguments.</li>
+    <li>The CLI checks the same rule again, against the project's own <code>exeora.toml</code> and the catalog it published itself, before it calls the upstream server.</li>
+  </ul>
+
+  <p>The <code>tools</code> list and the command allow and deny lists do not apply: they name Exeora's own tools and commands, and which upstream servers exist is decided by your MCP configuration.</p>
+
+  <h2>Limits and failures</h2>
+
+  <p>A project publishes up to 256 proxied tools and 1.5 MB of catalog. Tools past either limit are left out, with a warning. A single call may run for up to 300 seconds.</p>
+
+  <p>Servers start in the background, so native tools work from the moment the CLI connects and proxied tools appear once their server answers. A server that fails to start is reported once and retried on a later reconnect, while the others keep working. Restart <code>exeora connect</code> after changing MCP configuration.</p>
+
+  <p>This proxies upstream <strong>tools</strong>. Prompts and resources from another MCP server are not re-published.</p>
+</Doc>

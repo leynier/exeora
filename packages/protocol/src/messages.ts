@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ERROR_CODES } from "./errors.js";
+import { MAX_MCP_TOOL_NAME_LENGTH, MAX_MCP_TOOLS_PER_PROJECT } from "./limits.js";
 import { CommandPolicy } from "./policy.js";
 import { TOOL_NAMES } from "./tools.js";
 import {
@@ -74,6 +75,52 @@ export const ExecutorCapabilities = z.object({
 
 export type ExecutorCapabilities = z.infer<typeof ExecutorCapabilities>;
 
+export const MCP_PROXY_TOOL_NAME_PATTERN =
+  /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+(?:__[a-f0-9]{10})?$/;
+
+/**
+ * What an upstream server says about one of its tools.
+ *
+ * Claims rather than contracts, and read in the cautious direction: a tool
+ * with no `readOnlyHint` is treated as one that changes something.
+ */
+export const McpToolAnnotations = z.object({
+  readOnlyHint: z.boolean().optional(),
+  destructiveHint: z.boolean().optional(),
+  idempotentHint: z.boolean().optional(),
+  openWorldHint: z.boolean().optional(),
+});
+
+export type McpToolAnnotations = z.infer<typeof McpToolAnnotations>;
+
+/** One upstream MCP tool the executor can proxy for a project. */
+export const McpToolDescriptor = z.object({
+  /** Stable collision-free name Exeora exposes on its own MCP server. */
+  exposedName: z.string().min(1).max(MAX_MCP_TOOL_NAME_LENGTH).regex(MCP_PROXY_TOOL_NAME_PATTERN),
+  /** Configured upstream server name. */
+  server: z.string().min(1).max(64),
+  /** Original tool name on that upstream server. */
+  name: z.string().min(1).max(128),
+  title: z.string().max(512).optional(),
+  description: z.string().max(4096).optional(),
+  /** Raw JSON Schema, kept raw so arbitrary MCP servers remain representable. */
+  inputSchema: z.record(z.string(), z.unknown()),
+  annotations: McpToolAnnotations.optional(),
+});
+
+export type McpToolDescriptor = z.infer<typeof McpToolDescriptor>;
+
+/**
+ * Catalog published after `hello` and stored outside the executor WebSocket
+ * attachment. Tool schemas can be large, while hibernation attachments are
+ * intentionally small per-connection metadata.
+ */
+export const McpCatalogMessage = z.object({
+  type: z.literal("mcp.catalog"),
+  projectId: z.string(),
+  tools: z.array(McpToolDescriptor).max(MAX_MCP_TOOLS_PER_PROJECT),
+});
+
 /**
  * What an executor that announced nothing is taken to do.
  *
@@ -131,14 +178,24 @@ export const PresenceMessage = z.object({
   at: z.number().int(),
 });
 
+const executorResult = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), value: z.unknown() }),
+  z.object({ ok: z.literal(false), error: errorShape }),
+]);
+
 export const ToolResultMessage = z.object({
   type: z.literal("tool.result"),
   requestId: z.string(),
   durationMs: z.number().int(),
-  result: z.discriminatedUnion("ok", [
-    z.object({ ok: z.literal(true), value: z.unknown() }),
-    z.object({ ok: z.literal(false), error: errorShape }),
-  ]),
+  result: executorResult,
+});
+
+/** Result of a proxied upstream MCP tool call. */
+export const McpToolResultMessage = z.object({
+  type: z.literal("mcp.result"),
+  requestId: z.string(),
+  durationMs: z.number().int(),
+  result: executorResult,
 });
 
 export const WorkspaceResultMessage = z.object({
@@ -167,7 +224,9 @@ export const ExecutorMessage = z.discriminatedUnion("type", [
   HelloMessage,
   HeartbeatMessage,
   PresenceMessage,
+  McpCatalogMessage,
   ToolResultMessage,
+  McpToolResultMessage,
   WorkspaceResultMessage,
   ApprovalAnswerMessage,
   TerminalOpenedMessage,
@@ -179,7 +238,9 @@ export const ExecutorMessage = z.discriminatedUnion("type", [
 export type HelloMessage = z.infer<typeof HelloMessage>;
 export type HeartbeatMessage = z.infer<typeof HeartbeatMessage>;
 export type PresenceMessage = z.infer<typeof PresenceMessage>;
+export type McpCatalogMessage = z.infer<typeof McpCatalogMessage>;
 export type ToolResultMessage = z.infer<typeof ToolResultMessage>;
+export type McpToolResultMessage = z.infer<typeof McpToolResultMessage>;
 export type WorkspaceResultMessage = z.infer<typeof WorkspaceResultMessage>;
 export type ApprovalAnswerMessage = z.infer<typeof ApprovalAnswerMessage>;
 export type ExecutorMessage = z.infer<typeof ExecutorMessage>;
@@ -256,6 +317,32 @@ export const ToolCallMessage = z.object({
   expiresAt: z.number().int(),
 });
 
+export const McpToolCallMessage = z.object({
+  type: z.literal("mcp.call"),
+  requestId: z.string(),
+  projectId: z.string(),
+  workspaceId: z.string().optional(),
+  workspaceSlug: z.string().optional(),
+  server: z.string().min(1).max(64),
+  tool: z.string().min(1).max(128),
+  arguments: z.unknown(),
+  client: z
+    .object({
+      id: z.string().optional(),
+      name: z.string().optional(),
+      version: z.string().optional(),
+    })
+    .optional(),
+  /**
+   * The account's policy, sent for the same reason `tool.call` sends it: the
+   * executor narrows it with the project's own `exeora.toml` and checks the
+   * tool against its own catalog before calling the upstream server.
+   */
+  policy: CommandPolicy,
+  issuedAt: z.number().int(),
+  expiresAt: z.number().int(),
+});
+
 export const CancelMessage = z.object({
   type: z.literal("cancel"),
   requestId: z.string(),
@@ -297,7 +384,11 @@ export const ApprovalRequestMessage = z.object({
   projectId: z.string(),
   workspaceId: z.string().optional(),
   workspaceSlug: z.string().optional(),
-  tool: z.enum(TOOL_NAMES),
+  /**
+   * The tool being confirmed. A string rather than the enum because it may
+   * name a proxied MCP tool (`mcp__server__tool`), which no enum can list.
+   */
+  tool: z.string().max(128),
   /** One line, already written for a person: "Run `npm test`?" */
   prompt: z.string(),
   /** Which AI client is asking, when the gateway could name one. */
@@ -326,6 +417,7 @@ export const RelayMessage = z.discriminatedUnion("type", [
   HelloAckMessage,
   HeartbeatAckMessage,
   ToolCallMessage,
+  McpToolCallMessage,
   WorkspaceCallMessage,
   CancelMessage,
   ShutdownMessage,
@@ -340,6 +432,7 @@ export const RelayMessage = z.discriminatedUnion("type", [
 export type HelloAckMessage = z.infer<typeof HelloAckMessage>;
 export type HeartbeatAckMessage = z.infer<typeof HeartbeatAckMessage>;
 export type ToolCallMessage = z.infer<typeof ToolCallMessage>;
+export type McpToolCallMessage = z.infer<typeof McpToolCallMessage>;
 export type WorkspaceCallMessage = z.infer<typeof WorkspaceCallMessage>;
 export type CancelMessage = z.infer<typeof CancelMessage>;
 export type ShutdownMessage = z.infer<typeof ShutdownMessage>;
