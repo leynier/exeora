@@ -1,8 +1,8 @@
 # Audit archive
 
-The durable audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. D1 also holds a bounded producer outbox: the gateway persists an intent before executing a tool, retries stream failures every five minutes, and removes acknowledged rows after seven days. Activity, usage rollups and retention read Iceberg rather than that transient queue.
+The durable audit trail is a structured Pipelines stream with an R2 Data Catalog (Iceberg) sink. On the healthy path the gateway awaits stream acknowledgement of an intent before executing a tool, then sends its outcome with the same stable id and timestamp. D1 is a fallback delivery outbox: stream failures are retried every five minutes, and acknowledged rows are removed after 24 hours. Activity, usage rollups and retention read Iceberg rather than that transient queue.
 
-This archive is required. If the D1 intent cannot be written, the tool is not executed. If the Pipeline is temporarily unavailable, the stable event remains queued and execution can complete without silently losing its audit record.
+This archive is required. If neither the stream nor the D1 fallback accepts the intent, no tool executes. A Worker interruption leaves an explicit incomplete intent. Readers resolve intent and outcome before filtering or counting; do not roll back only the reader after paired events have been ingested.
 
 Iceberg rather than plain Parquet, because plain Parquet cannot answer Activity and cannot be erased from. The reasoning is in [`audit-architecture.md`](../../../docs/audit-architecture.md).
 
@@ -44,6 +44,8 @@ wrangler r2 bucket catalog snapshot-expiration enable <bucket> --older-than-days
 
 Snapshot expiration is what reclaims the files a delete leaves behind: since 2026-04-22 it removes unreferenced data files as well as old snapshots, so no `remove_orphan_files` job is needed. It is free.
 
+**The example above keeps recovery snapshots for 30 days.** Free Activity's rolling 24-hour visibility window is not a 24-hour physical-erasure guarantee. The nightly catalog job, snapshot expiration, stream buffering and retry outbox have separate lifetimes. Configure and verify those layers for any stricter physical-retention requirement; never delete live Iceberg objects directly.
+
 ## Tokens
 
 Three, one per holder. The split is deliberate rather than tidy: the token that can delete from the audit table must never be in the process that serves requests, and one holder losing a token must not take the others down with it.
@@ -80,8 +82,9 @@ Set `AUDIT_WAREHOUSE_START_DAY` to the day the stream starts receiving events. I
 
 Switch `AUDIT_STREAM`, `AUDIT_R2_TABLE`, `AUDIT_R2_LEGACY_TABLE` and
 `AUDIT_SCHEMA_VERSION` in the same Worker deploy. Until then, keep
-`AUDIT_SCHEMA_VERSION=1`: the producer will omit worktree fields and remain compatible with the
-immutable v1 stream while retaining them in the D1 outbox.
+`AUDIT_SCHEMA_VERSION=1`: the producer omits worktree fields and remains compatible with the
+immutable v1 stream. Stream-first delivery does not require a schema migration. Monitor rejected
+record metrics: an ingestion acknowledgement alone does not validate an incompatible schema.
 
 `AUDIT_MAINTENANCE_SECRET` is any 32-byte random string (`openssl rand -base64 32`), set both here and as a repository secret. It is what the deletion job authenticates with, and while it is unset the `/internal/*` routes answer 404 rather than advertising themselves.
 
@@ -107,7 +110,7 @@ It lives outside Cloudflare, which is the cost of that choice: a self-hosted gat
 
 It runs at 05:30 UTC, after the gateway's own cron. The checkpoint gate enforces the dependency even when the earlier cron fails or needs several nights to catch up, so schedule order alone is not the safety mechanism.
 
-Two things it learned the hard way, both recorded in its comments: Cloudflare's WAF answers 403 to the default `Python-urllib` user agent before the request reaches the Worker, and `created_at` is a zone-free Iceberg `timestamp`, so a literal carrying an offset will not bind.
+Two things it learned the hard way, both recorded in its comments: Cloudflare's WAF answers 403 to the default `Python-urllib` user agent before the request reaches the Worker, and `created_at` is a zone-free Iceberg `timestamp`, so a literal carrying an offset will not bind. Cutoffs now use the complete UTC instant rather than calendar midnight.
 
 ## After a change
 

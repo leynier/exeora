@@ -145,8 +145,8 @@ def erase(catalog: Catalog, settings: Settings) -> EraseResult:
     return EraseResult(passes=done, failed=failed)
 
 
-def prune(catalog: Catalog, settings: Settings, today: dt.date) -> bool:
-    """Applies each plan's retention window.
+def prune(catalog: Catalog, settings: Settings, today: dt.date | dt.datetime) -> bool:
+    """Applies each plan's rolling retention window through catalog transactions.
 
     Two statements, and the shape is inverted on purpose. Everything past the
     longest window goes with no list at all. Sparing the longer-plan accounts
@@ -205,11 +205,20 @@ def settle(
             raise
 
 
-def cutoff(today: dt.date, days: int) -> str:
-    # No zone offset. The sink writes `created_at` as an Iceberg `timestamp`,
-    # which is zone-free, and PyIceberg refuses to bind a literal that carries
-    # one. The values are UTC either way; only the notation differs.
-    return (today - dt.timedelta(days=days)).isoformat() + "T00:00:00"
+def cutoff(now: dt.date | dt.datetime, days: int) -> str:
+    if not isinstance(days, int) or isinstance(days, bool) or days < 1:
+        raise ValueError("Retention must be a positive number of days")
+    # Dates remain supported for deterministic callers; production passes the
+    # complete UTC instant instead of rounding down to calendar midnight.
+    if isinstance(now, dt.datetime):
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("Retention datetime must include a timezone")
+        instant = now.astimezone(dt.timezone.utc)
+    else:
+        instant = dt.datetime.combine(now, dt.time.min, tzinfo=dt.timezone.utc)
+    # Iceberg's timestamp column is zone-free; its values are UTC. PyIceberg
+    # requires a zone-free literal, so drop the zone only after conversion.
+    return (instant - dt.timedelta(days=days)).replace(tzinfo=None).isoformat()
 
 
 def sql_literal(value: str) -> str:
@@ -223,7 +232,7 @@ def tables(settings: Settings) -> tuple[str, ...]:
 def run(
     settings: Settings | None = None,
     catalog: Catalog | None = None,
-    today: dt.date | None = None,
+    today: dt.date | dt.datetime | None = None,
 ) -> int:
     settings = settings or Settings.from_env()
     if catalog is None:
@@ -237,7 +246,7 @@ def run(
         )
 
     result = erase(catalog, settings)
-    pruned = prune(catalog, settings, today or dt.datetime.now(dt.timezone.utc).date())
+    pruned = prune(catalog, settings, today or dt.datetime.now(dt.timezone.utc))
     print(f"done: {result.passes} erasure passes committed, {result.failed} failed")
     return 1 if result.failed or not pruned else 0
 
