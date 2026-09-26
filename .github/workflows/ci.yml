@@ -47,6 +47,10 @@ jobs:
 
   check:
     runs-on: ubuntu-latest
+    # The whole job takes about six minutes. A test runner that never exits
+    # (it happened once, after every file had passed) must not hold a deploy
+    # for the six hours GitHub allows by default.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
