@@ -86,7 +86,8 @@ export class DeviceRelay extends DurableObject<Env> {
   /** Whether and how this device has to be woken; see `relay-do-cloud.ts`. */
   private cloud = createCloudWakeState();
   /** A field so a test can hand the object a fetcher: the real one refuses the network there. */
-  private fetcher: typeof fetch = fetch;
+  // Wrapped: the runtime's fetch throws when called as a method of anything.
+  private fetcher: typeof fetch = (input, init) => fetch(input, init);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);

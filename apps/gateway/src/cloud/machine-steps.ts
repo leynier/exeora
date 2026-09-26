@@ -188,12 +188,12 @@ async function waitHello(context: StepContext, record: MachineRecord): Promise<S
   // Each poll reaches the machine over its URL so the clone can finish; what
   // it answers does not matter, the relay is what says the CLI is up.
   if (record.spriteUrl) {
-    await context
-      .fetcher(`${record.spriteUrl}/wake`, {
-        headers: { authorization: `Bearer ${context.sprites.token}` },
-        signal: AbortSignal.timeout(HELLO_POLL_MS),
-      })
-      .catch(() => undefined);
+    // Called as a plain function: the runtime's fetch refuses a `this`.
+    const { fetcher } = context;
+    await fetcher(`${record.spriteUrl}/wake`, {
+      headers: { authorization: `Bearer ${context.sprites.token}` },
+      signal: AbortSignal.timeout(HELLO_POLL_MS),
+    }).catch(() => undefined);
   }
   const online = await context.env.DEVICE_RELAY.getByName(
     relayName(record.userId, record.deviceId),

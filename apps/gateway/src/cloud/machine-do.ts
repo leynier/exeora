@@ -48,7 +48,8 @@ export interface MachineSeed {
 
 export class CloudMachine extends DurableObject<Env> {
   /** A field so a test can hand the object a fetcher; see `relay-do.ts`. */
-  private fetcher: typeof fetch = fetch;
+  // Wrapped: the runtime's fetch throws when called as a method of anything.
+  private fetcher: typeof fetch = (input, init) => fetch(input, init);
   /**
    * The soonest any alarm is set for. Zero in production; a test raises it so
    * alarms wait to be run by hand instead of firing the moment they are set.
