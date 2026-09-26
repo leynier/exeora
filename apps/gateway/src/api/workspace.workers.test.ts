@@ -1,8 +1,10 @@
 import { createExecutionContext, env } from "cloudflare:test";
+import { decodeRelayMessage, encodeMessage, PROTOCOL_VERSION } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
 import { api } from "./index.js";
+import { relayName } from "./ops.js";
 
 const OWNER = "usr_workspace_owner";
 const OTHER = "usr_workspace_other";
@@ -117,5 +119,63 @@ describe("workspace ownership and availability", () => {
       OTHER,
     );
     expect(hidden.status).toBe(404);
+  });
+
+  it("asks the workspace's own machine when it has one", async () => {
+    const CLOUD_DEVICE = `dev_workspace_cloud_${crypto.randomUUID().slice(0, 8)}`;
+    const database = db(env);
+    await database
+      .insert(schema.devices)
+      .values({ id: CLOUD_DEVICE, userId: OWNER, name: "cloud", platform: "linux", kind: "cloud" })
+      .run();
+    await database
+      .insert(schema.workspaces)
+      .values({
+        id: "wsp_workspace_cloud",
+        projectId: PROJECT,
+        slug: "cloud",
+        name: "Cloud",
+        branch: "cloud",
+        localPath: "/home/sprite/workspace",
+        managed: true,
+        deviceId: CLOUD_DEVICE,
+      })
+      .run();
+
+    // A CLI connected to the workspace's relay, and nothing on the project's.
+    const response = await env.DEVICE_RELAY.getByName(relayName(OWNER, CLOUD_DEVICE)).fetch(
+      new Request(`https://relay/connect?deviceId=${CLOUD_DEVICE}`, {
+        headers: { Upgrade: "websocket" },
+      }),
+    );
+    const socket = response.webSocket;
+    if (!socket) throw new Error("the relay did not return a socket");
+    socket.accept();
+    const acknowledged = new Promise<void>((resolve) => {
+      socket.addEventListener("message", (event: MessageEvent) => {
+        if (decodeRelayMessage(String(event.data))?.type === "hello.ack") resolve();
+      });
+    });
+    socket.send(
+      encodeMessage({
+        type: "hello",
+        protocolVersion: PROTOCOL_VERSION,
+        deviceId: CLOUD_DEVICE,
+        cliVersion: "0.1.0",
+        platform: "linux",
+        projects: [{ id: PROJECT, slug: "workspace" }],
+        capabilities: { prompt: false, tools: ["read_file"], workspaceRouting: true },
+      }),
+    );
+    await acknowledged;
+
+    const cloud = await call(`/api/projects/${PROJECT}/workspace/capabilities?workspace=cloud`);
+    expect(cloud.status).toBe(200);
+    expect(await cloud.json()).toMatchObject({ online: true, workspaceRouting: true });
+
+    const root = await call(`/api/projects/${PROJECT}/workspace/capabilities`);
+    expect(await root.json()).toMatchObject({ online: false });
+
+    socket.close(1000, "done");
   });
 });

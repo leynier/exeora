@@ -16,12 +16,21 @@
   "triggers": { "crons": ["*/5 * * * *", "17 4 * * *"] },
 
   "durable_objects": {
-    "bindings": [{ "name": "DEVICE_RELAY", "class_name": "DeviceRelay" }]
+    "bindings": [
+      { "name": "DEVICE_RELAY", "class_name": "DeviceRelay" },
+      // One per Exeora Cloud machine, keyed by device id: provisions it step by
+      // step on alarms and tears it down the same way.
+      { "name": "CLOUD_MACHINE", "class_name": "CloudMachine" }
+    ]
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["DeviceRelay"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["CloudMachine"]
     }
   ],
 
@@ -69,7 +78,7 @@
   "rules": [
     {
       "type": "Text",
-      "globs": ["**/tokens.css", "**/install.sh", "**/install.ps1"],
+      "globs": ["**/tokens.css", "**/install.sh", "**/install.ps1", "**/bootstrap.sh"],
       "fallthrough": true
     }
   ],
@@ -113,7 +122,13 @@
     // The first UTC day the Iceberg table can contain, which is the day dual
     // mode was switched on. Dating it earlier only makes the rollup query
     // empty days every night for nothing.
-    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08"
+    "AUDIT_WAREHOUSE_START_DAY": "2026-08-08",
+
+    // Every Exeora Cloud machine is a Fly Sprite named `<prefix>-<device id>`.
+    // The prefix is what the reconcile job uses to tell our Sprites from any
+    // other in the organisation before it deletes an orphan, so a self-hosted
+    // gateway sharing an organisation should pick its own.
+    "CLOUD_SPRITE_PREFIX": "exeora"
   },
 
   // The long-lived audit stream. D1 holds a bounded producer outbox so a

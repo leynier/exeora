@@ -41,6 +41,7 @@ pub async fn connect_server(server: &ResolvedServer, root: &Path) -> Result<McpC
     if let Some(program) = &config.command {
         let program = server.expand(program)?;
         let mut command = Command::new(resolve_program(&program));
+        crate::cgroup::drop_oom_exemption(&mut command);
         command.current_dir(root);
         for arg in &config.args {
             command.arg(server.expand(arg)?);

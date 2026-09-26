@@ -50,7 +50,19 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },
-      miniflare: { bindings: { TEST_MIGRATIONS: migrations }, outboundService },
+      miniflare: {
+        bindings: {
+          TEST_MIGRATIONS: migrations,
+          // Exeora Cloud switched on, so its routes and the relay's wake path
+          // can be exercised. Neither value ever leaves workerd: the outbound
+          // service above refuses every request they could be sent with.
+          SPRITES_TOKEN: "test-org/1/not-a-real-secret",
+          CLOUD_CREDENTIALS_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          // A release with cloud mode, whatever wrangler.jsonc announces today.
+          LATEST_CLI_VERSION: "0.17.0",
+        },
+        outboundService,
+      },
     }),
   ],
   test: {

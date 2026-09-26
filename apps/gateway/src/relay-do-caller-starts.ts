@@ -1,5 +1,7 @@
 import { encodeMessage } from "@exeora/protocol";
 import {
+  type ApprovalCallerState,
+  type ApprovalView,
   attachmentOf,
   executorSocket,
   offline,
@@ -8,6 +10,71 @@ import {
   type ToolCallerState,
 } from "./relay-do-callers.js";
 import type { CallerRequest } from "./relay-internal.js";
+
+type ApprovalStart = Extract<CallerRequest, { type: "approval.start" }>;
+
+/**
+ * A question for the person, asked on the machine's terminal when it has one
+ * and always visible on the dashboard. Needs a connected executor because the
+ * question is about a call that is about to run there, but never wakes a
+ * cloud machine: a cloud CLI has no terminal to ask at, so the dashboard is
+ * the only place the answer can come from.
+ */
+export function handleApprovalCallerMessage(
+  ctx: DurableObjectState,
+  socket: WebSocket,
+  state: ApprovalCallerState,
+  message: ApprovalStart,
+): void {
+  if (message.id !== state.id || state.view !== undefined) return;
+  if (message.expiresAt <= Date.now()) {
+    settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
+    return;
+  }
+
+  const executor = executorSocket(ctx);
+  const executorState = executor ? attachmentOf(executor) : null;
+  if (!executor || executorState?.role !== "executor") {
+    settleCaller(socket, offline("No Exeora CLI is connected for this project."));
+    return;
+  }
+
+  const targetId = message.workspaceId;
+  const targetSlug = message.workspaceSlug;
+  const view: ApprovalView = {
+    id: message.id,
+    deviceId: executorState.deviceId,
+    projectId: message.projectId,
+    ...(targetId ? { workspaceId: targetId } : {}),
+    ...(targetSlug ? { workspaceSlug: targetSlug } : {}),
+    tool: message.tool,
+    prompt: message.prompt,
+    ...(message.clientName ? { clientName: message.clientName } : {}),
+    requestedAt: message.requestedAt,
+    expiresAt: message.expiresAt,
+  };
+  socket.serializeAttachment({ ...state, view } satisfies ApprovalCallerState);
+
+  if (executorState.capabilities?.prompt) {
+    try {
+      executor.send(
+        encodeMessage({
+          type: "approval.request",
+          id: message.id,
+          projectId: message.projectId,
+          workspaceId: targetId,
+          workspaceSlug: targetSlug,
+          tool: message.tool,
+          prompt: message.prompt,
+          client: message.client,
+          expiresAt: message.expiresAt,
+        }),
+      );
+    } catch {
+      // The dashboard can still answer while the caller socket is alive.
+    }
+  }
+}
 
 type WorkspaceStart = Extract<CallerRequest, { type: "workspace.start" }>;
 

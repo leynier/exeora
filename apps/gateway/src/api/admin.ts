@@ -1,10 +1,13 @@
+import { zValidator } from "@hono/zod-validator";
 import { count, desc, eq, gte, isNull, max, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
+import { z } from "zod";
+import { revokeOwnedDevice } from "../cloud/revoke.js";
 import { db, schema } from "../db/client.js";
 import { normalizeEmail } from "../oauth/users.js";
 import { deviceOnline, deviceOnlineSql, isDeviceOnline, presenceCutoff } from "../presence.js";
 import { queryWarehouseCalls } from "../warehouse-calls.js";
-import { deleteAccount, revokeClient, revokeDevice } from "./ops.js";
+import { deleteAccount, revokeClient } from "./ops.js";
 
 /**
  * Administration panel API.
@@ -127,6 +130,7 @@ admin.get("/api/admin/users", async (c) => {
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
       createdAt: schema.users.createdAt,
+      cloudEnabled: schema.users.cloudEnabled,
       devices:
         sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${outerUserId})`.mapWith(
           Number,
@@ -162,6 +166,7 @@ admin.get("/api/admin/users", async (c) => {
       name: row.name,
       avatarUrl: row.avatarUrl,
       createdAt: row.createdAt.getTime(),
+      cloudEnabled: row.cloudEnabled,
       devices: row.devices,
       devicesOnline: row.devicesOnline,
       projects: row.projects,
@@ -184,6 +189,7 @@ admin.get("/api/admin/users/:id", async (c) => {
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
       createdAt: schema.users.createdAt,
+      cloudEnabled: schema.users.cloudEnabled,
     })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
@@ -239,6 +245,7 @@ admin.get("/api/admin/users/:id", async (c) => {
     name: user.name,
     avatarUrl: user.avatarUrl,
     createdAt: user.createdAt.getTime(),
+    cloudEnabled: user.cloudEnabled,
     devices: devices.length,
     devicesOnline,
     projects: projects.length,
@@ -249,6 +256,7 @@ admin.get("/api/admin/users/:id", async (c) => {
       id: device.id,
       name: device.name,
       platform: device.platform,
+      kind: device.kind,
       cliVersion: device.cliVersion,
       online: isDeviceOnline(device, cutoff),
       lastSeenAt: device.lastSeenAt?.getTime() ?? null,
@@ -295,11 +303,32 @@ function refuseSelf(c: { get: (k: "userId") => string }, targetUserId: string) {
   return false;
 }
 
+/**
+ * Switches Exeora Cloud on or off for one account. Off never destroys what
+ * the person already created: it only stops them creating more.
+ */
+admin.put(
+  "/api/admin/users/:id/cloud",
+  zValidator("json", z.object({ enabled: z.boolean() })),
+  async (c) => {
+    const userId = c.req.param("id");
+    if (refuseSelf(c, userId)) return c.json({ error: "use_own_settings" }, 400);
+
+    const result = await db(c.env)
+      .update(schema.users)
+      .set({ cloudEnabled: c.req.valid("json").enabled })
+      .where(eq(schema.users.id, userId))
+      .run();
+    if (result.meta.changes === 0) return c.json({ error: "not_found" }, 404);
+    return c.json({ ok: true, cloudEnabled: c.req.valid("json").enabled });
+  },
+);
+
 admin.delete("/api/admin/users/:userId/devices/:id", async (c) => {
   const userId = c.req.param("userId");
   if (refuseSelf(c, userId)) return c.json({ error: "use_own_settings" }, 400);
 
-  const ok = await revokeDevice(c.env, userId, c.req.param("id"));
+  const ok = await revokeOwnedDevice(c.env, userId, c.req.param("id"));
   return ok ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
 });
 

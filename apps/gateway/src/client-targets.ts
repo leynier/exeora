@@ -116,6 +116,20 @@ export async function resolveAccountTarget(
   return { deviceId: row.deviceId, policy: parsePolicy(row.commandPolicy) };
 }
 
+/**
+ * The machine a call lands on once its workspace is known.
+ *
+ * A workspace on the project's own machine is a worktree there and has no
+ * device of its own; a cloud workspace is a machine of its own and is served
+ * only there, because the project's machine holds a different checkout.
+ */
+export function targetDevice(
+  project: { deviceId: string },
+  workspace: { deviceId: string | null } | null | undefined,
+): string {
+  return workspace?.deviceId ?? project.deviceId;
+}
+
 /** A project as the account endpoint describes it to an agent. */
 export interface AccountProject {
   id: string;

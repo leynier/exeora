@@ -317,7 +317,10 @@ export async function dropExecutor(
   if (replaced) return;
   failTerminalViewers(ctx, reason);
   await forgetAllStoredTerminals(ctx);
-  failCallers(ctx, reason);
+  // Only what was sent down this socket is lost with it. A caller not yet
+  // dispatched is waiting on a wake, whose reconnect is what closed this
+  // socket, and it belongs to the socket about to say hello.
+  failCallers(ctx, reason, { dispatchedOnly: true });
 }
 
 /**

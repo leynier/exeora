@@ -122,8 +122,20 @@ export function ProjectDetail() {
         <Card title="Connected workspaces">
           {(workspaces.data ?? []).length === 0 ? (
             <EmptyState title="No workspaces connected">
-              Create one with <code className="font-mono">exeora workspace create</code> or attach
-              an existing Git workspace.
+              {project.cloud ? (
+                <>
+                  Add one from{" "}
+                  <Link to="/cloud" className="underline">
+                    Cloud
+                  </Link>
+                  : each branch gets a machine of its own.
+                </>
+              ) : (
+                <>
+                  Create one with <code className="font-mono">exeora workspace create</code> or
+                  attach an existing Git workspace.
+                </>
+              )}
             </EmptyState>
           ) : (
             <Divided>
@@ -157,7 +169,7 @@ export function ProjectDetail() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[20rem_1fr]">
         {/* `self-start` so it keeps its own height instead of stretching to
             match however long the activity list happens to be. */}
-        <Card title="Machine" className="self-start">
+        <Card title={project.cloud ? "Cloud machine" : "Machine"} className="self-start">
           <div className="space-y-3 p-5">
             <div className="flex items-center gap-3">
               <StatusDot
@@ -172,7 +184,9 @@ export function ProjectDetail() {
                       ? "revoked"
                       : isOnline(device)
                         ? "online"
-                        : `last seen ${relativeTime(device.lastSeenAt)}`
+                        : device.kind === "cloud"
+                          ? "sleeping · wakes on the next call"
+                          : `last seen ${relativeTime(device.lastSeenAt)}`
                     : "no longer registered"}
                 </p>
               </div>
@@ -181,12 +195,29 @@ export function ProjectDetail() {
             {/* Stacked rather than two columns: a local path is long enough
                 that side by side leaves it truncated to nothing useful. */}
             <dl className="text-body-md border-border-subtle space-y-3 border-t pt-3">
-              <div>
-                <dt className="text-label-md text-foreground-faint font-mono uppercase">
-                  Local path
-                </dt>
-                <dd className="mt-0.5 font-mono break-all">{project.localPath}</dd>
-              </div>
+              {project.cloud ? (
+                <>
+                  <div>
+                    <dt className="text-label-md text-foreground-faint font-mono uppercase">
+                      Repository
+                    </dt>
+                    <dd className="mt-0.5 font-mono break-all">{project.cloud.repoUrl}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-label-md text-foreground-faint font-mono uppercase">
+                      Default branch
+                    </dt>
+                    <dd className="mt-0.5 font-mono">{project.cloud.defaultBranch}</dd>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <dt className="text-label-md text-foreground-faint font-mono uppercase">
+                    Local path
+                  </dt>
+                  <dd className="mt-0.5 font-mono break-all">{project.localPath}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-label-md text-foreground-faint font-mono uppercase">Slug</dt>
                 <dd className="mt-0.5 font-mono">{project.slug}</dd>

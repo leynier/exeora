@@ -67,6 +67,19 @@ bun run secret REQUEST_STATE_SECRET
 
 Generate the two secrets with `openssl rand -hex 32`, and use different values than development. `REQUEST_STATE_SECRET` signs approvals that travel through an AI client; keep it separate from `COOKIE_SECRET` on purpose.
 
+### Exeora Cloud (optional)
+
+Cloud puts repositories on [Fly.io Sprites](https://sprites.dev) your organization pays for. It stays off until both of these are set:
+
+```bash
+bun run secret SPRITES_TOKEN
+bun run secret CLOUD_CREDENTIALS_KEY
+```
+
+`SPRITES_TOKEN` is an organization token from `sprite login` (the `org/id/secret` form). `CLOUD_CREDENTIALS_KEY` is 32 random bytes as 64 hex characters (`openssl rand -hex 32`) that encrypt repository tokens at rest; rotating it invalidates the stored ones, which `exeora cloud` and the dashboard can set again. The Worker var `CLOUD_SPRITE_PREFIX` names the machines (`exeora-<device>` by default) and is what the five-minute cron uses to find orphans, so keep it unique per gateway that shares the organization.
+
+Cloud needs a public `EXEORA_BASE_URL`: a machine dials the gateway from outside, so a development server on `localhost:8787` cannot host it. The bootstrap installs the CLI at `LATEST_CLI_VERSION` through your gateway's own installer, so publish a CLI release of at least the version in `CLOUD_MIN_CLI_VERSION` (`packages/protocol/src/cloud.ts`) and announce it before creating the first machine; provisioning refuses an older one with a `cli_unsupported` error. Once the secrets are in place, enable Cloud for an account from its page in the administration panel; administrators have it without being enabled.
+
 ## 5. Administrators
 
 On a fresh database, the **first account to sign in becomes the admin**. That person can open the administration panel and act on every account. Protect that first sign-in the same way you would protect any root account.

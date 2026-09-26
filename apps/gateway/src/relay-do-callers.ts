@@ -118,8 +118,10 @@ export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
  * dead connection first, which would otherwise swallow calls until timeout.
  */
 export function replaceOtherExecutors(ctx: DurableObjectState, current: WebSocket): void {
+  let replaced = false;
   for (const socket of ctx.getWebSockets("executor")) {
     if (socket === current) continue;
+    replaced = true;
     const state = attachmentOf(socket);
     if (state?.role === "executor") {
       socket.serializeAttachment({ ...state, active: false } satisfies ExecutorSocketState);
@@ -138,6 +140,21 @@ export function replaceOtherExecutors(ctx: DurableObjectState, current: WebSocke
       socket.close(1008, "executor replaced");
     } catch {
       // It may have finished closing between the list and this call.
+    }
+  }
+
+  // A call already sent down the socket being replaced can never be answered:
+  // the CLI cancels its in-flight work the moment its socket ends, and the
+  // session that just said hello never saw the frame. Settling those callers
+  // now saves each one the full relay timeout. A caller still waiting to be
+  // dispatched has no `issuedAt` yet and goes to the new socket as normal.
+  if (!replaced) return;
+  for (const role of ["tool", "workspace"] as const) {
+    for (const caller of ctx.getWebSockets(role)) {
+      const state = attachmentOf(caller);
+      if (state?.role === role && !state.settled && state.issuedAt !== undefined) {
+        settleCaller(caller, offline("The machine reconnected while the call was in flight."));
+      }
     }
   }
 }
@@ -206,20 +223,32 @@ export function failTerminalViewers(ctx: DurableObjectState, reason: string): vo
   }
 }
 
-export function failCallers(ctx: DurableObjectState, reason: string): void {
-  for (const socket of ctx.getWebSockets("tool")) {
-    settleCaller(socket, offline(reason));
-  }
-  for (const socket of ctx.getWebSockets("workspace")) {
-    settleCaller(socket, offline(reason));
+/**
+ * Settles every caller with an offline error, or, with `dispatchedOnly`, only
+ * those whose call already went down a socket. A caller still waiting to be
+ * dispatched (on a machine being woken, whose CLI drops its old socket to
+ * reconnect) has lost nothing yet: it goes to the socket that comes next, or
+ * is settled by the wake's own outcome.
+ */
+export function failCallers(
+  ctx: DurableObjectState,
+  reason: string,
+  options: { dispatchedOnly?: boolean } = {},
+): void {
+  for (const role of ["tool", "workspace"] as const) {
+    for (const socket of ctx.getWebSockets(role)) {
+      const state = attachmentOf(socket);
+      if (options.dispatchedOnly && state?.role === role && state.issuedAt === undefined) continue;
+      settleCaller(socket, offline(reason));
+    }
   }
   failTerminalViewers(ctx, reason);
   for (const socket of ctx.getWebSockets("approval")) {
     const state = attachmentOf(socket);
-    if (state?.role === "approval") {
-      settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
-      resolveTerminalApproval(ctx, state.id);
-    }
+    if (state?.role !== "approval") continue;
+    if (options.dispatchedOnly && state.view === undefined) continue;
+    settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
+    resolveTerminalApproval(ctx, state.id);
   }
 }
 

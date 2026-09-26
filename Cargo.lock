@@ -1146,6 +1146,7 @@ dependencies = [
  "jsonschema",
  "keepawake",
  "keyring",
+ "libc",
  "memchr",
  "oauth2",
  "open",

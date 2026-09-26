@@ -25,6 +25,22 @@ pub const MAX_MCP_TOOLS_PER_PROJECT: usize = 256;
 pub const MAX_MCP_CATALOG_BYTES: usize = 1_500_000;
 pub const MAX_MCP_TOOL_NAME_LENGTH: usize = 64;
 
+// Cloud mode. The feature string and the wake port are shared with the
+// gateway through `packages/protocol/src/cloud.ts`; the rest is the CLI's own.
+pub const CLOUD_FEATURE: &str = "cloud-v1";
+pub const WAKE_PORT: u16 = 8080;
+/// A clock gap past this is a paused machine, and the socket is dead.
+pub const RESUME_GAP_MS: u64 = 5_000;
+/// How long `/wake` waits for the relay socket before answering 503.
+pub const WAKE_TIMEOUT_MS: u64 = 8_000;
+pub const KEEPALIVE_TASK: &str = "exeora";
+/// The task expiry: the machine sleeps this long after the last work.
+pub const KEEPALIVE_EXPIRE: &str = "3m";
+pub const KEEPALIVE_MIN_INTERVAL_MS: u64 = 30_000;
+/// A machine refused by the gateway asks again, between these two waits.
+pub const REJECTED_BACKOFF_MIN_MS: u64 = 60_000;
+pub const REJECTED_BACKOFF_MAX_MS: u64 = 300_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolName {

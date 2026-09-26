@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   BASELINE_CAPABILITIES,
+  CLOUD_FEATURE,
   decodeExecutorMessage,
   type ExecutorCapabilities,
   encodeMessage,
@@ -14,6 +15,7 @@ import { observeTool } from "./cost-metrics.js";
 import "./env.js";
 import { touchDevice } from "./presence.js";
 import {
+  handleApprovalCallerMessage,
   handleMcpCallerMessage,
   handleToolCallerMessage,
   handleWorkspaceCallerMessage,
@@ -39,6 +41,13 @@ import {
   type TerminalCallerState,
   type ToolCallerState,
 } from "./relay-do-callers.js";
+import {
+  type CloudRelayConfig,
+  createCloudWakeState,
+  ensureAwake,
+  noteExecutorActivity,
+  storeCloudConfig,
+} from "./relay-do-cloud.js";
 import {
   acceptTerminalSocket,
   closeTerminalTarget,
@@ -74,6 +83,11 @@ import { clearMcpCatalogs, readMcpCatalogs, replaceMcpCatalog } from "./relay-mc
  */
 
 export class DeviceRelay extends DurableObject<Env> {
+  /** Whether and how this device has to be woken; see `relay-do-cloud.ts`. */
+  private cloud = createCloudWakeState();
+  /** A field so a test can hand the object a fetcher: the real one refuses the network there. */
+  private fetcher: typeof fetch = fetch;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.setWebSocketAutoResponse(
@@ -136,7 +150,7 @@ export class DeviceRelay extends DurableObject<Env> {
     if (!state) return;
 
     if (state.role !== "executor") {
-      this.handleCallerMessage(socket, state, raw);
+      await this.handleCallerMessage(socket, state, raw);
       return;
     }
 
@@ -182,6 +196,7 @@ export class DeviceRelay extends DurableObject<Env> {
           active: true,
           ...(message.capabilities ? { capabilities: message.capabilities } : {}),
         } satisfies ExecutorSocketState);
+        this.cloud.holdsTasks = message.capabilities?.features?.includes(CLOUD_FEATURE) ?? false;
         await resetExecutorTerminals(this.ctx);
 
         socket.send(
@@ -234,6 +249,7 @@ export class DeviceRelay extends DurableObject<Env> {
 
       case "tool.result":
       case "mcp.result": {
+        noteExecutorActivity(this.cloud);
         const caller = callerSocket(this.ctx, "tool", message.requestId);
         if (!caller) return;
         const callerState = attachmentOf(caller);
@@ -249,6 +265,7 @@ export class DeviceRelay extends DurableObject<Env> {
       }
 
       case "workspace.result": {
+        noteExecutorActivity(this.cloud);
         const caller = callerSocket(this.ctx, "workspace", message.requestId);
         if (caller) settleCaller(caller, { type: "workspace.result", result: message.result });
         return;
@@ -258,6 +275,7 @@ export class DeviceRelay extends DurableObject<Env> {
       case "terminal.output":
       case "terminal.exit":
       case "terminal.error": {
+        noteExecutorActivity(this.cloud);
         forwardTerminalMessage(this.ctx, message);
         return;
       }
@@ -320,7 +338,15 @@ export class DeviceRelay extends DurableObject<Env> {
    * because a laptop is asleep would be the wrong answer to a different
    * question.
    */
-  async capabilities(): Promise<ExecutorCapabilities | null> {
+  async capabilities(options: { wake?: boolean } = {}): Promise<ExecutorCapabilities | null> {
+    // A cloud machine that is asleep has nothing connected, and would stay
+    // that way for as long as anyone only looked. The dashboard asks with
+    // `wake` so opening a workspace is what brings its machine up; the tool
+    // catalog asks without, since listing tools is not a reason to bill.
+    if (options.wake) {
+      const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
+      if (!wake.ok) return null;
+    }
     const socket = executorSocket(this.ctx);
     if (!socket) return null;
     const state = attachmentOf(socket);
@@ -338,7 +364,19 @@ export class DeviceRelay extends DurableObject<Env> {
     workspaceSlug: string | undefined,
     origin: string,
   ): Promise<string | null> {
+    // Woken here rather than when the browser connects: the ticket is only
+    // worth issuing if the machine can answer within its thirty seconds.
+    const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
+    if (!wake.ok) return null;
     return issueTerminalTicket(this.ctx, projectId, workspaceId, workspaceSlug, origin);
+  }
+
+  /**
+   * Tells this relay that its device is a cloud machine at `config.url`, or,
+   * with null, that it no longer is. Written by provisioning, once.
+   */
+  async configureCloud(config: CloudRelayConfig | null): Promise<void> {
+    await storeCloudConfig(this.ctx, this.cloud, config);
   }
 
   async consumeTerminalTicket(
@@ -396,15 +434,16 @@ export class DeviceRelay extends DurableObject<Env> {
     failCallers(this.ctx, "This device was revoked.");
     await forgetAllStoredTerminals(this.ctx);
     await clearMcpCatalogs(this.ctx);
+    await storeCloudConfig(this.ctx, this.cloud, null);
   }
 
   // ---------------------------------------------------------------------
 
-  private handleCallerMessage(
+  private async handleCallerMessage(
     socket: WebSocket,
     state: ToolCallerState | ApprovalCallerState | TerminalCallerState,
     raw: string,
-  ): void {
+  ): Promise<void> {
     if (state.role === "terminal") {
       handleTerminalCallerMessage(this.ctx, socket, state, raw);
       return;
@@ -420,70 +459,28 @@ export class DeviceRelay extends DurableObject<Env> {
       return;
     }
 
-    if (state.role === "workspace" && message.type === "workspace.start") {
-      handleWorkspaceCallerMessage(this.ctx, socket, state, message);
+    // Everything left needs the executor, an approval included, and a machine
+    // that sleeps has to be up before its socket is worth writing to. The wait
+    // is skipped for a local device and for a machine known to be awake, so it
+    // costs nothing on the path every call takes today.
+    const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
+    if (!wake.ok) {
+      settleCaller(socket, offline(wake.message));
       return;
     }
+    // Re-read after the wait: the caller may have cancelled meanwhile, and the
+    // handlers below write the attachment back from what they are given.
+    const fresh = attachmentOf(socket);
+    if (!fresh || fresh.role === "executor" || fresh.settled) return;
 
-    if (state.role === "tool" && message.type === "tool.start") {
-      handleToolCallerMessage(this.ctx, socket, state, message);
-      return;
-    }
-
-    if (state.role === "tool" && message.type === "mcp.start") {
-      handleMcpCallerMessage(this.ctx, socket, state, message);
-      return;
-    }
-
-    if (state.role === "approval" && message.type === "approval.start") {
-      if (message.id !== state.id || state.view !== undefined) return;
-      if (message.expiresAt <= Date.now()) {
-        settleCaller(socket, { type: "approval.result", outcome: "unanswered" });
-        return;
-      }
-
-      const executor = executorSocket(this.ctx);
-      const executorState = executor ? attachmentOf(executor) : null;
-      if (!executor || executorState?.role !== "executor") {
-        settleCaller(socket, offline("No Exeora CLI is connected for this project."));
-        return;
-      }
-
-      const targetId = message.workspaceId;
-      const targetSlug = message.workspaceSlug;
-      const view: ApprovalView = {
-        id: message.id,
-        deviceId: executorState.deviceId,
-        projectId: message.projectId,
-        ...(targetId ? { workspaceId: targetId } : {}),
-        ...(targetSlug ? { workspaceSlug: targetSlug } : {}),
-        tool: message.tool,
-        prompt: message.prompt,
-        ...(message.clientName ? { clientName: message.clientName } : {}),
-        requestedAt: message.requestedAt,
-        expiresAt: message.expiresAt,
-      };
-      socket.serializeAttachment({ ...state, view } satisfies ApprovalCallerState);
-
-      if (executorState.capabilities?.prompt) {
-        try {
-          executor.send(
-            encodeMessage({
-              type: "approval.request",
-              id: message.id,
-              projectId: message.projectId,
-              workspaceId: targetId,
-              workspaceSlug: targetSlug,
-              tool: message.tool,
-              prompt: message.prompt,
-              client: message.client,
-              expiresAt: message.expiresAt,
-            }),
-          );
-        } catch {
-          // The dashboard can still answer while the caller socket is alive.
-        }
-      }
+    if (fresh.role === "approval" && message.type === "approval.start") {
+      handleApprovalCallerMessage(this.ctx, socket, fresh, message);
+    } else if (fresh.role === "workspace" && message.type === "workspace.start") {
+      handleWorkspaceCallerMessage(this.ctx, socket, fresh, message);
+    } else if (fresh.role === "tool" && message.type === "tool.start") {
+      handleToolCallerMessage(this.ctx, socket, fresh, message);
+    } else if (fresh.role === "tool" && message.type === "mcp.start") {
+      handleMcpCallerMessage(this.ctx, socket, fresh, message);
     }
   }
 }

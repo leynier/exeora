@@ -57,6 +57,8 @@ pub struct AuthManager {
     gateway: String,
     http: reqwest::Client,
     cached: AsyncMutex<Option<CachedToken>>,
+    /// Set on a cloud machine: the token is read from here and never refreshed.
+    machine_token_file: Option<std::path::PathBuf>,
 }
 
 impl AuthManager {
@@ -65,6 +67,24 @@ impl AuthManager {
             gateway,
             http,
             cached: AsyncMutex::new(None),
+            machine_token_file: None,
+        }
+    }
+
+    /// A manager for a cloud machine. There is no session to refresh and no
+    /// keyring to ask, which on a headless machine could hang on D-Bus: the
+    /// file is the whole credential, re-read on every use so a token the
+    /// gateway replaced takes effect without a restart.
+    pub fn with_machine_token(
+        gateway: String,
+        http: reqwest::Client,
+        file: std::path::PathBuf,
+    ) -> Self {
+        Self {
+            gateway,
+            http,
+            cached: AsyncMutex::new(None),
+            machine_token_file: Some(file),
         }
     }
 
@@ -73,6 +93,9 @@ impl AuthManager {
     }
 
     pub async fn access_token(&self) -> Result<String> {
+        if let Some(file) = &self.machine_token_file {
+            return crate::cloud::token::read(file);
+        }
         {
             let cached = self.cached.lock().await;
             if let Some(cached) = cached.as_ref()

@@ -42,8 +42,22 @@ export function hasEveryScope(
   return scopes.every((scope) => hasScope(props, scope));
 }
 
+/**
+ * The one route a cloud machine's token may reach: its own relay socket.
+ * Everything else on the API belongs to the person, and a machine token
+ * carrying their user id must not become a way to act as them.
+ */
+export function isMachineApiRequest(method: string, path: string): boolean {
+  return method === "GET" && /^\/api\/relay\/[^/]+$/.test(path);
+}
+
 /** The narrow dashboard API surface the native executor actually consumes. */
 export function isExecutorApiRequest(method: string, path: string): boolean {
+  // `exeora cloud …` drives Exeora Cloud from the person's own CLI token.
+  if (path === "/api/cloud" || path.startsWith("/api/cloud/")) {
+    if (method === "PUT") return /^\/api\/cloud\/projects\/[^/]+\/credential$/.test(path);
+    return method === "GET" || method === "POST" || method === "DELETE";
+  }
   if (method === "GET") {
     return (
       ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path) ||

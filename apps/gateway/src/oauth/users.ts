@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
-import { type Db, schema } from "../db/client.js";
+import { type Db, db, schema } from "../db/client.js";
+import "../env.js";
 import { newId } from "../ids.js";
 import { type ProviderId, UpstreamAuthError, type UpstreamIdentity } from "./providers/index.js";
 
@@ -100,6 +101,22 @@ export async function resolveUser(
 /** Canonical email identity. It intentionally does not apply provider-specific alias rules. */
 export function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
+}
+
+/** Whether this account may open the administration panel. */
+export async function isAdminUser(env: Pick<Env, "DB">, userId: string): Promise<boolean> {
+  const user = await db(env)
+    .select({ email: schema.users.email })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .get();
+  if (!user) return false;
+  const row = await db(env)
+    .select({ email: schema.adminUsers.email })
+    .from(schema.adminUsers)
+    .where(eq(schema.adminUsers.email, normalizeEmail(user.email)))
+    .get();
+  return row !== undefined;
 }
 
 /**

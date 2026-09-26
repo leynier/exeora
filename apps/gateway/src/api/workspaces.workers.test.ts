@@ -54,6 +54,50 @@ beforeEach(async () => {
 });
 
 describe("workspace inventory", () => {
+  it("leaves a cloud workspace to the Cloud routes", async () => {
+    await db(env)
+      .insert(schema.devices)
+      .values({
+        id: "dev_ws_cloud",
+        userId: USER,
+        name: "repo (x)",
+        platform: "linux",
+        kind: "cloud",
+      })
+      .run();
+    await db(env)
+      .insert(schema.workspaces)
+      .values({
+        id: "wsp_cloud",
+        projectId: "prj_workspaces",
+        slug: "feature-x",
+        name: "feature/x",
+        branch: "feature/x",
+        localPath: "/home/sprite/workspace",
+        managed: true,
+        deviceId: "dev_ws_cloud",
+      })
+      .run();
+    const path = "/api/projects/prj_workspaces/workspaces/wsp_cloud";
+    const removed = await call(path, USER, "DELETE");
+    expect(removed.status).toBe(409);
+    expect(await removed.json()).toEqual({ error: "cloud_workspace" });
+    const replaced = await call(path, USER, "PUT", {
+      slug: "feature-x",
+      name: "feature/x",
+      branch: "feature/x",
+      localPath: "/tmp/elsewhere",
+      managed: true,
+    });
+    expect(replaced.status).toBe(409);
+    const row = await db(env)
+      .select({ localPath: schema.workspaces.localPath, deviceId: schema.workspaces.deviceId })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.id, "wsp_cloud"))
+      .get();
+    expect(row).toEqual({ localPath: "/home/sprite/workspace", deviceId: "dev_ws_cloud" });
+  });
+
   it("upserts, lists and idempotently removes a project workspace", async () => {
     const path = "/api/projects/prj_workspaces/workspaces/wsp_123";
     const body = {

@@ -33,6 +33,7 @@ fn exposes_the_command_surface_and_version_flag() {
                 .and(predicate::str::contains("prompt"))
                 .and(predicate::str::contains("sync"))
                 .and(predicate::str::contains("upgrade"))
+                .and(predicate::str::contains("cloud"))
                 .and(predicate::str::contains("keep it awake")),
         );
 
@@ -45,6 +46,7 @@ fn exposes_the_command_surface_and_version_flag() {
         .stdout(
             predicate::str::contains("serve registered projects")
                 .and(predicate::str::contains("--code"))
+                .and(predicate::str::contains("--cloud"))
                 .and(predicate::str::contains("--no-add").not())
                 .and(predicate::str::contains("[PATH]").not()),
         );

@@ -33,12 +33,142 @@ pub mod error {
 ///  "title": "ExeoraProtocolTypes",
 ///  "type": "object",
 ///  "required": [
+///    "cloudCliConfig",
 ///    "commandPolicy",
 ///    "executorMessage",
 ///    "localCommandPolicy",
 ///    "relayMessage"
 ///  ],
 ///  "properties": {
+///    "cloudCliConfig": {
+///      "type": "object",
+///      "required": [
+///        "deviceId",
+///        "deviceName",
+///        "gatewayUrl",
+///        "projects",
+///        "workspaceRoot",
+///        "workspaces"
+///      ],
+///      "properties": {
+///        "deviceId": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "deviceName": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "gatewayUrl": {
+///          "type": "string",
+///          "format": "uri"
+///        },
+///        "projects": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "id",
+///              "name",
+///              "root",
+///              "slug"
+///            ],
+///            "properties": {
+///              "id": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "name": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "root": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "slug": {
+///                "type": "string",
+///                "minLength": 1
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "workspaceRoot": {
+///          "type": "string",
+///          "minLength": 1
+///        },
+///        "workspaces": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "branch",
+///              "gitRoot",
+///              "id",
+///              "managed",
+///              "name",
+///              "projectId",
+///              "root",
+///              "slug",
+///              "syncState"
+///            ],
+///            "properties": {
+///              "branch": {
+///                "anyOf": [
+///                  {
+///                    "type": "string"
+///                  },
+///                  {
+///                    "type": "null"
+///                  }
+///                ]
+///              },
+///              "gitRoot": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "id": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "managed": {
+///                "type": "boolean"
+///              },
+///              "name": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "projectId": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "root": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "slug": {
+///                "type": "string",
+///                "minLength": 1
+///              },
+///              "syncState": {
+///                "type": "string",
+///                "enum": [
+///                  "pendingUpsert",
+///                  "active",
+///                  "pendingDelete",
+///                  "disabled",
+///                  "removing"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        }
+///      },
+///      "additionalProperties": false,
+///      "$schema": "https://json-schema.org/draft/2020-12/schema"
+///    },
 ///    "commandPolicy": {
 ///      "type": "object",
 ///      "required": [
@@ -552,6 +682,7 @@ pub mod error {
 ///                            "operation",
 ///                            "remotes",
 ///                            "repository",
+///                            "stashes",
 ///                            "upstream"
 ///                          ],
 ///                          "properties": {
@@ -570,6 +701,7 @@ pub mod error {
 ///                              "items": {
 ///                                "type": "object",
 ///                                "required": [
+///                                  "ahead",
 ///                                  "current",
 ///                                  "name",
 ///                                  "remote",
@@ -577,6 +709,19 @@ pub mod error {
 ///                                  "upstream"
 ///                                ],
 ///                                "properties": {
+///                                  "ahead": {
+///                                    "default": null,
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "integer",
+///                                        "maximum": 9007199254740991.0,
+///                                        "minimum": 0.0
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
+///                                  },
 ///                                  "current": {
 ///                                    "type": "boolean"
 ///                                  },
@@ -734,6 +879,12 @@ pub mod error {
 ///                            "repository": {
 ///                              "type": "boolean"
 ///                            },
+///                            "stashes": {
+///                              "default": 0,
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
 ///                            "upstream": {
 ///                              "anyOf": [
 ///                                {
@@ -813,6 +964,7 @@ pub mod error {
 ///                                "operation",
 ///                                "remotes",
 ///                                "repository",
+///                                "stashes",
 ///                                "upstream"
 ///                              ],
 ///                              "properties": {
@@ -831,6 +983,7 @@ pub mod error {
 ///                                  "items": {
 ///                                    "type": "object",
 ///                                    "required": [
+///                                      "ahead",
 ///                                      "current",
 ///                                      "name",
 ///                                      "remote",
@@ -838,6 +991,19 @@ pub mod error {
 ///                                      "upstream"
 ///                                    ],
 ///                                    "properties": {
+///                                      "ahead": {
+///                                        "default": null,
+///                                        "anyOf": [
+///                                          {
+///                                            "type": "integer",
+///                                            "maximum": 9007199254740991.0,
+///                                            "minimum": 0.0
+///                                          },
+///                                          {
+///                                            "type": "null"
+///                                          }
+///                                        ]
+///                                      },
 ///                                      "current": {
 ///                                        "type": "boolean"
 ///                                      },
@@ -994,6 +1160,12 @@ pub mod error {
 ///                                },
 ///                                "repository": {
 ///                                  "type": "boolean"
+///                                },
+///                                "stashes": {
+///                                  "default": 0,
+///                                  "type": "integer",
+///                                  "maximum": 9007199254740991.0,
+///                                  "minimum": 0.0
 ///                                },
 ///                                "upstream": {
 ///                                  "anyOf": [
@@ -2275,6 +2447,8 @@ pub mod error {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ExeoraProtocolTypes {
+    #[serde(rename = "cloudCliConfig")]
+    pub cloud_cli_config: ExeoraProtocolTypesCloudCliConfig,
     #[serde(rename = "commandPolicy")]
     pub command_policy: ExeoraProtocolTypesCommandPolicy,
     #[serde(rename = "executorMessage")]
@@ -2283,6 +2457,1331 @@ pub struct ExeoraProtocolTypes {
     pub local_command_policy: ExeoraProtocolTypesLocalCommandPolicy,
     #[serde(rename = "relayMessage")]
     pub relay_message: ExeoraProtocolTypesRelayMessage,
+}
+///`ExeoraProtocolTypesCloudCliConfig`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "deviceId",
+///    "deviceName",
+///    "gatewayUrl",
+///    "projects",
+///    "workspaceRoot",
+///    "workspaces"
+///  ],
+///  "properties": {
+///    "deviceId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "deviceName": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "gatewayUrl": {
+///      "type": "string",
+///      "format": "uri"
+///    },
+///    "projects": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "id",
+///          "name",
+///          "root",
+///          "slug"
+///        ],
+///        "properties": {
+///          "id": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "name": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "root": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "slug": {
+///            "type": "string",
+///            "minLength": 1
+///          }
+///        },
+///        "additionalProperties": false
+///      }
+///    },
+///    "workspaceRoot": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "workspaces": {
+///      "type": "array",
+///      "items": {
+///        "type": "object",
+///        "required": [
+///          "branch",
+///          "gitRoot",
+///          "id",
+///          "managed",
+///          "name",
+///          "projectId",
+///          "root",
+///          "slug",
+///          "syncState"
+///        ],
+///        "properties": {
+///          "branch": {
+///            "anyOf": [
+///              {
+///                "type": "string"
+///              },
+///              {
+///                "type": "null"
+///              }
+///            ]
+///          },
+///          "gitRoot": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "id": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "managed": {
+///            "type": "boolean"
+///          },
+///          "name": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "projectId": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "root": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "slug": {
+///            "type": "string",
+///            "minLength": 1
+///          },
+///          "syncState": {
+///            "type": "string",
+///            "enum": [
+///              "pendingUpsert",
+///              "active",
+///              "pendingDelete",
+///              "disabled",
+///              "removing"
+///            ]
+///          }
+///        },
+///        "additionalProperties": false
+///      }
+///    }
+///  },
+///  "additionalProperties": false,
+///  "$schema": "https://json-schema.org/draft/2020-12/schema"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesCloudCliConfig {
+    #[serde(rename = "deviceId")]
+    pub device_id: ExeoraProtocolTypesCloudCliConfigDeviceId,
+    #[serde(rename = "deviceName")]
+    pub device_name: ExeoraProtocolTypesCloudCliConfigDeviceName,
+    #[serde(rename = "gatewayUrl")]
+    pub gateway_url: ::std::string::String,
+    pub projects: ::std::vec::Vec<ExeoraProtocolTypesCloudCliConfigProjectsItem>,
+    #[serde(rename = "workspaceRoot")]
+    pub workspace_root: ExeoraProtocolTypesCloudCliConfigWorkspaceRoot,
+    pub workspaces: ::std::vec::Vec<ExeoraProtocolTypesCloudCliConfigWorkspacesItem>,
+}
+///`ExeoraProtocolTypesCloudCliConfigDeviceId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigDeviceId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigDeviceId> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesCloudCliConfigDeviceId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigDeviceId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigDeviceName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigDeviceName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigDeviceName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigDeviceName> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesCloudCliConfigDeviceName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigDeviceName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigDeviceName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigDeviceName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigDeviceName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigDeviceName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigProjectsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "id",
+///    "name",
+///    "root",
+///    "slug"
+///  ],
+///  "properties": {
+///    "id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "name": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "root": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "slug": {
+///      "type": "string",
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesCloudCliConfigProjectsItem {
+    pub id: ExeoraProtocolTypesCloudCliConfigProjectsItemId,
+    pub name: ExeoraProtocolTypesCloudCliConfigProjectsItemName,
+    pub root: ExeoraProtocolTypesCloudCliConfigProjectsItemRoot,
+    pub slug: ExeoraProtocolTypesCloudCliConfigProjectsItemSlug,
+}
+///`ExeoraProtocolTypesCloudCliConfigProjectsItemId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigProjectsItemId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigProjectsItemId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigProjectsItemId>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigProjectsItemId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigProjectsItemId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigProjectsItemId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigProjectsItemId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigProjectsItemName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigProjectsItemName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigProjectsItemName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigProjectsItemName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigProjectsItemName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigProjectsItemName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigProjectsItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigProjectsItemName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigProjectsItemRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigProjectsItemRoot(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigProjectsItemRoot>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigProjectsItemRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigProjectsItemRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigProjectsItemSlug`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigProjectsItemSlug(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigProjectsItemSlug>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigProjectsItemSlug) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigProjectsItemSlug {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspaceRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspaceRoot(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspaceRoot>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspaceRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspaceRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "branch",
+///    "gitRoot",
+///    "id",
+///    "managed",
+///    "name",
+///    "projectId",
+///    "root",
+///    "slug",
+///    "syncState"
+///  ],
+///  "properties": {
+///    "branch": {
+///      "anyOf": [
+///        {
+///          "type": "string"
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "gitRoot": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "id": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "managed": {
+///      "type": "boolean"
+///    },
+///    "name": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "projectId": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "root": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "slug": {
+///      "type": "string",
+///      "minLength": 1
+///    },
+///    "syncState": {
+///      "type": "string",
+///      "enum": [
+///        "pendingUpsert",
+///        "active",
+///        "pendingDelete",
+///        "disabled",
+///        "removing"
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItem {
+    pub branch: ::std::option::Option<::std::string::String>,
+    #[serde(rename = "gitRoot")]
+    pub git_root: ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot,
+    pub id: ExeoraProtocolTypesCloudCliConfigWorkspacesItemId,
+    pub managed: bool,
+    pub name: ExeoraProtocolTypesCloudCliConfigWorkspacesItemName,
+    #[serde(rename = "projectId")]
+    pub project_id: ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId,
+    pub root: ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot,
+    pub slug: ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug,
+    #[serde(rename = "syncState")]
+    pub sync_state: ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState,
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemGitRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemId>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemProjectId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemRoot {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSlug {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "pendingUpsert",
+///    "active",
+///    "pendingDelete",
+///    "disabled",
+///    "removing"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState {
+    #[serde(rename = "pendingUpsert")]
+    PendingUpsert,
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "pendingDelete")]
+    PendingDelete,
+    #[serde(rename = "disabled")]
+    Disabled,
+    #[serde(rename = "removing")]
+    Removing,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::PendingUpsert => f.write_str("pendingUpsert"),
+            Self::Active => f.write_str("active"),
+            Self::PendingDelete => f.write_str("pendingDelete"),
+            Self::Disabled => f.write_str("disabled"),
+            Self::Removing => f.write_str("removing"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "pendingUpsert" => Ok(Self::PendingUpsert),
+            "active" => Ok(Self::Active),
+            "pendingDelete" => Ok(Self::PendingDelete),
+            "disabled" => Ok(Self::Disabled),
+            "removing" => Ok(Self::Removing),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesCloudCliConfigWorkspacesItemSyncState
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ExeoraProtocolTypesCommandPolicy`
 ///
@@ -3043,6 +4542,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "operation",
 ///                        "remotes",
 ///                        "repository",
+///                        "stashes",
 ///                        "upstream"
 ///                      ],
 ///                      "properties": {
@@ -3061,6 +4561,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                          "items": {
 ///                            "type": "object",
 ///                            "required": [
+///                              "ahead",
 ///                              "current",
 ///                              "name",
 ///                              "remote",
@@ -3068,6 +4569,19 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                              "upstream"
 ///                            ],
 ///                            "properties": {
+///                              "ahead": {
+///                                "default": null,
+///                                "anyOf": [
+///                                  {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  {
+///                                    "type": "null"
+///                                  }
+///                                ]
+///                              },
 ///                              "current": {
 ///                                "type": "boolean"
 ///                              },
@@ -3225,6 +4739,12 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "repository": {
 ///                          "type": "boolean"
 ///                        },
+///                        "stashes": {
+///                          "default": 0,
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
 ///                        "upstream": {
 ///                          "anyOf": [
 ///                            {
@@ -3304,6 +4824,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            "operation",
 ///                            "remotes",
 ///                            "repository",
+///                            "stashes",
 ///                            "upstream"
 ///                          ],
 ///                          "properties": {
@@ -3322,6 +4843,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                              "items": {
 ///                                "type": "object",
 ///                                "required": [
+///                                  "ahead",
 ///                                  "current",
 ///                                  "name",
 ///                                  "remote",
@@ -3329,6 +4851,19 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                                  "upstream"
 ///                                ],
 ///                                "properties": {
+///                                  "ahead": {
+///                                    "default": null,
+///                                    "anyOf": [
+///                                      {
+///                                        "type": "integer",
+///                                        "maximum": 9007199254740991.0,
+///                                        "minimum": 0.0
+///                                      },
+///                                      {
+///                                        "type": "null"
+///                                      }
+///                                    ]
+///                                  },
 ///                                  "current": {
 ///                                    "type": "boolean"
 ///                                  },
@@ -3485,6 +5020,12 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            },
 ///                            "repository": {
 ///                              "type": "boolean"
+///                            },
+///                            "stashes": {
+///                              "default": 0,
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
 ///                            },
 ///                            "upstream": {
 ///                              "anyOf": [
@@ -4292,6 +5833,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "operation",
 ///        "remotes",
 ///        "repository",
+///        "stashes",
 ///        "upstream"
 ///      ],
 ///      "properties": {
@@ -4310,6 +5852,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///          "items": {
 ///            "type": "object",
 ///            "required": [
+///              "ahead",
 ///              "current",
 ///              "name",
 ///              "remote",
@@ -4317,6 +5860,19 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///              "upstream"
 ///            ],
 ///            "properties": {
+///              "ahead": {
+///                "default": null,
+///                "anyOf": [
+///                  {
+///                    "type": "integer",
+///                    "maximum": 9007199254740991.0,
+///                    "minimum": 0.0
+///                  },
+///                  {
+///                    "type": "null"
+///                  }
+///                ]
+///              },
 ///              "current": {
 ///                "type": "boolean"
 ///              },
@@ -4474,6 +6030,12 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        "repository": {
 ///          "type": "boolean"
 ///        },
+///        "stashes": {
+///          "default": 0,
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
 ///        "upstream": {
 ///          "anyOf": [
 ///            {
@@ -4553,6 +6115,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "operation",
 ///            "remotes",
 ///            "repository",
+///            "stashes",
 ///            "upstream"
 ///          ],
 ///          "properties": {
@@ -4571,6 +6134,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///              "items": {
 ///                "type": "object",
 ///                "required": [
+///                  "ahead",
 ///                  "current",
 ///                  "name",
 ///                  "remote",
@@ -4578,6 +6142,19 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///                  "upstream"
 ///                ],
 ///                "properties": {
+///                  "ahead": {
+///                    "default": null,
+///                    "anyOf": [
+///                      {
+///                        "type": "integer",
+///                        "maximum": 9007199254740991.0,
+///                        "minimum": 0.0
+///                      },
+///                      {
+///                        "type": "null"
+///                      }
+///                    ]
+///                  },
 ///                  "current": {
 ///                    "type": "boolean"
 ///                  },
@@ -4735,6 +6312,12 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "repository": {
 ///              "type": "boolean"
 ///            },
+///            "stashes": {
+///              "default": 0,
+///              "type": "integer",
+///              "maximum": 9007199254740991.0,
+///              "minimum": 0.0
+///            },
 ///            "upstream": {
 ///              "anyOf": [
 ///                {
@@ -4819,6 +6402,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
             ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueOperation>,
         remotes: ::std::vec::Vec<::std::string::String>,
         repository: bool,
+        stashes: i64,
         upstream: ::std::option::Option<::std::string::String>,
     },
     #[serde(rename = "diff")]
@@ -4923,6 +6507,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///{
 ///  "type": "object",
 ///  "required": [
+///    "ahead",
 ///    "current",
 ///    "name",
 ///    "remote",
@@ -4930,6 +6515,19 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///    "upstream"
 ///  ],
 ///  "properties": {
+///    "ahead": {
+///      "default": null,
+///      "anyOf": [
+///        {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
 ///    "current": {
 ///      "type": "boolean"
 ///    },
@@ -4960,6 +6558,7 @@ impl ::std::convert::TryFrom<::std::string::String>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueBranchesItem {
+    pub ahead: ::std::option::Option<i64>,
     pub current: bool,
     pub name: ::std::string::String,
     pub remote: bool,
@@ -5696,6 +7295,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///    "operation",
 ///    "remotes",
 ///    "repository",
+///    "stashes",
 ///    "upstream"
 ///  ],
 ///  "properties": {
@@ -5714,6 +7314,7 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///      "items": {
 ///        "type": "object",
 ///        "required": [
+///          "ahead",
 ///          "current",
 ///          "name",
 ///          "remote",
@@ -5721,6 +7322,19 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///          "upstream"
 ///        ],
 ///        "properties": {
+///          "ahead": {
+///            "default": null,
+///            "anyOf": [
+///              {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              {
+///                "type": "null"
+///              }
+///            ]
+///          },
 ///          "current": {
 ///            "type": "boolean"
 ///          },
@@ -5878,6 +7492,12 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResult
 ///    "repository": {
 ///      "type": "boolean"
 ///    },
+///    "stashes": {
+///      "default": 0,
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 0.0
+///    },
 ///    "upstream": {
 ///      "anyOf": [
 ///        {
@@ -5913,6 +7533,7 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
         ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusOperation>,
     pub remotes: ::std::vec::Vec<::std::string::String>,
     pub repository: bool,
+    pub stashes: i64,
     pub upstream: ::std::option::Option<::std::string::String>,
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusBranchesItem`
@@ -5923,6 +7544,7 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
 ///{
 ///  "type": "object",
 ///  "required": [
+///    "ahead",
 ///    "current",
 ///    "name",
 ///    "remote",
@@ -5930,6 +7552,19 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
 ///    "upstream"
 ///  ],
 ///  "properties": {
+///    "ahead": {
+///      "default": null,
+///      "anyOf": [
+///        {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
 ///    "current": {
 ///      "type": "boolean"
 ///    },
@@ -5960,6 +7595,7 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatusBranchesItem {
+    pub ahead: ::std::option::Option<i64>,
     pub current: bool,
     pub name: ::std::string::String,
     pub remote: bool,

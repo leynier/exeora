@@ -97,6 +97,7 @@ export function AdminUsers() {
                   <Badge tone="brand">
                     {user.toolCalls} {user.toolCalls === 1 ? "call" : "calls"}
                   </Badge>
+                  {user.cloudEnabled && <Badge tone="success">cloud</Badge>}
                 </div>
               </Row>
             ))}

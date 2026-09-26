@@ -2,13 +2,13 @@ import { zValidator } from "@hono/zod-validator";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { deviceProjectDeletionStatement } from "../audit-deletions.js";
+import { revokeOwnedDevice } from "../cloud/revoke.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
 import { limitsFor } from "../plans.js";
 import { isDeviceOnline, presenceCutoff } from "../presence.js";
-import { revokeDevice } from "./ops.js";
+import { permanentlyDeleteDevice } from "./ops.js";
 import { planOf } from "./plan.js";
 import type { ApiEnv } from "./router.js";
 
@@ -45,7 +45,7 @@ devices.post("/api/devices", zValidator("json", deviceInput), async (c) => {
           SELECT ${id}, ${userId}, ${body.name}, ${body.platform}, ${cliVersion}
           WHERE (
             SELECT COUNT(*) FROM devices
-            WHERE user_id = ${userId} AND revoked_at IS NULL
+            WHERE user_id = ${userId} AND kind = 'local' AND revoked_at IS NULL
           ) < ${limits.maxDevices}
         `,
     );
@@ -95,8 +95,9 @@ devices.get("/api/devices", async (c) => {
  * references, and the relay refuses a socket whose device has `revokedAt` set.
  */
 devices.delete("/api/devices/:id", async (c) => {
-  const ok = await revokeDevice(c.env, c.get("userId"), c.req.param("id"));
-  return ok ? c.json({ ok: true }) : c.json({ error: "not_found" }, 404);
+  const ok = await revokeOwnedDevice(c.env, c.get("userId"), c.req.param("id"));
+  if (!ok) return c.json({ error: "not_found" }, 404);
+  return c.json({ ok: true });
 });
 
 /**
@@ -121,18 +122,7 @@ devices.delete("/api/devices/:id/permanently", async (c) => {
   if (!device) return c.json({ error: "not_found" }, 404);
   if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
 
-  // The archive has no device column, so a machine is not something it can be
-  // asked to forget. Its projects are, and they can only be enumerated while
-  // the machine is still here: the cascade below takes them with it.
-  await c.env.DB.batch([
-    deviceProjectDeletionStatement(c.env, userId, id),
-    c.env.DB.prepare(
-      `DELETE FROM audit_outbox
-        WHERE user_id = ?1
-          AND project_id IN (SELECT id FROM projects WHERE user_id = ?1 AND device_id = ?2)`,
-    ).bind(userId, id),
-    c.env.DB.prepare("DELETE FROM devices WHERE id = ?1 AND user_id = ?2").bind(id, userId),
-  ]);
+  await permanentlyDeleteDevice(c.env, userId, id);
 
   return c.json({ ok: true });
 });
@@ -141,6 +131,7 @@ function toDeviceView(device: typeof schema.devices.$inferSelect, online = false
     id: device.id,
     name: device.name,
     platform: device.platform,
+    kind: device.kind,
     cliVersion: device.cliVersion,
     online,
     lastSeenAt: device.lastSeenAt?.getTime() ?? null,

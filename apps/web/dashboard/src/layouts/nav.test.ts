@@ -37,6 +37,12 @@ describe("shellLinks", () => {
     expect(shellLinks(true).map((link) => link.to)).toContain("/admin");
   });
 
+  it("places Cloud right after Machines", () => {
+    const destinations = shellLinks(false).map((link) => link.to);
+    expect(destinations.indexOf("/cloud")).toBe(destinations.indexOf("/machines") + 1);
+    expect(sectionTitle("/cloud", shellLinks(false))).toBe("Cloud");
+  });
+
   it("places Workspace after Activity", () => {
     const destinations = shellLinks(false).map((link) => link.to);
     expect(destinations.indexOf("/workspace")).toBeGreaterThan(destinations.indexOf("/activity"));

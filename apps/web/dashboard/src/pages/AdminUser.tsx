@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, type Client, type Device, isOnline, relativeTime } from "../api.js";
+import { cloudApi } from "../api-cloud.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { useToast } from "../components/toast.js";
 import {
@@ -82,6 +83,17 @@ export function AdminUser() {
     },
   });
 
+  const setCloud = useMutation({
+    mutationFn: (enabled: boolean) => cloudApi.adminSetCloud(userId, enabled),
+    onSuccess: (_result, enabled) => {
+      toast(enabled ? "Exeora Cloud enabled." : "Exeora Cloud disabled.");
+      invalidate();
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "Could not change Cloud access.", "error");
+    },
+  });
+
   async function removeUser() {
     setDeleteWorking(true);
     try {
@@ -138,7 +150,8 @@ export function AdminUser() {
 
   const machines = user.machineList;
   const clients = user.clientList;
-  const busy = revokeDevice.isPending || revokeClient.isPending || deleteWorking;
+  const busy =
+    revokeDevice.isPending || revokeClient.isPending || setCloud.isPending || deleteWorking;
 
   return (
     <>
@@ -176,6 +189,26 @@ export function AdminUser() {
         <Stat label="Calls" value={`${user.toolCalls}`} />
       </div>
 
+      <Card title="Exeora Cloud" className="mt-6">
+        <Row>
+          <div className="min-w-0">
+            <p className="text-title-md">{user.cloudEnabled ? "Enabled" : "Not enabled"}</p>
+            <p className="text-body-md text-foreground-faint">
+              Whether this account may put repositories on machines Exeora runs. Administrators
+              always can.
+            </p>
+          </div>
+          <button
+            type="button"
+            className={user.cloudEnabled ? "btn btn-danger shrink-0" : "btn shrink-0"}
+            disabled={busy}
+            onClick={() => setCloud.mutate(!user.cloudEnabled)}
+          >
+            {user.cloudEnabled ? "Disable Cloud" : "Enable Cloud"}
+          </button>
+        </Row>
+      </Card>
+
       <div className="mt-6 mb-4 flex items-center gap-1 border-b border-border">
         {ACCOUNT_TABS.map((item) => (
           <button
@@ -209,6 +242,7 @@ export function AdminUser() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-title-md truncate">{device.name}</p>
+                        {device.kind === "cloud" && <Badge tone="brand">cloud</Badge>}
                         {device.revokedAt && <Badge tone="error">revoked</Badge>}
                       </div>
                       <p className="text-body-md text-foreground-faint truncate">
@@ -228,7 +262,7 @@ export function AdminUser() {
                       disabled={busy}
                       onClick={() => setPendingDevice(device)}
                     >
-                      Revoke
+                      {device.kind === "cloud" ? "Destroy" : "Revoke"}
                     </button>
                   )}
                 </Row>
@@ -346,9 +380,13 @@ export function AdminUser() {
 
       <ConfirmDialog
         open={pendingDevice !== null}
-        title={`Revoke ${pendingDevice?.name ?? ""}?`}
-        body="Its connection is closed immediately and it stops serving tool calls for this account."
-        confirmLabel="Revoke"
+        title={`${pendingDevice?.kind === "cloud" ? "Destroy" : "Revoke"} ${pendingDevice?.name ?? ""}?`}
+        body={
+          pendingDevice?.kind === "cloud"
+            ? "This is a machine Exeora runs: revoking it destroys it, with whatever was never pushed from it. If it holds the repository's default branch, every other machine of that repository is destroyed with it."
+            : "Its connection is closed immediately and it stops serving tool calls for this account."
+        }
+        confirmLabel={pendingDevice?.kind === "cloud" ? "Destroy machine" : "Revoke"}
         pending={revokeDevice.isPending}
         onCancel={() => setPendingDevice(null)}
         onConfirm={() => {

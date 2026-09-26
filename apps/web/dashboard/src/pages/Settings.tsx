@@ -44,6 +44,14 @@ export function Settings() {
                 {formatCap(user.usage.projects, user.limits.maxProjects)}
               </p>
             </Row>
+            {user.cloudEnabled && (
+              <Row>
+                <p className="text-body-md text-foreground-muted">Cloud workspaces</p>
+                <p className="text-title-md tabular-nums">
+                  {formatCap(user.usage.cloudMachines, user.limits.maxCloudMachines)}
+                </p>
+              </Row>
+            )}
             <Row>
               <p className="text-body-md text-foreground-muted">Audit retention</p>
               <p className="text-title-md tabular-nums">

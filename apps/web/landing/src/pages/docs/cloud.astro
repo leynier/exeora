@@ -1,0 +1,83 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Exeora Cloud"
+  description="A repository on a machine Exeora runs, so an agent can work on it without a machine of your own."
+  canonicalPath="/docs/cloud/"
+>
+  <p>
+    Everything else in Exeora assumes a machine you own with the CLI on it. Cloud drops that requirement: you give it the HTTPS address of a repository, it clones the repository onto a machine it runs, connects the CLI there, and from then on the project behaves like any other. Clients connect the same way, the policy works the same way, Source Control and the terminal open the same way. The one difference you notice is that the machine sleeps.
+  </p>
+
+  <p>
+    Cloud is behind a flag while there is no billing: administrators have it, and they can turn it on for an account from that account's page in the administration panel. Everyone else sees what it is and who to ask.
+  </p>
+
+  <h2>One machine per workspace</h2>
+
+  <p>
+    Adding a repository creates one machine, checked out on the default branch. That is the project root: calls that name no workspace go there. Opening a branch as a workspace, from the Cloud page, from Source Control or with <code>create_workspace</code> over MCP, creates another machine with its own clone on that branch. Machines never share a disk, so a build on one branch cannot starve another, and removing a workspace is removing exactly one machine.
+  </p>
+
+  <p>
+    A workspace branch that exists on the remote is checked out as it is. One that does not is created from the base you name, or from the default branch, and stays local until you push it. The dashboard and <code>list_git_workspaces</code> show each machine's state: <code>creating</code> with what it is doing, <code>ready</code>, <code>error</code> with why, or <code>destroying</code>.
+  </p>
+
+  <h2>Sleeping and waking</h2>
+
+  <p>
+    A machine sleeps a minute or so after it stops working. Its disk keeps everything: the checkout, uncommitted changes, whatever a terminal left behind. The gateway wakes it before the next call it routes there, which costs the first call after a pause about a second, and the CLI keeps it awake as long as a call is in flight, a command started with <code>start_command</code> is running, or a terminal is open. Nothing keeps a machine awake for being looked at, except an open Source Control or terminal tab, which polls it.
+  </p>
+
+  <p>
+    A cold start, after a longer sleep, restarts the CLI rather than resuming it. Background processes and terminal sessions are gone then, the way they are after a laptop reboots; files are not.
+  </p>
+
+  <h2>Private repositories</h2>
+
+  <p>
+    A private repository needs a token with read and write access, given when the repository is added. The gateway stores it encrypted, hands it to each machine of that repository as it is set up, and deletes it with the repository. A token that was wrong or has expired is replaced from the repository's card on the Cloud page or with <code>exeora cloud credential</code>; machines created or retried from then on clone with the new one, and a machine already running keeps the one it was set up with. Inside the machine the token lives in a file only the CLI's user can read, wired to git for that one host; an agent running commands there runs as that user and could read it, which is the same as on any machine where an agent is allowed to run commands.
+  </p>
+
+  <p>
+    The machine's own credential is separate: a token that opens nothing but that machine's relay socket, so a token taken from one machine reaches no other project and no API.
+  </p>
+
+  <h2>Limits</h2>
+
+  <p>
+    A machine has 8 vCPUs, about 8 GB of memory and a large disk. Commands the CLI runs are capped at 6 GB of memory as a group: a build that exceeds it is killed with <code>exitCode: null</code> and a note in <code>stderr</code>, and the machine stays up. Cloud machines have their own cap on the <a href="/docs/plans/">plan</a>, separate from machines you register yourself.
+  </p>
+
+  <h2>From the CLI</h2>
+
+  <p>
+    Everything the Cloud page does is a command on a signed-in laptop too, against the same API:
+  </p>
+
+  <pre>exeora cloud add https://github.com/you/repo.git
+exeora cloud add https://github.com/you/private.git --token-stdin &lt; token.txt
+exeora cloud list
+exeora cloud workspace create repo feature/name --from main
+exeora cloud workspace remove repo feature-name
+exeora cloud credential repo --token-stdin &lt; token.txt
+exeora cloud remove repo</pre>
+
+  <p>
+    <code>add</code> and <code>workspace create</code> wait until the machine is ready, or report why it is not. The token only ever arrives on standard input, never as an argument, so it stays out of shell history and process lists. Destructive commands ask first unless <code>-y</code> is given, which <code>--json</code> requires.
+  </p>
+
+  <h2>Removing</h2>
+
+  <p>
+    Removing a workspace destroys its machine, with whatever was never pushed from it. Removing a repository destroys every machine of it, the default branch's last, and the stored token with them. The repository on its host is never touched: Exeora only ever clones and pushes to it as you ask.
+  </p>
+
+  <h2>Where it runs</h2>
+
+  <p>
+    Machines are microVMs on Fly.io, operated by Exeora, one per workspace. On a self-hosted gateway they are yours: see <a href="/docs/self-hosting/">self-hosting</a> for the two secrets that turn Cloud on. Because a machine dials the gateway from outside, the gateway needs a public address; a development server on <code>localhost</code> cannot host Cloud.
+  </p>
+</Doc>

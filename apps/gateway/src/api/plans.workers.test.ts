@@ -238,9 +238,15 @@ describe("/api/me plan surface", () => {
 
     const body = (await response.json()) as {
       plan: string;
-      limits: { maxDevices: number | null; maxProjects: number | null; retentionDays: number };
-      usage: { devices: number; projects: number; toolCallsMonth: number };
+      limits: {
+        maxDevices: number | null;
+        maxProjects: number | null;
+        maxCloudMachines: number | null;
+        retentionDays: number;
+      };
+      usage: { devices: number; cloudMachines: number; projects: number; toolCallsMonth: number };
       isAdmin: boolean;
+      cloudEnabled: boolean;
       accountMcpUrl: string;
     };
 
@@ -248,9 +254,13 @@ describe("/api/me plan surface", () => {
     expect(body.limits).toEqual({
       maxDevices: PLANS.free.maxDevices,
       maxProjects: PLANS.free.maxProjects,
+      maxCloudMachines: PLANS.free.maxCloudMachines,
       retentionDays: PLANS.free.retentionDays,
     });
-    expect(body.usage).toEqual({ devices: 1, projects: 0, toolCallsMonth: 7 });
+    expect(body.usage).toEqual({ devices: 1, cloudMachines: 0, projects: 0, toolCallsMonth: 7 });
+    // The gateway under test has no Sprites token, so Cloud reads as off even
+    // for an account an administrator switched on.
+    expect(body.cloudEnabled).toBe(false);
     expect(body.accountMcpUrl).toContain("/mcp");
   });
 });

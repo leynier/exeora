@@ -26,6 +26,7 @@ me.get("/api/me", async (c) => {
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
       plan: schema.users.plan,
+      cloudEnabled: schema.users.cloudEnabled,
     })
     .from(schema.users)
     .where(eq(schema.users.id, userId))
@@ -41,12 +42,32 @@ me.get("/api/me", async (c) => {
     .from(schema.adminUsers)
     .where(eq(schema.adminUsers.email, normalizeEmail(user.email)))
     .get();
+  const isAdmin = adminRow !== undefined;
 
-  const [deviceCount, projectCount, monthCalls] = await Promise.all([
+  // Cloud machines are counted apart from the laptops: each kind has its own
+  // cap, and the device figure has always meant machines the person runs.
+  const [deviceCount, cloudCount, projectCount, monthCalls] = await Promise.all([
     database
       .select({ n: count() })
       .from(schema.devices)
-      .where(and(eq(schema.devices.userId, userId), isNull(schema.devices.revokedAt)))
+      .where(
+        and(
+          eq(schema.devices.userId, userId),
+          eq(schema.devices.kind, "local"),
+          isNull(schema.devices.revokedAt),
+        ),
+      )
+      .get(),
+    database
+      .select({ n: count() })
+      .from(schema.devices)
+      .where(
+        and(
+          eq(schema.devices.userId, userId),
+          eq(schema.devices.kind, "cloud"),
+          isNull(schema.devices.revokedAt),
+        ),
+      )
       .get(),
     database
       .select({ n: count() })
@@ -68,7 +89,12 @@ me.get("/api/me", async (c) => {
     name: user.name,
     avatarUrl: user.avatarUrl,
     plan,
-    isAdmin: adminRow !== undefined,
+    isAdmin,
+    // Whether this account can open Exeora Cloud today: the gateway has to be
+    // configured for it, and the person has to be an administrator or have
+    // been switched on by one. The dashboard shows the section either way and
+    // explains the gate; this decides whether its buttons do anything.
+    cloudEnabled: Boolean(c.env.SPRITES_TOKEN) && (isAdmin || user.cloudEnabled),
     // The one URL that is the same for every account. Sent from here rather
     // than written into the dashboard so it follows `EXEORA_BASE_URL` in
     // development, exactly as every project's own URL does.
@@ -76,6 +102,7 @@ me.get("/api/me", async (c) => {
     limits,
     usage: {
       devices: deviceCount?.n ?? 0,
+      cloudMachines: cloudCount?.n ?? 0,
       projects: projectCount?.n ?? 0,
       toolCallsMonth: Number(monthCalls?.n ?? 0),
     },

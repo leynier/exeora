@@ -30,6 +30,11 @@ pub struct CallScope<'a> {
 
 impl ToolEngine {
     pub fn new() -> Result<Self> {
+        Self::with_limits(None)
+    }
+
+    /// With a memory cap on every command it starts; see `cgroup.rs`.
+    pub fn with_limits(limits: Option<Arc<crate::cgroup::CommandLimits>>) -> Result<Self> {
         let contract: Value = serde_json::from_str(include_str!("../../protocol/contract.json"))?;
         let tools = contract
             .pointer("/schemas/tools")
@@ -45,8 +50,13 @@ impl ToolEngine {
         }
         Ok(Self {
             validators,
-            processes: Arc::new(ProcessRegistry::new()),
+            processes: Arc::new(ProcessRegistry::with_limits(limits)),
         })
+    }
+
+    /// How many processes started with `start_command` are still running.
+    pub async fn running_processes(&self) -> usize {
+        self.processes.running_count().await
     }
 
     pub async fn execute(

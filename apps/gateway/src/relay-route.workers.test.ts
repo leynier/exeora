@@ -24,14 +24,15 @@ beforeEach(async () => {
     .run();
 });
 
-function dial(scopes: string[]) {
+function dial(scopes: string[], props: { deviceId?: string } = {}, target = DEVICE_ID) {
   const context = createExecutionContext();
-  (context as { props?: { userId: string; scopes: string[] } }).props = {
+  (context as { props?: { userId: string; scopes: string[]; deviceId?: string } }).props = {
     userId: USER_ID,
     scopes,
+    ...props,
   };
   return authenticated.fetch(
-    new Request(`https://exeora.dev/api/relay/${DEVICE_ID}`, {
+    new Request(`https://exeora.dev/api/relay/${target}`, {
       headers: { Upgrade: "websocket" },
     }),
     env,
@@ -57,5 +58,18 @@ describe("executor relay authorization", () => {
       error: "insufficient_scope",
       requiredScopes: ["executor:connect"],
     });
+  });
+
+  it("lets a machine token upgrade only the device it was minted for", async () => {
+    const scopes = ["executor:connect", "executor:execute"];
+
+    const own = await dial(scopes, { deviceId: DEVICE_ID });
+    expect(own.status).toBe(101);
+    own.webSocket?.accept();
+    own.webSocket?.close(1000, "test complete");
+
+    const other = await dial(scopes, { deviceId: "dev_some_other_machine" });
+    expect(other.status).toBe(403);
+    await expect(other.text()).resolves.toContain("another device");
   });
 });

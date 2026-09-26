@@ -86,7 +86,14 @@ export function limiterFor(
   // does not change that.
   if (pathname.startsWith("/p/") || pathname === "/mcp") return env.RL_MCP;
 
-  if (method === "POST" && (pathname === "/api/devices" || pathname === "/api/projects")) {
+  // Creating a cloud machine is the most expensive write there is: a Sprite
+  // per request. It shares the registration budget rather than getting its own.
+  if (
+    method === "POST" &&
+    (pathname === "/api/devices" ||
+      pathname === "/api/projects" ||
+      pathname.startsWith("/api/cloud/"))
+  ) {
     return env.RL_WRITE;
   }
 

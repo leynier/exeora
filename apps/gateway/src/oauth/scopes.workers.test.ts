@@ -8,6 +8,7 @@ import {
   inspectMcpAccess,
   insufficientScope,
   isExecutorApiRequest,
+  isMachineApiRequest,
 } from "./scopes.js";
 
 beforeEach(async () => {
@@ -40,6 +41,24 @@ describe("OAuth scope ceilings", () => {
     expect((await call("/api/devices", ["executor:connect"])).status).toBe(200);
     expect((await call("/api/clients", ["executor:connect"])).status).toBe(403);
     expect((await call("/api/clients", ["dashboard:manage"])).status).toBe(200);
+  });
+
+  it("keeps a machine token away from every API route but its relay", async () => {
+    async function call(path: string) {
+      const context = createExecutionContext();
+      (context as { props?: { userId: string; scopes: string[]; deviceId: string } }).props = {
+        userId: "usr_scope_test",
+        scopes: ["executor:connect", "executor:execute"],
+        deviceId: "dev_scope_machine",
+      };
+      return api.fetch(new Request(`https://exeora.dev${path}`), env, context);
+    }
+
+    expect((await call("/api/devices")).status).toBe(403);
+    expect((await call("/api/me")).status).toBe(403);
+    expect(isMachineApiRequest("GET", "/api/relay/dev_scope_machine")).toBe(true);
+    expect(isMachineApiRequest("POST", "/api/relay/dev_scope_machine")).toBe(false);
+    expect(isMachineApiRequest("GET", "/api/devices")).toBe(false);
   });
 
   it("grants only the scopes requested within each first-party client ceiling", async () => {
@@ -79,6 +98,11 @@ describe("OAuth scope ceilings", () => {
     expect(isExecutorApiRequest("GET", "/api/projects/prj_one/workspaces")).toBe(true);
     expect(isExecutorApiRequest("PUT", "/api/projects/prj_one/workspaces/wsp_one")).toBe(true);
     expect(isExecutorApiRequest("DELETE", "/api/projects/prj_one/workspaces/wsp_one")).toBe(true);
+    expect(isExecutorApiRequest("GET", "/api/cloud/projects")).toBe(true);
+    expect(isExecutorApiRequest("POST", "/api/cloud/projects")).toBe(true);
+    expect(isExecutorApiRequest("DELETE", "/api/cloud/projects/prj_one")).toBe(true);
+    expect(isExecutorApiRequest("PUT", "/api/cloud/projects/prj_one/credential")).toBe(true);
+    expect(isExecutorApiRequest("PUT", "/api/cloud/projects/prj_one")).toBe(false);
 
     expect(isExecutorApiRequest("DELETE", "/api/me")).toBe(false);
     expect(isExecutorApiRequest("DELETE", "/api/devices/dev_one")).toBe(false);

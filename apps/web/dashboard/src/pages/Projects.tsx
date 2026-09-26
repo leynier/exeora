@@ -5,24 +5,42 @@ import { api, isOnline, type Project } from "../api.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { CopyButton } from "../components/CopyButton.js";
 import { useToast } from "../components/toast.js";
-import { Card, EmptyState, PageHeader, Skeleton, StatusDot } from "../components/ui.js";
-import { keys, useDevices, useMe, useProjects } from "../queries.js";
+import { Badge, Card, EmptyState, PageHeader, Skeleton, StatusDot } from "../components/ui.js";
+import { keys, useCloudProjects, useDevices, useMe, useProjects } from "../queries.js";
 
 export function Projects() {
   const projects = useProjects();
   const devices = useDevices();
   const me = useMe();
+  const cloud = useCloudProjects();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [pendingRemove, setPendingRemove] = useState<Project | null>(null);
 
+  // A cloud project is gone once its machines are, a moment after the
+  // request: until then it is listed as leaving, and the list keeps polling.
+  const leaving = (project: Project) =>
+    Boolean(project.cloud) &&
+    (cloud.data
+      ?.find((candidate) => candidate.projectId === project.id)
+      ?.machines.every((machine) => machine.status === "destroying") ??
+      false);
+
   const remove = useMutation({
     mutationFn: api.removeProject,
     onSuccess: (_result, id) => {
-      const name = projects.data?.find((project) => project.id === id)?.name ?? "The project";
-      toast(`${name} was removed. Its MCP URL no longer resolves.`);
+      const project = projects.data?.find((candidate) => candidate.id === id);
+      const name = project?.name ?? "The project";
+      toast(
+        project?.cloud
+          ? `Removing ${name}. Its machines are being destroyed; it leaves the list when they are gone.`
+          : `${name} was removed. Its MCP URL no longer resolves.`,
+      );
       setPendingRemove(null);
       queryClient.invalidateQueries({ queryKey: keys.projects });
+      queryClient.invalidateQueries({ queryKey: keys.cloudProjects });
+      queryClient.invalidateQueries({ queryKey: keys.devices });
+      queryClient.invalidateQueries({ queryKey: keys.me });
     },
     onError: (error) => {
       toast(error instanceof Error ? error.message : "Could not remove.", "error");
@@ -66,12 +84,16 @@ export function Projects() {
               <article key={project.id} className="border-border bg-surface rounded-xl border p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <Link
-                      to={`/projects/${project.id}`}
-                      className="text-title-lg hover:text-brand transition-colors duration-fast"
-                    >
-                      {project.name}
-                    </Link>
+                    <span className="flex items-center gap-2">
+                      <Link
+                        to={`/projects/${project.id}`}
+                        className="text-title-lg hover:text-brand transition-colors duration-fast"
+                      >
+                        {project.name}
+                      </Link>
+                      {project.cloud && <Badge tone="brand">cloud</Badge>}
+                      {leaving(project) && <Badge>removing</Badge>}
+                    </span>
                     <p className="text-body-md text-foreground-faint mt-1 flex items-center gap-2">
                       <StatusDot
                         on={device ? isOnline(device) : false}
@@ -107,8 +129,12 @@ export function Projects() {
       <ConfirmDialog
         open={pendingRemove !== null}
         title={`Remove ${pendingRemove?.name ?? ""}?`}
-        body="Its MCP URL stops resolving, so any client still pointed at it will start failing. The files on the machine are untouched."
-        confirmLabel="Remove"
+        body={
+          pendingRemove?.cloud
+            ? "Its MCP URL stops resolving, and every machine Exeora runs for this repository is destroyed, with whatever was never pushed from them. The repository on its host is untouched."
+            : "Its MCP URL stops resolving, so any client still pointed at it will start failing. The files on the machine are untouched."
+        }
+        confirmLabel={pendingRemove?.cloud ? "Remove and destroy machines" : "Remove"}
         pending={remove.isPending}
         onCancel={() => setPendingRemove(null)}
         onConfirm={() => pendingRemove && remove.mutate(pendingRemove.id)}

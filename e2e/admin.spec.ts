@@ -7,9 +7,10 @@ const user = {
   avatarUrl: null,
   plan: "free",
   isAdmin: true,
+  cloudEnabled: true,
   accountMcpUrl: "https://exeora.test/mcp",
-  limits: { maxDevices: 2, maxProjects: 3, retentionDays: 90 },
-  usage: { devices: 0, projects: 0, toolCallsMonth: 0 },
+  limits: { maxDevices: 2, maxProjects: 3, maxCloudMachines: 10, retentionDays: 90 },
+  usage: { devices: 0, projects: 0, cloudMachines: 0, toolCallsMonth: 0 },
 };
 
 const subject = {
@@ -24,6 +25,7 @@ const subject = {
   clients: 0,
   toolCalls: 3,
   lastActivityAt: Date.now(),
+  cloudEnabled: false,
 };
 
 async function signedIn(page: Page) {
@@ -64,6 +66,7 @@ async function mockApi(page: Page) {
             id: "dev_subject",
             name: "subject-box",
             platform: "linux",
+            kind: "local",
             cliVersion: "0.9.0",
             online: true,
             lastSeenAt: Date.now(),
@@ -84,6 +87,31 @@ async function mockApi(page: Page) {
     await route.fulfill({ status: 404 });
   });
 }
+
+test("toggles Exeora Cloud for another account", async ({ page }) => {
+  const puts: Array<{ path: string; body: unknown }> = [];
+  await signedIn(page);
+  await mockApi(page);
+  await page.route("**/api/admin/users/*/cloud", async (route) => {
+    puts.push({
+      path: new URL(route.request().url()).pathname,
+      body: route.request().postDataJSON(),
+    });
+    await route.fulfill({ status: 200, json: { ok: true, cloudEnabled: true } });
+  });
+  await page.goto("/dashboard/");
+  await page.getByRole("link", { name: "Admin", exact: true }).click();
+  await page
+    .locator("#dashboard-sidebar")
+    .getByRole("link", { name: "Users", exact: true })
+    .click();
+  await page.getByRole("link", { name: "Subject" }).click();
+
+  await expect(page.getByText("Not enabled")).toBeVisible();
+  await page.getByRole("button", { name: "Enable Cloud" }).click();
+  await expect(page.getByRole("status")).toContainText("Exeora Cloud enabled.");
+  expect(puts).toEqual([{ path: `/api/admin/users/${subject.id}/cloud`, body: { enabled: true } }]);
+});
 
 test("entering Admin swaps the rail for Overview and Users", async ({ page }) => {
   await signedIn(page);

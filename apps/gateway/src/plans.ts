@@ -19,6 +19,12 @@ export interface PlanLimits {
   maxDevices: number | null;
   /** Projects owned by the account. Null means no cap. */
   maxProjects: number | null;
+  /**
+   * Exeora Cloud machines the account may have at once. Finite on every plan,
+   * because each one is a microVM someone pays for. Separate from the device
+   * cap so a cloud machine never takes a slot from a laptop.
+   */
+  maxCloudMachines: number | null;
   /** How long an audit row remains visible, in rolling 24-hour days. */
   retentionDays: number;
 }
@@ -36,12 +42,14 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
     id: "free",
     maxDevices: 10,
     maxProjects: 25,
+    maxCloudMachines: 2,
     retentionDays: 1,
   },
   pro: {
     id: "pro",
     maxDevices: null,
     maxProjects: null,
+    maxCloudMachines: 10,
     retentionDays: 365,
   },
 };
@@ -53,8 +61,8 @@ export function isPlanId(value: unknown): value is PlanId {
 /** Resolve a plan id that arrived from the database or a default. */
 export function limitsFor(plan: PlanId | string | null | undefined): PlanLimits {
   const id: PlanId = isPlanId(plan) ? plan : "free";
-  const { maxDevices, maxProjects, retentionDays } = PLANS[id];
-  return { maxDevices, maxProjects, retentionDays };
+  const { maxDevices, maxProjects, maxCloudMachines, retentionDays } = PLANS[id];
+  return { maxDevices, maxProjects, maxCloudMachines, retentionDays };
 }
 
 /** Every distinct retention window, for archive maintenance to walk. */

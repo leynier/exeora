@@ -29,6 +29,13 @@ import Legal from "../layouts/Legal.astro";
     on. The gateway relays a tool call to your machine and relays the answer back to the AI client
     that asked; nothing in between is stored.
   </p>
+  <p>
+    The one exception is one you choose: a repository you put on <a href="/docs/cloud/">Exeora
+    Cloud</a> is cloned onto a machine Exeora operates on Fly.io, and lives there until you remove
+    it. A repository token you give for it is stored encrypted, used only to set up that
+    repository's machines, and deleted with the repository. Nothing on the machine is read by
+    Exeora other than to relay your own calls.
+  </p>
   <ul>
     <li><strong>No source code.</strong> Nothing read, written or searched is kept.</li>
     <li>

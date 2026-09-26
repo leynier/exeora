@@ -64,6 +64,22 @@ declare global {
     ADMIN_EMAILS?: string;
 
     /**
+     * Organisation token for the Fly Sprites API, which provisions and wakes
+     * Exeora Cloud machines. Unset means Cloud is off: the routes answer
+     * `cloud_disabled`, the relay never tries to wake anything and the
+     * reconcile job does nothing, which is how a self-hosted gateway runs
+     * without it.
+     */
+    SPRITES_TOKEN?: string;
+    /**
+     * 32-byte hex key that encrypts repository access tokens at rest in
+     * `cloud_projects`. Its own key rather than one of the signing secrets
+     * above because rotating a cookie key must not lock every stored
+     * credential. Rotating this one does, and the dashboard offers re-entry.
+     */
+    CLOUD_CREDENTIALS_KEY?: string;
+
+    /**
      * Injected into `env` by OAuthProvider before it calls either handler.
      * Declared here so there is a single Env type across the Worker rather
      * than an intersection that has to be threaded through every helper.
