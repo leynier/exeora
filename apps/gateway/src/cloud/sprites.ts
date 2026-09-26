@@ -157,12 +157,35 @@ export async function execSprite(
     },
   );
   await expectOk(response, "run a command on the machine");
-  const raw = await response.text();
+  const raw = unframeExecOutput(new Uint8Array(await response.arrayBuffer()));
   const mark = EXIT_MARK.exec(raw);
   return {
     output: mark ? raw.slice(0, mark.index) : raw,
     exitCode: mark ? Number(mark[1]) : null,
   };
+}
+
+/** Stream tags the exec endpoint writes before each chunk, and after the last. */
+const STDOUT_FRAME = 0x01;
+const STDERR_FRAME = 0x02;
+const EXIT_FRAME = 0x03;
+
+/**
+ * The exec endpoint's body is not the bare output: every chunk is preceded
+ * by a byte naming its stream (1 stdout, 2 stderr), and the body ends with a
+ * 3 and the process's exit code as one byte. Those bytes are dropped here so
+ * what is left is the output as the script wrote it; the exit status the
+ * callers trust is still the one the script prints, since the process that
+ * exits is the wrapper around it. A body without the tags passes through.
+ * Neither tag can occur inside UTF-8 text, so dropping them is safe.
+ */
+export function unframeExecOutput(bytes: Uint8Array): string {
+  let end = bytes.length;
+  if (end >= 2 && bytes[end - 2] === EXIT_FRAME) end -= 2;
+  const kept = bytes
+    .subarray(0, end)
+    .filter((byte) => byte !== STDOUT_FRAME && byte !== STDERR_FRAME);
+  return new TextDecoder().decode(kept);
 }
 
 /** Creates or replaces the named service; the runtime starts it at once. */

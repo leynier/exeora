@@ -60,6 +60,28 @@ describe("the Sprites client", () => {
     ).resolves.toEqual({ output: "hi\n\n", exitCode: 3 });
   });
 
+  it("reads the framed body the exec endpoint actually sends", async () => {
+    // Captured from api.sprites.dev: a stream byte before each chunk, and a 3
+    // plus the exit code as the last two bytes.
+    const body = new Uint8Array([
+      ...[2, ...new TextEncoder().encode("bootstrap: warning\n")],
+      ...[1, ...new TextEncoder().encode("bootstrap: done\nEXEORA_BOOTSTRAP_OK\n")],
+      ...[1, ...new TextEncoder().encode("\n__EXEORA_EXIT_0__\n")],
+      3,
+      0,
+    ]);
+    const fetcher = fetcherAnswering(() => new Response(body));
+    const result = await execSprite(
+      config,
+      "exeora-abc",
+      { script: "true", timeoutMs: 1000 },
+      fetcher,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("bootstrap: warning\nbootstrap: done\nEXEORA_BOOTSTRAP_OK\n\n");
+    expect(result.output.trimEnd().endsWith("EXEORA_BOOTSTRAP_OK")).toBe(true);
+  });
+
   it("reports a script that never printed its status as unfinished", async () => {
     const fetcher = fetcherAnswering(() => new Response("partial output"));
     await expect(
