@@ -1026,6 +1026,32 @@
                             "status"
                           ],
                           "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "unpublished"
+                            },
+                            "clean": {
+                              "type": "boolean"
+                            },
+                            "reasons": {
+                              "maxItems": 200,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 512
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "clean",
+                            "reasons"
+                          ],
+                          "additionalProperties": false
                         }
                       ]
                     }
@@ -1626,6 +1652,19 @@
                     "action",
                     "path",
                     "area"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "unpublished"
+                    }
+                  },
+                  "required": [
+                    "action"
                   ],
                   "additionalProperties": false
                 },

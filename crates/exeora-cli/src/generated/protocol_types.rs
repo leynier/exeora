@@ -1227,6 +1227,32 @@ pub mod error {
 ///                            }
 ///                          },
 ///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "clean",
+///                            "kind",
+///                            "reasons"
+///                          ],
+///                          "properties": {
+///                            "clean": {
+///                              "type": "boolean"
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "unpublished"
+///                            },
+///                            "reasons": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "string",
+///                                "maxLength": 512
+///                              },
+///                              "maxItems": 200
+///                            }
+///                          },
+///                          "additionalProperties": false
 ///                        }
 ///                      ]
 ///                    }
@@ -1870,6 +1896,19 @@ pub mod error {
 ///                      "type": "string",
 ///                      "maxLength": 4096,
 ///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "unpublished"
 ///                    }
 ///                  },
 ///                  "additionalProperties": false
@@ -5087,6 +5126,32 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "clean",
+///                        "kind",
+///                        "reasons"
+///                      ],
+///                      "properties": {
+///                        "clean": {
+///                          "type": "boolean"
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "unpublished"
+///                        },
+///                        "reasons": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "string",
+///                            "maxLength": 512
+///                          },
+///                          "maxItems": 200
+///                        }
+///                      },
+///                      "additionalProperties": false
 ///                    }
 ///                  ]
 ///                }
@@ -6378,6 +6443,32 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "clean",
+///        "kind",
+///        "reasons"
+///      ],
+///      "properties": {
+///        "clean": {
+///          "type": "boolean"
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "unpublished"
+///        },
+///        "reasons": {
+///          "type": "array",
+///          "items": {
+///            "type": "string",
+///            "maxLength": 512
+///          },
+///          "maxItems": 200
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -6421,6 +6512,11 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         workspace:
             ::std::option::Option<ExeoraProtocolTypesExecutorMessageResultVariant0ValueWorkspace>,
+    },
+    #[serde(rename = "unpublished")]
+    Unpublished {
+        clean: bool,
+        reasons: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem>,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea`
@@ -7265,6 +7361,84 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageResultVariant0ValuePath {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 512
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem
+{
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -10183,6 +10357,19 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            {
 ///              "type": "object",
 ///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "unpublished"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
 ///                "action",
 ///                "paths"
 ///              ],
@@ -10976,6 +11163,19 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///    {
 ///      "type": "object",
 ///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "unpublished"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
 ///        "action",
 ///        "paths"
 ///      ],
@@ -11298,6 +11498,8 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
         area: ExeoraProtocolTypesRelayMessageActionArea,
         path: ExeoraProtocolTypesRelayMessageActionPath,
     },
+    #[serde(rename = "unpublished")]
+    Unpublished,
     #[serde(rename = "stage")]
     Stage {
         paths: ::std::vec::Vec<ExeoraProtocolTypesRelayMessageActionPathsItem>,
