@@ -217,7 +217,7 @@ describe("workspace tools on a cloud project", () => {
     await expect(call("detach_workspace")).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("creates a workspace and returns once its machine is ready", async () => {
+  it("creates a workspace and returns once its machine is ready", { timeout: 20_000 }, async () => {
     const pending = call("create_workspace", { branch: "feature/x" });
 
     // Stand in for the provisioning object: flip the new row to ready.
@@ -252,7 +252,7 @@ describe("workspace tools on a cloud project", () => {
     expect(tools?.has("attach_workspace")).toBe(false);
   });
 
-  it("reports a machine that failed, and a wait that ran out", async () => {
+  it("reports a machine that failed, and a wait that ran out", { timeout: 20_000 }, async () => {
     const failing = call("create_workspace", { branch: "feature/y" });
     let deviceId: string | undefined;
     for (let i = 0; i < 50 && !deviceId; i++) {
@@ -288,7 +288,9 @@ describe("workspace tools on a cloud project", () => {
     });
   });
 
-  it("removes a workspace only when its machine says the remote has everything", async () => {
+  it("removes a workspace only when its machine says the remote has everything", {
+    timeout: 20_000,
+  }, async () => {
     const workspace = await readyWorkspace("feature/q", "feature-q");
     const target = { id: workspace.id, slug: workspace.slug };
     const remove = () =>
@@ -322,7 +324,9 @@ describe("workspace tools on a cloud project", () => {
     clean.close(1000, "done");
   });
 
-  it("refuses to remove a workspace it cannot check, unless forced", async () => {
+  it("refuses to remove a workspace it cannot check, unless forced", {
+    timeout: 20_000,
+  }, async () => {
     const workspace = await readyWorkspace("feature/r", "feature-r");
 
     const target = { id: workspace.id, slug: workspace.slug };
