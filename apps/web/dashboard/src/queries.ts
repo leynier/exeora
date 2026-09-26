@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api, type ToolCallFilters } from "./api.js";
+import { cloudApi, cloudInFlight } from "./api-cloud.js";
 
 /**
  * Every query the dashboard makes, defined once.
@@ -21,6 +22,7 @@ export const keys = {
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
+  cloudProjects: ["cloud", "projects"] as const,
   adminOverview: ["admin", "overview"] as const,
   adminUsers: ["admin", "users"] as const,
   adminUser: (id: string) => ["admin", "users", id] as const,
@@ -93,7 +95,29 @@ export const useAdminUser = (id: string) => {
 export const useDevices = () =>
   useQuery({ queryKey: keys.devices, queryFn: api.devices, refetchInterval: LIVE });
 
-export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.projects });
+/** Polled: a cloud project leaves the list only once its machines are gone. */
+export const useProjects = () =>
+  useQuery({ queryKey: keys.projects, queryFn: api.projects, refetchInterval: LIVE });
+
+/**
+ * Cloud projects and their machines.
+ *
+ * Asked for every account, not only the ones that may create machines: one
+ * switched off still owns what it made and can take it down. Polled fast
+ * while a machine is being created or taken down, because that is the moment
+ * someone is watching it, and at the presence cadence otherwise.
+ */
+export const useCloudProjects = () => {
+  const me = useMe();
+  return useQuery({
+    queryKey: keys.cloudProjects,
+    queryFn: cloudApi.projects,
+    select: (page) => page.projects,
+    enabled: me.data !== undefined,
+    refetchInterval: (query) =>
+      query.state.data && cloudInFlight(query.state.data.projects) ? URGENT : LIVE,
+  });
+};
 
 export const useWorkspaces = (projectId: string | undefined) =>
   useQuery({

@@ -159,3 +159,16 @@ export const WORKSPACE_TOOL_DEFINITIONS = {
     destructive: true,
   },
 } as const;
+
+export type WorkspaceToolName = keyof typeof WORKSPACE_TOOL_DEFINITIONS;
+
+/**
+ * The tools that manage a project's checkouts rather than work inside one.
+ * Named separately because a cloud project answers them at the gateway, where
+ * a workspace is a machine to create or destroy, not a worktree on disk.
+ */
+export const WORKSPACE_TOOL_NAMES = Object.keys(WORKSPACE_TOOL_DEFINITIONS) as WorkspaceToolName[];
+
+export function isWorkspaceToolName(value: unknown): value is WorkspaceToolName {
+  return typeof value === "string" && value in WORKSPACE_TOOL_DEFINITIONS;
+}

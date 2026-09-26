@@ -89,22 +89,17 @@ site.get("/terminal/connect", async (c) => {
     return c.text("Invalid terminal request.", 400);
   }
   const project = await db(c.env)
-    .select({ userId: schema.projects.userId })
+    .select({ userId: schema.projects.userId, deviceId: schema.projects.deviceId })
     .from(schema.projects)
-    .innerJoin(schema.devices, eq(schema.projects.deviceId, schema.devices.id))
-    .where(
-      and(
-        eq(schema.projects.id, projectId),
-        eq(schema.projects.deviceId, deviceId),
-        eq(schema.devices.userId, schema.projects.userId),
-        isNull(schema.devices.revokedAt),
-      ),
-    )
+    .where(eq(schema.projects.id, projectId))
     .get();
   if (!project) return c.text("Project not found.", 404);
+  // The machine a terminal opens on is the workspace's own when it has one,
+  // otherwise the project's. The URL has to name exactly that machine.
+  let servedBy = project.deviceId;
   if (workspaceId && workspaceSlug) {
     const workspace = await db(c.env)
-      .select({ id: schema.workspaces.id })
+      .select({ id: schema.workspaces.id, deviceId: schema.workspaces.deviceId })
       .from(schema.workspaces)
       .where(
         and(
@@ -115,7 +110,21 @@ site.get("/terminal/connect", async (c) => {
       )
       .get();
     if (!workspace) return c.text("Workspace not found.", 404);
+    servedBy = workspace.deviceId ?? project.deviceId;
   }
+  if (deviceId !== servedBy) return c.text("Project not found.", 404);
+  const device = await db(c.env)
+    .select({ id: schema.devices.id })
+    .from(schema.devices)
+    .where(
+      and(
+        eq(schema.devices.id, deviceId),
+        eq(schema.devices.userId, project.userId),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
+    .get();
+  if (!device) return c.text("Project not found.", 404);
   const relay = c.env.DEVICE_RELAY.getByName(relayName(project.userId, deviceId));
   if (
     !(await relay.consumeTerminalTicket(

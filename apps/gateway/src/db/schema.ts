@@ -30,6 +30,12 @@ export const users = sqliteTable("users", {
   plan: text("plan", { enum: ["free", "pro"] })
     .notNull()
     .default("free"),
+  /**
+   * Whether this account may create Exeora Cloud machines. Off by default and
+   * flipped by an administrator, because every machine costs money and there
+   * is no billing to recover it yet. Administrators are enabled implicitly.
+   */
+  cloudEnabled: integer("cloud_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -139,6 +145,14 @@ export const devices = sqliteTable(
     name: text("name").notNull(),
     platform: text("platform").notNull(),
     cliVersion: text("cli_version"),
+    /**
+     * `local` is a machine the user runs; `cloud` is one Exeora provisioned for
+     * them, which sleeps when idle and has to be woken before a call. Cloud
+     * machines are counted against their own plan limit, never the device cap.
+     */
+    kind: text("kind", { enum: ["local", "cloud"] })
+      .notNull()
+      .default("local"),
     /** Updated on connect, heartbeat and disconnect. Drives the online badge. */
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
     /**
@@ -212,6 +226,13 @@ export const workspaces = sqliteTable(
     /** Display and reconciliation metadata only; the executor resolves the trusted local root. */
     localPath: text("local_path").notNull(),
     managed: integer("managed", { mode: "boolean" }).notNull().default(false),
+    /**
+     * The machine serving this workspace when it is not the project's own.
+     * Null for a worktree on the project's machine, which is every local
+     * workspace; set for a cloud workspace, which is a machine of its own.
+     * Cascades because a cloud workspace without its machine is nothing.
+     */
+    deviceId: text("device_id").references(() => devices.id, { onDelete: "cascade" }),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -220,6 +241,7 @@ export const workspaces = sqliteTable(
   (table) => [
     uniqueIndex("workspaces_project_slug").on(table.projectId, table.slug),
     index("workspaces_project").on(table.projectId),
+    index("workspaces_device").on(table.deviceId),
   ],
 );
 

@@ -21,3 +21,11 @@ REQUEST_STATE_SECRET=
 # Overrides the wrangler.jsonc var during local development, so provider
 # callbacks point at localhost instead of the production route.
 EXEORA_BASE_URL=http://localhost:8787
+
+# Exeora Cloud. Both optional: leave them unset and the Cloud routes answer
+# `cloud_disabled`. A machine dials the gateway back over the public internet,
+# so Cloud only works against a public EXEORA_BASE_URL, never localhost.
+# Organisation token from https://sprites.dev/account (org/id/secret).
+SPRITES_TOKEN=
+# Encrypts repository tokens at rest: openssl rand -hex 32
+CLOUD_CREDENTIALS_KEY=

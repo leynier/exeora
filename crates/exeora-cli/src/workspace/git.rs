@@ -47,13 +47,14 @@ impl GitWorkspace {
             .ok_or_else(|| invalid("A workspace action is required."))?;
         // Reads skip the lock (and take no optional index locks), so the
         // dashboard's status poll never queues behind a slow push or pull.
-        let _guard = if matches!(name, "status" | "diff") {
+        let _guard = if matches!(name, "status" | "diff" | "unpublished") {
             None
         } else {
             Some(self.operation.lock().await)
         };
         match name {
             "status" => self.status(root, &cancel).await,
+            "unpublished" => self.unpublished(root, &cancel).await,
             "diff" => {
                 let path = required_string(&action, "path")?;
                 let area = required_string(&action, "area")?;
@@ -421,6 +422,163 @@ impl GitWorkspace {
         Ok(json!({ "kind": "mutation", "stdout": "", "stderr": "", "status": status }))
     }
 
+    /// What the remote does not have, named. Fetches first, so every remote
+    /// tip is here to compare against, and asks the remote for its tags,
+    /// which no tracking ref records. Then a branch or tag never pushed, a
+    /// branch with commits past its remote counterpart, and a detached HEAD
+    /// with commits on it are each reported; so is anything uncommitted,
+    /// stashed, or checked out elsewhere. Conservative on purpose: what
+    /// cannot be shown to be on the remote is reported as not there.
+    async fn unpublished(
+        &self,
+        root: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<Value, ExeoraError> {
+        let mut reasons = Vec::new();
+
+        // The remote as it is now: its branches as tracking refs, its tags as
+        // a list, since tags have no tracking refs of their own.
+        let fetched = self
+            .run(
+                root,
+                &["fetch", "--prune", "--quiet", "origin"],
+                None,
+                cancel,
+            )
+            .await?;
+        if !fetched.success {
+            return Err(ExeoraError::tool(format!(
+                "Could not fetch from the remote: {}",
+                String::from_utf8_lossy(&fetched.stderr).trim()
+            )));
+        }
+        let remote = self
+            .run(root, &["ls-remote", "--tags", "origin"], None, cancel)
+            .await?;
+        if !remote.success {
+            return Err(ExeoraError::tool(format!(
+                "Could not ask the remote for its tags: {}",
+                String::from_utf8_lossy(&remote.stderr).trim()
+            )));
+        }
+
+        // The working tree, read after the fetch so the window between the
+        // two is as short as it can be. A status that could not be read is an
+        // empty one, which reads as clean; for a question whose wrong answer
+        // destroys the only copy, that is a refusal, not a pass.
+        let status = self.status(root, cancel).await?;
+        if status["repository"] != true {
+            return Err(ExeoraError::tool(
+                "Could not read the working tree's status, so nothing can be said to be safe to remove.",
+            ));
+        }
+        let files = status["files"].as_array().map_or(0, Vec::len);
+        if files > 0 {
+            reasons.push(format!("{files} uncommitted change(s)"));
+        }
+        let stashes = status["stashes"].as_u64().unwrap_or(0);
+        if stashes > 0 {
+            reasons.push(format!(
+                "{stashes} stash entr{}",
+                if stashes == 1 { "y" } else { "ies" }
+            ));
+        }
+        let checkouts = status["gitWorkspaces"].as_array().map_or(0, Vec::len);
+        if checkouts > 1 {
+            reasons.push(format!("{} additional checkout(s)", checkouts - 1));
+        }
+
+        let remote_tags: std::collections::HashMap<String, String> =
+            String::from_utf8_lossy(&remote.stdout)
+                .lines()
+                .filter_map(|line| {
+                    let (sha, name) = line.split_once('\t')?;
+                    // Annotated tags list their target too; the tag itself is enough.
+                    (!name.ends_with("^{}")).then(|| (name.to_owned(), sha.to_owned()))
+                })
+                .collect();
+
+        let local = self
+            .run(
+                root,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)%09%(objectname)",
+                    "refs/heads",
+                    "refs/tags",
+                ],
+                None,
+                cancel,
+            )
+            .await?;
+        ensure_success(&local)?;
+        let local = String::from_utf8_lossy(&local.stdout).into_owned();
+        for line in local.lines() {
+            let Some((name, sha)) = line.split_once('\t') else {
+                continue;
+            };
+            if let Some(branch) = name.strip_prefix("refs/heads/") {
+                let tracking = format!("refs/remotes/origin/{branch}");
+                let known = self
+                    .run(
+                        root,
+                        &["rev-parse", "--verify", "--quiet", &tracking],
+                        None,
+                        cancel,
+                    )
+                    .await?;
+                if !known.success {
+                    reasons.push(format!("{branch} was never pushed"));
+                    continue;
+                }
+                let ahead = self
+                    .count_commits(root, &format!("{tracking}..{sha}"), cancel)
+                    .await?;
+                if ahead > 0 {
+                    reasons.push(format!(
+                        "{branch} has {ahead} commit(s) the remote does not"
+                    ));
+                }
+            } else if let Some(tag) = name.strip_prefix("refs/tags/") {
+                match remote_tags.get(name) {
+                    None => reasons.push(format!("{tag} was never pushed")),
+                    Some(remote_sha) if remote_sha != sha => {
+                        reasons.push(format!("{tag} differs from the remote's"));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+
+        // A detached HEAD is on no branch, and its commits are on none either.
+        if status["head"].is_null() && status["oid"].is_string() {
+            let ahead = self
+                .count_commits(root, "HEAD --not --remotes", cancel)
+                .await?;
+            if ahead > 0 {
+                reasons.push(format!("HEAD has {ahead} commit(s) the remote does not"));
+            }
+        }
+        Ok(json!({ "kind": "unpublished", "clean": reasons.is_empty(), "reasons": reasons }))
+    }
+
+    /// `git rev-list --count` over a range or a revision expression.
+    async fn count_commits(
+        &self,
+        root: &Path,
+        range: &str,
+        cancel: &CancellationToken,
+    ) -> Result<u64, ExeoraError> {
+        let mut args = vec!["rev-list", "--count"];
+        args.extend(range.split_whitespace());
+        let output = self.run(root, &args, None, cancel).await?;
+        ensure_success(&output)?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0))
+    }
+
     async fn branches(
         &self,
         root: &Path,
@@ -431,7 +589,7 @@ impl GitWorkspace {
                 root,
                 &[
                     "for-each-ref",
-                    "--format=%(refname)%09%(objectname:short)%09%(upstream:short)",
+                    "--format=%(refname)%09%(objectname:short)%09%(upstream:short)%09%(upstream:track)",
                     "refs/heads",
                     "refs/remotes",
                 ],
@@ -452,6 +610,7 @@ impl GitWorkspace {
                 let full = fields.next()?;
                 let short_oid = fields.next().unwrap_or_default();
                 let upstream = fields.next().unwrap_or_default();
+                let track = fields.next().unwrap_or_default();
                 let (name, remote) = if let Some(name) = full.strip_prefix("refs/heads/") {
                     (name, false)
                 } else {
@@ -464,6 +623,7 @@ impl GitWorkspace {
                     "name": name,
                     "shortOid": short_oid,
                     "upstream": if upstream.is_empty() { Value::Null } else { json!(upstream) },
+                    "ahead": if remote || upstream.is_empty() { Value::Null } else { ahead_of_upstream(track) },
                     "remote": remote,
                     "current": !remote && name == current,
                 }))
@@ -600,6 +760,7 @@ impl GitWorkspace {
         cancel: &CancellationToken,
     ) -> Result<GitOutput, ExeoraError> {
         let mut command = Command::new("git");
+        crate::cgroup::drop_oom_exemption(&mut command);
         command
             .current_dir(root)
             .args(args)
@@ -642,12 +803,31 @@ impl GitWorkspace {
     }
 }
 
+/// How far a local branch is past its upstream, from `%(upstream:track)`:
+/// `[ahead 2]`, `[ahead 2, behind 1]`, `[behind 1]`, `[gone]` or nothing when
+/// they are level. Null for `gone`: the remote branch is no longer there, so
+/// there is nothing to compare with and the commits are as good as unpushed.
+fn ahead_of_upstream(track: &str) -> Value {
+    let inner = track.trim().trim_start_matches('[').trim_end_matches(']');
+    if inner == "gone" {
+        return Value::Null;
+    }
+    let ahead = inner
+        .split(',')
+        .map(str::trim)
+        .find_map(|part| part.strip_prefix("ahead "))
+        .and_then(|count| count.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    json!(ahead)
+}
+
 fn parse_status(bytes: &[u8], prefix: &str) -> Result<Value, ExeoraError> {
     let mut head = None;
     let mut oid = None;
     let mut upstream = None;
     let mut ahead = 0;
     let mut behind = 0;
+    let mut stashes = 0;
     let mut files = Vec::new();
     let records = bytes.split(|byte| *byte == 0).collect::<Vec<_>>();
     let mut index = 0;
@@ -659,6 +839,9 @@ fn parse_status(bytes: &[u8], prefix: &str) -> Result<Value, ExeoraError> {
             oid = (value != "(initial)").then(|| value.to_owned());
         } else if let Some(value) = record.strip_prefix("# branch.upstream ") {
             upstream = Some(value.to_owned());
+        } else if let Some(value) = record.strip_prefix("# stash ") {
+            // Printed only with --show-stash, and only when there is one.
+            stashes = value.trim().parse().unwrap_or(0);
         } else if let Some(value) = record.strip_prefix("# branch.ab ") {
             for field in value.split_whitespace() {
                 if let Some(value) = field.strip_prefix('+') {
@@ -712,7 +895,7 @@ fn parse_status(bytes: &[u8], prefix: &str) -> Result<Value, ExeoraError> {
         "kind": "status", "repository": true, "head": head, "oid": oid,
         "upstream": upstream, "ahead": ahead, "behind": behind,
         "operation": Value::Null, "files": files, "branches": [], "remotes": [],
-        "gitWorkspaces": [],
+        "gitWorkspaces": [], "stashes": stashes,
     }))
 }
 
@@ -776,7 +959,7 @@ fn empty_status() -> Value {
     json!({
         "kind": "status", "repository": false, "head": Value::Null, "oid": Value::Null,
         "upstream": Value::Null, "ahead": 0, "behind": 0, "operation": Value::Null,
-        "files": [], "branches": [], "remotes": [], "gitWorkspaces": [],
+        "files": [], "branches": [], "remotes": [], "gitWorkspaces": [], "stashes": 0,
     })
 }
 
@@ -846,12 +1029,126 @@ fn invalid(message: impl Into<String>) -> ExeoraError {
 
 #[cfg(test)]
 mod tests {
-    use super::{GitWorkspace, parse_status, parse_worktree_list};
+    use super::{GitWorkspace, ahead_of_upstream, parse_status, parse_worktree_list};
     use crate::error::ErrorCode;
     use serde_json::{Value, json};
     use std::{fs, process::Command};
     use tempfile::tempdir;
     use tokio_util::sync::CancellationToken;
+
+    #[tokio::test]
+    async fn names_what_the_remote_does_not_have() {
+        let dir = tempdir().unwrap();
+        let origin = dir.path().join("origin.git");
+        let seed = dir.path().join("seed");
+        let clone = dir.path().join("clone");
+        let git = |cwd: &std::path::Path, args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .current_dir(cwd)
+                    .args(["-c", "user.name=t", "-c", "user.email=t@example.test"])
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success(),
+                "git {args:?}"
+            );
+        };
+        git(
+            dir.path(),
+            &[
+                "init",
+                "-q",
+                "--bare",
+                "-b",
+                "main",
+                origin.to_str().unwrap(),
+            ],
+        );
+        git(
+            dir.path(),
+            &["init", "-q", "-b", "main", seed.to_str().unwrap()],
+        );
+        git(&seed, &["commit", "-q", "--allow-empty", "-m", "initial"]);
+        git(&seed, &["push", "-q", origin.to_str().unwrap(), "main"]);
+        git(
+            dir.path(),
+            &[
+                "clone",
+                "-q",
+                origin.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+
+        let workspace = GitWorkspace::new();
+        let cancel = CancellationToken::new();
+        let ask = || workspace.execute(&clone, json!({ "action": "unpublished" }), cancel.clone());
+        let clean = ask().await.unwrap();
+        assert_eq!(clean["clean"], true, "{clean}");
+
+        // A commit on a branch never pushed, a tag on a commit no branch
+        // holds, and main checked out clean and level once more.
+        git(&clone, &["checkout", "-q", "-b", "side"]);
+        git(
+            &clone,
+            &["commit", "-q", "--allow-empty", "-m", "side work"],
+        );
+        git(&clone, &["checkout", "-q", "main"]);
+        git(&clone, &["commit", "-q", "--allow-empty", "-m", "tagged"]);
+        git(&clone, &["tag", "v-local"]);
+        git(&clone, &["reset", "-q", "--hard", "origin/main"]);
+        let dirty = ask().await.unwrap();
+        assert_eq!(dirty["clean"], false);
+        let reasons = dirty["reasons"].to_string();
+        assert!(reasons.contains("side was never pushed"), "{reasons}");
+        assert!(reasons.contains("v-local was never pushed"), "{reasons}");
+
+        git(&clone, &["push", "-q", "origin", "side", "v-local"]);
+        assert_eq!(ask().await.unwrap()["clean"], true);
+
+        // The remote moved on without this checkout: nothing here is lost.
+        git(&seed, &["pull", "-q", origin.to_str().unwrap(), "main"]);
+        git(&seed, &["commit", "-q", "--allow-empty", "-m", "elsewhere"]);
+        git(&seed, &["push", "-q", origin.to_str().unwrap(), "main"]);
+        assert_eq!(ask().await.unwrap()["clean"], true);
+
+        // A commit on a detached HEAD is on no branch at all.
+        git(&clone, &["checkout", "-q", "--detach"]);
+        git(
+            &clone,
+            &["commit", "-q", "--allow-empty", "-m", "detached work"],
+        );
+        let detached = ask().await.unwrap();
+        assert_eq!(detached["clean"], false);
+        assert!(
+            detached["reasons"]
+                .to_string()
+                .contains("HEAD has 1 commit"),
+            "{}",
+            detached["reasons"]
+        );
+
+        // A status git cannot produce is not a clean one.
+        git(&clone, &["config", "status.relativePaths", "invalid"]);
+        assert!(ask().await.is_err());
+        git(&clone, &["config", "--unset", "status.relativePaths"]);
+    }
+
+    #[test]
+    fn reads_the_stash_count_and_each_branch_track_summary() {
+        let status =
+            parse_status(b"# branch.oid abc123\0# branch.head main\0# stash 3\0", "").unwrap();
+        assert_eq!(status["stashes"], 3);
+        let none = parse_status(b"# branch.oid abc123\0# branch.head main\0", "").unwrap();
+        assert_eq!(none["stashes"], 0);
+
+        assert_eq!(ahead_of_upstream("[ahead 2]"), json!(2));
+        assert_eq!(ahead_of_upstream("[ahead 2, behind 1]"), json!(2));
+        assert_eq!(ahead_of_upstream("[behind 1]"), json!(0));
+        assert_eq!(ahead_of_upstream(""), json!(0));
+        assert_eq!(ahead_of_upstream("[gone]"), Value::Null);
+    }
 
     #[test]
     fn parses_porcelain_v2_without_losing_spaces_or_renames() {

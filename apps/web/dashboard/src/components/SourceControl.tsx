@@ -2,7 +2,9 @@ import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, type GitStatus, type Workspace, type WorkspaceAction } from "../api.js";
+import { cloudApi } from "../api-cloud.js";
 import { keys } from "../queries.js";
+import { AddCloudWorkspaceDialog } from "./AddCloudWorkspaceDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog.js";
 import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
@@ -23,6 +25,7 @@ export function SourceControl({
   workspace,
   workspaces,
   projectLocalPath,
+  cloud = null,
   targetKey,
   targetLabel,
   status,
@@ -34,6 +37,8 @@ export function SourceControl({
   workspace?: string;
   workspaces: Workspace[];
   projectLocalPath: string;
+  /** Set for a repository on Exeora Cloud: a new workspace is a new machine. */
+  cloud?: { defaultBranch: string } | null;
   targetKey: string;
   targetLabel: string;
   status?: GitStatus;
@@ -101,6 +106,27 @@ export function SourceControl({
     } finally {
       setPending(false);
       setConfirm(null);
+    }
+  };
+
+  // A cloud workspace takes a minute to build, so this returns as soon as the
+  // gateway accepts it and points at the Cloud page, where the machine shows
+  // its progress; the workspace picker lists it once its row exists.
+  const createCloudWorkspace = async (input: { branch: string; from?: string }) => {
+    setPending(true);
+    try {
+      await cloudApi.createWorkspace(projectId, input);
+      await client.invalidateQueries({ queryKey: keys.cloudProjects });
+      await client.invalidateQueries({ queryKey: keys.workspaces(projectId) });
+      setCreatingWorkspace(false);
+      toast(`Creating a machine for ${input.branch}. Follow it under Cloud.`);
+    } catch (createError) {
+      toast(
+        createError instanceof Error ? createError.message : "Could not add the workspace.",
+        "error",
+      );
+    } finally {
+      setPending(false);
     }
   };
 
@@ -342,21 +368,31 @@ export function SourceControl({
           </div>
         </main>
       </div>
-      <CreateWorkspaceDialog
-        open={creatingWorkspace}
-        pending={pending}
-        defaultBranch=""
-        fromHead={status.head}
-        onCancel={() => setCreatingWorkspace(false)}
-        onSubmit={({ branch, reuseExistingBranch }) =>
-          void run({
-            action: "workspace_create",
-            branch,
-            reuseExistingBranch,
-            from: reuseExistingBranch ? undefined : (status.head ?? undefined),
-          })
-        }
-      />
+      {cloud ? (
+        <AddCloudWorkspaceDialog
+          open={creatingWorkspace}
+          pending={pending}
+          defaultBranch={cloud.defaultBranch}
+          onCancel={() => setCreatingWorkspace(false)}
+          onSubmit={(input) => void createCloudWorkspace(input)}
+        />
+      ) : (
+        <CreateWorkspaceDialog
+          open={creatingWorkspace}
+          pending={pending}
+          defaultBranch=""
+          fromHead={status.head}
+          onCancel={() => setCreatingWorkspace(false)}
+          onSubmit={({ branch, reuseExistingBranch }) =>
+            void run({
+              action: "workspace_create",
+              branch,
+              reuseExistingBranch,
+              from: reuseExistingBranch ? undefined : (status.head ?? undefined),
+            })
+          }
+        />
+      )}
       <ConfirmDialog
         open={confirm !== null}
         title={confirm?.title ?? "Confirm action"}

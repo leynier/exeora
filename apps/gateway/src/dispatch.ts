@@ -1,9 +1,16 @@
-import { ExeoraError, needsApproval, policyAllows, type ToolName } from "@exeora/protocol";
+import {
+  ExeoraError,
+  isWorkspaceToolName,
+  needsApproval,
+  policyAllows,
+  type ToolName,
+} from "@exeora/protocol";
 import { and, eq } from "drizzle-orm";
 import { describeCall } from "./approval.js";
 import { type AuditHandle, beginAudit, finishAudit } from "./audit.js";
-import { resolveAccountTarget, resolveTarget } from "./client-targets.js";
+import { resolveAccountTarget, resolveTarget, targetDevice } from "./client-targets.js";
 import { type CallerIdentity, touchClient } from "./clients.js";
+import { answerCloudWorkspaceTool } from "./cloud/workspace-tools.js";
 import "./env.js";
 import { relayName } from "./api/ops.js";
 import { db, schema } from "./db/client.js";
@@ -145,7 +152,7 @@ export async function dispatchToDevice(
   }
 
   const requestId = newId("req");
-  const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
+  const relay = env.DEVICE_RELAY.getByName(relayName(userId, targetDevice(project, workspace)));
 
   // Asked before anything is dispatched, and asked here rather than in the MCP
   // layer because this is where the project's policy is known.
@@ -192,7 +199,10 @@ export async function dispatchToDevice(
   }
 
   try {
-    const value = await callRelayTool(relay, {
+    // A cloud project answers its workspace tools here: a workspace there is a
+    // machine to create or destroy, which no CLI can do. Every other project,
+    // and every other tool, goes to the machine.
+    const frame = {
       requestId,
       projectId,
       ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
@@ -203,7 +213,22 @@ export async function dispatchToDevice(
       // with the project's own `exeora.toml` before running anything.
       policy: project.policy,
       signal,
-    });
+    };
+    const value =
+      (isWorkspaceToolName(tool)
+        ? await answerCloudWorkspaceTool(env, {
+            userId,
+            projectId,
+            tool,
+            args,
+            workspace,
+            signal,
+            issuedAt: Date.now(),
+            // The machine applies the checkout's `exeora.toml` to the same
+            // frame and answers with a verdict instead of running anything.
+            askMachine: () => callRelayTool(relay, frame),
+          })
+        : undefined) ?? (await callRelayTool(relay, frame));
     await record(env, { userId, projectId, tool, caller, audit, status: "ok", endpoint });
     return { kind: "value", value };
   } catch (error) {
@@ -221,15 +246,25 @@ export async function dispatchToDevice(
   }
 }
 
+/**
+ * The workspace a call names, with the machine that serves it when it has one
+ * of its own. Null is the project root, which every project has.
+ */
 export async function resolveWorkspace(
   env: Pick<Env, "DB">,
   projectId: string,
   selector: string | undefined,
-): Promise<{ id: string; slug: string } | null> {
+): Promise<{ id: string; slug: string; deviceId: string | null } | null> {
   if (!selector || selector.toLowerCase() === "main") return null;
   const row = await db(env)
-    .select({ id: schema.workspaces.id, slug: schema.workspaces.slug })
+    .select({
+      id: schema.workspaces.id,
+      slug: schema.workspaces.slug,
+      deviceId: schema.workspaces.deviceId,
+      deviceRevokedAt: schema.devices.revokedAt,
+    })
     .from(schema.workspaces)
+    .leftJoin(schema.devices, eq(schema.devices.id, schema.workspaces.deviceId))
     .where(
       and(
         eq(schema.workspaces.projectId, projectId),
@@ -242,7 +277,12 @@ export async function resolveWorkspace(
   if (!row) {
     throw new ExeoraError("UNKNOWN_WORKSPACE", "That workspace is not available in this project.");
   }
-  return row;
+  // Never fall back to the project's machine: it holds a different checkout,
+  // and running the call there would be quietly wrong rather than refused.
+  if (row.deviceId !== null && row.deviceRevokedAt !== null) {
+    throw new ExeoraError("WORKSPACE_UNAVAILABLE", "This workspace's machine was removed.");
+  }
+  return { id: row.id, slug: row.slug, deviceId: row.deviceId };
 }
 
 /**

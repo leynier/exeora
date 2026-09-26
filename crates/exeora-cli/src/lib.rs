@@ -1,6 +1,8 @@
 pub mod api;
 pub mod auth;
+pub mod cgroup;
 pub mod cli;
+pub mod cloud;
 pub mod config;
 pub mod connection;
 pub mod error;

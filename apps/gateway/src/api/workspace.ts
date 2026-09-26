@@ -5,6 +5,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { beginAudit, finishAudit } from "../audit.js";
+import { isCloudProject } from "../cloud/workspace-tools.js";
 import { db, schema } from "../db/client.js";
 import { newId } from "../ids.js";
 import { callRelayWorkspace } from "../relay-client.js";
@@ -38,7 +39,7 @@ workspace.get(
     if (!target) return c.json({ error: "not_found" }, 404);
     const capabilities = await c.env.DEVICE_RELAY.getByName(
       relayName(c.get("userId"), target.deviceId),
-    ).capabilities();
+    ).capabilities({ wake: true });
     const workspaceRouting = capabilities?.workspaceRouting ?? false;
     const routable = !target.workspaceId || workspaceRouting;
     return c.json({
@@ -65,13 +66,18 @@ workspace.post(
   zValidator("json", WorkspaceAction),
   async (c) => {
     const action = c.req.valid("json");
-    if (action.action === "status" || action.action === "diff") {
+    if (action.action === "status" || action.action === "diff" || action.action === "unpublished") {
       return c.json({ error: "use_read_endpoint" }, 400);
     }
     const userId = c.get("userId");
     const projectId = c.req.param("id");
     const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
     if (!target) return c.json({ error: "not_found" }, 404);
+    // A cloud workspace is a machine, made through the Cloud routes; the
+    // machine that would run this action has no worktrees to create.
+    if (action.action === "workspace_create" && (await isCloudProject(c.env, projectId))) {
+      return c.json({ error: "use_cloud_api" }, 400);
+    }
     const audit = await beginAudit(c.env, {
       userId,
       projectId,
@@ -222,8 +228,14 @@ async function ownedTarget(
   if (!selector || selector === "main") return { deviceId: project.deviceId };
 
   const ws = await db(env)
-    .select({ id: schema.workspaces.id, slug: schema.workspaces.slug })
+    .select({
+      id: schema.workspaces.id,
+      slug: schema.workspaces.slug,
+      deviceId: schema.workspaces.deviceId,
+      deviceRevokedAt: schema.devices.revokedAt,
+    })
     .from(schema.workspaces)
+    .leftJoin(schema.devices, eq(schema.devices.id, schema.workspaces.deviceId))
     .where(
       and(
         eq(schema.workspaces.projectId, projectId),
@@ -231,7 +243,15 @@ async function ownedTarget(
       ),
     )
     .get();
-  return ws ? { deviceId: project.deviceId, workspaceId: ws.id, workspaceSlug: ws.slug } : null;
+  if (!ws) return null;
+  // A workspace with a machine of its own is served there and nowhere else;
+  // once that machine is revoked the workspace is gone with it.
+  if (ws.deviceId !== null && ws.deviceRevokedAt !== null) return null;
+  return {
+    deviceId: ws.deviceId ?? project.deviceId,
+    workspaceId: ws.id,
+    workspaceSlug: ws.slug,
+  };
 }
 
 function workspaceError(c: Context<ApiEnv>, error: unknown) {

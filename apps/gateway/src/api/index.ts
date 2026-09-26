@@ -1,11 +1,17 @@
 import { Hono } from "hono";
 import "../env.js";
-import { hasScope, insufficientScope, isExecutorApiRequest } from "../oauth/scopes.js";
+import {
+  hasScope,
+  insufficientScope,
+  isExecutorApiRequest,
+  isMachineApiRequest,
+} from "../oauth/scopes.js";
 import { propsOf } from "../props.js";
 import { accountClients } from "./account-clients.js";
 import { admin } from "./admin.js";
 import { audit } from "./audit.js";
 import { clients } from "./clients.js";
+import { cloud } from "./cloud.js";
 import { devices } from "./devices.js";
 import { me } from "./me.js";
 import { projects } from "./projects.js";
@@ -34,6 +40,12 @@ api.use("/api/*", async (c, next) => {
   const props = propsOf(c.executionCtx);
   const userId = props.userId;
   if (!userId) return c.json({ error: "unauthorized" }, 401);
+  // A machine token names a device, and a device has one thing to do over
+  // HTTP: open its relay socket. It carries the owner's user id only so the
+  // relay can check the device is theirs, never to act as them here.
+  if (props.deviceId !== undefined && !isMachineApiRequest(c.req.method, c.req.path)) {
+    return insufficientScope(["dashboard:manage"]);
+  }
   if (!hasScope(props, "dashboard:manage")) {
     const executorRoute = isExecutorApiRequest(c.req.method, c.req.path);
     if (!executorRoute || !hasScope(props, "executor:connect")) {
@@ -54,6 +66,7 @@ api.route("/", workspace);
 api.route("/", clients);
 api.route("/", accountClients);
 api.route("/", audit);
+api.route("/", cloud);
 
 // Administration panel. Mounted last so its middleware only sees /api/admin/*
 // after the shared auth middleware has already bound the caller.

@@ -2,6 +2,7 @@ import { type McpToolDescriptor, TOOL_NAMES, type ToolName } from "@exeora/proto
 import { and, eq, isNull } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
 import { accountProjects } from "./client-targets.js";
+import { isCloudProject } from "./cloud/workspace-tools.js";
 import { db, schema } from "./db/client.js";
 import type { ProjectMcpCatalog } from "./mcp-proxy-account-tools.js";
 import { decodeMcpCatalogs } from "./relay-mcp.js";
@@ -26,7 +27,7 @@ import "./env.js";
  * advertised nothing while a laptop slept would look broken instead.
  */
 export async function advertisedTools(
-  env: Env,
+  env: Pick<Env, "DB" | "DEVICE_RELAY">,
   userId: string | undefined,
   projectId: string,
 ): Promise<ReadonlySet<ToolName> | undefined> {
@@ -40,17 +41,33 @@ export async function advertisedTools(
 
   if (!project) return undefined;
 
-  const capabilities = await env.DEVICE_RELAY.getByName(
-    relayName(userId, project.deviceId),
-  ).capabilities();
+  const [capabilities, cloud] = await Promise.all([
+    env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).capabilities(),
+    isCloudProject(env, projectId),
+  ]);
 
-  if (!capabilities) return undefined;
+  if (!capabilities) return cloud ? cloudTools(new Set(TOOL_NAMES)) : undefined;
 
   // Intersected with what this gateway knows, because the executor may be the
   // newer of the two: a tool this build has no schema for is a name and nothing
   // it could register.
   const announced = new Set<string>(capabilities.tools);
-  return new Set(TOOL_NAMES.filter((name) => announced.has(name)));
+  const offered = new Set(TOOL_NAMES.filter((name) => announced.has(name)));
+  return cloud ? cloudTools(offered) : offered;
+}
+
+/**
+ * On a cloud project the gateway answers the workspace lifecycle tools, so
+ * they are offered whatever the machine announced, and the two that only
+ * make sense for a worktree on disk are withdrawn.
+ */
+function cloudTools(offered: Set<ToolName>): Set<ToolName> {
+  for (const name of ["list_git_workspaces", "create_workspace", "remove_workspace"] as const) {
+    offered.add(name);
+  }
+  offered.delete("attach_workspace");
+  offered.delete("detach_workspace");
+  return offered;
 }
 
 /**

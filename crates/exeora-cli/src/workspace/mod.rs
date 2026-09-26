@@ -16,10 +16,20 @@ pub struct WorkspaceEngine {
 
 impl WorkspaceEngine {
     pub fn new() -> Self {
+        Self::with_limits(None)
+    }
+
+    /// With a memory cap on every terminal shell; see `cgroup.rs`.
+    pub fn with_limits(limits: Option<Arc<crate::cgroup::CommandLimits>>) -> Self {
         Self {
             git: git::GitWorkspace::new(),
-            terminals: terminal::TerminalRegistry::new(),
+            terminals: terminal::TerminalRegistry::with_limits(limits),
         }
+    }
+
+    /// How many terminal sessions are open right now.
+    pub async fn open_terminals(&self) -> usize {
+        self.terminals.len().await
     }
 
     pub async fn execute(

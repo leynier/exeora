@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router";
 import { api, type Device, isOnline, relativeTime } from "../api.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { useToast } from "../components/toast.js";
@@ -82,7 +83,12 @@ export function Machines() {
           <SkeletonRows />
         ) : machines.length === 0 ? (
           <EmptyState title="No machines yet">
-            Install the native CLI, then run <code className="font-mono">exeora connect</code>.
+            Install the native CLI, then run <code className="font-mono">exeora connect</code>. Or
+            put a repository on a machine Exeora runs, under{" "}
+            <Link to="/cloud" className="underline">
+              Cloud
+            </Link>
+            .
           </EmptyState>
         ) : (
           <Divided>
@@ -96,6 +102,7 @@ export function Machines() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-title-md truncate">{device.name}</p>
+                      {device.kind === "cloud" && <Badge tone="brand">cloud</Badge>}
                       {device.revokedAt && <Badge tone="error">revoked</Badge>}
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
@@ -105,7 +112,9 @@ export function Machines() {
                         ? `revoked ${relativeTime(device.revokedAt)}`
                         : isOnline(device)
                           ? "online"
-                          : `last seen ${relativeTime(device.lastSeenAt)}`}
+                          : device.kind === "cloud"
+                            ? "sleeping"
+                            : `last seen ${relativeTime(device.lastSeenAt)}`}
                     </p>
                   </div>
                 </div>
@@ -114,16 +123,25 @@ export function Machines() {
                   <span className="text-body-md text-foreground-faint hidden sm:block">
                     added {formatDate(device.createdAt)}
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={busy}
-                    onClick={() =>
-                      setPending({ device, action: device.revokedAt ? "delete" : "revoke" })
-                    }
-                  >
-                    {device.revokedAt ? "Delete" : "Revoke"}
-                  </button>
+                  {/* A cloud machine is its workspace: it goes when that
+                      does, from the Cloud page, rather than being revoked
+                      into a machine that can never register again. */}
+                  {device.kind === "cloud" && !device.revokedAt ? (
+                    <Link to="/cloud" className="btn">
+                      Manage
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={busy}
+                      onClick={() =>
+                        setPending({ device, action: device.revokedAt ? "delete" : "revoke" })
+                      }
+                    >
+                      {device.revokedAt ? "Delete" : "Revoke"}
+                    </button>
+                  )}
                 </div>
               </Row>
             ))}

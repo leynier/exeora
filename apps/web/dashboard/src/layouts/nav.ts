@@ -10,6 +10,7 @@
 export type NavIconName =
   | "overview"
   | "machines"
+  | "cloud"
   | "projects"
   | "clients"
   | "activity"
@@ -29,6 +30,7 @@ export function shellLinks(isAdmin: boolean): ShellLink[] {
   return [
     { to: "/", label: "Overview", icon: "overview", end: true },
     { to: "/machines", label: "Machines", icon: "machines" },
+    { to: "/cloud", label: "Cloud", icon: "cloud" },
     { to: "/projects", label: "Projects", icon: "projects" },
     { to: "/clients", label: "Clients", icon: "clients" },
     { to: "/activity", label: "Activity", icon: "activity" },

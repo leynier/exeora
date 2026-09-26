@@ -1,8 +1,7 @@
 import { type AccountToolName, ExeoraError, type ToolName } from "@exeora/protocol";
-import { eq } from "drizzle-orm";
 import { type AccountProject, accountProjects } from "./client-targets.js";
 import { touchAccountClient } from "./clients.js";
-import { db, schema } from "./db/client.js";
+import { listWorkspacesWithCloud } from "./cloud/workspace-tools.js";
 import { dispatchToDevice } from "./dispatch.js";
 import "./env.js";
 import type { AccountCall, AccountDispatchResult } from "./mcp-account.js";
@@ -139,16 +138,7 @@ export async function answerAccountTool(
       ...entry,
       named: typeof named === "string" ? named : undefined,
     });
-    const rows = await db(env)
-      .select({
-        slug: schema.workspaces.slug,
-        name: schema.workspaces.name,
-        branch: schema.workspaces.branch,
-        managed: schema.workspaces.managed,
-      })
-      .from(schema.workspaces)
-      .where(eq(schema.workspaces.projectId, project.id))
-      .all();
+    const rows = await listWorkspacesWithCloud(env, userId, project.id);
     await touch();
     return { project: project.slug, workspaces: rows };
   }

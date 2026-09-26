@@ -10,6 +10,9 @@ import {
 import { api, relayName, runNightlyHousekeeping } from "./api/index.js";
 import { reconcileAuditOutbox } from "./audit.js";
 import { rememberAccountMcpClient, rememberMcpClient } from "./clients.js";
+import { resolveMachineToken } from "./cloud/machine-tokens.js";
+import { reconcileCloud } from "./cloud/reconcile.js";
+import { listWorkspacesWithCloud } from "./cloud/workspace-tools.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
@@ -35,6 +38,7 @@ import {
 } from "./rate-limit.js";
 import { site } from "./site.js";
 
+export { CloudMachine } from "./cloud/machine-do.js";
 export { DeviceRelay } from "./relay-do.js";
 
 /**
@@ -88,6 +92,12 @@ authenticated.get("/api/relay/:deviceId", async (c) => {
 
   const { userId } = props;
   const deviceId = c.req.param("deviceId");
+
+  // A machine token is minted for one device and is refused on any other,
+  // however the ownership check below would come out.
+  if (props.deviceId !== undefined && props.deviceId !== deviceId) {
+    return c.text("This token is bound to another device.", 403);
+  }
 
   const device = await db(c.env)
     .select({ revokedAt: schema.devices.revokedAt })
@@ -145,20 +155,10 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
       }),
     c.env,
     advertised,
-    async ({ userId }) => {
-      const rows = await db(c.env)
-        .select({
-          slug: schema.workspaces.slug,
-          name: schema.workspaces.name,
-          branch: schema.workspaces.branch,
-          managed: schema.workspaces.managed,
-        })
-        .from(schema.workspaces)
-        .innerJoin(schema.projects, eq(schema.workspaces.projectId, schema.projects.id))
-        .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.projects.userId, userId)))
-        .all();
-      return { project: projectId, workspaces: rows };
-    },
+    async ({ userId }) => ({
+      project: projectId,
+      workspaces: await listWorkspacesWithCloud(c.env, userId, projectId),
+    }),
     {
       tools: mcpTools,
       dispatch: (call) => dispatchMcpToDevice(c.env, { ...call, projectId, signal }),
@@ -278,6 +278,12 @@ const provider = new OAuthProvider({
   tokenExchangeCallback: ({ props, requestedScope }) => ({
     accessTokenProps: { ...(props as object), scopes: requestedScope },
   }),
+
+  // Cloud machines dial the relay with a token of their own rather than an
+  // OAuth grant. The provider only asks here for a bearer it did not issue,
+  // and gets null for anything that is not a live machine token, so every
+  // other unknown bearer is still refused exactly as before.
+  resolveExternalToken: ({ token, env }) => resolveMachineToken(env as Pick<Env, "DB">, token),
 });
 
 /**
@@ -315,9 +321,15 @@ export default {
       ),
     );
 
-    // The frequent cron only drains the outbox. Every other scheduled event is
-    // treated as nightly so local/test controllers without a cron string retain
-    // the complete housekeeping behavior.
+    // The frequent cron drains the outbox and sweeps Exeora Cloud: stuck
+    // machines, failed teardowns, Sprites no row claims. Every other scheduled
+    // event is treated as nightly so local/test controllers without a cron
+    // string retain the complete housekeeping behavior.
+    if (_event.cron === "*/5 * * * *") {
+      ctx.waitUntil(
+        reconcileCloud(env).catch((error) => console.error("cloud reconcile failed", error)),
+      );
+    }
     if (_event.cron !== "*/5 * * * *") {
       ctx.waitUntil(runNightlyHousekeeping(env));
       ctx.waitUntil(

@@ -279,7 +279,7 @@ function randomUserCode(): string {
   return formatUserCode(out);
 }
 
-function randomToken(bytes: number): string {
+export function randomToken(bytes: number): string {
   return base64Url(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
@@ -295,7 +295,7 @@ async function tokenHash(token: string, secret: string): Promise<string> {
   return base64Url(new Uint8Array(signature));
 }
 
-function base64Url(bytes: Uint8Array): string {
+export function base64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");

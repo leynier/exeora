@@ -224,6 +224,7 @@ export async function attachFakeExecutor(
                 branches: [],
                 remotes: [],
                 gitWorkspaces: [],
+                stashes: 0,
               },
             },
           }),

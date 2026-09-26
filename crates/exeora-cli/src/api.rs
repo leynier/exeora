@@ -83,6 +83,57 @@ pub struct Registered {
     pub slug: Option<String>,
 }
 
+/// A machine of a cloud project, as `GET /api/cloud/projects` lists it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudMachineView {
+    pub device_id: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    pub workspace_slug: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub step: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub online: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProjectView {
+    pub project_id: String,
+    pub slug: String,
+    pub name: String,
+    pub repo_url: String,
+    pub default_branch: String,
+    #[serde(default)]
+    pub has_credential: bool,
+    #[serde(default)]
+    pub machines: Vec<CloudMachineView>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CloudProjects {
+    projects: Vec<CloudProjectView>,
+}
+
+/// What a create answers: the rows exist, the machine is on its way.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudCreated {
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    pub device_id: String,
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct ApiClient {
     base: Url,
@@ -132,6 +183,9 @@ impl ApiClient {
                     Some("projects") => bail!(
                         "Your {plan} plan allows {max} projects. Remove one from the dashboard before adding another."
                     ),
+                    Some("cloudMachines") => bail!(
+                        "Your {plan} plan allows {max} cloud machines. Remove one before creating another."
+                    ),
                     _ => {}
                 }
             }
@@ -146,6 +200,60 @@ impl ApiClient {
 
     pub async fn me(&self) -> Result<UserView> {
         self.request(reqwest::Method::GET, "/api/me", None).await
+    }
+    pub async fn cloud_projects(&self) -> Result<Vec<CloudProjectView>> {
+        let page: CloudProjects = self
+            .request(reqwest::Method::GET, "/api/cloud/projects", None)
+            .await?;
+        Ok(page.projects)
+    }
+    pub async fn cloud_add_project(&self, body: serde_json::Value) -> Result<CloudCreated> {
+        self.request(reqwest::Method::POST, "/api/cloud/projects", Some(body))
+            .await
+    }
+    pub async fn cloud_add_workspace(
+        &self,
+        project_id: &str,
+        body: serde_json::Value,
+    ) -> Result<CloudCreated> {
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/cloud/projects/{project_id}/workspaces"),
+            Some(body),
+        )
+        .await
+    }
+    pub async fn cloud_set_credential(
+        &self,
+        project_id: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.request(
+            reqwest::Method::PUT,
+            &format!("/api/cloud/projects/{project_id}/credential"),
+            Some(body),
+        )
+        .await
+    }
+    pub async fn cloud_remove_project(&self, project_id: &str) -> Result<serde_json::Value> {
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/api/cloud/projects/{project_id}"),
+            None,
+        )
+        .await
+    }
+    pub async fn cloud_remove_workspace(
+        &self,
+        project_id: &str,
+        workspace_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/api/cloud/projects/{project_id}/workspaces/{workspace_id}"),
+            None,
+        )
+        .await
     }
     pub async fn list_devices(&self) -> Result<Vec<DeviceView>> {
         self.request(reqwest::Method::GET, "/api/devices", None)

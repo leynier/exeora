@@ -11,6 +11,11 @@ export type Props = {
   clientName?: string;
   /** Effective scopes on this access token, not merely the grant ceiling. */
   scopes?: string[];
+  /**
+   * Set only by a cloud machine's token: the one device this bearer may
+   * connect as. A user's own token carries no device and reaches all of them.
+   */
+  deviceId?: string;
 };
 
 /**

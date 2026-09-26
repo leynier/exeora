@@ -313,6 +313,7 @@ const icons: Record<NavIconName, ReactNode> = {
       <path d="M8 20h8M12 16v4" />
     </>
   ),
+  cloud: <path d="M7 18a4.5 4.5 0 0 1-.9-8.9A6 6 0 0 1 17.7 8.5 4 4 0 0 1 17 18Z" />,
   projects: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
   clients: (
     <>

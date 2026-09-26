@@ -159,6 +159,16 @@ import Doc from "../../layouts/Doc.astro";
     One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI lists what it is about to forget and asks before it does. It also checks that a gateway actually answers at the address before touching anything, so a typo leaves a working setup exactly as it was.
   </p>
 
+  <h2>cloud</h2>
+
+  <p>
+    <code>exeora cloud add &lt;https-url&gt;</code> puts a repository on a machine Exeora runs and waits until its CLI connects. <code>--name</code>, <code>--slug</code> and <code>--branch</code> override what the URL implies; <code>--token-stdin</code> reads a token for a private repository from standard input, with <code>--username</code> when the host wants one. <code>exeora cloud list</code> shows every cloud project and the state of each machine. <code>exeora cloud workspace create &lt;project&gt; &lt;branch&gt;</code> opens a branch on a machine of its own, from <code>--from &lt;ref&gt;</code> when the branch is new; <code>workspace remove</code> and <code>cloud remove</code> take machines down, and ask first unless <code>-y</code> is given. <code>exeora cloud credential &lt;project&gt; --token-stdin</code> replaces the token a private repository clones with (<code>--clear</code> removes it); machines created or retried from then on use it. See <a href="/docs/cloud/">Exeora Cloud</a>.
+  </p>
+
+  <p>
+    <code>exeora connect --cloud</code> is the other side: what the machine itself runs as a service. It reads a machine token from disk instead of signing in, holds the machine awake while it works, and answers the gateway's wake requests. There is no reason to run it on a laptop.
+  </p>
+
   <h2>init</h2>
 
   <p>

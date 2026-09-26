@@ -1,4 +1,7 @@
-use crate::error::{ErrorCode, ExeoraError};
+use crate::{
+    cgroup::{CommandLimits, Leaf, oom_notice},
+    error::{ErrorCode, ExeoraError},
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde_json::{Value, json};
@@ -27,6 +30,8 @@ struct TerminalSession {
     /// fills the PTY buffer, and writing inline would stall the relay loop.
     input: std_mpsc::Sender<Vec<u8>>,
     killer: StdMutex<Box<dyn ChildKiller + Send + Sync>>,
+    /// The cgroup leaf the shell runs in, when the machine caps memory.
+    leaf: Option<Arc<Leaf>>,
 }
 
 /// Queues a control frame without waiting for room in the output channel.
@@ -53,14 +58,20 @@ pub(crate) fn send_control(outgoing: &mpsc::Sender<Value>, message: Value) -> bo
 pub struct TerminalRegistry {
     sessions: Arc<Mutex<HashMap<String, Arc<TerminalSession>>>>,
     opening: Arc<Mutex<()>>,
+    limits: Option<Arc<CommandLimits>>,
 }
 
 impl TerminalRegistry {
-    pub fn new() -> Self {
+    pub fn with_limits(limits: Option<Arc<CommandLimits>>) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             opening: Arc::new(Mutex::new(())),
+            limits,
         }
+    }
+
+    pub async fn len(&self) -> usize {
+        self.sessions.lock().await.len()
     }
 
     pub async fn open(
@@ -83,7 +94,14 @@ impl TerminalRegistry {
             return Ok(());
         }
 
+        let leaf = match &self.limits {
+            Some(limits) => Some(Arc::new(limits.leaf("term").map_err(|error| {
+                ExeoraError::tool(format!("Could not apply the memory limit: {error}"))
+            })?)),
+            None => None,
+        };
         let open_root = root.clone();
+        let spawn_leaf = leaf.clone();
         let opened = tokio::task::spawn_blocking(move || {
             let pair = native_pty_system()
                 .openpty(PtySize {
@@ -93,7 +111,17 @@ impl TerminalRegistry {
                     pixel_height: 0,
                 })
                 .map_err(|error| ExeoraError::tool(format!("Could not open a PTY: {error}")))?;
-            let mut command = CommandBuilder::new_default_prog();
+            // A PTY spawn has no pre-exec hook, so the shell moves itself into
+            // its leaf: a wrapper shell writes the pid and execs the real one.
+            let mut command = match &spawn_leaf {
+                Some(leaf) => {
+                    let (program, args) = leaf.shell_wrapper(&default_shell());
+                    let mut command = CommandBuilder::new(program);
+                    command.args(args);
+                    command
+                }
+                None => CommandBuilder::new_default_prog(),
+            };
             command.cwd(&open_root);
             command.env("TERM", "xterm-256color");
             command.env("COLORTERM", "truecolor");
@@ -134,6 +162,7 @@ impl TerminalRegistry {
             master: StdMutex::new(master),
             input,
             killer: StdMutex::new(killer),
+            leaf: leaf.clone(),
         });
         self.sessions
             .lock()
@@ -177,12 +206,23 @@ impl TerminalRegistry {
 
         let wait_outgoing = outgoing;
         let sessions = self.sessions.clone();
+        let wait_leaf = leaf;
         tokio::task::spawn_blocking(move || {
             let exit_code = child.wait().ok().map(|status| status.exit_code());
             // The reader and this thread race. Without the wait, the exit frame
             // can overtake the last chunk and the browser drops the tail.
             let _ = reader_done.recv_timeout(OUTPUT_DRAIN_TIMEOUT);
             let session_id = wait_id.lock().map(|id| id.clone()).unwrap_or_default();
+            if let Some(leaf) = wait_leaf {
+                if leaf.oom_killed() {
+                    let _ = wait_outgoing.blocking_send(json!({
+                        "type": "terminal.error",
+                        "sessionId": session_id,
+                        "message": oom_notice(leaf.limit()).trim(),
+                    }));
+                }
+                leaf.release();
+            }
             let _ = wait_outgoing.blocking_send(json!({
                 "type": "terminal.exit",
                 "sessionId": session_id,
@@ -261,10 +301,8 @@ impl TerminalRegistry {
 
     pub async fn close(&self, session_id: &str) {
         let session = self.sessions.lock().await.remove(session_id);
-        if let Some(session) = session
-            && let Ok(mut killer) = session.killer.lock()
-        {
-            let _ = killer.kill();
+        if let Some(session) = session {
+            end(&session);
         }
     }
 
@@ -277,9 +315,7 @@ impl TerminalRegistry {
                 .collect::<Vec<_>>()
         };
         for session in sessions {
-            if let Ok(mut killer) = session.killer.lock() {
-                let _ = killer.kill();
-            }
+            end(&session);
         }
     }
 
@@ -297,9 +333,7 @@ impl TerminalRegistry {
                 .collect::<Vec<_>>()
         };
         for session in sessions {
-            if let Ok(mut killer) = session.killer.lock() {
-                let _ = killer.kill();
-            }
+            end(&session);
         }
     }
 
@@ -311,6 +345,31 @@ impl TerminalRegistry {
             .cloned()
             .ok_or_else(|| invalid("Terminal session was not found."))
     }
+}
+
+/// Ends a session: the whole leaf first, which also reaches jobs the shell
+/// put in the background, then the shell itself.
+fn end(session: &TerminalSession) {
+    if let Some(leaf) = &session.leaf {
+        leaf.kill();
+    }
+    if let Ok(mut killer) = session.killer.lock() {
+        let _ = killer.kill();
+    }
+}
+
+/// The shell a wrapped terminal execs into: the user's, or the best one here.
+fn default_shell() -> String {
+    std::env::var("SHELL")
+        .ok()
+        .filter(|shell| Path::new(shell).exists())
+        .unwrap_or_else(|| {
+            if Path::new("/bin/bash").exists() {
+                "/bin/bash".to_owned()
+            } else {
+                "/bin/sh".to_owned()
+            }
+        })
 }
 
 fn validate_size(cols: u16, rows: u16) -> Result<(), ExeoraError> {
@@ -334,7 +393,7 @@ mod tests {
     #[tokio::test]
     async fn opens_an_interactive_pty_at_the_project_root() {
         let directory = tempdir().unwrap();
-        let registry = TerminalRegistry::new();
+        let registry = TerminalRegistry::with_limits(None);
         let (outgoing, mut incoming) = mpsc::channel(32);
         registry
             .open(
@@ -375,7 +434,7 @@ mod tests {
     async fn kills_only_sessions_attached_to_a_removed_root() {
         let first = tempdir().unwrap();
         let second = tempdir().unwrap();
-        let registry = TerminalRegistry::new();
+        let registry = TerminalRegistry::with_limits(None);
         let (outgoing, mut incoming) = mpsc::channel(32);
         registry
             .open("first".to_owned(), first.path(), 80, 24, outgoing.clone())
@@ -397,7 +456,7 @@ mod tests {
     #[tokio::test]
     async fn opening_does_not_wait_for_a_full_output_channel() {
         let directory = tempdir().unwrap();
-        let registry = TerminalRegistry::new();
+        let registry = TerminalRegistry::with_limits(None);
         let (outgoing, mut incoming) = mpsc::channel(1);
         outgoing
             .send(serde_json::json!({ "type": "terminal.output" }))
@@ -420,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn sends_the_final_output_before_the_exit() {
         let directory = tempdir().unwrap();
-        let registry = TerminalRegistry::new();
+        let registry = TerminalRegistry::with_limits(None);
         let (outgoing, mut incoming) = mpsc::channel(256);
         registry
             .open("tail".to_owned(), directory.path(), 80, 24, outgoing)
@@ -449,7 +508,7 @@ mod tests {
     #[tokio::test]
     async fn attaches_a_second_open_for_the_same_root() {
         let directory = tempdir().unwrap();
-        let registry = TerminalRegistry::new();
+        let registry = TerminalRegistry::with_limits(None);
         let (outgoing, mut incoming) = mpsc::channel(32);
         registry
             .open(

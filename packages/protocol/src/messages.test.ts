@@ -54,6 +54,7 @@ describe("executor → relay framing", () => {
           branches: [],
           remotes: [],
           gitWorkspaces: [],
+          stashes: 0,
         },
       },
     },

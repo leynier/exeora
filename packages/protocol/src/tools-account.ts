@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CloudWorkspaceState } from "./cloud.js";
 
 /**
  * The tools that exist only on the account endpoint, `exeora.dev/mcp`.
@@ -51,6 +52,8 @@ export const ListWorkspacesOutput = z.object({
       name: z.string(),
       branch: z.string().nullable(),
       managed: z.boolean(),
+      /** Present only for a workspace hosted on an Exeora Cloud machine. */
+      cloud: CloudWorkspaceState.optional(),
     }),
   ),
 });

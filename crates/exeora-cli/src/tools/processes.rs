@@ -27,6 +27,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::cgroup::{CommandLimits, Leaf, oom_notice};
+
 type SharedChild = Arc<Mutex<Box<dyn ChildWrapper>>>;
 
 struct Running {
@@ -39,6 +41,8 @@ struct Running {
     ring: Arc<Mutex<Ring>>,
     exit_code: Option<i32>,
     running: bool,
+    /// The cgroup leaf the tree runs in, when the machine caps memory.
+    leaf: Option<Arc<Leaf>>,
 }
 
 /// One read off a pipe, with its UTF-8 byte length measured once.
@@ -124,6 +128,7 @@ impl Ring {
 
 pub struct ProcessRegistry {
     entries: Mutex<HashMap<String, Running>>,
+    limits: Option<Arc<CommandLimits>>,
 }
 
 impl Default for ProcessRegistry {
@@ -134,8 +139,37 @@ impl Default for ProcessRegistry {
 
 impl ProcessRegistry {
     pub fn new() -> Self {
+        Self::with_limits(None)
+    }
+
+    pub fn with_limits(limits: Option<Arc<CommandLimits>>) -> Self {
         Self {
             entries: Mutex::new(HashMap::new()),
+            limits,
+        }
+    }
+
+    /// How many started processes are still running, after a reap.
+    pub async fn running_count(&self) -> usize {
+        let mut entries = self.entries.lock().await;
+        for entry in entries.values_mut() {
+            refresh(entry).await;
+        }
+        entries.values().filter(|entry| entry.running).count()
+    }
+
+    /// A leaf for one command tree, or none when the machine sets no cap. A
+    /// cap that cannot be applied fails the call: running the command without
+    /// it is the outcome the cap exists to prevent.
+    fn leaf(&self, prefix: &str) -> Result<Option<Arc<Leaf>>, ExeoraError> {
+        match &self.limits {
+            Some(limits) => limits
+                .leaf(prefix)
+                .map(|leaf| Some(Arc::new(leaf)))
+                .map_err(|error| {
+                    ExeoraError::tool(format!("Could not apply the memory limit: {error}"))
+                }),
+            None => Ok(None),
         }
     }
 
@@ -148,7 +182,8 @@ impl ProcessRegistry {
         let args: RunArgs = parse(value)?;
         let cwd = resolve_path(root, args.cwd.as_deref().unwrap_or("."), Access::Cwd)?;
         let timeout_ms = args.timeout_ms.unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS);
-        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), false)?;
+        let leaf = self.leaf("cmd")?;
+        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), false, leaf.as_deref())?;
         let stdout = child.stdout().take();
         let stderr = child.stderr().take();
         let captured = Arc::new(Mutex::new(CapturedOutput::default()));
@@ -174,6 +209,8 @@ impl ProcessRegistry {
         let captured = std::mem::take(&mut *captured.lock().await);
         let truncated = captured.truncated;
         let (stdout, stderr) = captured.into_strings();
+        let stderr = oom_suffix(leaf.as_deref(), stderr);
+        release(leaf);
         if cancelled {
             return Err(ExeoraError::new(
                 ErrorCode::Cancelled,
@@ -228,7 +265,8 @@ impl ProcessRegistry {
             )));
         }
         let project_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_owned());
-        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), true)?;
+        let leaf = self.leaf("cmd")?;
+        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), true, leaf.as_deref())?;
         let pid = child.id();
         let stdin = Arc::new(Mutex::new(child.stdin().take()));
         let stdout = child.stdout().take();
@@ -249,6 +287,7 @@ impl ProcessRegistry {
                 ring,
                 exit_code: None,
                 running: true,
+                leaf,
             },
         );
         Ok(json!({ "processId": id, "command": args.command, "pid": pid }))
@@ -368,6 +407,13 @@ impl ProcessRegistry {
         // status is not in the reply either way: `exit_code` is whatever the
         // refresh above saw, and a process still alive a moment ago has none.
         // Waiting costs the caller a full wait-and-retry loop to learn nothing.
+        // The leaf goes with the reap below, not with `refresh`: that walks
+        // away from an entry already marked stopped, and a leaf left behind
+        // on every kill would pile up until the CLI restarts.
+        let leaf = entry.leaf.take();
+        if let Some(leaf) = &leaf {
+            leaf.kill();
+        }
         let mut child = entry.child.lock().await;
         let _ = child.start_kill();
         drop(child);
@@ -381,6 +427,8 @@ impl ProcessRegistry {
         tokio::spawn(async move {
             let mut child = child.lock().await;
             let _ = child.wait().await;
+            drop(child);
+            release(leaf);
         });
         Ok(json!({ "processId": args.process_id, "killed": true, "exitCode": entry.exit_code }))
     }
@@ -389,11 +437,16 @@ impl ProcessRegistry {
         let mut entries = self.entries.lock().await;
         for entry in entries.values_mut() {
             if entry.running {
+                if let Some(leaf) = &entry.leaf {
+                    leaf.kill();
+                }
                 let mut child = entry.child.lock().await;
                 let _ = kill_child(child.as_mut()).await;
             }
         }
-        entries.clear();
+        for (_, entry) in entries.drain() {
+            release(entry.leaf);
+        }
     }
 
     pub async fn kill_root(&self, root: &Path) {
@@ -405,14 +458,33 @@ impl ProcessRegistry {
             .map(|(id, _)| id.clone())
             .collect();
         for id in ids {
-            if let Some(mut entry) = entries.remove(&id)
-                && entry.running
-            {
-                let mut child = entry.child.lock().await;
-                let _ = kill_child(child.as_mut()).await;
-                entry.running = false;
+            if let Some(mut entry) = entries.remove(&id) {
+                if entry.running {
+                    if let Some(leaf) = &entry.leaf {
+                        leaf.kill();
+                    }
+                    let mut child = entry.child.lock().await;
+                    let _ = kill_child(child.as_mut()).await;
+                    entry.running = false;
+                }
+                release(entry.leaf.take());
             }
         }
+    }
+}
+
+/// What a command's stderr says when its tree was killed for memory.
+fn oom_suffix(leaf: Option<&Leaf>, stderr: String) -> String {
+    match leaf {
+        Some(leaf) if leaf.oom_killed() => stderr + &oom_notice(leaf.limit()),
+        _ => stderr,
+    }
+}
+
+/// Removes a leaf off the runtime thread: removal waits for the kernel.
+fn release(leaf: Option<Arc<Leaf>>) {
+    if let Some(leaf) = leaf {
+        tokio::task::spawn_blocking(move || leaf.release());
     }
 }
 
@@ -451,15 +523,27 @@ fn spawn_wrapped(
     command: &str,
     cwd: &Path,
     input: bool,
+    leaf: Option<&Leaf>,
 ) -> Result<Box<dyn ChildWrapper>, ExeoraError> {
     let (program, shell_args) = shell(command);
+    let mut attach_error = None;
     let mut wrapped = CommandWrap::with_new(program, |cmd| {
         cmd.args(shell_args)
             .current_dir(cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(if input { Stdio::piped() } else { Stdio::null() });
+        if let Some(leaf) = leaf
+            && let Err(error) = leaf.attach_pre_exec(cmd)
+        {
+            attach_error = Some(error);
+        }
     });
+    if let Some(error) = attach_error {
+        return Err(ExeoraError::tool(format!(
+            "Could not apply the memory limit: {error}"
+        )));
+    }
     #[cfg(unix)]
     wrapped.wrap(ProcessGroup::leader());
     #[cfg(windows)]
@@ -585,6 +669,14 @@ async fn refresh(entry: &mut Running) {
     if let Ok(Some(status)) = entry.child.lock().await.try_wait() {
         entry.running = false;
         entry.exit_code = status.code();
+        // The tree is done; say so in its output if memory ended it, then let
+        // the leaf go. The entry itself stays for `get_command_output`.
+        if let Some(leaf) = entry.leaf.take() {
+            if leaf.oom_killed() {
+                entry.ring.lock().await.append(oom_notice(leaf.limit()));
+            }
+            release(Some(leaf));
+        }
     }
 }
 

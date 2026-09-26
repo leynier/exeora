@@ -12,6 +12,7 @@ import { AdminUser } from "./pages/AdminUser.js";
 import { AdminUsers } from "./pages/AdminUsers.js";
 import { Callback } from "./pages/Callback.js";
 import { Clients } from "./pages/Clients.js";
+import { Cloud } from "./pages/Cloud.js";
 import { Machines } from "./pages/Machines.js";
 import { Overview } from "./pages/Overview.js";
 import { ProjectDetail } from "./pages/ProjectDetail.js";
@@ -100,6 +101,7 @@ createRoot(root).render(
             >
               <Route index element={<Overview />} />
               <Route path="machines" element={<Machines />} />
+              <Route path="cloud" element={<Cloud />} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:projectId" element={<ProjectDetail />} />
               <Route

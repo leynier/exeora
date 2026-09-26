@@ -86,6 +86,11 @@ pub enum Commands {
     Sync,
     #[command(about = "Upgrade this native installation to the latest Exeora CLI")]
     Upgrade,
+    #[command(about = "Manage Exeora Cloud: repositories on machines Exeora runs for you")]
+    Cloud {
+        #[command(subcommand)]
+        command: crate::cloud::commands::CloudCommand,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -219,6 +224,12 @@ pub struct ConnectArgs {
         help = "Sign in with a code shown in the terminal, for machines without a browser"
     )]
     code: bool,
+    #[arg(
+        long,
+        conflicts_with_all = ["name", "reset", "gateway", "yes", "code"],
+        help = "Run as the service inside an Exeora Cloud machine, with the token and config it was set up with"
+    )]
+    cloud: bool,
 }
 
 #[derive(Debug, Args)]
@@ -257,6 +268,13 @@ pub async fn run(cli: Cli) -> Result<()> {
         return crate::upgrade::run(cli.json).await;
     }
     let mut config = ConfigStore::load()?;
+    // A cloud machine has no session, no browser and no registration to do:
+    // it reads what the bootstrap wrote and dials the relay.
+    if let Commands::Connect(args) = &cli.command
+        && (args.cloud || crate::cloud::enabled_by_env())
+    {
+        return crate::cloud::connect(config, cli.json).await;
+    }
     if let Commands::Config { command } = &cli.command {
         return config_command(&mut config, command, cli.json);
     }
@@ -312,6 +330,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             workspace_command(&mut config, &api, command, cli.json).await
         }
         Commands::Connect(args) => connect_command(&mut config, &api, auth, args, cli.json).await,
+        Commands::Cloud { command } => crate::cloud::commands::run(&api, command, cli.json).await,
         Commands::Status => status_command(&config, &api, cli.json).await,
         Commands::Logs(args) => logs_command(&api, args, cli.json).await,
         Commands::Sync => sync_command(&mut config, &api).await,
@@ -768,6 +787,7 @@ async fn connect_command(
         device.0,
         config.data().projects.clone(),
         json_output,
+        crate::connection::ConnectMode::Local,
     )
     .await
 }

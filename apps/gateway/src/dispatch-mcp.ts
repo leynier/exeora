@@ -1,14 +1,20 @@
-import { ExeoraError, mcpPolicyAllows, needsMcpApproval } from "@exeora/protocol";
+import {
+  ExeoraError,
+  type McpToolDescriptor,
+  mcpPolicyAllows,
+  needsMcpApproval,
+} from "@exeora/protocol";
 import { relayName } from "./api/ops.js";
 import { describeMcpCall } from "./approval.js";
 import { type AuditHandle, beginAudit } from "./audit.js";
-import { resolveAccountTarget, resolveTarget } from "./client-targets.js";
+import { resolveAccountTarget, resolveTarget, targetDevice } from "./client-targets.js";
 import { callerLabel, record, resolveWorkspace } from "./dispatch.js";
 import "./env.js";
 import { newId } from "./ids.js";
 import type { DispatchResult } from "./mcp.js";
 import type { McpProxyCall } from "./mcp-proxy-tools.js";
 import { callRelayMcpTool, requestRelayApproval } from "./relay-client.js";
+import { decodeMcpCatalogs } from "./relay-mcp.js";
 
 /**
  * The path a proxied MCP tool call takes to the machine.
@@ -48,8 +54,16 @@ export async function dispatchMcpToDevice(
   }
 
   const workspace = await resolveWorkspace(env, projectId, call.workspace);
+  const deviceId = targetDevice(project, workspace);
+  const relay = env.DEVICE_RELAY.getByName(relayName(userId, deviceId));
+  // The descriptor the caller resolved came from the project machine's
+  // catalog. A workspace on a machine of its own announced a catalog of its
+  // own, and whether this tool changes anything is read from there: the
+  // executor that runs it is the one whose hint counts.
+  const descriptor =
+    deviceId === project.deviceId ? tool : await descriptorOn(relay, projectId, tool);
   const approved = call.approved && call.approvedWorkspaceId === workspace?.id;
-  const readOnlyHint = tool.annotations?.readOnlyHint;
+  const readOnlyHint = descriptor.annotations?.readOnlyHint;
   const verdict = mcpPolicyAllows(project.policy, readOnlyHint);
   const confirm = needsMcpApproval(project.policy, readOnlyHint) && !approved;
 
@@ -98,8 +112,6 @@ export async function dispatchMcpToDevice(
       new ExeoraError("FORBIDDEN", verdict.reason ?? "This project does not allow that."),
     );
   }
-
-  const relay = env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId));
 
   if (confirm) {
     const outcome = await requestRelayApproval(relay, {
@@ -159,4 +171,34 @@ export async function dispatchMcpToDevice(
     });
     throw error;
   }
+}
+
+/** The same upstream tool as one machine's catalog describes it, if it does. */
+export function descriptorFromCatalog(
+  catalogs: Record<string, McpToolDescriptor[]>,
+  projectId: string,
+  tool: Pick<McpToolDescriptor, "server" | "name">,
+): McpToolDescriptor | undefined {
+  return (catalogs[projectId] ?? []).find(
+    (candidate) => candidate.server === tool.server && candidate.name === tool.name,
+  );
+}
+
+async function descriptorOn(
+  relay: DurableObjectStub<import("./relay-do.js").DeviceRelay>,
+  projectId: string,
+  tool: McpToolDescriptor,
+): Promise<McpToolDescriptor> {
+  const found = descriptorFromCatalog(
+    decodeMcpCatalogs(await relay.mcpCatalogs([projectId])),
+    projectId,
+    tool,
+  );
+  if (!found) {
+    throw new ExeoraError(
+      "FORBIDDEN",
+      `The workspace's machine does not offer ${tool.server}/${tool.name}.`,
+    );
+  }
+  return found;
 }

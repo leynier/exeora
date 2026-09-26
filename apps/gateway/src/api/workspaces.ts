@@ -37,6 +37,8 @@ function view(row: typeof schema.workspaces.$inferSelect) {
     branch: row.branch,
     localPath: row.localPath,
     managed: row.managed,
+    /** Set on a cloud workspace: the machine that holds this checkout. */
+    deviceId: row.deviceId,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   };
@@ -69,13 +71,16 @@ workspaces.put(
     }
     const body = c.req.valid("json");
     const existingById = await db(c.env)
-      .select({ projectId: schema.workspaces.projectId })
+      .select({ projectId: schema.workspaces.projectId, deviceId: schema.workspaces.deviceId })
       .from(schema.workspaces)
       .where(eq(schema.workspaces.id, workspaceId))
       .get();
     if (existingById && existingById.projectId !== projectId) {
       return c.json({ error: "not_found" }, 404);
     }
+    // A cloud workspace is a machine, and its row is the machine's: the CLI
+    // on a laptop has nothing to reconcile it with.
+    if (existingById?.deviceId) return c.json({ error: "cloud_workspace" }, 409);
     const collision = await db(c.env)
       .select({ id: schema.workspaces.id })
       .from(schema.workspaces)
@@ -123,6 +128,20 @@ workspaces.delete("/api/projects/:projectId/workspaces/:workspaceId", async (c) 
   if (!(await ownedProject(c.env, c.get("userId"), projectId))) {
     return c.json({ error: "not_found" }, 404);
   }
+  // Deleting a cloud workspace's row here would take its machine record
+  // with it and leave the machine itself running; that goes through the
+  // Cloud routes, which take the machine down first.
+  const target = await db(c.env)
+    .select({ deviceId: schema.workspaces.deviceId })
+    .from(schema.workspaces)
+    .where(
+      and(
+        eq(schema.workspaces.id, c.req.param("workspaceId")),
+        eq(schema.workspaces.projectId, projectId),
+      ),
+    )
+    .get();
+  if (target?.deviceId) return c.json({ error: "cloud_workspace" }, 409);
   await db(c.env)
     .delete(schema.workspaces)
     .where(

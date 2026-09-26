@@ -31,6 +31,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sh scripts/test-installers.sh
 
+      - name: Exercise the Exeora Cloud bootstrap
+        if: runner.os == 'Linux'
+        run: bash scripts/test-cloud-bootstrap.sh
+
       - name: Parse the PowerShell installer
         if: runner.os == 'Windows'
         shell: pwsh

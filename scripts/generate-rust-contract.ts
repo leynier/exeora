@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { CloudCliConfig } from "../packages/protocol/src/cloud.js";
 import * as limits from "../packages/protocol/src/limits.js";
 import {
   ExecutorMessage,
@@ -29,6 +30,7 @@ const contract = {
     relayMessage: z.toJSONSchema(RelayMessage),
     commandPolicy: z.toJSONSchema(CommandPolicy),
     localCommandPolicy: z.toJSONSchema(LocalCommandPolicy),
+    cloudCliConfig: z.toJSONSchema(CloudCliConfig),
     tools: Object.fromEntries(
       TOOL_NAMES.map((name) => [
         name,
@@ -51,8 +53,15 @@ const typeSchema = {
     relayMessage: z.toJSONSchema(RelayMessage),
     commandPolicy: z.toJSONSchema(CommandPolicy),
     localCommandPolicy: z.toJSONSchema(LocalCommandPolicy),
+    cloudCliConfig: z.toJSONSchema(CloudCliConfig),
   },
-  required: ["executorMessage", "relayMessage", "commandPolicy", "localCommandPolicy"],
+  required: [
+    "executorMessage",
+    "relayMessage",
+    "commandPolicy",
+    "localCommandPolicy",
+    "cloudCliConfig",
+  ],
   additionalProperties: false,
 };
 

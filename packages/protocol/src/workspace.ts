@@ -20,6 +20,12 @@ export const GitBranch = z.object({
   name: z.string(),
   shortOid: z.string(),
   upstream: z.string().nullable(),
+  /**
+   * Commits this local branch has that its upstream does not. Null when there
+   * is nothing to compare with: no upstream, an upstream the remote no longer
+   * has, or a CLI from before this field. A remote branch never carries one.
+   */
+  ahead: z.number().int().min(0).nullable().default(null),
   remote: z.boolean(),
   current: z.boolean(),
 });
@@ -45,6 +51,8 @@ export const GitStatus = z.object({
   remotes: z.array(z.string()),
   /** Every Git workspace of this repository, including the project root. */
   gitWorkspaces: z.array(GitWorkspaceCheckout).default([]),
+  /** Stash entries in the repository; zero from a CLI that predates the field. */
+  stashes: z.number().int().min(0).default(0),
 });
 
 export type GitStatus = z.infer<typeof GitStatus>;
@@ -63,6 +71,13 @@ export type GitDiff = z.infer<typeof GitDiff>;
 export const WorkspaceAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("diff"), path, area: z.enum(["working", "staged"]) }),
+  /**
+   * What the remote does not have. Asked by the gateway before it destroys a
+   * cloud machine, whose checkout is the only copy of anything unpublished;
+   * answered with the remote's tips in hand rather than from tracking refs,
+   * which say nothing about a branch or tag that was never pushed.
+   */
+  z.object({ action: z.literal("unpublished") }),
   z.object({ action: z.literal("stage"), paths }),
   z.object({ action: z.literal("unstage"), paths }),
   z.object({ action: z.literal("discard"), paths }),
@@ -124,7 +139,22 @@ export const WorkspaceMutationResult = z.object({
 
 export type WorkspaceMutationResult = z.infer<typeof WorkspaceMutationResult>;
 
-export const WorkspaceValue = z.union([GitStatus, GitDiff, WorkspaceMutationResult]);
+export const WorkspaceUnpublished = z.object({
+  kind: z.literal("unpublished"),
+  /** Nothing in the checkout that the remote lacks. */
+  clean: z.boolean(),
+  /** What would be lost, one line each, for a refusal to name. */
+  reasons: z.array(z.string().max(512)).max(200),
+});
+
+export type WorkspaceUnpublished = z.infer<typeof WorkspaceUnpublished>;
+
+export const WorkspaceValue = z.union([
+  GitStatus,
+  GitDiff,
+  WorkspaceMutationResult,
+  WorkspaceUnpublished,
+]);
 export type WorkspaceValue = z.infer<typeof WorkspaceValue>;
 
 const sessionId = z.string().min(1).max(128);

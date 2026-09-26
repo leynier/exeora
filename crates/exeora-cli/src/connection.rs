@@ -7,8 +7,9 @@ use crate::{
     mcp::McpManager,
     policy::{CommandPolicy, effective_policy, mcp_policy_allows, policy_allows},
     protocol::{
-        HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES,
-        PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, ToolName, now_ms,
+        CLOUD_FEATURE, HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS,
+        MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, REJECTED_BACKOFF_MAX_MS,
+        REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
     },
     tools::{CallScope, ToolEngine},
     workspace::WorkspaceEngine,
@@ -21,8 +22,11 @@ use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, mpsc};
 use tokio_tungstenite::{
@@ -32,7 +36,7 @@ use tokio_tungstenite::{
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-struct ActiveCall {
+pub struct ActiveCall {
     cancel: CancellationToken,
     root: PathBuf,
 }
@@ -45,8 +49,89 @@ struct ResolvedTarget {
     workspace_slug: Option<String>,
 }
 
-type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
+pub type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
 type LifecycleLock = Arc<Mutex<()>>;
+
+/// Where the CLI runs, which decides what a lost connection means.
+///
+/// On a laptop, work started through the relay must not outlive it, so a
+/// disconnect kills every process and terminal. On a cloud machine the CLI is
+/// the machine's only tenant and its socket drops every time the machine is
+/// paused; killing a dev server for that would make the pause visible in the
+/// worst way. There the work survives, and only a stop ends it.
+pub enum ConnectMode {
+    Local,
+    Cloud(Arc<crate::cloud::CloudRuntime>),
+}
+
+impl ConnectMode {
+    fn is_local(&self) -> bool {
+        matches!(self, Self::Local)
+    }
+
+    fn cloud(&self) -> Option<&Arc<crate::cloud::CloudRuntime>> {
+        match self {
+            Self::Cloud(runtime) => Some(runtime),
+            Self::Local => None,
+        }
+    }
+}
+
+const CLOUD_WORKSPACE_MESSAGE: &str =
+    "Cloud workspaces are machines, managed from the dashboard and the gateway, not from here.";
+
+/// A frame that is work, and so a reason to keep a cloud machine awake. The
+/// acknowledgements are deliberately not: an idle CLI receives those forever.
+fn is_work_frame(kind: Option<&str>) -> bool {
+    matches!(
+        kind,
+        Some("tool.call")
+            | Some("mcp.call")
+            | Some("workspace.call")
+            | Some("cancel")
+            | Some("approval.request")
+            | Some("terminal.open")
+            | Some("terminal.input")
+            | Some("terminal.resize")
+            | Some("terminal.close")
+    )
+}
+
+/// Ctrl-C on a laptop; the service runtime's SIGTERM on a machine.
+fn spawn_signal_watchers(stop: CancellationToken) {
+    let interrupt = stop.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        interrupt.cancel();
+    });
+    #[cfg(unix)]
+    tokio::spawn(async move {
+        if let Ok(mut terminate) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            terminate.recv().await;
+            stop.cancel();
+        }
+    });
+}
+
+/// Waits out a reconnect delay, unless a stop or a wake request cuts it short.
+async fn wait_before_reconnect(
+    delay: Duration,
+    stop: &CancellationToken,
+    mode: &ConnectMode,
+) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => true,
+        _ = stop.cancelled() => false,
+        _ = async {
+            match mode.cloud() {
+                Some(runtime) => runtime.reconnect_requested().await,
+                None => std::future::pending::<()>().await,
+            }
+        } => true,
+    }
+}
 
 pub async fn connect_forever(
     config: &ConfigStore,
@@ -55,10 +140,16 @@ pub async fn connect_forever(
     device_id: String,
     projects: Vec<ProjectEntry>,
     json_output: bool,
+    mode: ConnectMode,
 ) -> Result<()> {
-    let _awake = acquire_keep_awake(json_output);
-    let engine = Arc::new(ToolEngine::new()?);
-    let workspace = Arc::new(WorkspaceEngine::new());
+    let _awake = if mode.is_local() {
+        acquire_keep_awake(json_output)
+    } else {
+        None
+    };
+    let limits = mode.cloud().and_then(|runtime| runtime.limits.clone());
+    let engine = Arc::new(ToolEngine::with_limits(limits.clone())?);
+    let workspace = Arc::new(WorkspaceEngine::with_limits(limits));
     let mcp = Arc::new(McpManager::load(config.path(), &projects));
     for warning in mcp.warnings() {
         mcp_notice(json_output, warning);
@@ -77,16 +168,26 @@ pub async fn connect_forever(
     let config_path = config.path().to_path_buf();
     let gateway = config.gateway_url();
     let mut delay = Duration::from_secs(1);
+    let mut rejected_delay = Duration::from_millis(REJECTED_BACKOFF_MIN_MS);
     let stop = CancellationToken::new();
-    let signal_stop = stop.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        signal_stop.cancel();
-    });
+    spawn_signal_watchers(stop.clone());
+
+    // Created once, above the connection loop, so a terminal or a call that
+    // spans a reconnect keeps its channel and its handle.
+    let (terminal_tx, mut terminal_rx) = mpsc::channel::<Value>(256);
+    let in_flight: InFlight = Arc::new(Mutex::new(HashMap::new()));
+    let acked = Arc::new(AtomicBool::new(false));
+    if let Some(runtime) = mode.cloud() {
+        runtime.spawn_http_server();
+        runtime.spawn_keepalive(engine.clone(), workspace.clone(), in_flight.clone());
+    }
 
     loop {
         if stop.is_cancelled() {
             break;
+        }
+        if let Some(runtime) = mode.cloud() {
+            runtime.mark_connecting();
         }
         let outcome = connect_once(
             &gateway,
@@ -101,14 +202,60 @@ pub async fn connect_forever(
             lifecycle_lock.clone(),
             stop.clone(),
             json_output,
+            &mode,
+            in_flight.clone(),
+            terminal_tx.clone(),
+            &mut terminal_rx,
+            acked.clone(),
         )
         .await;
+        if let Some(runtime) = mode.cloud() {
+            runtime.mark_down();
+        }
+        // A session that was acknowledged proves the way in works; the next
+        // failure starts the backoff over rather than continuing it.
+        if acked.swap(false, Ordering::SeqCst) {
+            delay = Duration::from_secs(1);
+            rejected_delay = Duration::from_millis(REJECTED_BACKOFF_MIN_MS);
+        }
         // Local work must never outlive the authenticated relay that opened it.
+        // A cloud machine keeps its background processes through a blip, but
+        // not its terminals: the gateway forgets every terminal when the
+        // executor reconnects, and a shell nobody can reach would count as
+        // work and hold the machine awake for good.
         workspace.kill_all().await;
-        engine.kill_all().await;
+        if mode.is_local() {
+            engine.kill_all().await;
+        }
         match outcome {
             Ok(ConnectOutcome::Stopped) => break,
-            Ok(ConnectOutcome::Rejected(reason)) => return Err(anyhow!(reason)),
+            Ok(ConnectOutcome::Rejected(reason)) if mode.is_local() => return Err(anyhow!(reason)),
+            Ok(ConnectOutcome::Rejected(reason)) => {
+                // A machine has nobody to read an exit, and the runtime would
+                // only start it again at once. Wait, then ask again: the
+                // refusal may be a revocation that gets undone, or a device
+                // row that is not there yet.
+                emit_event(
+                    json_output,
+                    "rejected",
+                    json!({ "reason": reason, "retryInSecs": rejected_delay.as_secs() }),
+                );
+                if !json_output {
+                    eprintln!("{reason} Retrying in {}s.", rejected_delay.as_secs());
+                }
+                if !wait_before_reconnect(rejected_delay, &stop, &mode).await {
+                    break;
+                }
+                rejected_delay =
+                    (rejected_delay * 2).min(Duration::from_millis(REJECTED_BACKOFF_MAX_MS));
+            }
+            Ok(ConnectOutcome::Resumed) => {
+                emit_event(
+                    json_output,
+                    "close",
+                    json!({ "reason": "Resumed. Reconnecting now." }),
+                );
+            }
             Ok(ConnectOutcome::Disconnected) => {
                 delay = Duration::from_secs(1);
                 emit_event(
@@ -116,7 +263,9 @@ pub async fn connect_forever(
                     "close",
                     json!({ "reason": format!("Disconnected. Reconnecting in {}s.", delay.as_secs()) }),
                 );
-                tokio::select! { _ = tokio::time::sleep(delay) => {}, _ = stop.cancelled() => break }
+                if !wait_before_reconnect(delay, &stop, &mode).await {
+                    break;
+                }
             }
             Err(error) => {
                 emit_event(
@@ -124,7 +273,9 @@ pub async fn connect_forever(
                     "close",
                     json!({ "reason": format!("{error}. Reconnecting in {}s.", delay.as_secs()) }),
                 );
-                tokio::select! { _ = tokio::time::sleep(delay) => {}, _ = stop.cancelled() => break }
+                if !wait_before_reconnect(delay, &stop, &mode).await {
+                    break;
+                }
                 delay = (delay * 2).min(Duration::from_secs(30));
             }
         }
@@ -221,6 +372,8 @@ enum ConnectOutcome {
     Stopped,
     Rejected(String),
     Disconnected,
+    /// The machine was paused and is back; the socket is not to be trusted.
+    Resumed,
 }
 
 fn handshake_rejection(status: u16, body: Option<&[u8]>) -> String {
@@ -270,6 +423,11 @@ async fn connect_once(
     lifecycle_lock: LifecycleLock,
     stop: CancellationToken,
     json_output: bool,
+    mode: &ConnectMode,
+    in_flight: InFlight,
+    terminal_tx: mpsc::Sender<Value>,
+    terminal_rx: &mut mpsc::Receiver<Value>,
+    acked: Arc<AtomicBool>,
 ) -> Result<ConnectOutcome> {
     let token = auth.access_token().await?;
     let mut url = Url::parse(gateway)?.join(&format!("/api/relay/{device_id}"))?;
@@ -292,9 +450,14 @@ async fn connect_once(
         }
         Err(error) => return Err(error).context("Could not connect to the Exeora relay"),
     };
-    let can_prompt = !json_output
+    let can_prompt = mode.is_local()
+        && !json_output
         && std::io::IsTerminal::is_terminal(&std::io::stdin())
         && std::io::IsTerminal::is_terminal(&std::io::stdout());
+    let mut features = vec!["source-control-v1", "terminal-v1", "mcp-proxy-v1"];
+    if !mode.is_local() {
+        features.push(CLOUD_FEATURE);
+    }
     socket.send(Message::Text(serde_json::to_string(&json!({
         "type": "hello", "protocolVersion": PROTOCOL_VERSION, "deviceId": device_id,
         "cliVersion": CLI_VERSION, "platform": platform(),
@@ -302,7 +465,7 @@ async fn connect_once(
         "capabilities": {
             "prompt": can_prompt,
             "tools": ToolName::ALL.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "features": ["source-control-v1", "terminal-v1", "mcp-proxy-v1"],
+            "features": features,
             "workspaceRouting": true,
         },
     }))?.into())).await?;
@@ -312,13 +475,18 @@ async fn connect_once(
     }
 
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
-    let (terminal_tx, mut terminal_rx) = mpsc::channel::<Value>(256);
-    let in_flight: InFlight = Arc::new(Mutex::new(HashMap::new()));
     let mut tick = tokio::time::interval(Duration::from_millis(HEARTBEAT_INTERVAL_MS));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut heartbeat_auto = false;
-    let mut last_ack = now_ms();
+    // Monotonic on purpose: a wall clock that jumps after a pause must not
+    // read as a timeout, and one that stands still must not hide one.
+    let mut last_ack = Instant::now();
     let mut last_presence = now_ms();
+    // A pause is noticed by the clock, once a second, in both modes; on a
+    // laptop that is a lid closed, which deserves the same fresh session.
+    let mut local_resume = crate::cloud::clock::ResumeDetector::new();
+    let mut resume_tick = tokio::time::interval(Duration::from_secs(1));
+    resume_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut roots_tick = tokio::time::interval(Duration::from_secs(1));
     roots_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut known_roots = served_roots(&config_path);
@@ -334,7 +502,7 @@ async fn connect_once(
             }
             _ = tick.tick() => {
                 let now = now_ms();
-                if heartbeat_auto && now.saturating_sub(last_ack) > HEARTBEAT_TIMEOUT_MS {
+                if heartbeat_auto && last_ack.elapsed().as_millis() as u64 > HEARTBEAT_TIMEOUT_MS {
                     let _ = socket.close(None).await;
                     break;
                 }
@@ -351,16 +519,57 @@ async fn connect_once(
             Some(outgoing) = terminal_rx.recv() => {
                 socket.send(Message::Text(outgoing.to_string().into())).await?;
             }
+            _ = resume_tick.tick() => {
+                let gap = match mode.cloud() {
+                    Some(runtime) => runtime.resume_check(),
+                    None => local_resume.check(),
+                };
+                if let Some(gap_ms) = gap {
+                    emit_event(json_output, "resume", json!({ "gapMs": gap_ms, "source": "clock" }));
+                    let _ = socket.close(None).await;
+                    cancel_all(&in_flight).await;
+                    return Ok(ConnectOutcome::Resumed);
+                }
+            }
+            _ = async {
+                match mode.cloud() {
+                    Some(runtime) => runtime.reconnect_requested().await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                emit_event(json_output, "resume", json!({ "source": "wake" }));
+                let _ = socket.close(None).await;
+                cancel_all(&in_flight).await;
+                return Ok(ConnectOutcome::Resumed);
+            }
             incoming = socket.next() => {
                 let Some(incoming) = incoming else { break; };
                 match incoming? {
                     Message::Text(text) => {
                         let Ok(message) = serde_json::from_str::<Value>(&text) else { continue; };
-                        match message.get("type").and_then(Value::as_str) {
-                            Some("heartbeat.ack") => last_ack = now_ms(),
+                        let kind = message.get("type").and_then(Value::as_str);
+                        if let Some(runtime) = mode.cloud() && is_work_frame(kind) {
+                            runtime.keepalive.touch();
+                        }
+                        match kind {
+                            Some("heartbeat.ack") => {
+                                last_ack = Instant::now();
+                                match mode.cloud() {
+                                    Some(runtime) => runtime.mark_heard(),
+                                    None => local_resume.mark(),
+                                }
+                            }
                             Some("hello.ack") => {
                                 heartbeat_auto = message.get("heartbeatMode").and_then(Value::as_str) == Some("auto");
-                                last_ack = now_ms();
+                                last_ack = Instant::now();
+                                acked.store(true, Ordering::SeqCst);
+                                match mode.cloud() {
+                                    Some(runtime) => {
+                                        runtime.mark_heard();
+                                        runtime.mark_connected();
+                                    }
+                                    None => local_resume.mark(),
+                                }
                                 publish_mcp_catalogs(mcp.clone(), out_tx.clone(), json_output);
                                 if let Some(latest) = message.get("latestCliVersion").and_then(Value::as_str)
                                     && is_outdated(CLI_VERSION, latest) {
@@ -383,18 +592,20 @@ async fn connect_once(
                             Some("shutdown") => {
                                 let reason = message.get("reason").and_then(Value::as_str).unwrap_or("The gateway closed the connection.");
                                 cancel_all(&in_flight).await;
-                                engine.kill_all().await;
-                                workspace.kill_all().await;
+                                if mode.is_local() {
+                                    engine.kill_all().await;
+                                    workspace.kill_all().await;
+                                }
                                 return Ok(ConnectOutcome::Rejected(reason.to_owned()));
                             }
                             Some("tool.call") => {
-                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), mcp.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), mcp.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
                             }
                             Some("mcp.call") => {
                                 spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             Some("workspace.call") => {
-                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone()).await;
+                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), !mode.is_local()).await;
                             }
                             Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
                                 handle_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone()).await;
@@ -413,14 +624,18 @@ async fn connect_once(
                     _ => {}
                 }
             }
-            _ = roots_tick.tick() => {
+            // A cloud machine's roots are written once by the bootstrap and
+            // never removed, so there is nothing to reconcile there.
+            _ = roots_tick.tick(), if mode.is_local() => {
                 reconcile_roots(&config_path, &engine, &workspace, &mcp, &in_flight, &mut known_roots).await;
             }
         }
     }
     cancel_all(&in_flight).await;
-    engine.kill_all().await;
-    workspace.kill_all().await;
+    if mode.is_local() {
+        engine.kill_all().await;
+        workspace.kill_all().await;
+    }
     Ok(ConnectOutcome::Disconnected)
 }
 
@@ -436,6 +651,7 @@ async fn spawn_tool_call(
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
     json_output: bool,
+    cloud: bool,
 ) {
     let Some(request_id) = message
         .get("requestId")
@@ -517,6 +733,28 @@ async fn spawn_tool_call(
                 .as_deref()
                 .unwrap_or("This project does not allow that."),
         );
+        return;
+    }
+    // A cloud project's workspaces are machines the gateway creates and
+    // destroys, never checkouts this machine could make. What this machine
+    // still owns is the checkout's own `exeora.toml`, applied above: the
+    // gateway asks with the tool and acts on the answer, or not at all.
+    if cloud && tool.is_workspace_tool() {
+        // What a removal does here on a laptop, before the checkout goes:
+        // stop everything running in it. The gateway asks what the checkout
+        // holds only after this answer, and a command still writing would
+        // make that answer stale before it was acted on.
+        if matches!(tool, ToolName::DetachWorkspace | ToolName::RemoveWorkspace) {
+            cancel_root(&in_flight, &root).await;
+            engine.kill_root(&root).await;
+            workspace.kill_root(&root).await;
+            mcp.kill_root(&root).await;
+        }
+        let _ = outgoing.send(result_frame(
+            &request_id,
+            started,
+            Ok(json!({ "verdict": "allowed" })),
+        ));
         return;
     }
 
@@ -1040,6 +1278,7 @@ async fn handle_approval(
     let _ = outgoing.send(json!({ "type": "approval.answer", "id": id, "approved": approved }));
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn spawn_workspace_call(
     message: Value,
     config_path: PathBuf,
@@ -1048,6 +1287,7 @@ async fn spawn_workspace_call(
     lifecycle_lock: LifecycleLock,
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
+    cloud: bool,
 ) {
     let Some(request_id) = message
         .get("requestId")
@@ -1087,6 +1327,13 @@ async fn spawn_workspace_call(
         }
     };
     let action = message.get("action").cloned().unwrap_or_else(|| json!({}));
+    if cloud && action.get("action").and_then(Value::as_str) == Some("workspace_create") {
+        send_error(ExeoraError::new(
+            ErrorCode::Forbidden,
+            CLOUD_WORKSPACE_MESSAGE,
+        ));
+        return;
+    }
     let cancel = CancellationToken::new();
     in_flight.lock().await.insert(
         request_id.clone(),
@@ -1507,7 +1754,7 @@ fn describe_client(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn emit_event(json_output: bool, event: &str, fields: Value) {
+pub(crate) fn emit_event(json_output: bool, event: &str, fields: Value) {
     if !json_output {
         return;
     }

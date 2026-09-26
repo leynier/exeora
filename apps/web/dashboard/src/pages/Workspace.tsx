@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router";
+import { CloudMachineNotice } from "../components/CloudMachineNotice.js";
 import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
@@ -110,9 +111,11 @@ export function Workspace() {
         <div className="min-w-0">
           <h1 className="text-headline-md">Workspace</h1>
           <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
-            {selectedWorkspace?.localPath ??
-              project?.localPath ??
-              "Choose a project to open its git client."}
+            {project?.cloud
+              ? `${project.cloud.repoUrl} · ${selectedWorkspace?.branch ?? project.cloud.defaultBranch}`
+              : (selectedWorkspace?.localPath ??
+                project?.localPath ??
+                "Choose a project to open its git client.")}
           </p>
         </div>
         <WorkspaceRootSelector
@@ -186,13 +189,17 @@ export function Workspace() {
             <ErrorBanner error={capabilities.error} onRetry={() => capabilities.refetch()} />
           ) : capabilities.data && !capabilities.data.sourceControl ? (
             <div className="border-border bg-surface flex-1 rounded-xl border">
-              <EmptyState
-                title={capabilities.data.online ? "CLI update required" : "Machine offline"}
-              >
-                {capabilities.data.online
-                  ? "Update the Exeora CLI to enable Source Control."
-                  : "Connect the machine that serves this project."}
-              </EmptyState>
+              {project.cloud && !capabilities.data.online ? (
+                <CloudMachineNotice projectId={project.id} workspaceId={targetId ?? null} />
+              ) : (
+                <EmptyState
+                  title={capabilities.data.online ? "CLI update required" : "Machine offline"}
+                >
+                  {capabilities.data.online
+                    ? "Update the Exeora CLI to enable Source Control."
+                    : "Connect the machine that serves this project."}
+                </EmptyState>
+              )}
             </div>
           ) : (
             <SourceControl
@@ -201,6 +208,7 @@ export function Workspace() {
               workspace={targetId}
               workspaces={workspaces.data ?? []}
               projectLocalPath={project.localPath}
+              cloud={project.cloud}
               targetKey={targetKey}
               targetLabel={targetLabel}
               status={status.data}

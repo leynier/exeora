@@ -561,6 +561,19 @@
                                       }
                                     ]
                                   },
+                                  "ahead": {
+                                    "default": null,
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
                                   "remote": {
                                     "type": "boolean"
                                   },
@@ -572,6 +585,7 @@
                                   "name",
                                   "shortOid",
                                   "upstream",
+                                  "ahead",
                                   "remote",
                                   "current"
                                 ],
@@ -610,6 +624,12 @@
                                 ],
                                 "additionalProperties": false
                               }
+                            },
+                            "stashes": {
+                              "default": 0,
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
                             }
                           },
                           "required": [
@@ -624,7 +644,8 @@
                             "files",
                             "branches",
                             "remotes",
-                            "gitWorkspaces"
+                            "gitWorkspaces",
+                            "stashes"
                           ],
                           "additionalProperties": false
                         },
@@ -822,6 +843,19 @@
                                           }
                                         ]
                                       },
+                                      "ahead": {
+                                        "default": null,
+                                        "anyOf": [
+                                          {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
                                       "remote": {
                                         "type": "boolean"
                                       },
@@ -833,6 +867,7 @@
                                       "name",
                                       "shortOid",
                                       "upstream",
+                                      "ahead",
                                       "remote",
                                       "current"
                                     ],
@@ -871,6 +906,12 @@
                                     ],
                                     "additionalProperties": false
                                   }
+                                },
+                                "stashes": {
+                                  "default": 0,
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
                                 }
                               },
                               "required": [
@@ -885,7 +926,8 @@
                                 "files",
                                 "branches",
                                 "remotes",
-                                "gitWorkspaces"
+                                "gitWorkspaces",
+                                "stashes"
                               ],
                               "additionalProperties": false
                             },
@@ -934,6 +976,32 @@
                             "stdout",
                             "stderr",
                             "status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "unpublished"
+                            },
+                            "clean": {
+                              "type": "boolean"
+                            },
+                            "reasons": {
+                              "maxItems": 200,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 512
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "clean",
+                            "reasons"
                           ],
                           "additionalProperties": false
                         }
@@ -1536,6 +1604,19 @@
                     "action",
                     "path",
                     "area"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "unpublished"
+                    }
+                  },
+                  "required": [
+                    "action"
                   ],
                   "additionalProperties": false
                 },
@@ -2230,13 +2311,143 @@
         }
       },
       "additionalProperties": false
+    },
+    "cloudCliConfig": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "gatewayUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deviceName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "root": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "slug",
+              "name",
+              "root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "projectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "slug": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branch": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gitRoot": {
+                "type": "string",
+                "minLength": 1
+              },
+              "root": {
+                "type": "string",
+                "minLength": 1
+              },
+              "managed": {
+                "type": "boolean"
+              },
+              "syncState": {
+                "type": "string",
+                "enum": [
+                  "pendingUpsert",
+                  "active",
+                  "pendingDelete",
+                  "disabled",
+                  "removing"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "slug",
+              "name",
+              "branch",
+              "gitRoot",
+              "root",
+              "managed",
+              "syncState"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "workspaceRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "gatewayUrl",
+        "deviceId",
+        "deviceName",
+        "projects",
+        "workspaces",
+        "workspaceRoot"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
     "executorMessage",
     "relayMessage",
     "commandPolicy",
-    "localCommandPolicy"
+    "localCommandPolicy",
+    "cloudCliConfig"
   ],
   "additionalProperties": false
 }

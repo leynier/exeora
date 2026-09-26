@@ -58,6 +58,27 @@ jobs:
       - name: Build the landing and dashboard
         run: bun run --cwd apps/web build
 
+      # Names of the Worker secrets to set, each matching an env var on the
+      # deploy step. AUDIT_R2_SQL_TOKEN is provisioned directly on the Worker;
+      # Wrangler preserves it across code deploys, so Actions never needs its
+      # value. The two Exeora Cloud secrets are optional and treated the same
+      # way: listed only when the repository holds them, since wrangler-action
+      # refuses a listed secret without a value, and a gateway without Cloud
+      # (or with them set directly on the Worker) must still deploy.
+      - name: Choose the Worker secrets to set
+        id: worker-secrets
+        env:
+          SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
+          CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}
+        run: |
+          {
+            echo 'names<<EOF'
+            printf '%s\n' GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET COOKIE_SECRET REQUEST_STATE_SECRET AUDIT_MAINTENANCE_SECRET
+            if [ -n "$SPRITES_TOKEN" ]; then echo SPRITES_TOKEN; fi
+            if [ -n "$CLOUD_CREDENTIALS_KEY" ]; then echo CLOUD_CREDENTIALS_KEY; fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
@@ -65,17 +86,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/gateway
           packageManager: bun
-          # Names of the Worker secrets to set, each matching an env var below.
-          # AUDIT_R2_SQL_TOKEN is provisioned directly on the Worker; Wrangler
-          # preserves it across code deploys, so Actions never needs its value.
-          secrets: |
-            GITHUB_CLIENT_ID
-            GITHUB_CLIENT_SECRET
-            GOOGLE_CLIENT_ID
-            GOOGLE_CLIENT_SECRET
-            COOKIE_SECRET
-            REQUEST_STATE_SECRET
-            AUDIT_MAINTENANCE_SECRET
+          secrets: ${{ steps.worker-secrets.outputs.names }}
         env:
           # GitHub refuses repository secrets whose name starts with GITHUB_,
           # so they are stored under GH_OAUTH_* and renamed here to the names
@@ -87,3 +98,5 @@ jobs:
           COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
           REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
           AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}
+          SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
+          CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}

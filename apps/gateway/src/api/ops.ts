@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { auditDeletionStatement } from "../audit-deletions.js";
+import { auditDeletionStatement, deviceProjectDeletionStatement } from "../audit-deletions.js";
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { isCliClient, isDashboardClient } from "../oauth/clients.js";
@@ -30,6 +30,22 @@ export function relayName(userId: string, deviceId: string): string {
  */
 export async function deleteAccount(env: Env, userId: string): Promise<void> {
   const database = db(env);
+
+  // Cloud machines first, and by name: their rows go with the user below,
+  // but the Sprites behind them are only found again through these seeds.
+  const machines = await database
+    .select({
+      deviceId: schema.cloudMachines.deviceId,
+      projectId: schema.cloudMachines.projectId,
+      workspaceId: schema.cloudMachines.workspaceId,
+      spriteName: schema.cloudMachines.spriteName,
+    })
+    .from(schema.cloudMachines)
+    .where(eq(schema.cloudMachines.userId, userId))
+    .all();
+  for (const machine of machines) {
+    await env.CLOUD_MACHINE.getByName(machine.deviceId).destroy({ userId, ...machine });
+  }
 
   const devices = await database
     .select({ id: schema.devices.id })
@@ -82,6 +98,32 @@ export async function revokeDevice(env: Env, userId: string, deviceId: string): 
 
   await env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).revoke();
   return true;
+}
+
+/**
+ * Deletes a machine's row and everything hanging off it: its projects, their
+ * audit history through the deletion queue, and its outbox entries.
+ *
+ * The archive has no device column, so a machine is not something it can be
+ * asked to forget. Its projects are, and they can only be enumerated while
+ * the machine is still here: the cascade below takes them with it. Returns
+ * false when there was no such device for this user.
+ */
+export async function permanentlyDeleteDevice(
+  env: Pick<Env, "DB">,
+  userId: string,
+  deviceId: string,
+): Promise<boolean> {
+  const results = await env.DB.batch([
+    deviceProjectDeletionStatement(env, userId, deviceId),
+    env.DB.prepare(
+      `DELETE FROM audit_outbox
+        WHERE user_id = ?1
+          AND project_id IN (SELECT id FROM projects WHERE user_id = ?1 AND device_id = ?2)`,
+    ).bind(userId, deviceId),
+    env.DB.prepare("DELETE FROM devices WHERE id = ?1 AND user_id = ?2").bind(deviceId, userId),
+  ]);
+  return (results.at(-1)?.meta.changes ?? 0) > 0;
 }
 
 /**

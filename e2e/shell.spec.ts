@@ -7,9 +7,10 @@ const user = {
   avatarUrl: null,
   plan: "free",
   isAdmin: false,
+  cloudEnabled: false,
   accountMcpUrl: "https://exeora.test/mcp",
-  limits: { maxDevices: 2, maxProjects: 3, retentionDays: 90 },
-  usage: { devices: 0, projects: 1, toolCallsMonth: 0 },
+  limits: { maxDevices: 2, maxProjects: 3, maxCloudMachines: 2, retentionDays: 90 },
+  usage: { devices: 0, projects: 1, cloudMachines: 0, toolCallsMonth: 0 },
 };
 
 const project = {
@@ -21,6 +22,7 @@ const project = {
   mcpUrl: "https://exeora.test/p/prj_e2e/mcp",
   policy: { mode: "allow_all", allow: [], deny: [], shell: true, approve: false, tools: null },
   createdAt: Date.now(),
+  cloud: null,
 };
 
 async function signedIn(page: Page) {
