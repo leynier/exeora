@@ -65,6 +65,12 @@ export async function chooseWorkspaceSlug(
   const used = new Set(others.map((row) => row.slug));
   const base = `${entry.wanted.slice(0, 59 - suffix.length)}-${suffix}`;
   if (!used.has(base)) return { slug: base };
+  // The suffixed slug is held by this same machine: a second workspace here is
+  // asking for what the first one here was given, which is the real conflict.
+  const sibling = others.find((row) => row.slug === base);
+  if (entry.deviceId !== null && (sibling?.deviceId ?? sibling?.defaultDevice) === entry.deviceId) {
+    return { conflict: true };
+  }
   for (let n = 2; n < 100; n += 1) {
     const tail = `-${n}`;
     const candidate = `${base.slice(0, 60 - tail.length)}${tail}`;
