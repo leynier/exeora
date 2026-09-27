@@ -181,6 +181,36 @@ describe("projects and their locations over the API", () => {
     });
   });
 
+  it("keeps a repository whose last place goes while its default is a machine that was removed", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    await add(DESKTOP, "api", "https://github.com/acme/api.git");
+    // Revoked and still listed: the default is somewhere nothing answers.
+    expect((await call(`/api/devices/${LAPTOP}`, "DELETE")).status).toBe(200);
+    const desktop = (await locationsOf(project.id)).find((entry) => entry.slug === "desktop");
+
+    const last = await call(`/api/projects/${project.id}/locations/${desktop?.id}`, "DELETE");
+    expect(last.status).toBe(200);
+
+    const listed = async () =>
+      (
+        (await (await call("/api/projects")).json()) as Array<{
+          id: string;
+          nowhere: boolean;
+          deviceId: string;
+        }>
+      ).find((entry) => entry.id === project.id);
+    expect(await listed()).toMatchObject({ nowhere: true });
+
+    // And the next machine it is given is where it lives.
+    await db(env)
+      .insert(schema.devices)
+      .values({ id: "dev_api_server", userId: USER, name: "Server", platform: "linux" })
+      .run();
+    const back = await add("dev_api_server", "api", "https://github.com/acme/api.git");
+    expect(back).toMatchObject({ status: 200, body: { id: project.id } });
+    expect(await listed()).toMatchObject({ nowhere: false, deviceId: "dev_api_server" });
+  });
+
   it("will not take a directory with no remote off the one machine it is on", async () => {
     const { body: project } = await add(LAPTOP, "notes");
     const [only] = await locationsOf(project.id);

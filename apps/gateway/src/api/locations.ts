@@ -228,22 +228,29 @@ locations.delete("/api/projects/:id/locations/:locationId", async (c) => {
     );
   }
 
+  // With its last place gone the project lives nowhere, whatever machine it
+  // was on. That is not always the one being removed: the default may be a
+  // machine that was revoked and is still listed, and a project left on it
+  // would be one nobody can reach or give a place to.
+  const leaves = last
+    ? keepRepositoriesStatements(c.env, userId, project.deviceId, project.id)
+    : [];
+
   if (location.kind === "cloud") {
+    if (leaves.length > 0) await c.env.DB.batch(leaves);
     await destroyCloudLocation(c.env, userId, project.id);
     return c.json({ ok: true }, 202);
   }
 
   await c.env.DB.batch([
     // Workspaces older than locations name no machine and are the default's,
-    // so they go with the default location when that is the one removed.
+    // so they go when the default does: removed here, or left behind above.
     c.env.DB.prepare(
       `DELETE FROM workspaces
         WHERE project_id = ?1 AND (device_id = ?2 OR (device_id IS NULL AND ?4))
           AND project_id IN (SELECT id FROM projects WHERE user_id = ?3)`,
-    ).bind(project.id, location.deviceId, userId, location.default ? 1 : 0),
-    ...(location.default && location.deviceId !== null
-      ? keepRepositoriesStatements(c.env, userId, location.deviceId, project.id)
-      : []),
+    ).bind(project.id, location.deviceId, userId, location.default || last ? 1 : 0),
+    ...leaves,
     c.env.DB.prepare("DELETE FROM project_locations WHERE id = ?1 AND user_id = ?2").bind(
       location.id,
       userId,

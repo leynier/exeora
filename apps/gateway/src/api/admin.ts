@@ -137,7 +137,7 @@ admin.get("/api/admin/users", async (c) => {
       createdAt: schema.users.createdAt,
       cloudEnabled: schema.users.cloudEnabled,
       devices:
-        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${outerUserId})`.mapWith(
+        sql<number>`(select count(*) from ${schema.devices} where ${schema.devices.userId} = ${outerUserId} and ${schema.devices.kind} != ${NOWHERE_KIND})`.mapWith(
           Number,
         ),
       devicesOnline:
