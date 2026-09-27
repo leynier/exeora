@@ -2,6 +2,7 @@ import { and, eq, isNotNull, ne } from "drizzle-orm";
 import { ownedProjectDeletionStatement } from "../audit-deletions.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
+import { moveDefaultLocationStatements } from "../locations-default.js";
 import type { CloudEnv } from "./access.js";
 import type { MachineSeed } from "./machine-do.js";
 
@@ -72,6 +73,15 @@ async function removeCloud(
   if (machines.length === 0) {
     await finishCloudRemoval(env, userId, projectId);
     return true;
+  }
+
+  // A project that is only leaving Cloud leaves the machine that holds its
+  // root now, not when that machine is finally gone: until then it would have
+  // a default that nothing answers at.
+  if (scope === "location") {
+    for (const machine of machines.filter((entry) => entry.workspaceId === null)) {
+      await env.DB.batch(moveDefaultLocationStatements(env, userId, machine.deviceId));
+    }
   }
 
   const ordered = [...machines].sort(
