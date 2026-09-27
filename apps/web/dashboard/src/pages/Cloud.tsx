@@ -8,7 +8,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { SetCloudCredentialDialog } from "../components/SetCloudCredentialDialog.js";
 import { useToast } from "../components/toast.js";
 import { Card, EmptyState, ErrorBanner, PageHeader, SkeletonRows } from "../components/ui.js";
-import { keys, useCloudProjects, useMe } from "../queries.js";
+import { keys, useAccountClients, useCloudProjects, useMe } from "../queries.js";
 
 /**
  * Repositories on machines Exeora runs.
@@ -26,6 +26,7 @@ type Pending =
 export function Cloud() {
   const me = useMe();
   const projects = useCloudProjects();
+  const accountClients = useAccountClients();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
@@ -38,6 +39,8 @@ export function Cloud() {
     queryClient.invalidateQueries({ queryKey: keys.projects });
     queryClient.invalidateQueries({ queryKey: keys.devices });
     queryClient.invalidateQueries({ queryKey: keys.me });
+    // A project that was just made may have been given to clients on the way.
+    queryClient.invalidateQueries({ queryKey: keys.accountClients });
   };
   const fail = (error: unknown, fallback: string) => {
     toast(error instanceof Error ? error.message : fallback, "error");
@@ -211,6 +214,7 @@ export function Cloud() {
       <AddCloudProjectDialog
         open={adding}
         pending={createProject.isPending}
+        clients={accountClients.data ?? []}
         onCancel={() => setAdding(false)}
         onSubmit={(input) => createProject.mutate(input)}
       />

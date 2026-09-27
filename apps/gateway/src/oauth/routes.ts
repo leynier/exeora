@@ -1,6 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { rememberAuthorization, revokeAccountProjectsExcept } from "../clients.js";
+import {
+  type AccountChoice,
+  accountAccess,
+  accountChoice,
+  rememberAccountAuthorization,
+} from "../account-access.js";
+import { rememberAuthorization } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { isDashboardClient } from "./clients.js";
 import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
@@ -14,12 +20,7 @@ import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pend
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { grantedScopes } from "./scopes.js";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
-import {
-  authScopeFromResource,
-  ownedProjectIds,
-  resolveAccountTarget,
-  resolveAuthTarget,
-} from "./target.js";
+import { authScopeFromResource, resolveAccountTarget, resolveAuthTarget } from "./target.js";
 import { resolveUser } from "./users.js";
 
 /**
@@ -257,17 +258,13 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   // before anything is written. The form is attacker-controlled, so an id that
   // is not theirs is dropped rather than refused: refusing would say whether it
   // exists.
-  let projectIds: string[] | undefined;
+  let account: AccountChoice | undefined;
   if (scope?.kind === "account") {
-    projectIds = await ownedProjectIds(
-      c.env,
-      userId,
-      form.getAll("project").map((value) => String(value)),
-    );
+    account = await accountChoice(c.env, userId, form);
 
     // Nothing ticked: the screen comes back under the same state, so the entry
     // stays parked and everything this branch needs is read only now.
-    if (projectIds.length === 0) {
+    if (!account.allProjects && account.projectIds.length === 0) {
       const user = await db(c.env)
         .select({ email: schema.users.email })
         .from(schema.users)
@@ -282,6 +279,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
           state,
           scopes: await grantedScopes(c.env, authRequest),
           projects: await resolveAccountTarget(c.env, userId, authRequest.clientId),
+          allProjects: false,
           problem:
             "Choose at least one project, or cancel. A connection that reaches nothing would " +
             "look broken rather than safe.",
@@ -310,7 +308,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
       return c.html(errorPage("Your account could not be found."), 400);
     }
 
-    const { redirectTo } = await complete(c.env, claimed.authRequest, userId, projectIds);
+    const { redirectTo } = await complete(c.env, claimed.authRequest, userId, account);
 
     if (claimed.deviceCodeHash) {
       const captured = await captureDeviceAuthorization(c.env, claimed.deviceCodeHash, redirectTo);
@@ -354,8 +352,8 @@ async function complete(
   env: Env,
   authRequest: AuthRequest,
   userId: string,
-  /** The projects ticked on the account screen. Absent for every other flow. */
-  accountProjectIds?: string[],
+  /** What the account screen answered. Absent for every other flow. */
+  account?: AccountChoice,
 ) {
   const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(() => null);
   const scope = authScopeFromResource(authRequest.resource);
@@ -364,7 +362,7 @@ async function complete(
 
   const projectId =
     scope?.kind === "project" ? await ownedProjectId(env, scope.projectId, userId) : null;
-  const projectIds = scope?.kind === "account" ? (accountProjectIds ?? []) : null;
+  const projectIds = scope?.kind === "account" ? (account?.projectIds ?? []) : null;
 
   if (projectId) {
     await rememberAuthorization(env, {
@@ -377,23 +375,12 @@ async function complete(
   }
 
   if (projectIds) {
-    for (const id of projectIds) {
-      await rememberAuthorization(env, {
-        userId,
-        projectId: id,
-        clientId: authRequest.clientId,
-        endpoint: "account",
-        ...identity,
-      });
-    }
-
-    // What the screen did not tick is what it took away. Done after the
-    // additions so a re-approval that keeps everything never passes through a
-    // moment with nothing granted.
-    await revokeAccountProjectsExcept(env, {
+    await rememberAccountAuthorization(env, {
       userId,
       clientId: authRequest.clientId,
-      keep: projectIds,
+      projectIds,
+      allProjects: account?.allProjects ?? false,
+      ...identity,
     });
   }
 
@@ -448,10 +435,12 @@ export async function askForConsent(
   };
 
   if (scope?.kind === "account") {
-    return accountConsentPage({
-      ...common,
-      projects: await resolveAccountTarget(env, userId, authRequest.clientId),
-    });
+    const projects = await resolveAccountTarget(env, userId, authRequest.clientId);
+    const known = await accountAccess(env, { userId, clientId: authRequest.clientId });
+    // A client seen for the first time is offered everything, which is what
+    // most people mean; one that was narrowed before comes back narrowed.
+    const allProjects = known?.allProjects ?? !projects.some((project) => project.granted);
+    return accountConsentPage({ ...common, projects, allProjects });
   }
 
   return consentPage({

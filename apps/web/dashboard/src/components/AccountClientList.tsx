@@ -47,8 +47,15 @@ export function AccountClientList({
     toast(error instanceof Error ? error.message : fallback, "error");
 
   const setProjects = useMutation({
-    mutationFn: ({ clientId, projectIds }: { clientId: string; projectIds: string[] }) =>
-      api.setAccountClientProjects(clientId, projectIds),
+    mutationFn: ({
+      clientId,
+      projectIds,
+      allProjects,
+    }: {
+      clientId: string;
+      projectIds: string[];
+      allProjects: boolean;
+    }) => api.setAccountClientProjects(clientId, projectIds, allProjects),
     onSuccess: () => settle("Access updated."),
     onError: (error) => fail(error, "Could not update access."),
   });
@@ -63,8 +70,8 @@ export function AccountClientList({
           client={client}
           projects={projects}
           busy={busy}
-          onSetProjects={(projectIds) =>
-            setProjects.mutate({ clientId: client.clientId, projectIds })
+          onSetProjects={(projectIds, allProjects = false) =>
+            setProjects.mutate({ clientId: client.clientId, projectIds, allProjects })
           }
         />
       ))}
@@ -81,7 +88,7 @@ function AccountClientRow({
   client: AccountClient;
   projects: Project[];
   busy: boolean;
-  onSetProjects: (projectIds: string[]) => void;
+  onSetProjects: (projectIds: string[], allProjects?: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -107,7 +114,8 @@ function AccountClientRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-title-md truncate">{clientLabel(client)}</p>
-            {granted.length === 0 && <Badge tone="error">no access</Badge>}
+            {client.allProjects && <Badge>all projects</Badge>}
+            {granted.length === 0 && !client.allProjects && <Badge tone="error">no access</Badge>}
           </div>
           <p className="text-body-md text-foreground-faint truncate">
             {version ? `${version} · ` : ""}
@@ -129,7 +137,18 @@ function AccountClientRow({
       {editing ? (
         <fieldset className="border-border rounded-lg border p-1" disabled={busy}>
           <legend className="text-label-md text-foreground-faint px-2">Projects it reaches</legend>
-          {projects.length === 0 ? (
+          <label className="hover:bg-accent-subtle flex cursor-pointer items-center gap-3 rounded-md px-3 py-2">
+            <input
+              type="checkbox"
+              className="accent-foreground"
+              checked={client.allProjects}
+              onChange={(event) => onSetProjects(granted, event.target.checked)}
+            />
+            <span className="text-body-md min-w-0">
+              All projects, including the ones you add later
+            </span>
+          </label>
+          {client.allProjects ? null : projects.length === 0 ? (
             <p className="text-body-md text-foreground-faint px-3 py-2">
               You have no projects to give it.
             </p>
@@ -161,9 +180,13 @@ function AccountClientRow({
         </fieldset>
       ) : (
         <p className="text-body-md text-foreground-muted">
-          {granted.length === 0
-            ? "It cannot reach any project, and its token went with the last one. Giving it a project back here is not enough: it has to be authorized again from the client."
-            : granted.map(nameOf).join(", ")}
+          {client.allProjects
+            ? granted.length === 0
+              ? "Every project, starting with the first one you add."
+              : `Every project: ${granted.map(nameOf).join(", ")}`
+            : granted.length === 0
+              ? "It cannot reach any project, and its token went with the last one. Giving it a project back here is not enough: it has to be authorized again from the client."
+              : granted.map(nameOf).join(", ")}
         </p>
       )}
 

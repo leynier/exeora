@@ -215,6 +215,20 @@ export const styles = `
 
   /* The account endpoint names no project, so the person names them here. The
      list is the access list: what is left unticked is what is taken away. */
+  .access { display: grid; gap: .25rem; margin: 1rem 0 .75rem; }
+  .access label {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    padding: .5rem .25rem;
+    cursor: pointer;
+  }
+  .access input { margin-top: .2rem; flex: none; accent-color: var(--color-foreground); }
+  .access .who-what { min-width: 0; font-size: .8125rem; }
+  .access .name { display: block; }
+  .access .where { color: var(--color-foreground-faint); }
+  /* Everything is chosen, so the list is what it covers rather than a question. */
+  form:has(.access input[value="all"]:checked) .picker { opacity: .5; pointer-events: none; }
   .picker {
     margin: 0 0 1.25rem;
     padding: 0;

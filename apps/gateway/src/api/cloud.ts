@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
+import { grantNewProject } from "../account-access.js";
 import {
   createCloudProject,
   createCloudWorkspace,
@@ -52,6 +53,8 @@ const projectInput = z.object({
   defaultBranch: z.string().min(1).max(255).default("main"),
   token: z.string().min(1).max(500).optional(),
   username: z.string().min(1).max(200).optional(),
+  /** Clients on the account URL that should reach the project from the start. */
+  clientIds: z.array(z.string().min(1).max(2000)).max(50).optional(),
 });
 
 const workspaceInput = z.object({
@@ -82,6 +85,11 @@ cloud.post("/api/cloud/projects", zValidator("json", projectInput), async (c) =>
       : undefined,
   });
   if ("error" in result) return failed(c, result);
+  await grantNewProject(c.env, {
+    userId: c.get("userId"),
+    projectId: result.projectId,
+    clientIds: body.clientIds,
+  });
   return c.json({ ...result, status: "creating" }, 202);
 });
 

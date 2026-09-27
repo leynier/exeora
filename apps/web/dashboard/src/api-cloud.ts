@@ -42,6 +42,8 @@ export interface CreateCloudProjectInput {
   defaultBranch: string;
   token?: string;
   username?: string;
+  /** Clients on the account URL that reach the project from the start. */
+  clientIds?: string[];
 }
 
 export interface CreateCloudWorkspaceInput {

@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { AccountClient } from "../api.js";
 import type { CreateCloudProjectInput } from "../api-cloud.js";
+import { defaultAccess, ProjectAccessPicker } from "./ProjectAccessPicker.js";
 
 /** A slug the gateway accepts: lowercase letters, digits and hyphens. */
 export function slugFromName(name: string): string {
@@ -41,11 +43,14 @@ function isHttpsUrl(value: string): boolean {
 export function AddCloudProjectDialog({
   open,
   pending,
+  clients,
   onSubmit,
   onCancel,
 }: {
   open: boolean;
   pending: boolean;
+  /** The clients on the account URL, to say which of them reach the project. */
+  clients: AccountClient[];
   onSubmit: (input: CreateCloudProjectInput) => void;
   onCancel: () => void;
 }) {
@@ -56,6 +61,12 @@ export function AddCloudProjectDialog({
   const [defaultBranch, setDefaultBranch] = useState("main");
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
+  const [clientIds, setClientIds] = useState<string[]>([]);
+
+  // Read when the dialog opens and not on every refetch, which would put back
+  // a box somebody had just unticked.
+  const clientsAtOpen = useRef(clients);
+  clientsAtOpen.current = clients;
 
   useEffect(() => {
     const element = dialog.current;
@@ -68,6 +79,7 @@ export function AddCloudProjectDialog({
       setDefaultBranch("main");
       setToken("");
       setUsername("");
+      setClientIds(defaultAccess(clientsAtOpen.current));
     }
   }, [open]);
 
@@ -162,6 +174,12 @@ export function AddCloudProjectDialog({
         A token needs read access to clone and write access to push. It is stored encrypted, used
         only inside the machines of this repository, and deleted with it.
       </p>
+      <ProjectAccessPicker
+        clients={clients}
+        chosen={clientIds}
+        disabled={pending}
+        onChange={setClientIds}
+      />
       <div className="mt-6 flex justify-end gap-2">
         <button type="button" className="btn" onClick={onCancel} disabled={pending}>
           Cancel
@@ -178,6 +196,7 @@ export function AddCloudProjectDialog({
               defaultBranch: branch,
               ...(token ? { token } : {}),
               ...(token && username.trim() ? { username: username.trim() } : {}),
+              ...(clientIds.length > 0 ? { clientIds } : {}),
             })
           }
         >

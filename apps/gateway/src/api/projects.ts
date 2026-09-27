@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { grantNewProject } from "../account-access.js";
 import { ownedProjectDeletionStatement } from "../audit-deletions.js";
 import { parsePolicy } from "../clients.js";
 import { destroyCloudProject } from "../cloud/provisioning.js";
@@ -115,6 +116,8 @@ projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
       if ((result.meta.changes ?? 0) === 0) return c.json({ error: "device_revoked" }, 409);
     }
   }
+
+  if (!existing) await grantNewProject(c.env, { userId, projectId: id });
 
   return c.json({ id, slug: body.slug, name: body.name }, existing ? 200 : 201);
 });

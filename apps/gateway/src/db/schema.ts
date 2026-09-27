@@ -315,6 +315,35 @@ export const projectClients = sqliteTable(
 );
 
 /**
+ * What a client on the account URL was told it may reach, beyond the rows.
+ *
+ * `project_clients` stays the authority for every call: no row, no access.
+ * This table only remembers that the person answered "all of my projects,
+ * including the ones I add later", which is a statement about projects that do
+ * not exist yet and so cannot be a row. A project created afterwards gets its
+ * row written for every client that holds this, and from there on it is an
+ * ordinary grant that can be revoked like any other.
+ *
+ * It also carries the client's name, because a connection authorized before
+ * the account has any project has no `project_clients` row to read it from.
+ */
+export const accountClients = sqliteTable(
+  "account_clients",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    allProjects: integer("all_projects", { mode: "boolean" }).notNull().default(false),
+    clientName: text("client_name"),
+    clientUri: text("client_uri"),
+    authorizedAt: integer("authorized_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.clientId] })],
+);
+
+/**
  * Daily rollup of tool calls per account.
  *
  * Survives the archive's retention: the row-level trail is retention-limited,

@@ -52,9 +52,9 @@ export async function resolveAccountProject(
   if (reachable.length === 0) {
     throw new ExeoraError(
       "FORBIDDEN",
-      "This connection has not been given access to any project. Authorize it again from the " +
-        "client and tick the projects it may reach, or give it one under Clients in the Exeora " +
-        "dashboard if it is listed there.",
+      "This connection does not reach any project yet. If the account has none, add one in the " +
+        "Exeora dashboard. Otherwise give this client a project under Clients there, or " +
+        "authorize it again from the client.",
     );
   }
 

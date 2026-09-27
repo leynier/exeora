@@ -300,6 +300,8 @@ export interface AccountClient {
   mcpVersion: string | null;
   authorizedAt: number;
   lastUsedAt: number | null;
+  /** Given every project, including the ones created later. */
+  allProjects: boolean;
   projects: AccountClientProject[];
 }
 

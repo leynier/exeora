@@ -120,6 +120,13 @@
       "when": 1790400000000,
       "tag": "0016_cloud_workspaces",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1790468521114,
+      "tag": "0017_account_clients",
+      "breakpoints": true
     }
   ]
 }

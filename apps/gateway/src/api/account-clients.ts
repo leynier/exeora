@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { endAllProjects, everyProjectId, setAccountAccess } from "../account-access.js";
 import { rememberAuthorization, revokeAccountProjectsExcept } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
@@ -41,6 +42,13 @@ accountClients.get("/api/account-clients", async (c) => {
     .orderBy(desc(schema.projectClients.authorizedAt))
     .all();
 
+  const standing = await db(c.env)
+    .select()
+    .from(schema.accountClients)
+    .where(eq(schema.accountClients.userId, userId))
+    .all();
+  const everything = new Set(standing.filter((row) => row.allProjects).map((row) => row.clientId));
+
   const byClient = new Map<string, ReturnType<typeof toAccountClientView>>();
 
   for (const row of rows) {
@@ -48,6 +56,7 @@ accountClients.get("/api/account-clients", async (c) => {
     if (!existing) {
       byClient.set(row.clientId, {
         ...toAccountClientView(row),
+        allProjects: everything.has(row.clientId),
         projects: [toAccountProjectView(row)],
       });
       continue;
@@ -67,6 +76,24 @@ accountClients.get("/api/account-clients", async (c) => {
     existing.clientUri ??= row.clientUri;
   }
 
+  // A client given everything before the account had any project holds no row
+  // yet. It is connected all the same, and hiding it would leave a live token
+  // that no page admits to.
+  for (const row of standing) {
+    if (!row.allProjects || byClient.has(row.clientId)) continue;
+    byClient.set(row.clientId, {
+      clientId: row.clientId,
+      clientName: row.clientName,
+      clientUri: row.clientUri,
+      mcpName: null,
+      mcpVersion: null,
+      authorizedAt: row.authorizedAt.getTime(),
+      lastUsedAt: null,
+      allProjects: true,
+      projects: [],
+    });
+  }
+
   return c.json([...byClient.values()]);
 });
 
@@ -75,6 +102,12 @@ const accessInput = z.object({
   // URL inside a path segment is a percent-encoding problem waiting to happen.
   clientId: z.string().min(1),
   projectIds: z.array(z.string().min(1)),
+  /**
+   * "All of my projects, including the ones I add later." When set, the list
+   * is ignored: everything the account has is granted, and what it gets next
+   * will be.
+   */
+  allProjects: z.boolean().default(false),
 });
 
 /**
@@ -89,7 +122,7 @@ const accessInput = z.object({
  */
 accountClients.put("/api/account-clients/projects", zValidator("json", accessInput), async (c) => {
   const userId = c.get("userId");
-  const { clientId, projectIds } = c.req.valid("json");
+  const { clientId, projectIds, allProjects } = c.req.valid("json");
 
   const existing = await db(c.env)
     .select()
@@ -103,7 +136,39 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
     )
     .all();
 
-  if (existing.length === 0) return c.json({ error: "not_found" }, 404);
+  const known = standing(await accountClientRow(c.env, userId, clientId));
+  if (existing.length === 0 && !known) return c.json({ error: "not_found" }, 404);
+
+  if (allProjects) {
+    const every = await everyProjectId(c.env, userId);
+    const identity = existing.find((row) => row.clientName !== null) ?? existing[0] ?? known;
+    const granted = new Set(
+      existing.filter((row) => row.revokedAt === null).map((row) => row.projectId),
+    );
+    // A token that was cut off does not come back from here, for the same
+    // reason a single project cannot revive one: only the client can ask again.
+    if (granted.size === 0 && !known) return c.json({ error: "not_connected" }, 409);
+
+    for (const projectId of every) {
+      if (granted.has(projectId)) continue;
+      await rememberAuthorization(c.env, {
+        userId,
+        projectId,
+        clientId,
+        endpoint: "account",
+        clientName: identity?.clientName ?? undefined,
+        clientUri: identity?.clientUri ?? undefined,
+      });
+    }
+    await setAccountAccess(c.env, {
+      userId,
+      clientId,
+      allProjects: true,
+      clientName: identity?.clientName ?? undefined,
+      clientUri: identity?.clientUri ?? undefined,
+    });
+    return c.json({ ok: true });
+  }
 
   // The same narrowing the consent screen does with its tick boxes, and for the
   // same reason: the list is caller-controlled, so an id that is not this
@@ -121,7 +186,7 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
   // KV: it is the same client, and this is not a new authorization. A row that
   // carries a name is preferred, because these come back in no particular order
   // and copying a nameless one would blank the name everywhere it lands.
-  const identity = existing.find((row) => row.clientName !== null) ?? existing[0];
+  const identity = existing.find((row) => row.clientName !== null) ?? existing[0] ?? known;
   if (!identity) return c.json({ error: "not_found" }, 404);
 
   // Only what is not already granted. `rememberAuthorization` stamps
@@ -147,6 +212,8 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
   }
 
   await revokeAccountProjectsExcept(c.env, { userId, clientId, keep });
+  // A list that names its projects is the opposite of the standing answer.
+  await endAllProjects(c.env, { userId, clientId });
 
   // Emptying the list is how this screen shuts a connection off, so it also
   // takes the token, exactly as revoking the last project one at a time does.
@@ -155,6 +222,21 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
 
   return c.json({ ok: true });
 });
+
+async function accountClientRow(env: Pick<Env, "DB">, userId: string, clientId: string) {
+  return db(env)
+    .select()
+    .from(schema.accountClients)
+    .where(
+      and(eq(schema.accountClients.userId, userId), eq(schema.accountClients.clientId, clientId)),
+    )
+    .get();
+}
+
+/** The row, when it still says "everything": that alone keeps a connection with no project alive. */
+function standing<Row extends { allProjects: boolean }>(row: Row | undefined): Row | undefined {
+  return row?.allProjects ? row : undefined;
+}
 
 function toAccountClientView(client: typeof schema.projectClients.$inferSelect) {
   return {
@@ -165,6 +247,7 @@ function toAccountClientView(client: typeof schema.projectClients.$inferSelect) 
     mcpVersion: client.mcpVersion,
     authorizedAt: client.authorizedAt.getTime(),
     lastUsedAt: client.lastUsedAt?.getTime() ?? null,
+    allProjects: false,
     projects: [] as ReturnType<typeof toAccountProjectView>[],
   };
 }

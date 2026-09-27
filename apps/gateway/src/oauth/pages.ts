@@ -196,11 +196,15 @@ export function accountConsentPage(options: {
   state: string;
   scopes: string[];
   projects: AccountTargetProject[];
+  /** Whether "all projects" arrives chosen. */
+  allProjects: boolean;
   /** Shown when a previous submission could not be accepted as it stood. */
   problem?: string;
 }) {
   const name = options.client?.clientName ?? options.client?.clientId ?? "An application";
   const { projects } = options;
+  // With nothing to choose from, everything is the only answer there is.
+  const allProjects = options.allProjects || projects.length === 0;
 
   return layout(
     "Authorize",
@@ -208,30 +212,54 @@ export function accountConsentPage(options: {
       <div class="card">
         <h1>Authorize ${name}</h1>
         <p class="lede">
-          It is asking for one connection covering several projects. Choose which ones it may
-          reach.
+          It is asking for one connection covering several projects. Choose what it may reach.
         </p>
 
         <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
 
         ${options.problem ? html`<div class="warn">${options.problem}</div>` : ""}
 
-        ${
-          projects.length === 0
-            ? html`<p class="empty">
-                You have not connected any projects yet. Run <code>exeora project add</code> in a
-                directory on a machine running <code>exeora connect</code>, then authorize this application again.
-              </p>
-              <form method="post" action="/oauth/approve">
-                <input type="hidden" name="state" value="${options.state}" />
-                <button class="btn secondary" type="submit" name="decision" value="deny">
-                  Cancel
-                </button>
-              </form>`
-            : html`<form method="post" action="/oauth/approve">
+        ${html`<form method="post" action="/oauth/approve">
               <input type="hidden" name="state" value="${options.state}" />
 
-              <ul class="picker">
+              <div class="access">
+                <label>
+                  <input
+                    type="radio"
+                    name="access"
+                    value="all"
+                    ${allProjects ? raw("checked") : ""}
+                  />
+                  <span class="who-what">
+                    <span class="name">All my projects</span>
+                    <span class="where">Including the ones I add later.</span>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="access"
+                    value="chosen"
+                    ${allProjects ? "" : raw("checked")}
+                    ${projects.length === 0 ? raw("disabled") : ""}
+                  />
+                  <span class="who-what">
+                    <span class="name">Only the projects I choose</span>
+                    <span class="where"
+                      >${
+                        projects.length === 0
+                          ? "You have no projects yet."
+                          : "A project added later stays out of reach until you give it."
+                      }</span
+                    >
+                  </span>
+                </label>
+              </div>
+
+              ${
+                projects.length === 0
+                  ? ""
+                  : html`<ul class="picker">
                 ${projects.map(
                   (project) => html`<li>
                     <label>
@@ -250,12 +278,14 @@ export function accountConsentPage(options: {
                     </label>
                   </li>`,
                 )}
-              </ul>
+              </ul>`
+              }
 
               <div class="warn">
                 This grants <strong>${name}</strong> the ability to read, edit and run commands in
-                every project you tick, on the machine serving it. It chooses which of them to work
-                in, one at a time. Commands are not filtered. Only approve applications you trust.
+                every project it reaches, on the machine serving it. It chooses which of them to
+                work in, one at a time. Commands are not filtered. Only approve applications you
+                trust.
               </div>
 
               ${
@@ -270,8 +300,7 @@ export function accountConsentPage(options: {
               <button class="btn secondary" type="submit" name="decision" value="deny">
                 Cancel
               </button>
-            </form>`
-        }
+            </form>`}
       </div>
 
       <p class="foot">You can change which projects it reaches, or revoke it, from the dashboard.</p>

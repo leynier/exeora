@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { endAllProjects } from "../account-access.js";
 import { auditDeletionStatement, deviceProjectDeletionStatement } from "../audit-deletions.js";
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
@@ -173,6 +174,10 @@ export async function revokeGrantsAfter(
     return;
   }
 
+  // One project taken away by hand: "all of them" is no longer what this
+  // client has, and leaving it set would hand it the next project regardless.
+  await endAllProjects(env, { userId, clientId: client.clientId });
+
   const remaining = await db(env)
     .select({ id: schema.projectClients.id })
     .from(schema.projectClients)
@@ -199,6 +204,7 @@ export async function revokeAccountGrants(
   userId: string,
   clientId: string,
 ): Promise<void> {
+  await endAllProjects(env, { userId, clientId });
   await revokeGrants(
     env,
     userId,

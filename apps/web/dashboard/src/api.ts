@@ -158,11 +158,11 @@ export const api = {
   clients: () => request<Client[]>("/api/clients"),
   accountClients: () => request<AccountClient[]>("/api/account-clients"),
 
-  setAccountClientProjects: (clientId: string, projectIds: string[]) =>
+  setAccountClientProjects: (clientId: string, projectIds: string[], allProjects = false) =>
     request<{ ok: true }>("/api/account-clients/projects", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, projectIds }),
+      body: JSON.stringify({ clientId, projectIds, allProjects }),
     }),
 
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),
