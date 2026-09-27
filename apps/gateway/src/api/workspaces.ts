@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db, schema } from "../db/client.js";
+import { chooseWorkspaceSlug } from "../workspace-slugs.js";
 import type { ApiEnv } from "./router.js";
 
 export const workspaces = new Hono<ApiEnv>();
@@ -136,21 +137,24 @@ workspaces.put(
       .bind(deviceId, userId, project.deviceId, projectId)
       .first();
     if (!here) return c.json({ error: "not_a_location" }, 409);
-    const collision = await db(c.env)
-      .select({ id: schema.workspaces.id })
-      .from(schema.workspaces)
-      .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.workspaces.slug, body.slug)))
-      .get();
-    if (collision && collision.id !== workspaceId) {
-      return c.json({ error: "slug_conflict" }, 409);
-    }
+    // The same branch may have a workspace in another location of the project
+    // already. This one is then stored under the slug with its location behind
+    // it, and the answer carries the slug it was given.
+    const chosen = await chooseWorkspaceSlug(c.env, {
+      projectId,
+      wanted: body.slug,
+      deviceId,
+      workspaceId,
+    });
+    if ("conflict" in chosen) return c.json({ error: "slug_conflict" }, 409);
+    const { slug } = chosen;
     const now = new Date();
     await db(c.env)
       .insert(schema.workspaces)
       .values({
         id: workspaceId,
         projectId,
-        slug: body.slug,
+        slug,
         name: body.name,
         branch: body.branch ?? null,
         localPath: body.localPath,
@@ -161,7 +165,7 @@ workspaces.put(
       .onConflictDoUpdate({
         target: schema.workspaces.id,
         set: {
-          slug: body.slug,
+          slug,
           name: body.name,
           branch: body.branch ?? null,
           localPath: body.localPath,

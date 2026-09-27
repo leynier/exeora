@@ -1,10 +1,12 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { livesOnAnotherMachine } from "../client-targets.js";
+import { createCloudRoot } from "../cloud/location.js";
 import { revokeOwnedDevice } from "../cloud/revoke.js";
-import { destroyCloudProject } from "../cloud/teardown.js";
 import { db, schema } from "../db/client.js";
+import { setDefaultLocation } from "../locations.js";
 import { listMachines } from "../machines-view.js";
 import "../env.js";
 import { newId } from "../ids.js";
@@ -135,29 +137,82 @@ devices.delete("/api/devices/:id/permanently", async (c) => {
   if (!device) return c.json({ error: "not_found" }, 404);
   if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
 
-  // A project that lives only here goes with the machine. If it holds
-  // workspaces on Exeora Cloud, those are machines that would be left running
-  // with nothing naming them, so they are taken down first.
-  const leaving = await c.env.DB.prepare(
-    `SELECT p.id FROM projects p
-       JOIN cloud_projects c ON c.project_id = p.id
-      WHERE p.user_id = ?1 AND p.device_id = ?2
-        AND NOT EXISTS (
-          SELECT 1 FROM project_locations l
-            JOIN devices d ON d.id = l.device_id
-           WHERE l.project_id = p.id AND l.device_id != ?2 AND d.revoked_at IS NULL
-        )`,
-  )
-    .bind(userId, id)
-    .all<{ id: string }>();
-  for (const project of leaving.results) {
-    await destroyCloudProject(c.env, userId, project.id);
-  }
+  // A project that is also on Exeora Cloud stays, and needs a machine to be
+  // its default once this one is gone. Cloud that holds only workspaces has
+  // none for the project root, so one is asked for here, before anything is
+  // deleted: if it cannot be made, nothing is, and the person is told why.
+  const stranded = await moveStrandedProjectsToCloud(c.env, userId, id);
+  if (stranded) return c.json(stranded, 409);
 
   await permanentlyDeleteDevice(c.env, userId, id);
 
   return c.json({ ok: true });
 });
+/**
+ * Moves the default of every project that would otherwise go with the machine
+ * onto Exeora Cloud, where it already lives. Answers the refusal to send when
+ * one of them could not be moved.
+ */
+async function moveStrandedProjectsToCloud(
+  env: Env,
+  userId: string,
+  deviceId: string,
+): Promise<{ error: "cloud_root_needed"; message: string; project: string } | null> {
+  const rows = await db(env)
+    .select({
+      id: schema.projects.id,
+      name: schema.projects.name,
+      deviceId: schema.projects.deviceId,
+      localPath: schema.projects.localPath,
+    })
+    .from(schema.projects)
+    .innerJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
+    .where(
+      and(
+        eq(schema.projects.userId, userId),
+        eq(schema.projects.deviceId, deviceId),
+        isNull(schema.cloudProjects.deletingAt),
+      ),
+    )
+    .all();
+
+  for (const project of rows) {
+    if (await livesOnAnotherMachine(env, project.id, deviceId)) continue;
+    const root = await createCloudRoot(env, userId, project.id);
+    const moved =
+      "error" in root
+        ? root.error
+        : await setDefaultLocation(env, userId, project, {
+            id: await cloudLocationId(env, project.id),
+            deviceId: root.deviceId,
+            localPath: null,
+            state: "setting up",
+          });
+    if (moved !== true) {
+      return {
+        error: "cloud_root_needed",
+        project: project.name,
+        message: `${project.name} lives on this machine and on Exeora Cloud, and Cloud has no machine for its project root (${moved}). Make Exeora Cloud its default location, or remove the project, then delete this machine.`,
+      };
+    }
+  }
+  return null;
+}
+
+async function cloudLocationId(env: Pick<Env, "DB">, projectId: string): Promise<string> {
+  const row = await db(env)
+    .select({ id: schema.projectLocations.id })
+    .from(schema.projectLocations)
+    .where(
+      and(
+        eq(schema.projectLocations.projectId, projectId),
+        eq(schema.projectLocations.kind, "cloud"),
+      ),
+    )
+    .get();
+  return row?.id ?? "";
+}
+
 function toDeviceView(device: typeof schema.devices.$inferSelect, online = false) {
   return {
     id: device.id,

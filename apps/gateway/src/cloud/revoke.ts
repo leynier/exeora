@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { revokeDevice } from "../api/ops.js";
-import { livesElsewhere } from "../client-targets.js";
+import { livesOnAnotherMachine } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { destroyCloudProject } from "./provisioning.js";
@@ -39,7 +39,10 @@ export async function revokeOwnedDevice(
   // The machine that holds the project root takes the project with it only
   // when the project lives nowhere else. One that is also on somebody's own
   // machine loses this copy and keeps the others.
-  if (machine.workspaceId === null && !(await livesElsewhere(env, machine.projectId, deviceId))) {
+  if (
+    machine.workspaceId === null &&
+    !(await livesOnAnotherMachine(env, machine.projectId, deviceId))
+  ) {
     if (await destroyCloudProject(env, userId, machine.projectId)) return true;
   }
   await env.CLOUD_MACHINE.getByName(deviceId).destroy({ userId, deviceId, ...machine });

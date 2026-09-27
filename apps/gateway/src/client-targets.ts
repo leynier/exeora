@@ -125,11 +125,10 @@ export async function resolveAccountTarget(
 }
 
 /**
- * Whether a project has a copy on a machine that still stands, other than the
- * one named. A project whose only machine was removed is gone for every caller,
- * at once; one that lives elsewhere too has only lost its default.
+ * Whether a project has a location with a machine of its own that still
+ * stands, other than the one named: somewhere its default could move to.
  */
-export async function livesElsewhere(
+export async function livesOnAnotherMachine(
   env: Pick<Env, "DB">,
   projectId: string,
   deviceId: string,
@@ -143,6 +142,37 @@ export async function livesElsewhere(
     .bind(projectId, deviceId)
     .first();
   return other !== null;
+}
+
+/**
+ * Whether a project is still somewhere once the machine named is gone. A
+ * project whose only machine was removed is gone for every caller, at once;
+ * one that lives elsewhere too has only lost its default.
+ *
+ * Exeora Cloud counts even when it holds no project root. Its workspaces are
+ * machines of their own, which no location row names, and a project that has
+ * them is reachable through them whatever became of the laptop.
+ */
+export async function livesElsewhere(
+  env: Pick<Env, "DB">,
+  projectId: string,
+  deviceId: string,
+): Promise<boolean> {
+  if (await livesOnAnotherMachine(env, projectId, deviceId)) return true;
+  const cloud = await env.DB.prepare(
+    `SELECT 1 FROM cloud_projects c
+      WHERE c.project_id = ?1
+        AND NOT (c.deleting_at IS NOT NULL AND c.deleting_scope = 'project')
+        AND EXISTS (
+          SELECT 1 FROM project_locations l
+           WHERE l.project_id = c.project_id AND l.kind = 'cloud'
+             AND (l.device_id IS NULL OR l.device_id != ?2)
+        )
+      LIMIT 1`,
+  )
+    .bind(projectId, deviceId)
+    .first();
+  return cloud !== null;
 }
 
 /**

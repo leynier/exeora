@@ -75,9 +75,7 @@ workspaceCreate.post("/api/projects/:id/workspaces", zValidator("json", input), 
   // Asking for a workspace on Cloud is asking for the project to be there.
   if (!location && body.where?.trim().toLowerCase() === CLOUD_LOCATION_SLUG) {
     const added = await addCloudLocation(c.env, userId, projectId);
-    if (added !== true) {
-      return c.json(added, added.error === "cloud_disabled" ? 403 : 422);
-    }
+    if (added !== true) return c.json(added, cloudStatus(added.error));
     locations = await read();
     location = findLocation(locations, CLOUD_LOCATION_SLUG);
   }
@@ -98,19 +96,7 @@ workspaceCreate.post("/api/projects/:id/workspaces", zValidator("json", input), 
       name: body.name,
       slug: body.slug,
     });
-    if ("error" in created) {
-      const status =
-        created.error === "cloud_disabled" || created.error === "plan_limit"
-          ? 403
-          : created.error === "not_found"
-            ? 404
-            : created.error === "slug_conflict"
-              ? 409
-              : created.error === "cli_unsupported"
-                ? 503
-                : 422;
-      return c.json(created, status);
-    }
+    if ("error" in created) return c.json(created, cloudStatus(created.error));
     return c.json({ ...created, where: location.slug, status: "creating" }, 202);
   }
 
@@ -175,6 +161,24 @@ async function createOnMachine(
           ? 403
           : 422;
     return c.json({ error: code, message: error.message }, status);
+  }
+}
+
+/** The status each refusal of Exeora Cloud is answered with, the same on every route. */
+function cloudStatus(error: string): 403 | 404 | 409 | 422 | 503 {
+  switch (error) {
+    case "cloud_disabled":
+    case "plan_limit":
+      return 403;
+    case "not_found":
+      return 404;
+    case "slug_conflict":
+    case "not_retryable":
+      return 409;
+    case "cli_unsupported":
+      return 503;
+    default:
+      return 422;
   }
 }
 

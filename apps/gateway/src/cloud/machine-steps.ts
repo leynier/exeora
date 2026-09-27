@@ -1,7 +1,7 @@
 import type { CloudCliConfig, CloudMachineStatus } from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { permanentlyDeleteDevice, relayName, revokeDevice } from "../api/ops.js";
-import { livesElsewhere } from "../client-targets.js";
+import { livesOnAnotherMachine } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import { explainFailure } from "./machine-errors.js";
 import { finishCloudRemoval } from "./teardown.js";
@@ -65,6 +65,12 @@ export interface ProvisionInput {
   branch: string;
   createBranchFrom?: string | undefined;
   cliConfig: CloudCliConfig;
+  /**
+   * Set for a project connected to GitHub: git on the machine asks the
+   * gateway for a token through the CLI, for this project, instead of reading
+   * one that was written there.
+   */
+  credentialHelper?: { projectId: string } | undefined;
   secrets: {
     machineToken: string;
     credential?: { username: string; secret: string } | undefined;
@@ -146,6 +152,7 @@ async function bootstrap(context: StepContext, record: MachineRecord): Promise<S
     branch: input.branch,
     createBranchFrom: input.createBranchFrom,
     credential: secrets.credential,
+    credentialHelper: input.credentialHelper,
     cliConfig: input.cliConfig,
   });
   const result = await execSprite(
@@ -280,7 +287,7 @@ async function removingProject(env: Pick<Env, "DB">, record: MachineRecord): Pro
   if (cloud?.deletingAt) return cloud.scope === "project";
   // Nobody marked anything, and the project lives nowhere else: this machine
   // going takes the project with it all the same, so it goes the same way.
-  return !(await livesElsewhere(env, record.projectId, record.deviceId));
+  return !(await livesOnAnotherMachine(env, record.projectId, record.deviceId));
 }
 
 /** Whether the record is still in the phase this step started in. */

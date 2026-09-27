@@ -1,3 +1,4 @@
+import { repositoryKey } from "@exeora/protocol";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { planOf } from "./api/plan.js";
 import { db, schema } from "./db/client.js";
@@ -53,6 +54,7 @@ export async function registerProject(
   const database = db(env);
 
   if (repository) {
+    await healRepositoryKeys(env, userId);
     // The oldest, so that an account holding the same repository twice from
     // before this rule keeps sending new machines to the same one.
     const same = await database
@@ -117,6 +119,36 @@ export async function registerProject(
     machine: named.machine,
     message: `A project called ${input.slug} already lives on ${named.machine ?? "another machine"}, and this directory is not a checkout of the same repository. Add it under another name, or remove the other one first.`,
   };
+}
+
+/**
+ * Brings the key of every project of an account in line with its repository.
+ *
+ * The key is what makes two registrations one project, so it has to be the
+ * same function of the address everywhere. Rows written by the migration that
+ * introduced it were keyed in SQL, which cannot strip a `www.` or tell a
+ * trailing `.git` from one in the middle; those are corrected here, before
+ * anything is matched against them.
+ */
+export async function healRepositoryKeys(env: Pick<Env, "DB">, userId: string): Promise<void> {
+  const rows = await db(env)
+    .select({
+      id: schema.projects.id,
+      repoUrl: schema.projects.repoUrl,
+      repoKey: schema.projects.repoKey,
+    })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.userId, userId), isNotNull(schema.projects.repoUrl)))
+    .all();
+  for (const row of rows) {
+    const key = repositoryKey(row.repoUrl);
+    if (key === row.repoKey) continue;
+    await db(env)
+      .update(schema.projects)
+      .set({ repoKey: key })
+      .where(eq(schema.projects.id, row.id))
+      .run();
+  }
 }
 
 async function join(

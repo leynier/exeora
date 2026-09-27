@@ -242,3 +242,75 @@ describe("projects and their locations over the API", () => {
     expect(all).toHaveLength(1);
   });
 });
+
+describe("what the review of locations found", () => {
+  const put = (projectId: string, id: string, deviceId: string, slug: string) =>
+    call(`/api/projects/${projectId}/workspaces/${id}`, "PUT", {
+      slug,
+      name: slug,
+      branch: slug,
+      localPath: `/worktrees/${slug}`,
+      managed: true,
+      deviceId,
+    });
+
+  it("gives the same branch on a second machine a slug of its own", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    await add(DESKTOP, "api", "https://github.com/acme/api.git");
+
+    const first = await put(project.id, "wsp_sluglaptop", LAPTOP, "fix-login");
+    const second = await put(project.id, "wsp_slugdesktop", DESKTOP, "fix-login");
+    // It reports again, as the CLI does on every sync, and keeps what it has.
+    const again = await put(project.id, "wsp_slugdesktop", DESKTOP, "fix-login");
+    const clash = await put(project.id, "wsp_slugother", DESKTOP, "fix-login");
+
+    expect(await first.json()).toMatchObject({ slug: "fix-login", deviceId: LAPTOP });
+    expect(await second.json()).toMatchObject({ slug: "fix-login-desktop", deviceId: DESKTOP });
+    expect(await again.json()).toMatchObject({ slug: "fix-login-desktop" });
+    // Two on the same machine asking for one slug is a conflict, as it was.
+    expect(clash.status).toBe(409);
+  });
+
+  it("keeps a project that is also on Cloud when its only machine is deleted", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    const bindings = { SPRITES_TOKEN: "org/1/secret", LATEST_CLI_VERSION: "0.18.0" };
+    const onCloud = await request(`/api/projects/${project.id}/locations`, {
+      method: "POST",
+      userId: USER,
+      bindings,
+      body: { kind: "cloud" },
+    });
+    expect(onCloud.status).toBe(201);
+
+    await db(env)
+      .update(schema.devices)
+      .set({ revokedAt: new Date() })
+      .where(eq(schema.devices.id, LAPTOP))
+      .run();
+    const deleted = await request(`/api/devices/${LAPTOP}/permanently`, {
+      method: "DELETE",
+      userId: USER,
+      bindings,
+    });
+
+    expect(deleted.status).toBe(200);
+    const left = await locationsOf(project.id);
+    // Cloud was given a machine for the project root, and became the default.
+    expect(left).toEqual([
+      expect.objectContaining({ slug: "cloud", default: true, deviceId: expect.any(String) }),
+    ]);
+  });
+
+  it("corrects a repository key the migration wrote its own way", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://www.github.com/acme/api.git");
+    await db(env)
+      .update(schema.projects)
+      .set({ repoKey: "www.github.com/acme/api" })
+      .where(eq(schema.projects.id, project.id))
+      .run();
+
+    const joined = await add(DESKTOP, "api", "git@github.com:acme/api.git");
+
+    expect(joined).toMatchObject({ status: 200, body: { id: project.id, location: "joined" } });
+  });
+});
