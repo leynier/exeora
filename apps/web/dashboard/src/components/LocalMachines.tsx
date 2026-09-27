@@ -4,8 +4,8 @@ import { Link } from "react-router";
 import { api, errorText, type Project, relativeTime } from "../api.js";
 import type { LocalMachine } from "../api-projects.js";
 import { formatDate } from "../format.js";
-import { deletionImpact } from "../projectModel.js";
 import { keys, refreshPlaces } from "../queries.js";
+import { deletionImpact } from "../survival.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { MachineRow } from "./MachineRow.js";
 import { useToast } from "./toast.js";
@@ -49,11 +49,18 @@ export function LocalMachines({
     onError: (error) => fail(error, "The machine could not be revoked."),
   });
 
+  // A refusal stays in the dialog. The one the gateway gives when a project
+  // cannot be moved to Exeora Cloud names the project and the two ways out,
+  // and nothing was deleted, so there is something to read and act on.
   const remove = useMutation({
     mutationFn: (machine: LocalMachine) => api.deleteDevice(machine.deviceId),
     onSuccess: (_result, machine) => settle(`${machine.name} was deleted.`),
-    onError: (error) => fail(error, "The machine could not be deleted."),
   });
+
+  const dismiss = () => {
+    remove.reset();
+    setPending(null);
+  };
 
   const busy = revoke.isPending || remove.isPending;
   const impact = pending?.action === "delete" ? deletionImpact(pending.machine, projects) : null;
@@ -165,12 +172,28 @@ export function LocalMachines({
                 none={null}
                 names={impact.surviving.map((held) => held.name)}
               />
+              <ImpactList
+                title="These move to Exeora Cloud, which starts an instance for their project root:"
+                none={null}
+                names={impact.moving.map((held) => held.name)}
+              />
+              {impact.moving.length > 0 ? (
+                <p>
+                  Each of those instances counts against the limit of the plan. If one cannot be
+                  started, nothing is deleted.
+                </p>
+              ) : null}
             </div>
           ) : null
         }
+        error={
+          pending?.action === "delete" && remove.isError
+            ? errorText(remove.error, "The machine could not be deleted.")
+            : null
+        }
         confirmLabel={pending?.action === "delete" ? "Delete permanently" : "Revoke"}
         pending={busy}
-        onCancel={() => setPending(null)}
+        onCancel={dismiss}
         onConfirm={() => {
           if (!pending) return;
           if (pending.action === "delete") remove.mutate(pending.machine);

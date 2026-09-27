@@ -199,7 +199,10 @@ locations.delete("/api/projects/:id/locations/:locationId", async (c) => {
   const all = await listed(c.env, userId, project);
   const location = all.find((entry) => entry.id === c.req.param("locationId"));
   if (!location) return c.json({ error: "not_found" }, 404);
-  if (all.length === 1) {
+  // A machine that was removed is not somewhere the project lives, so it does
+  // not make another location safe to take away.
+  const standing = all.filter((entry) => entry.state !== "removed");
+  if (location.state !== "removed" && standing.length === 1) {
     return c.json(
       {
         error: "last_location",

@@ -209,3 +209,81 @@ test("ticks the clients that arrive after the dialog opened, and keeps what was 
   await expect(page).toHaveURL("/dashboard/projects/prj_new");
   expect(sent.at(-1)?.body).toMatchObject({ clientIds: ["client_chatgpt"] });
 });
+
+test("does not take a failed list of clients for an account with nobody to ask", async ({
+  page,
+}) => {
+  let failing = true;
+  await signedIn(page);
+  const sent = await mockPlaces(page, {
+    handle: async (route, request, path) => {
+      if (request.method() !== "GET" || path !== "/api/account-clients" || !failing) return false;
+      await route.fulfill({ status: 500, json: { error: "internal_error" } });
+      return true;
+    },
+  });
+  await openWorkspace(page, "/dashboard/projects");
+
+  await page.getByRole("button", { name: "Add project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a project" });
+  await dialog.getByRole("option", { name: /example\/gadgets/ }).click();
+  await dialog.getByRole("button", { name: "Continue" }).click();
+  // The step that asks about clients is there although none could be read.
+  await expect(dialog.getByText("Step 2 of 3")).toBeVisible();
+  await dialog.getByRole("button", { name: "Continue" }).click();
+
+  await expect(dialog.getByRole("alert")).toContainText(
+    "The clients connected through the account URL could not be loaded.",
+  );
+  const add = dialog.getByRole("button", { name: "Add project" });
+  await expect(add).toBeDisabled();
+
+  // Going ahead without them is a choice somebody makes, and can take back.
+  const without = dialog.getByLabel("Add the project without giving it to any client");
+  await without.check();
+  await expect(add).toBeEnabled();
+  await without.uncheck();
+  await expect(add).toBeDisabled();
+
+  failing = false;
+  await dialog.getByRole("button", { name: "Try again" }).click();
+  await expect(dialog.getByLabel("ChatGPT")).toBeChecked();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await add.click();
+
+  await expect(page).toHaveURL("/dashboard/projects/prj_new");
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.body).toMatchObject({ clientIds: ["client_chatgpt"] });
+});
+
+test("adds a project to no client only when that was asked for in so many words", async ({
+  page,
+}) => {
+  await signedIn(page);
+  const sent = await mockPlaces(page, {
+    handle: async (route, request, path) => {
+      if (request.method() !== "GET" || path !== "/api/account-clients") return false;
+      await route.fulfill({ status: 500, json: { error: "internal_error" } });
+      return true;
+    },
+  });
+  await openWorkspace(page, "/dashboard/projects");
+
+  await page.getByRole("button", { name: "Add project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add a project" });
+  await dialog.getByRole("option", { name: /example\/gadgets/ }).click();
+  await dialog.getByRole("button", { name: "Continue" }).click();
+  await dialog.getByRole("button", { name: "Continue" }).click();
+
+  // Trying again against a gateway that still fails leaves the step as it was.
+  await dialog.getByRole("button", { name: "Try again" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("could not be loaded");
+  await expect(dialog.getByRole("button", { name: "Add project" })).toBeDisabled();
+
+  await dialog.getByLabel("Add the project without giving it to any client").check();
+  await dialog.getByRole("button", { name: "Add project" }).click();
+
+  await expect(page).toHaveURL("/dashboard/projects/prj_new");
+  expect(sent).toHaveLength(1);
+  expect(sent[0]?.body).not.toHaveProperty("clientIds");
+});

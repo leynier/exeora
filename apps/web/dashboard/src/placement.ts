@@ -126,12 +126,3 @@ export function locationCandidates(
   }
   return candidates;
 }
-
-/** Why a location cannot be removed, in the gateway's own words, said before asking it. */
-export function removalBlocker(project: Pick<Project, "locations">, location: ProjectLocation) {
-  if (project.locations.length <= 1) {
-    return "This is the only place the project lives. Remove the project instead.";
-  }
-  if (location.default) return "Choose another default location before removing this one.";
-  return null;
-}

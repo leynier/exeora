@@ -1,4 +1,4 @@
-import type { CloudInstance, LocalMachine, Machine, MachineProject } from "./api-projects.js";
+import type { CloudInstance, LocalMachine, Machine } from "./api-projects.js";
 import type { Project, ProjectLocation, State, Workspace } from "./api-types.js";
 
 /**
@@ -145,13 +145,6 @@ export function cloudLocation(project: Pick<Project, "locations">): ProjectLocat
   return project.locations.find((location) => location.kind === "cloud") ?? null;
 }
 
-/** Whether every copy of the project is on Exeora Cloud, so nothing survives its instances. */
-export function livesOnlyOnCloud(project: Pick<Project, "locations">): boolean {
-  return (
-    project.locations.length > 0 && project.locations.every((location) => location.kind === "cloud")
-  );
-}
-
 export function instancesOf(machines: readonly Machine[], projectId?: string): CloudInstance[] {
   return machines.filter(
     (machine): machine is CloudInstance =>
@@ -178,23 +171,6 @@ export function workspaceCount(machines: readonly Machine[], projectId: string):
     count += machine.projects.find((held) => held.projectId === projectId)?.workspaces ?? 0;
   }
   return count;
-}
-
-/**
- * Whether a project is on its way out. One that lives only on Exeora Cloud is
- * gone once its instances are, a moment after it was asked for, and is listed
- * as leaving until then.
- */
-export function isLeaving(
-  project: Pick<Project, "id" | "locations">,
-  machines: readonly Machine[],
-) {
-  const instances = instancesOf(machines, project.id);
-  return (
-    livesOnlyOnCloud(project) &&
-    instances.length > 0 &&
-    instances.every((instance) => instance.state === "removing")
-  );
 }
 
 /** One row under a location: the project root, or a workspace. */
@@ -332,35 +308,6 @@ export function groupByLocation(
     }),
     unplaced,
   };
-}
-
-/**
- * What deleting a machine takes with it.
- *
- * A project goes with the machine when it lives nowhere else that still
- * stands. One with another location keeps going there, and that location
- * becomes its default if this machine was.
- */
-export function deletionImpact(
-  machine: Pick<LocalMachine, "deviceId" | "projects">,
-  projects: readonly Pick<Project, "id" | "locations">[],
-): { deleted: MachineProject[]; surviving: MachineProject[] } {
-  const deleted: MachineProject[] = [];
-  const surviving: MachineProject[] = [];
-  for (const held of machine.projects) {
-    const project = projects.find((candidate) => candidate.id === held.projectId);
-    // Exeora Cloud counts even when it runs no instance for the project
-    // root: the gateway starts one and makes Cloud the default before the
-    // machine is deleted.
-    const elsewhere = (project?.locations ?? []).some(
-      (location) =>
-        location.state !== "removed" &&
-        (location.kind === "cloud" ||
-          (location.deviceId !== null && location.deviceId !== machine.deviceId)),
-    );
-    (elsewhere ? surviving : deleted).push(held);
-  }
-  return { deleted, surviving };
 }
 
 /** A choice in the workspace selector of the Workspace page. */

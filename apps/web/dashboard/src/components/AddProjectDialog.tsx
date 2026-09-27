@@ -102,6 +102,7 @@ function Form({
   const [branch, setBranch] = useState("");
   const [place, setPlace] = useState<ProjectPlace | null>(null);
   const [byHand, setByHand] = useState<Record<string, boolean>>({});
+  const [withoutClients, setWithoutClients] = useState(false);
 
   const connected = github.data?.enabled === true && github.data.connected;
   const offerConnect = github.data?.enabled === true && !github.data.connected;
@@ -118,16 +119,24 @@ function Form({
   const blocker = cloudBlocker(me.data);
   const chosenPlace: ProjectPlace = place ?? (blocker ? "machine" : "cloud");
   const clients = accountClients.data ?? [];
-  const asks = chosenListClients(clients).length > 0;
+  // A request that failed is not an account with nobody to ask. Read as one,
+  // the project would be created with no client named, and every client that
+  // chose its projects would be left without it with nothing to say so.
+  const clientsFailed = accountClients.isError && accountClients.data === undefined;
+  const asks = chosenListClients(clients).length > 0 || clientsFailed;
+  // The step somebody is on stays a step, whatever a late answer says.
   const steps: Step[] =
-    asks && chosenPlace === "cloud" ? ["what", "where", "access"] : ["what", "where"];
+    (asks || step === "access") && chosenPlace === "cloud"
+      ? ["what", "where", "access"]
+      : ["what", "where"];
   const last = step === steps.at(-1);
   // Until the clients have arrived nobody can say whether there is a third
   // step, nor which of them would be left without the project.
   const clientsPending = accountClients.isLoading;
+  const unanswered = last && clientsFailed && !withoutClients;
 
   const submit = () => {
-    const access = resolveAccess(clients, byHand);
+    const access = clientsFailed ? [] : resolveAccess(clients, byHand);
     onSubmit({
       name: effectiveName,
       slug: effectiveSlug,
@@ -277,11 +286,23 @@ function Form({
         />
       ) : null}
 
-      {step === "access" ? (
+      {step === "access" && clientsFailed ? (
+        <ClientsUnavailable
+          error={errorText(accountClients.error, "The gateway did not answer.")}
+          retrying={accountClients.isFetching}
+          withoutClients={withoutClients}
+          disabled={pending}
+          onRetry={() => void accountClients.refetch()}
+          onWithoutClients={setWithoutClients}
+        />
+      ) : null}
+
+      {step === "access" && !clientsFailed ? (
         <>
           <p className="text-body-md text-foreground-muted mt-4">
-            These clients are connected through the account URL with a list of projects you chose.
-            Untick one to leave this project out of its list.
+            {chosenListClients(clients).length > 0
+              ? "These clients are connected through the account URL with a list of projects you chose. Untick one to leave this project out of its list."
+              : "No client on the account URL has a list of projects to add this one to, so there is nobody to ask."}
           </p>
           <ProjectAccessPicker
             clients={clients}
@@ -316,7 +337,9 @@ function Form({
           disabled={
             pending ||
             !whatReady ||
-            (step !== "what" && chosenPlace === "cloud" && (clientsPending || blocker !== null))
+            (step !== "what" &&
+              chosenPlace === "cloud" &&
+              (clientsPending || unanswered || blocker !== null))
           }
         >
           {pending
@@ -333,5 +356,72 @@ function Form({
         </button>
       </DialogActions>
     </form>
+  );
+}
+
+/**
+ * What the access step says when the clients could not be read.
+ *
+ * Two ways on and no third. Trying again is the one most people want. Going
+ * ahead without the clients is allowed, because a gateway that is having a
+ * bad minute should not stop a project from being added, and it is a box to
+ * tick rather than the default, because what it costs is silent: a client
+ * that chose its projects does not get this one until somebody gives it.
+ */
+function ClientsUnavailable({
+  error,
+  retrying,
+  withoutClients,
+  disabled,
+  onRetry,
+  onWithoutClients,
+}: {
+  error: string;
+  retrying: boolean;
+  withoutClients: boolean;
+  disabled: boolean;
+  onRetry: () => void;
+  onWithoutClients: (value: boolean) => void;
+}) {
+  return (
+    <>
+      <div
+        role="alert"
+        className="border-error/30 bg-error/8 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-body-md text-error">
+            The clients connected through the account URL could not be loaded.
+          </p>
+          <p className="text-body-md text-foreground-muted mt-0.5">
+            {error} Until they are, nobody can say which of them should be given this project.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn shrink-0"
+          disabled={disabled || retrying}
+          onClick={onRetry}
+        >
+          {retrying ? "Trying…" : "Try again"}
+        </button>
+      </div>
+      <label className="text-body-md mt-4 flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="accent-foreground mt-1"
+          checked={withoutClients}
+          disabled={disabled}
+          onChange={(event) => onWithoutClients(event.target.checked)}
+        />
+        <span>
+          Add the project without giving it to any client
+          <span className="text-foreground-muted block">
+            A client that was given every project still gets it. Any other is given it afterwards,
+            from Clients.
+          </span>
+        </span>
+      </label>
+    </>
   );
 }

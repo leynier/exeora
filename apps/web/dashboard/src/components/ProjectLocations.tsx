@@ -8,9 +8,9 @@ import {
   type Workspace,
 } from "../api.js";
 import { type Machine, projectsApi } from "../api-projects.js";
-import { removalBlocker } from "../placement.js";
 import { groupByLocation, type ProjectTree } from "../projectModel.js";
 import { refreshPlaces } from "../queries.js";
+import { removalBlocker } from "../survival.js";
 import { AddLocationDialog } from "./AddLocationDialog.js";
 import { AddWorkspaceDialog } from "./AddWorkspaceDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";

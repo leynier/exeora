@@ -82,17 +82,15 @@ export function RemoveWorkspaceDialog({
                 <li>Anything on it that was not pushed. The instance is the only copy of that.</li>
               </>
             ) : (
-              <>
-                <li>
-                  The working copy of {target.label} on {target.where}
-                  {target.localPath ? (
-                    <>
-                      , at <code className="font-mono break-all">{target.localPath}</code>
-                    </>
-                  ) : null}
-                  .
-                </li>
-              </>
+              <li>
+                The working copy of {target.label} on {target.where}
+                {target.localPath ? (
+                  <>
+                    , at <code className="font-mono break-all">{target.localPath}</code>
+                  </>
+                ) : null}
+                .
+              </li>
             )}
           </ul>
           <p className="text-body-md text-foreground-muted mt-3">

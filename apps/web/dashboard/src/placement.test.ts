@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Project, ProjectLocation, User } from "./api.js";
 import type { Machine } from "./api-projects.js";
-import { cloudBlocker, locationCandidates, placement, removalBlocker } from "./placement.js";
+import { cloudBlocker, locationCandidates, placement } from "./placement.js";
 
 const user = (patch: { cloudEnabled?: boolean; used?: number; max?: number | null } = {}) =>
   ({
@@ -124,14 +124,5 @@ describe("locationCandidates", () => {
     expect(locationCandidates(project, [], user({ cloudEnabled: false }))[0]?.blocked).toContain(
       "not enabled",
     );
-  });
-});
-
-describe("removalBlocker", () => {
-  it("refuses the only location and the default one, in the gateway's words", () => {
-    const only = location({});
-    expect(removalBlocker({ locations: [only] }, only)).toContain("Remove the project instead");
-    expect(removalBlocker({ locations: [only, cloud] }, only)).toContain("another default");
-    expect(removalBlocker({ locations: [only, cloud] }, cloud)).toBeNull();
   });
 });

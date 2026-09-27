@@ -3,8 +3,9 @@ import { type ReactNode, useState } from "react";
 import { api, errorText, type Project } from "../api.js";
 import { cloudApi } from "../api-cloud.js";
 import type { CloudInstance, Machine } from "../api-projects.js";
-import { cloudLocation, instanceLabel, instancesOf, livesOnlyOnCloud } from "../projectModel.js";
+import { cloudLocation, instanceLabel, instancesOf } from "../projectModel.js";
 import { refreshPlaces, useMe } from "../queries.js";
+import { livesOnlyOnCloud } from "../survival.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import type { MenuItem } from "./Menu.js";
 import { RemoveProjectDialog } from "./RemoveProjectDialog.js";
@@ -163,7 +164,8 @@ export function useWorkspaceControls(input: {
           onSelect: () => {
             const project = projectOf(instance);
             // The instance that carries a project living only on Cloud takes
-            // the project with it, so it is asked for as what it is.
+            // the project with it, so it is asked for as what it is. A
+            // machine that was removed is not somewhere else it lives.
             if (project && livesOnlyOnCloud(project)) setRemovingProject(project);
             else setDestroying(instance);
           },

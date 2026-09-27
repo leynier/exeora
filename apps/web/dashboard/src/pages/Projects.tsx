@@ -5,8 +5,9 @@ import { McpEndpoint } from "../components/McpEndpoint.js";
 import { MachineSteps } from "../components/Onboarding.js";
 import { ProjectCard } from "../components/ProjectCard.js";
 import { Card, EmptyState, PageHeader, Skeleton } from "../components/ui.js";
-import { isLeaving, workspaceCount } from "../projectModel.js";
+import { workspaceCount } from "../projectModel.js";
 import { useAccountClients, useMachines, useMe, useProjects } from "../queries.js";
+import { isLeaving } from "../survival.js";
 
 /**
  * What the account has, and where each of those things lives.

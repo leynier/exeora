@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { CloudInstance, LocalMachine, Machine } from "./api-projects.js";
+import type { CloudInstance, Machine } from "./api-projects.js";
 import type { Project, ProjectLocation, Workspace } from "./api-types.js";
 import {
   callWorkspaceLabel,
   defaultBranchOf,
-  deletionImpact,
   groupByLocation,
   holdsRoot,
-  isLeaving,
   isOlderCli,
-  livesOnlyOnCloud,
   repositoryLabel,
   rootLabel,
   workspaceCount,
@@ -204,14 +201,6 @@ describe("holdsRoot", () => {
   });
 });
 
-describe("livesOnlyOnCloud", () => {
-  it("is true only when no machine of the person holds the project", () => {
-    expect(livesOnlyOnCloud(project({ locations: [cloud] }))).toBe(true);
-    expect(livesOnlyOnCloud(project())).toBe(false);
-    expect(livesOnlyOnCloud(project({ locations: [] }))).toBe(false);
-  });
-});
-
 describe("groupByLocation", () => {
   const onCloud = workspace({
     id: "wsp_cloud",
@@ -311,43 +300,6 @@ describe("groupByLocation", () => {
   });
 });
 
-describe("deletionImpact", () => {
-  const held = (projectId: string, name: string) => ({
-    projectId,
-    slug: name.toLowerCase(),
-    name,
-    localPath: `/work/${name.toLowerCase()}`,
-    status: "ready" as const,
-    error: null,
-    default: true,
-    workspaces: 0,
-  });
-  const machine: Pick<LocalMachine, "deviceId" | "projects"> = {
-    deviceId: "dev_laptop",
-    projects: [held("prj_widgets", "Widgets"), held("prj_solo", "Solo"), held("prj_half", "Half")],
-  };
-
-  it("deletes what lives only there and keeps what has another location", () => {
-    const impact = deletionImpact(machine, [
-      project(),
-      project({ id: "prj_solo", locations: [laptop] }),
-      // Cloud holding only workspaces still keeps the project: the gateway
-      // starts an instance for the root there before the machine goes.
-      project({ id: "prj_half", locations: [laptop, { ...cloud, deviceId: null }] }),
-    ]);
-
-    expect(impact.surviving.map((entry) => entry.name)).toEqual(["Widgets", "Half"]);
-    expect(impact.deleted.map((entry) => entry.name)).toEqual(["Solo"]);
-  });
-
-  it("does not count a location whose machine was removed", () => {
-    const impact = deletionImpact(machine, [
-      project({ locations: [laptop, { ...desktop, state: "removed" }] }),
-    ]);
-    expect(impact.deleted.map((entry) => entry.name)).toContain("Widgets");
-  });
-});
-
 describe("workspaceOptions", () => {
   const onCloud = workspace({
     id: "wsp_cloud",
@@ -401,7 +353,7 @@ describe("workspaceOptions", () => {
   });
 });
 
-describe("workspaceCount and isLeaving", () => {
+describe("workspaceCount", () => {
   const machines = [
     {
       deviceId: "dev_laptop",
@@ -427,13 +379,5 @@ describe("workspaceCount and isLeaving", () => {
     expect(workspaceCount(machines, "prj_widgets")).toBe(4);
     expect(workspaceCount(machines, "prj_other")).toBe(5);
     expect(workspaceCount([], "prj_widgets")).toBe(0);
-  });
-
-  it("calls a project leaving only when all it has is instances on their way out", () => {
-    const removing = [instance({ state: "removing", status: "destroying" })];
-    expect(isLeaving(project({ locations: [cloud] }), removing)).toBe(true);
-    expect(isLeaving(project({ locations: [cloud] }), [instance({})])).toBe(false);
-    expect(isLeaving(project(), removing)).toBe(false);
-    expect(isLeaving(project({ locations: [cloud] }), [])).toBe(false);
   });
 });
