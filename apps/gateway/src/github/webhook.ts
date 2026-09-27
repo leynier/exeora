@@ -5,14 +5,16 @@ import { db, schema } from "../db/client.js";
 import "../env.js";
 import { type AccessEnv, accessCacheKey } from "./access.js";
 import { linkMatching } from "./links.js";
+import { storedPermissions } from "./permissions.js";
 import { reconcileInstallation } from "./reconcile.js";
 import { cloneUrl, repositoriesCacheKey } from "./repositories.js";
 import { forgetGitHubPerson } from "./user-token.js";
 
 /**
  * What GitHub tells the gateway as it happens: an installation removed or
- * suspended, a repository taken out of one, renamed, moved or deleted, a
- * person taking their authorization back.
+ * suspended, or given the permissions the app started asking for, a
+ * repository taken out of one, renamed, moved or deleted, a person taking
+ * their authorization back.
  *
  * Without these the gateway would learn of each the hard way, as a clone that
  * fails. With them the project says it lost access before anybody tries.
@@ -51,7 +53,7 @@ export async function verifySignature(
 
 interface Payload {
   action?: unknown;
-  installation?: { id?: unknown } | null;
+  installation?: { id?: unknown; permissions?: unknown } | null;
   repository?: { id?: unknown; full_name?: unknown; private?: unknown } | null;
   repository_selection?: unknown;
   repositories_added?: unknown;
@@ -120,6 +122,9 @@ async function dispatch(
     if (action === "deleted") return installationDeleted(env, installationId);
     if (action === "suspend") return suspended(env, installationId, new Date());
     if (action === "unsuspend") return suspended(env, installationId, null);
+    if (action === "new_permissions_accepted") {
+      return permissionsAccepted(env, installationId, body.installation?.permissions);
+    }
     return false;
   }
   if (event === "github_app_authorization") {
@@ -162,6 +167,23 @@ async function suspended(env: WebhookEnv, installationId: number, at: Date | nul
   await db(env)
     .update(schema.githubInstallations)
     .set({ suspendedAt: at, updatedAt: new Date() })
+    .where(eq(schema.githubInstallations.installationId, installationId))
+    .run();
+  return true;
+}
+
+/**
+ * The owner of an installation said yes to what the app started asking for.
+ * The installation is one and the accounts that hold it are many, so what it
+ * grants now is written on the row of each.
+ */
+async function permissionsAccepted(env: WebhookEnv, installationId: number, granted: unknown) {
+  const permissions = storedPermissions(granted);
+  // A delivery that does not say what was accepted changes nothing.
+  if (permissions === null) return false;
+  await db(env)
+    .update(schema.githubInstallations)
+    .set({ permissions, updatedAt: new Date() })
     .where(eq(schema.githubInstallations.installationId, installationId))
     .run();
   return true;

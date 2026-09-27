@@ -65,6 +65,9 @@ export function isRateLimitedAuthRequest(method: string, pathname: string): bool
   );
 }
 
+/** Where `gh` in an instance asks for its token. */
+const GH_TOKEN = /^\/api\/projects\/[^/]+\/gh-token$/;
+
 /**
  * Which limiter, if any, applies to an authenticated request.
  *
@@ -90,17 +93,51 @@ export function limiterFor(
   // per request. It shares the registration budget rather than getting its own.
   // A git credential writes nothing here, but each one can be a token minted
   // at GitHub in the account's name, which is a budget of its own to protect.
+  // The token for `gh` is here for whoever asks without being an instance,
+  // and for a gateway that has no limiter for instances: see `limitFor`.
   if (
     method === "POST" &&
     (pathname === "/api/devices" ||
       pathname === "/api/projects" ||
       pathname.startsWith("/api/cloud/") ||
-      /^\/api\/projects\/[^/]+\/git-credential$/.test(pathname))
+      /^\/api\/projects\/[^/]+\/git-credential$/.test(pathname) ||
+      GH_TOKEN.test(pathname))
   ) {
     return env.RL_WRITE;
   }
 
   return undefined;
+}
+
+/** A limiter, and the key a request is counted under. */
+export interface Limit {
+  limiter: RateLimit;
+  key: string;
+}
+
+/**
+ * Which limiter applies to an authenticated request, and whose budget it is.
+ *
+ * Everything is the account's, keyed by its user id, but for one thing: what
+ * an instance asks for itself. A machine token carries its owner's user id,
+ * and a script that calls `gh` in a loop would otherwise spend the budget
+ * its owner registers machines with. So that is counted on a limiter of its
+ * own, by instance, and one instance that loops does not starve another.
+ */
+export function limitFor(
+  env: Pick<Env, "RL_MCP" | "RL_WRITE" | "RL_MACHINE">,
+  method: string,
+  pathname: string,
+  caller: { userId: string; deviceId?: string | undefined },
+): Limit | undefined {
+  // Without the binding the request is still counted, on the account's
+  // budget: a gateway deployed from an older configuration has no such limiter.
+  const instance = caller.deviceId !== undefined && method === "POST" && GH_TOKEN.test(pathname);
+  if (instance && env.RL_MACHINE) {
+    return { limiter: env.RL_MACHINE, key: `machine:${caller.deviceId}` };
+  }
+  const limiter = limiterFor(env, method, pathname);
+  return limiter && { limiter, key: caller.userId };
 }
 
 /**

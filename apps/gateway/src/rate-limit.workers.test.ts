@@ -5,6 +5,7 @@ import {
   callerAddress,
   isRateLimitedAuthRequest,
   limiterFor,
+  limitFor,
   tooManyRequests,
   withinLimit,
 } from "./rate-limit.js";
@@ -106,6 +107,61 @@ describe("which authenticated requests are counted", () => {
     expect(limiterFor(env, "GET", "/api/clients")).toBeUndefined();
     expect(limiterFor(env, "GET", "/api/tool-calls")).toBeUndefined();
     expect(limiterFor(env, "DELETE", "/api/devices/dev_1")).toBeUndefined();
+  });
+});
+
+describe("whose budget a request is counted on", () => {
+  const GH_TOKEN = "/api/projects/prj_1/gh-token";
+  const person = { userId: "usr_limit_person" };
+  const machine = { userId: "usr_limit_person", deviceId: "dev_limit_machine" };
+
+  it("counts what an instance asks for itself by instance, on a limiter of its own", () => {
+    expect(limitFor(env, "POST", GH_TOKEN, machine)).toEqual({
+      limiter: env.RL_MACHINE,
+      key: "machine:dev_limit_machine",
+    });
+    expect(limitFor(env, "POST", GH_TOKEN, machine)?.limiter).not.toBe(env.RL_WRITE);
+    // Two instances of one account do not share it.
+    const other = { ...machine, deviceId: "dev_limit_other" };
+    expect(limitFor(env, "POST", GH_TOKEN, other)?.key).toBe("machine:dev_limit_other");
+  });
+
+  it("counts everything else on the account, as before", () => {
+    // Git's credential is the account's, whoever asks for it.
+    const credential = "/api/projects/prj_1/git-credential";
+    for (const caller of [person, machine]) {
+      expect(limitFor(env, "POST", credential, caller)).toEqual({
+        limiter: env.RL_WRITE,
+        key: "usr_limit_person",
+      });
+    }
+    expect(limitFor(env, "POST", "/p/prj_1/mcp", person)).toEqual({
+      limiter: env.RL_MCP,
+      key: "usr_limit_person",
+    });
+    expect(limitFor(env, "POST", "/api/devices", person)?.limiter).toBe(env.RL_WRITE);
+    expect(limitFor(env, "GET", "/api/devices", person)).toBeUndefined();
+    expect(limitFor(env, "GET", "/api/relay/dev_limit_machine", machine)).toBeUndefined();
+    // Nothing but that one path is an instance's own.
+    expect(limitFor(env, "GET", GH_TOKEN, machine)).toBeUndefined();
+    expect(limitFor(env, "POST", `${GH_TOKEN}/more`, machine)).toBeUndefined();
+  });
+
+  it("counts the token of `gh` on the account for whoever is not an instance", () => {
+    // They are refused by the route. Counted, so that being refused is not free.
+    expect(limitFor(env, "POST", GH_TOKEN, person)).toEqual({
+      limiter: env.RL_WRITE,
+      key: "usr_limit_person",
+    });
+    expect(limiterFor(env, "POST", GH_TOKEN)).toBe(env.RL_WRITE);
+  });
+
+  it("falls back to the account on a gateway with no limiter for instances", () => {
+    const older = { ...env, RL_MACHINE: undefined } as unknown as Env;
+    expect(limitFor(older, "POST", GH_TOKEN, machine)).toEqual({
+      limiter: env.RL_WRITE,
+      key: "usr_limit_person",
+    });
   });
 });
 

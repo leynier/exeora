@@ -8,6 +8,7 @@ import { hasScope, insufficientScope } from "../oauth/scopes.js";
 import { propsOf } from "../props.js";
 import { GitHubError, GitHubReconnectError, githubConfig } from "./app.js";
 import { projectCredential } from "./credentials.js";
+import { ghToken } from "./gh-token.js";
 import { connectUrl, disconnect, listInstallations } from "./installations.js";
 import { outbound } from "./outbound.js";
 import { listRepositories } from "./repositories.js";
@@ -114,6 +115,27 @@ github.delete("/api/github/installations/:id", async (c) => {
   return c.json({ ok: true, manageUrl: removed.manageUrl });
 });
 
+/** Whether a machine was made for this project of this account, which is all it may ask about. */
+async function isMachineOf(
+  env: Pick<Env, "DB">,
+  deviceId: string,
+  projectId: string,
+  userId: string,
+): Promise<boolean> {
+  const machine = await db(env)
+    .select({ deviceId: schema.cloudMachines.deviceId })
+    .from(schema.cloudMachines)
+    .where(
+      and(
+        eq(schema.cloudMachines.deviceId, deviceId),
+        eq(schema.cloudMachines.projectId, projectId),
+        eq(schema.cloudMachines.userId, userId),
+      ),
+    )
+    .get();
+  return machine !== undefined;
+}
+
 const credentialInput = z.object({ deviceId: z.string().min(1).max(200).optional() });
 
 /**
@@ -148,18 +170,9 @@ github.post("/api/projects/:id/git-credential", async (c) => {
   if (props.deviceId !== undefined) {
     // A machine token carries its owner's user id, which would pass every
     // check below for any of their projects. The machine is what is checked.
-    const machine = await db(c.env)
-      .select({ deviceId: schema.cloudMachines.deviceId })
-      .from(schema.cloudMachines)
-      .where(
-        and(
-          eq(schema.cloudMachines.deviceId, props.deviceId),
-          eq(schema.cloudMachines.projectId, projectId),
-          eq(schema.cloudMachines.userId, userId),
-        ),
-      )
-      .get();
-    if (!machine) return c.json({ error: "forbidden" }, 403);
+    if (!(await isMachineOf(c.env, props.deviceId, projectId, userId))) {
+      return c.json({ error: "forbidden" }, 403);
+    }
   } else {
     const project = await db(c.env)
       .select({ id: schema.projects.id })
@@ -186,6 +199,39 @@ github.post("/api/projects/:id/git-credential", async (c) => {
     if (!credential) return c.json({ error: "no_credential" }, 404);
     c.header("Cache-Control", "no-store");
     return c.json(credential);
+  } catch (error) {
+    if (error instanceof GitHubError) return githubFailure(c, error);
+    throw error;
+  }
+});
+
+/**
+ * What `gh` in an instance asks for: a token to act as the person with.
+ *
+ * It reaches whatever the person reaches on GitHub, which is more than the
+ * one repository git's token is for. So it has one caller, the machine that
+ * was made for the project. The person's CLI runs where their own `gh` is
+ * already signed in, and a browser has no use for a token at all: neither
+ * is answered, and a token that reaches neither cannot be taken from them.
+ */
+github.post("/api/projects/:id/gh-token", async (c) => {
+  const props = propsOf(c.executionCtx);
+  if (props.deviceId === undefined) return c.json({ error: "forbidden" }, 403);
+  if (!hasScope(props, "executor:connect")) return insufficientScope(["executor:connect"]);
+
+  const userId = c.get("userId");
+  const projectId = c.req.param("id");
+  if (!(await isMachineOf(c.env, props.deviceId, projectId, userId))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  // On every answer, the refusals too: none of them is worth keeping, and a
+  // cache that kept one would go on refusing after the person connected.
+  c.header("Cache-Control", "no-store");
+  try {
+    const answer = await ghToken(c.env, userId, projectId, outbound());
+    if (typeof answer === "string") return c.json({ error: answer }, 404);
+    return c.json(answer);
   } catch (error) {
     if (error instanceof GitHubError) return githubFailure(c, error);
     throw error;

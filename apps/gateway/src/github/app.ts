@@ -41,9 +41,17 @@ export interface GitHubConfig {
   credentialsKey: string;
 }
 
+/**
+ * The names GitHub gives permissions in the body of a request for an
+ * installation token. `workflows` has no reading level: it is what lets a
+ * push change the files under `.github/workflows/`, and nothing else.
+ */
 export type GitHubPermissions = Partial<
-  Record<"contents" | "metadata" | "pull_requests", "read" | "write">
->;
+  Record<
+    "contents" | "metadata" | "pull_requests" | "issues" | "actions" | "checks" | "statuses",
+    "read" | "write"
+  >
+> & { workflows?: "write" };
 
 export interface InstallationToken {
   token: string;
@@ -178,6 +186,8 @@ export async function installationToken(
       }),
     },
   );
+  // Thrown before anything is kept: a refusal is never remembered as a token,
+  // so asking for less afterwards is a request of its own, under its own key.
   await expectOk(response);
   const body = (await response.json()) as { token?: unknown; expires_at?: unknown };
   const expiresAt = typeof body.expires_at === "string" ? Date.parse(body.expires_at) : Number.NaN;

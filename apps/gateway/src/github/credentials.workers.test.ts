@@ -178,6 +178,9 @@ const ask = async (
 
 const minting = (asked: Asked[]) => asked.filter((request) => isTokenRequest(request));
 
+/** What git is given by an installation that accepted everything asked of it. */
+const FULL = { contents: "write", metadata: "read", pull_requests: "write", workflows: "write" };
+
 const link = (projectId: string) =>
   db(env)
     .select()
@@ -208,10 +211,8 @@ describe("POST /api/projects/:id/git-credential", () => {
       `POST https://api.github.com/app/installations/${INSTALLATION}/access_tokens`,
     ]);
     expect(asked[0]?.headers.get("Authorization")).toBe(`Bearer ${tokenOf(USER)}`);
-    expect(asked[1]?.body).toEqual({
-      repository_ids: [51],
-      permissions: { contents: "write", metadata: "read", pull_requests: "write" },
-    });
+    // Asked for once, and granted: nothing less is tried after a yes.
+    expect(asked[1]?.body).toEqual({ repository_ids: [51], permissions: FULL });
   });
 
   it("answers a cloud machine for the project it was made for, and no other", async () => {
@@ -280,7 +281,8 @@ describe("POST /api/projects/:id/git-credential", () => {
     });
   });
 
-  it("asks for less when the installation was not given pull requests", async () => {
+  it("asks for less of an installation that was not given everything", async () => {
+    // Neither workflows nor pull requests. The chain has a file of its own.
     const { asked } = github({}, (request) => {
       if (!isTokenRequest(request)) return undefined;
       const { permissions } = request.body as { permissions: Record<string, string> };
@@ -293,6 +295,7 @@ describe("POST /api/projects/:id/git-credential", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ password: "ghs_without_pull_requests" });
     expect(minting(asked).map((request) => request.body)).toEqual([
+      { repository_ids: [51], permissions: FULL },
       {
         repository_ids: [51],
         permissions: { contents: "write", metadata: "read", pull_requests: "write" },
@@ -301,14 +304,14 @@ describe("POST /api/projects/:id/git-credential", () => {
     ]);
   });
 
-  it("gives up after that one retry, and on anything that is not about permissions", async () => {
+  it("gives up at the end of the chain, and on anything that is not about permissions", async () => {
     const refusing = github({}, (request) =>
       isTokenRequest(request) ? Response.json({}, { status: 422 }) : undefined,
     );
-    const twice = await ask(PATH);
-    expect(twice.status).toBe(502);
-    expect(await twice.json()).toMatchObject({ error: "github_unavailable" });
-    expect(minting(refusing.asked)).toHaveLength(2);
+    const thrice = await ask(PATH);
+    expect(thrice.status).toBe(502);
+    expect(await thrice.json()).toMatchObject({ error: "github_unavailable" });
+    expect(minting(refusing.asked)).toHaveLength(3);
 
     restore?.();
     const suspended = github({}, (request) =>
