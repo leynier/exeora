@@ -1,9 +1,10 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as core from "./schema.js";
 import * as cloud from "./schema-cloud.js";
+import * as locations from "./schema-locations.js";
 
-/** Both schema modules as one object, so `schema.cloudMachines` reads like `schema.devices`. */
-const schema = { ...core, ...cloud };
+/** Every schema module as one object, so `schema.cloudMachines` reads like `schema.devices`. */
+const schema = { ...core, ...cloud, ...locations };
 
 /**
  * Narrowed to the one binding it uses rather than taking the whole `Env`.

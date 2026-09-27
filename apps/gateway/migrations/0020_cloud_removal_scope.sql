@@ -1,0 +1,1 @@
+ALTER TABLE `cloud_projects` ADD `deleting_scope` text DEFAULT 'project' NOT NULL;

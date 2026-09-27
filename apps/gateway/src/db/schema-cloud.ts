@@ -46,6 +46,14 @@ export const cloudProjects = sqliteTable(
      * the removal never saw, left behind with its slot on the plan.
      */
     deletingAt: integer("deleting_at", { mode: "timestamp_ms" }),
+    /**
+     * What is being removed: the whole `project`, or only its Cloud
+     * `location`, which leaves the project where else it lives. Read only
+     * while `deletingAt` is set.
+     */
+    deletingScope: text("deleting_scope", { enum: ["project", "location"] })
+      .notNull()
+      .default("project"),
     createdAt: stamp("created_at"),
     updatedAt: stamp("updated_at"),
   },

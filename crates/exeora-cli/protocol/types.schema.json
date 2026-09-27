@@ -1006,6 +1006,39 @@
                             "reasons"
                           ],
                           "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "prepared"
+                            },
+                            "localPath": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "adopted": {
+                              "type": "boolean"
+                            },
+                            "branch": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "localPath",
+                            "adopted",
+                            "branch"
+                          ],
+                          "additionalProperties": false
                         }
                       ]
                     }
@@ -1931,6 +1964,61 @@
                     "action",
                     "branch",
                     "reuseExistingBranch"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "project_prepare"
+                    },
+                    "repository": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1000
+                        },
+                        "defaultBranch": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255
+                        },
+                        "slug": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60,
+                          "pattern": "^[a-z0-9][a-z0-9-]*$"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "credential": {
+                          "default": "machine",
+                          "type": "string",
+                          "enum": [
+                            "exeora",
+                            "machine"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "slug",
+                        "name",
+                        "credential"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "repository"
                   ],
                   "additionalProperties": false
                 }

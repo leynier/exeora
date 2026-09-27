@@ -16,7 +16,18 @@ export const WorkspaceSummary = z.object({
   managed: z.boolean(),
 });
 
-export const ListGitWorkspacesInput = z.object({});
+/**
+ * Which of the project's locations a tool acts on: the name of one of the
+ * user's machines, or `cloud`. Resolved by the gateway and never sent to a
+ * machine, which by then is the one that was chosen.
+ */
+const location = z.string().min(1).max(200);
+
+export const ListGitWorkspacesInput = z.object({
+  where: location
+    .optional()
+    .describe("Location to ask: a machine name or `cloud`. Defaults to the project's default."),
+});
 
 export const ListGitWorkspacesOutput = z.object({
   workspaces: z.array(
@@ -47,6 +58,11 @@ export const CreateWorkspaceInput = z
     slug: workspaceSlug
       .optional()
       .describe("Stable URL-safe selector. Derived from the branch by default."),
+    where: location
+      .optional()
+      .describe(
+        "Location to create it in: a machine name or `cloud`, from list_projects. Defaults to the project's default location.",
+      ),
   })
   .refine((input) => !(input.from && input.reuseExistingBranch), {
     message: "from cannot be used with reuseExistingBranch",

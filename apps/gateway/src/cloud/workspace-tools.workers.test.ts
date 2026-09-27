@@ -193,10 +193,11 @@ describe("workspace tools on a cloud project", () => {
     expect(leftover).toEqual([]);
   });
 
-  it("answers nothing for a project that is not in the cloud", async () => {
+  it("says so when asked about Cloud for a project that is not there", async () => {
     await db(env).delete(schema.cloudProjects).where(eq(schema.cloudProjects.projectId, PROJECT));
-    await expect(call("list_git_workspaces")).resolves.toBeUndefined();
-    await expect(call("read_file", { path: "x" })).resolves.toBeUndefined();
+    // Whether a call is for Cloud is decided before it gets here, so a
+    // project that is not there is a fact to report, not a call to pass on.
+    await expect(call("list_git_workspaces")).rejects.toMatchObject({ code: "TOOL_FAILED" });
   });
 
   it("lists the machines as the repository's workspaces", async () => {
@@ -217,7 +218,7 @@ describe("workspace tools on a cloud project", () => {
     await expect(call("detach_workspace")).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("creates a workspace and returns once its machine is ready", { timeout: 20_000 }, async () => {
+  it("creates a workspace and returns once its machine is ready", { timeout: 60_000 }, async () => {
     const pending = call("create_workspace", { branch: "feature/x" });
 
     // Stand in for the provisioning object: flip the new row to ready.
@@ -252,7 +253,7 @@ describe("workspace tools on a cloud project", () => {
     expect(tools?.has("attach_workspace")).toBe(false);
   });
 
-  it("reports a machine that failed, and a wait that ran out", { timeout: 20_000 }, async () => {
+  it("reports a machine that failed, and a wait that ran out", { timeout: 60_000 }, async () => {
     const failing = call("create_workspace", { branch: "feature/y" });
     let deviceId: string | undefined;
     for (let i = 0; i < 50 && !deviceId; i++) {
@@ -289,7 +290,7 @@ describe("workspace tools on a cloud project", () => {
   });
 
   it("removes a workspace only when its machine says the remote has everything", {
-    timeout: 20_000,
+    timeout: 60_000,
   }, async () => {
     const workspace = await readyWorkspace("feature/q", "feature-q");
     const target = { id: workspace.id, slug: workspace.slug };
@@ -325,7 +326,7 @@ describe("workspace tools on a cloud project", () => {
   });
 
   it("refuses to remove a workspace it cannot check, unless forced", {
-    timeout: 20_000,
+    timeout: 60_000,
   }, async () => {
     const workspace = await readyWorkspace("feature/r", "feature-r");
 

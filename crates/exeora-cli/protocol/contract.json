@@ -1054,6 +1054,39 @@
                             "reasons"
                           ],
                           "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "prepared"
+                            },
+                            "localPath": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "adopted": {
+                              "type": "boolean"
+                            },
+                            "branch": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "localPath",
+                            "adopted",
+                            "branch"
+                          ],
+                          "additionalProperties": false
                         }
                       ]
                     }
@@ -1979,6 +2012,61 @@
                     "action",
                     "branch",
                     "reuseExistingBranch"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "project_prepare"
+                    },
+                    "repository": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1000
+                        },
+                        "defaultBranch": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255
+                        },
+                        "slug": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60,
+                          "pattern": "^[a-z0-9][a-z0-9-]*$"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "credential": {
+                          "default": "machine",
+                          "type": "string",
+                          "enum": [
+                            "exeora",
+                            "machine"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "url",
+                        "slug",
+                        "name",
+                        "credential"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "repository"
                   ],
                   "additionalProperties": false
                 }
@@ -2988,7 +3076,14 @@
         "input": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
-          "properties": {},
+          "properties": {
+            "where": {
+              "description": "Location to ask: a machine name or `cloud`. Defaults to the project's default.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
           "additionalProperties": false
         },
         "output": {
@@ -3074,6 +3169,12 @@
               "minLength": 1,
               "maxLength": 60,
               "pattern": "^[a-z0-9][a-z0-9-]*$"
+            },
+            "where": {
+              "description": "Location to create it in: a machine name or `cloud`, from list_projects. Defaults to the project's default location.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             }
           },
           "required": [

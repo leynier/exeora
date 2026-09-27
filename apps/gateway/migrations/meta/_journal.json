@@ -134,6 +134,20 @@
       "when": 1790468871624,
       "tag": "0018_machine_error_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1790469480074,
+      "tag": "0019_project_locations",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790469841897,
+      "tag": "0020_cloud_removal_scope",
+      "breakpoints": true
     }
   ]
 }

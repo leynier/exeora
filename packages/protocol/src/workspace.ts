@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RepositoryRef } from "./repository.js";
 
 const path = z.string().min(1).max(4_096);
 const paths = z.array(path).min(1).max(1_000);
@@ -115,6 +116,14 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
       .regex(/^[a-z0-9][a-z0-9-]*$/)
       .optional(),
   }),
+  /**
+   * Makes sure this machine holds a copy of the project: adopts a checkout of
+   * the same repository that is already in the machine's projects folder, or
+   * clones one there. Sent before the first workspace on a machine that was
+   * chosen as a location and has no copy yet. Only to a CLI that announced
+   * `PROJECT_CLONE_FEATURE`.
+   */
+  z.object({ action: z.literal("project_prepare"), repository: RepositoryRef }),
 ]);
 
 export type WorkspaceAction = z.infer<typeof WorkspaceAction>;
@@ -149,11 +158,24 @@ export const WorkspaceUnpublished = z.object({
 
 export type WorkspaceUnpublished = z.infer<typeof WorkspaceUnpublished>;
 
+export const ProjectPrepared = z.object({
+  kind: z.literal("prepared"),
+  /** Where the copy is on the machine. */
+  localPath: z.string().min(1),
+  /** True when a checkout that was already there was taken, false when it was cloned. */
+  adopted: z.boolean(),
+  /** The branch the copy has checked out. */
+  branch: z.string().nullable(),
+});
+
+export type ProjectPrepared = z.infer<typeof ProjectPrepared>;
+
 export const WorkspaceValue = z.union([
   GitStatus,
   GitDiff,
   WorkspaceMutationResult,
   WorkspaceUnpublished,
+  ProjectPrepared,
 ]);
 export type WorkspaceValue = z.infer<typeof WorkspaceValue>;
 

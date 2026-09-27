@@ -54,6 +54,12 @@ export async function dispatchMcpToDevice(
   }
 
   const workspace = await resolveWorkspace(env, projectId, call.workspace);
+  if (!workspace && project.defaultRemoved) {
+    throw new ExeoraError(
+      "LOCAL_EXECUTOR_OFFLINE",
+      "The machine of this project's default location was removed.",
+    );
+  }
   const deviceId = targetDevice(project, workspace);
   const relay = env.DEVICE_RELAY.getByName(relayName(userId, deviceId));
   // The descriptor the caller resolved came from the project machine's

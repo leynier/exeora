@@ -1,8 +1,10 @@
 import type { CloudCliConfig, CloudMachineStatus } from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { permanentlyDeleteDevice, relayName, revokeDevice } from "../api/ops.js";
+import { livesElsewhere } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import { explainFailure } from "./machine-errors.js";
+import { finishCloudRemoval } from "./teardown.js";
 import "../env.js";
 import {
   bootstrapFatalReason,
@@ -220,12 +222,13 @@ async function waitHello(context: StepContext, record: MachineRecord): Promise<S
 const CHILDREN_RECHECK_MS = 10_000;
 
 async function destroy(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
-  // The main machine carries the project: deleting its device cascades the
-  // project's rows away, and with them the record of every other machine.
-  // So it goes last, and only once each of those has a destruction of its own
-  // under way; one whose object was never told is told here, and the main
-  // waits until the row says so.
-  if (record.workspaceId === null) {
+  // When the project itself is being removed, the machine that holds its root
+  // goes last: deleting its device can cascade the project's rows away, and
+  // with them the record of every other machine. So it waits until each of
+  // those has a destruction of its own under way; one whose object was never
+  // told is told here. A root machine that goes on its own, from a project
+  // that lives elsewhere too, takes nothing with it and waits for nobody.
+  if (record.workspaceId === null && (await removingProject(context.env, record))) {
     const children = await db(context.env)
       .select({
         deviceId: schema.cloudMachines.deviceId,
@@ -257,10 +260,27 @@ async function destroy(context: StepContext, record: MachineRecord): Promise<Ste
   await revokeDevice(context.env, record.userId, record.deviceId);
   await deleteSprite(context.sprites, record.spriteName, context.fetcher);
   await permanentlyDeleteDevice(context.env, record.userId, record.deviceId);
+  // The last machine to go finishes what the removal asked for.
+  await finishCloudRemoval(context.env, record.userId, record.projectId, record.deviceId);
   await context.storage.deleteAll();
   // The one thing kept: a mark that refuses a `provision()` arriving late.
   await context.storage.put("tombstone", Date.now());
   return { kind: "done" };
+}
+
+async function removingProject(env: Pick<Env, "DB">, record: MachineRecord): Promise<boolean> {
+  const cloud = await db(env)
+    .select({
+      deletingAt: schema.cloudProjects.deletingAt,
+      scope: schema.cloudProjects.deletingScope,
+    })
+    .from(schema.cloudProjects)
+    .where(eq(schema.cloudProjects.projectId, record.projectId))
+    .get();
+  if (cloud?.deletingAt) return cloud.scope === "project";
+  // Nobody marked anything, and the project lives nowhere else: this machine
+  // going takes the project with it all the same, so it goes the same way.
+  return !(await livesElsewhere(env, record.projectId, record.deviceId));
 }
 
 /** Whether the record is still in the phase this step started in. */

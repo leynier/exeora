@@ -15,22 +15,18 @@ import "../env.js";
 import { newId } from "../ids.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import type { CloudEnv } from "./access.js";
-import {
-  cloudProjectOf,
-  createCloudWorkspace,
-  destroyCloudWorkspace,
-  type ProvisionError,
-} from "./provisioning.js";
+import { addCloudLocation, type CloudLocationError } from "./location.js";
+import { cloudProjectOf, createCloudWorkspace, destroyCloudWorkspace } from "./provisioning.js";
 
 /**
- * The workspace lifecycle tools, answered here for a cloud project.
+ * The workspace lifecycle tools, answered here when they act on Exeora Cloud.
  *
- * On a laptop these tools are git worktrees the CLI makes and removes. On a
- * cloud project a workspace is a machine, so they are answered by the gateway,
- * which is the only party that can create one. Policy, approval and the audit
- * row have already happened by the time a call gets here: this sits exactly
- * where the relay call would, and returns undefined for any project that is
- * not a cloud project so the relay call happens instead.
+ * On somebody's own machine these tools are git worktrees the CLI makes and
+ * removes. On Exeora Cloud a workspace is a machine, so they are answered by
+ * the gateway, which is the only party that can create one. Policy, approval
+ * and the audit row have already happened by the time a call gets here: this
+ * sits exactly where the relay call would. Whether a call is for Cloud was
+ * decided by where it was placed, before it got here.
  */
 
 /** The time a call waits for a new machine before handing the wait back to the agent. */
@@ -67,8 +63,18 @@ export async function answerCloudWorkspaceTool(
   env: CloudEnv,
   call: CloudToolCall,
 ): Promise<unknown | undefined> {
-  const project = await cloudProjectOf(env, call.userId, call.projectId);
-  if (!project) return undefined;
+  let project = await cloudProjectOf(env, call.userId, call.projectId);
+  // Asking for a workspace on Cloud is asking for the project to be there.
+  // Putting it there costs nothing, so it is done rather than demanded as a
+  // step somebody has to take on another page first.
+  if (!project && call.tool === "create_workspace") {
+    const added = await addCloudLocation(env, call.userId, call.projectId);
+    if (added !== true) throw toolError(added);
+    project = await cloudProjectOf(env, call.userId, call.projectId);
+  }
+  if (!project) {
+    throw new ExeoraError("TOOL_FAILED", "This project is not on Exeora Cloud.");
+  }
 
   switch (call.tool) {
     case "list_git_workspaces":
@@ -81,7 +87,7 @@ export async function answerCloudWorkspaceTool(
     case "detach_workspace":
       throw new ExeoraError(
         "FORBIDDEN",
-        "Cloud projects manage their own workspaces. Use create_workspace and remove_workspace.",
+        "Exeora Cloud manages its own workspaces. Use create_workspace and remove_workspace there.",
       );
     default:
       return undefined;
@@ -118,25 +124,38 @@ export async function listWorkspacesWithCloud(
 }
 
 async function listGitWorkspaces(env: Pick<Env, "DB">, projectId: string, defaultBranch: string) {
-  const rows = await db(env)
+  // Only what is on Cloud: the same project may have worktrees on somebody's
+  // machine, and those are that machine's to list.
+  const machines = await db(env)
     .select({
+      workspaceId: schema.cloudMachines.workspaceId,
       slug: schema.workspaces.slug,
       branch: schema.workspaces.branch,
       status: schema.cloudMachines.status,
     })
-    .from(schema.workspaces)
-    .leftJoin(schema.cloudMachines, eq(schema.cloudMachines.workspaceId, schema.workspaces.id))
-    .where(eq(schema.workspaces.projectId, projectId))
+    .from(schema.cloudMachines)
+    .leftJoin(schema.workspaces, eq(schema.workspaces.id, schema.cloudMachines.workspaceId))
+    .where(eq(schema.cloudMachines.projectId, projectId))
     .all();
+  const root = machines.find((machine) => machine.workspaceId === null);
+  const rows = machines.flatMap((machine) =>
+    machine.workspaceId !== null && machine.slug !== null
+      ? [{ slug: machine.slug, branch: machine.branch, status: machine.status }]
+      : [],
+  );
   return {
     workspaces: [
-      {
-        path: CLOUD_WORKSPACE_ROOT,
-        branch: defaultBranch,
-        primary: true,
-        connected: true,
-        connectedSlug: CLOUD_MAIN_WORKSPACE_SLUG,
-      },
+      ...(root
+        ? [
+            {
+              path: CLOUD_WORKSPACE_ROOT,
+              branch: defaultBranch,
+              primary: true,
+              connected: root.status === "ready",
+              connectedSlug: CLOUD_MAIN_WORKSPACE_SLUG,
+            },
+          ]
+        : []),
       ...rows.map((row) => ({
         path: CLOUD_WORKSPACE_ROOT,
         branch: row.branch,
@@ -302,8 +321,10 @@ async function removeWorkspace(env: CloudEnv, call: CloudToolCall) {
   };
 }
 
-function toolError(error: ProvisionError): ExeoraError {
+function toolError(error: CloudLocationError): ExeoraError {
   switch (error.error) {
+    case "no_repository":
+      return new ExeoraError("TOOL_FAILED", error.message);
     case "cloud_disabled":
       return new ExeoraError("FORBIDDEN", "Exeora Cloud is not enabled for this account.");
     case "cli_unsupported":

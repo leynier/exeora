@@ -182,17 +182,27 @@ export const projects = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * The machine of the project's default location: where a call that names
+     * no workspace lands. Every place the project lives is a row in
+     * `project_locations`; this is the one chosen among them.
+     */
     deviceId: text("device_id")
       .notNull()
       .references(() => devices.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     /**
-     * Absolute path on the user's machine. Stored for display only; the
+     * Absolute path at the default location. Stored for display only; the
      * executor is the authority on where a project lives and confines every
      * path to it. The gateway never sends this value to a tool.
      */
     localPath: text("local_path").notNull(),
+    /** Where the repository is cloned from. Null for a directory with no remote. */
+    repoUrl: text("repo_url"),
+    /** `repoUrl` normalised by `repositoryKey`, which is what makes one repository one project. */
+    repoKey: text("repo_key"),
+    defaultBranch: text("default_branch"),
     /**
      * What an agent is allowed to do here, as `CommandPolicy` JSON from
      * `@exeora/protocol`. Null means the project predates the setting, which
@@ -209,6 +219,9 @@ export const projects = sqliteTable(
   (table) => [
     uniqueIndex("projects_user_slug").on(table.userId, table.slug),
     index("projects_device").on(table.deviceId),
+    // Not unique: accounts older than this column may hold the same repository
+    // twice, and those are merged by a person rather than refused by an index.
+    index("projects_user_repo").on(table.userId, table.repoKey),
   ],
 );
 
@@ -227,10 +240,9 @@ export const workspaces = sqliteTable(
     localPath: text("local_path").notNull(),
     managed: integer("managed", { mode: "boolean" }).notNull().default(false),
     /**
-     * The machine serving this workspace when it is not the project's own.
-     * Null for a worktree on the project's machine, which is every local
-     * workspace; set for a cloud workspace, which is a machine of its own.
-     * Cascades because a cloud workspace without its machine is nothing.
+     * The machine that holds this checkout. Null only on rows older than
+     * locations, which read as the project's default machine. Cascades because
+     * a checkout without its machine is nothing.
      */
     deviceId: text("device_id").references(() => devices.id, { onDelete: "cascade" }),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })

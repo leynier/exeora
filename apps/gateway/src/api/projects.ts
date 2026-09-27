@@ -1,6 +1,6 @@
-import { CommandPolicy } from "@exeora/protocol";
+import { CommandPolicy, httpsRepositoryUrl, repositoryKey } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { grantNewProject } from "../account-access.js";
@@ -9,14 +9,13 @@ import { parsePolicy } from "../clients.js";
 import { destroyCloudProject } from "../cloud/provisioning.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
-import { newId } from "../ids.js";
-import { limitsFor } from "../plans.js";
-import { planOf } from "./plan.js";
+import { locationsOf } from "../locations.js";
+import { registerProject } from "../project-register.js";
 import type { ApiEnv } from "./router.js";
 
 /**
- * The directories a machine serves, one row each, and the command policy that
- * applies inside them.
+ * The projects of an account, one row per repository wherever it lives, and
+ * the command policy that applies inside them.
  */
 
 export const projects = new Hono<ApiEnv>();
@@ -30,8 +29,19 @@ const projectInput = z.object({
     .max(60)
     .regex(/^[a-z0-9][a-z0-9-]*$/, "Use lowercase letters, digits and hyphens."),
   localPath: z.string().min(1).max(1000),
+  /** The checkout's remote, when it has one. What makes it the same project on another machine. */
+  repoUrl: z.string().min(1).max(1000).optional(),
+  defaultBranch: z.string().min(1).max(255).optional(),
 });
 
+/**
+ * Registers a directory on a machine.
+ *
+ * One repository is one project. A checkout whose remote is already a project
+ * of this account joins it as another location, whatever the directory is
+ * called; only a repository the account has not seen, or a directory with no
+ * remote, becomes a project of its own.
+ */
 projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
   const body = c.req.valid("json");
   const userId = c.get("userId");
@@ -52,117 +62,79 @@ projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
   // projects are made through the Cloud routes, never registered onto it.
   if (device.kind === "cloud") return c.json({ error: "cloud_device" }, 400);
 
-  const existing = await db(c.env)
-    .select({ id: schema.projects.id, cloud: schema.cloudProjects.projectId })
-    .from(schema.projects)
-    .leftJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
-    .where(and(eq(schema.projects.userId, userId), eq(schema.projects.slug, body.slug)))
-    .get();
-  // A cloud project is its machines; pointing it at a laptop would leave the
-  // machines behind and send the project's calls to a checkout of their own.
-  if (existing?.cloud) return c.json({ error: "cloud_project" }, 409);
-
-  const id = existing?.id ?? newId("prj");
-
-  if (existing) {
-    // Re-registering an existing slug does not consume a new slot.
-    const result = await db(c.env).run(sql`
-      UPDATE projects
-         SET device_id = ${body.deviceId}, name = ${body.name}, local_path = ${body.localPath}
-       WHERE id = ${id} AND user_id = ${userId}
-         AND EXISTS (
-           SELECT 1 FROM devices
-            WHERE id = ${body.deviceId} AND user_id = ${userId} AND revoked_at IS NULL
-         )
-    `);
-    if ((result.meta.changes ?? 0) === 0) return c.json({ error: "device_revoked" }, 409);
-  } else {
-    const plan = await planOf(c.env, userId);
-    const limits = limitsFor(plan);
-
-    // Same atomic pattern as devices: the cap lives in the INSERT, not in a
-    // prior SELECT that a second request could race.
-    if (limits.maxProjects !== null) {
-      const result = await db(c.env).run(
-        sql`
-            INSERT INTO projects (id, user_id, device_id, name, slug, local_path)
-            SELECT ${id}, ${userId}, ${body.deviceId}, ${body.name}, ${body.slug}, ${body.localPath}
-            FROM devices
-            WHERE id = ${body.deviceId}
-              AND user_id = ${userId}
-              AND revoked_at IS NULL
-              AND (
-              SELECT COUNT(*) FROM projects WHERE user_id = ${userId}
-            ) < ${limits.maxProjects}
-          `,
-      );
-
-      if ((result.meta.changes ?? 0) === 0) {
-        if (!(await deviceIsActive(c.env, userId, body.deviceId))) {
-          return c.json({ error: "device_revoked" }, 409);
-        }
-        return c.json(
-          { error: "plan_limit", limit: "projects", max: limits.maxProjects, plan },
-          403,
-        );
+  const repoKey = repositoryKey(body.repoUrl);
+  const repository = repoKey
+    ? {
+        repoUrl: httpsRepositoryUrl(body.repoUrl ?? "") ?? body.repoUrl ?? null,
+        repoKey,
+        defaultBranch: body.defaultBranch ?? null,
       }
-    } else {
-      const result = await db(c.env).run(sql`
-        INSERT INTO projects (id, user_id, device_id, name, slug, local_path)
-        SELECT ${id}, ${userId}, ${body.deviceId}, ${body.name}, ${body.slug}, ${body.localPath}
-        FROM devices
-        WHERE id = ${body.deviceId} AND user_id = ${userId} AND revoked_at IS NULL
-      `);
-      if ((result.meta.changes ?? 0) === 0) return c.json({ error: "device_revoked" }, 409);
-    }
+    : null;
+
+  const registered = await registerProject(c.env, userId, body, repository);
+  if ("error" in registered) {
+    return c.json(registered, registered.error === "plan_limit" ? 403 : 409);
   }
+  if (registered.created) await grantNewProject(c.env, { userId, projectId: registered.id });
 
-  if (!existing) await grantNewProject(c.env, { userId, projectId: id });
-
-  return c.json({ id, slug: body.slug, name: body.name }, existing ? 200 : 201);
+  return c.json(
+    {
+      id: registered.id,
+      slug: registered.slug,
+      name: registered.name,
+      // `joined` is a machine that became one more place an existing project
+      // lives; the CLI says so rather than announcing a new project.
+      location: registered.location,
+    },
+    registered.created ? 201 : 200,
+  );
 });
 
-async function deviceIsActive(env: Pick<Env, "DB">, userId: string, deviceId: string) {
-  return Boolean(
-    await db(env)
-      .select({ id: schema.devices.id })
-      .from(schema.devices)
-      .where(
-        and(
-          eq(schema.devices.id, deviceId),
-          eq(schema.devices.userId, userId),
-          isNull(schema.devices.revokedAt),
-        ),
-      )
-      .get(),
-  );
-}
-
 projects.get("/api/projects", async (c) => {
+  const userId = c.get("userId");
   // The cloud row rides along so the dashboard can tell a repository on an
   // Exeora machine from a directory on the user's own, in one request.
   const rows = await db(c.env)
     .select({
       project: schema.projects,
-      repoUrl: schema.cloudProjects.repoUrl,
-      defaultBranch: schema.cloudProjects.defaultBranch,
+      cloudRepoUrl: schema.cloudProjects.repoUrl,
+      cloudBranch: schema.cloudProjects.defaultBranch,
+      hasCredential: schema.cloudProjects.credentialCiphertext,
     })
     .from(schema.projects)
     .leftJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
-    .where(eq(schema.projects.userId, c.get("userId")))
+    .where(eq(schema.projects.userId, userId))
+    .orderBy(schema.projects.name)
     .all();
 
+  const locations = await locationsOf(
+    c.env,
+    userId,
+    rows.map(({ project }) => project),
+  );
+
   return c.json(
-    rows.map(({ project, repoUrl, defaultBranch }) => ({
+    rows.map(({ project, cloudRepoUrl, cloudBranch, hasCredential }) => ({
       id: project.id,
       slug: project.slug,
       name: project.name,
+      /** The machine of the default location. */
       deviceId: project.deviceId,
       localPath: project.localPath,
+      repoUrl: project.repoUrl,
+      defaultBranch: project.defaultBranch,
+      locations: locations.get(project.id) ?? [],
       mcpUrl: new URL(`/p/${project.id}/mcp`, c.env.EXEORA_BASE_URL).toString(),
       policy: parsePolicy(project.commandPolicy),
       createdAt: project.createdAt.getTime(),
-      cloud: repoUrl !== null && defaultBranch !== null ? { repoUrl, defaultBranch } : null,
+      cloud:
+        cloudRepoUrl !== null && cloudBranch !== null
+          ? {
+              repoUrl: cloudRepoUrl,
+              defaultBranch: cloudBranch,
+              hasCredential: hasCredential !== null,
+            }
+          : null,
     })),
   );
 });
@@ -195,8 +167,8 @@ projects.put("/api/projects/:id/policy", zValidator("json", CommandPolicy), asyn
 projects.delete("/api/projects/:id", async (c) => {
   const projectId = c.req.param("id");
   const userId = c.get("userId");
-  // A cloud project is its machines: deleting it means taking those down,
-  // and the last of them takes the project's row with it.
+  // A project on Exeora Cloud has machines there: those are taken down first,
+  // and the last of them to go removes the project's row.
   if (await destroyCloudProject(c.env, userId, projectId)) return c.json({ ok: true }, 202);
   const results = await c.env.DB.batch([
     ownedProjectDeletionStatement(c.env, userId, projectId),

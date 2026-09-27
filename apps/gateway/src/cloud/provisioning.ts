@@ -2,8 +2,9 @@ import {
   CLOUD_MAIN_WORKSPACE_SLUG,
   CLOUD_WORKSPACE_ROOT,
   cliSupportsCloud,
+  repositoryKey,
 } from "@exeora/protocol";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { planOf } from "../api/plan.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
@@ -11,7 +12,6 @@ import { newId } from "../ids.js";
 import { limitsFor, type PlanId } from "../plans.js";
 import { type CloudEnv, cloudAccess, spriteNameFor } from "./access.js";
 import { decryptSecret, encryptSecret } from "./credentials.js";
-import type { MachineSeed } from "./machine-do.js";
 import { cliUnsupported, insertCloudDevice, startMachine } from "./machine-start.js";
 import { machineTokenHash, mintMachineToken } from "./machine-tokens.js";
 import { slugFromBranch, validBranch } from "./naming.js";
@@ -37,6 +37,8 @@ export type ProvisionError =
   | { error: "invalid_branch"; message: string }
   | { error: "not_retryable" }
   | { error: "not_found" };
+
+export { destroyCloudProject, destroyCloudWorkspace } from "./teardown.js";
 
 export interface Credential {
   username: string;
@@ -102,8 +104,8 @@ export async function createCloudProject(
       limits.maxCloudMachines,
     ),
     env.DB.prepare(
-      `INSERT INTO projects (id, user_id, device_id, name, slug, local_path)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6 FROM devices
+      `INSERT INTO projects (id, user_id, device_id, name, slug, local_path, repo_url, repo_key, default_branch)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?8, ?9, ?10 FROM devices
         WHERE id = ?3
           AND (?7 IS NULL OR (SELECT COUNT(*) FROM projects WHERE user_id = ?2) < ?7)`,
     ).bind(
@@ -114,6 +116,9 @@ export async function createCloudProject(
       input.slug,
       CLOUD_WORKSPACE_ROOT,
       limits.maxProjects,
+      input.repoUrl,
+      repositoryKey(input.repoUrl),
+      input.defaultBranch,
     ),
     env.DB.prepare(
       `INSERT INTO cloud_projects (project_id, user_id, repo_url, default_branch, credential_username, credential_ciphertext)
@@ -130,6 +135,11 @@ export async function createCloudProject(
       `INSERT INTO cloud_machines (device_id, user_id, project_id, workspace_id, sprite_name, token_hash, status, step)
        SELECT ?1, ?2, ?3, NULL, ?4, ?5, 'creating', 'Creating machine' FROM projects WHERE id = ?3`,
     ).bind(deviceId, userId, projectId, spriteName, tokenHash),
+    // Cloud is where this project lives, and the machine above holds its root.
+    env.DB.prepare(
+      `INSERT INTO project_locations (id, project_id, user_id, kind, device_id, local_path, status)
+       SELECT ?1, ?2, ?3, 'cloud', ?4, ?5, 'ready' FROM projects WHERE id = ?2`,
+    ).bind(newId("loc"), projectId, userId, deviceId, CLOUD_WORKSPACE_ROOT),
   ]);
 
   if ((results[0]?.meta.changes ?? 0) === 0) {
@@ -174,10 +184,12 @@ export async function createCloudWorkspace(
   if (!validBranch(input.branch) || (input.from !== undefined && !validBranch(input.from))) {
     return { error: "invalid_branch", message: "That is not a valid branch name." };
   }
-  if (input.branch === project.defaultBranch) {
+  // The default branch is taken only where a machine already holds it: Cloud
+  // that has no project root is free to make a workspace of it.
+  if (input.branch === project.defaultBranch && (await hasCloudRoot(env, projectId))) {
     return {
       error: "invalid_branch",
-      message: `${project.defaultBranch} is the project's default branch and is already served by its main workspace.`,
+      message: `${project.defaultBranch} is the project's default branch and is already served by the project root on Exeora Cloud.`,
     };
   }
 
@@ -246,65 +258,6 @@ export async function createCloudWorkspace(
     credential,
   });
   return { workspaceId, deviceId, slug };
-}
-
-/** Takes every machine of the project down; the main one last, since its device carries the project. */
-export async function destroyCloudProject(
-  env: CloudEnv,
-  userId: string,
-  projectId: string,
-): Promise<boolean> {
-  // Marked before the machines are read, so none can be added after the list
-  // is taken; the mark goes with the row when the main machine's device does.
-  const marked = await db(env)
-    .update(schema.cloudProjects)
-    .set({ deletingAt: new Date() })
-    .where(
-      and(eq(schema.cloudProjects.projectId, projectId), eq(schema.cloudProjects.userId, userId)),
-    )
-    .run();
-  if (marked.meta.changes === 0) return false;
-  const machines = await db(env)
-    .select({
-      deviceId: schema.cloudMachines.deviceId,
-      workspaceId: schema.cloudMachines.workspaceId,
-      spriteName: schema.cloudMachines.spriteName,
-    })
-    .from(schema.cloudMachines)
-    .where(
-      and(eq(schema.cloudMachines.projectId, projectId), eq(schema.cloudMachines.userId, userId)),
-    )
-    .all();
-  if (machines.length === 0) return false;
-  const ordered = [...machines].sort(
-    (a, b) => Number(a.workspaceId === null) - Number(b.workspaceId === null),
-  );
-  // One machine's object refusing does not spare the others: the mark above
-  // is the intent, and the sweep takes down whatever this loop left.
-  for (const machine of ordered) {
-    try {
-      await env.CLOUD_MACHINE.getByName(machine.deviceId).destroy({
-        userId,
-        projectId,
-        ...machine,
-      });
-    } catch {
-      // Left for `reconcileCloud`, which finishes deleting projects.
-    }
-  }
-  return true;
-}
-
-export async function destroyCloudWorkspace(
-  env: CloudEnv,
-  userId: string,
-  projectId: string,
-  workspaceId: string,
-): Promise<boolean> {
-  const machine = await machineOf(env, userId, { projectId, workspaceId });
-  if (!machine) return false;
-  await env.CLOUD_MACHINE.getByName(machine.deviceId).destroy(machine);
-  return true;
 }
 
 /** Runs provisioning again for a machine that failed, with a fresh token. */
@@ -434,6 +387,17 @@ export function validRepoUrl(value: string): boolean {
   }
 }
 
+async function hasCloudRoot(env: Pick<Env, "DB">, projectId: string): Promise<boolean> {
+  const row = await db(env)
+    .select({ deviceId: schema.cloudMachines.deviceId })
+    .from(schema.cloudMachines)
+    .where(
+      and(eq(schema.cloudMachines.projectId, projectId), isNull(schema.cloudMachines.workspaceId)),
+    )
+    .get();
+  return row !== undefined;
+}
+
 export async function cloudProjectOf(env: Pick<Env, "DB">, userId: string, projectId: string) {
   return db(env)
     .select({
@@ -446,6 +410,7 @@ export async function cloudProjectOf(env: Pick<Env, "DB">, userId: string, proje
       credentialUsername: schema.cloudProjects.credentialUsername,
       credentialCiphertext: schema.cloudProjects.credentialCiphertext,
       deletingAt: schema.cloudProjects.deletingAt,
+      deletingScope: schema.cloudProjects.deletingScope,
     })
     .from(schema.cloudProjects)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.cloudProjects.projectId))
@@ -455,31 +420,7 @@ export async function cloudProjectOf(env: Pick<Env, "DB">, userId: string, proje
     .get();
 }
 
-async function machineOf(
-  env: Pick<Env, "DB">,
-  userId: string,
-  by: { projectId: string; workspaceId: string },
-): Promise<MachineSeed | null> {
-  const row = await db(env)
-    .select({
-      deviceId: schema.cloudMachines.deviceId,
-      projectId: schema.cloudMachines.projectId,
-      workspaceId: schema.cloudMachines.workspaceId,
-      spriteName: schema.cloudMachines.spriteName,
-    })
-    .from(schema.cloudMachines)
-    .where(
-      and(
-        eq(schema.cloudMachines.workspaceId, by.workspaceId),
-        eq(schema.cloudMachines.projectId, by.projectId),
-        eq(schema.cloudMachines.userId, userId),
-      ),
-    )
-    .get();
-  return row ? { userId, ...row } : null;
-}
-
-async function credentialOf(
+export async function credentialOf(
   env: Pick<Env, "CLOUD_CREDENTIALS_KEY">,
   project: { credentialUsername: string | null; credentialCiphertext: string | null },
 ): Promise<Credential | undefined | "unavailable"> {

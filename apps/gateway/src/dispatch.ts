@@ -11,10 +11,12 @@ import { type AuditHandle, beginAudit, finishAudit } from "./audit.js";
 import { resolveAccountTarget, resolveTarget, targetDevice } from "./client-targets.js";
 import { type CallerIdentity, touchClient } from "./clients.js";
 import { answerCloudWorkspaceTool } from "./cloud/workspace-tools.js";
+import { type Placement, placeWorkspaceTool, prepareLocation } from "./workspace-placement.js";
 import "./env.js";
 import { relayName } from "./api/ops.js";
 import { db, schema } from "./db/client.js";
 import { newId } from "./ids.js";
+import { locationNames, locationsOf } from "./locations.js";
 import type { DispatchResult } from "./mcp.js";
 import { callRelayTool, requestRelayApproval } from "./relay-client.js";
 
@@ -151,8 +153,46 @@ export async function dispatchToDevice(
     throw error;
   }
 
+  // Where the call goes. A workspace tool chooses among the project's
+  // locations; everything else follows its workspace, or the default location
+  // when it names none.
+  let placement: Placement | undefined;
+  try {
+    placement = isWorkspaceToolName(tool)
+      ? await placeWorkspaceTool(env, {
+          userId,
+          project: { id: projectId, deviceId: project.deviceId, localPath: "" },
+          tool,
+          args,
+          workspace,
+        })
+      : undefined;
+    if (!placement && !workspace && project.defaultRemoved) {
+      throw await defaultRemoved(env, userId, projectId, project.deviceId);
+    }
+  } catch (error) {
+    await record(env, {
+      userId,
+      projectId,
+      tool,
+      caller,
+      audit,
+      status: "error",
+      errorCode: error instanceof ExeoraError ? error.code : "INTERNAL_ERROR",
+      endpoint,
+    });
+    throw error;
+  }
+
   const requestId = newId("req");
-  const relay = env.DEVICE_RELAY.getByName(relayName(userId, targetDevice(project, workspace)));
+  // Cloud that holds no machine has nobody to ask; what needs a person, an
+  // approval, goes to the default location, where somebody may be watching.
+  const relay = env.DEVICE_RELAY.getByName(
+    relayName(
+      userId,
+      placement ? (placement.deviceId ?? project.deviceId) : targetDevice(project, workspace),
+    ),
+  );
 
   // Asked before anything is dispatched, and asked here rather than in the MCP
   // layer because this is where the project's policy is known.
@@ -207,26 +247,32 @@ export async function dispatchToDevice(
       projectId,
       ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
       tool,
-      args,
+      // A machine is never told `where`: by now it is the one that was chosen.
+      args: placement ? placement.args : args,
       client: callerLabel(caller),
       // Sent even though it was just enforced, because the executor narrows it
       // with the project's own `exeora.toml` before running anything.
       policy: project.policy,
       signal,
     };
+    // A machine that was chosen and has no copy yet gets one first.
+    if (placement?.location && !placement.cloud && tool === "create_workspace") {
+      await prepareLocation(env, { userId, projectId, location: placement.location, signal });
+    }
     const value =
-      (isWorkspaceToolName(tool)
+      (placement?.cloud
         ? await answerCloudWorkspaceTool(env, {
             userId,
             projectId,
             tool,
-            args,
+            args: placement.args,
             workspace,
             signal,
             issuedAt: Date.now(),
             // The machine applies the checkout's `exeora.toml` to the same
             // frame and answers with a verdict instead of running anything.
-            askMachine: () => callRelayTool(relay, frame),
+            // Cloud with no machine yet has no checkout to hold one.
+            ...(placement.deviceId ? { askMachine: () => callRelayTool(relay, frame) } : {}),
           })
         : undefined) ?? (await callRelayTool(relay, frame));
     await record(env, { userId, projectId, tool, caller, audit, status: "ok", endpoint });
@@ -244,6 +290,25 @@ export async function dispatchToDevice(
     });
     throw error;
   }
+}
+
+/** What a call to the project root is told when the default location's machine is gone. */
+async function defaultRemoved(
+  env: Pick<Env, "DB">,
+  userId: string,
+  projectId: string,
+  deviceId: string,
+): Promise<ExeoraError> {
+  const all =
+    (await locationsOf(env, userId, [{ id: projectId, deviceId, localPath: "" }])).get(projectId) ??
+    [];
+  const others = all.filter((location) => !location.default && location.state !== "removed");
+  return new ExeoraError(
+    "LOCAL_EXECUTOR_OFFLINE",
+    others.length > 0
+      ? `The machine of this project's default location was removed. It still lives on: ${locationNames(others)}. Work in a workspace there, or choose a new default location in the Exeora dashboard.`
+      : "The machine this project lives on was removed. Register it again with `exeora connect --reset` and `exeora project add`.",
+  );
 }
 
 /**

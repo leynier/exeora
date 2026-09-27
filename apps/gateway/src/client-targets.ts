@@ -33,12 +33,20 @@ export async function resolveTarget(
   entry: { userId: string; projectId: string; clientId: string | undefined },
 ): Promise<{
   deviceId: string;
+  /**
+   * Whether the default location's machine was removed. It used to make the
+   * whole project unreachable; a project that lives in several places is
+   * still reachable through the workspaces of the others, so only a call that
+   * needs the default is refused, where the call is resolved.
+   */
+  defaultRemoved: boolean;
   clientRevokedAt: Date | null;
   policy: CommandPolicy;
 } | null> {
   const row = await db(env)
     .select({
       deviceId: schema.projects.deviceId,
+      deviceRevokedAt: schema.devices.revokedAt,
       commandPolicy: schema.projects.commandPolicy,
       clientRevokedAt: schema.projectClients.revokedAt,
     })
@@ -52,18 +60,16 @@ export async function resolveTarget(
         eq(schema.projectClients.endpoint, "project"),
       ),
     )
-    .where(
-      and(
-        eq(schema.projects.id, entry.projectId),
-        eq(schema.projects.userId, entry.userId),
-        isNull(schema.devices.revokedAt),
-      ),
-    )
+    .where(and(eq(schema.projects.id, entry.projectId), eq(schema.projects.userId, entry.userId)))
     .get();
 
   if (!row) return null;
+  if (row.deviceRevokedAt !== null && !(await livesElsewhere(env, entry.projectId, row.deviceId))) {
+    return null;
+  }
   return {
     deviceId: row.deviceId,
+    defaultRemoved: row.deviceRevokedAt !== null,
     clientRevokedAt: entry.clientId ? row.clientRevokedAt : null,
     policy: parsePolicy(row.commandPolicy),
   };
@@ -86,10 +92,11 @@ export async function resolveTarget(
 export async function resolveAccountTarget(
   env: Pick<Env, "DB">,
   entry: { userId: string; projectId: string; clientId: string },
-): Promise<{ deviceId: string; policy: CommandPolicy } | null> {
+): Promise<{ deviceId: string; defaultRemoved: boolean; policy: CommandPolicy } | null> {
   const row = await db(env)
     .select({
       deviceId: schema.projects.deviceId,
+      deviceRevokedAt: schema.devices.revokedAt,
       commandPolicy: schema.projects.commandPolicy,
     })
     .from(schema.projects)
@@ -103,17 +110,39 @@ export async function resolveAccountTarget(
       ),
     )
     .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
-    .where(
-      and(
-        eq(schema.projects.id, entry.projectId),
-        eq(schema.projects.userId, entry.userId),
-        isNull(schema.devices.revokedAt),
-      ),
-    )
+    .where(and(eq(schema.projects.id, entry.projectId), eq(schema.projects.userId, entry.userId)))
     .get();
 
   if (!row) return null;
-  return { deviceId: row.deviceId, policy: parsePolicy(row.commandPolicy) };
+  if (row.deviceRevokedAt !== null && !(await livesElsewhere(env, entry.projectId, row.deviceId))) {
+    return null;
+  }
+  return {
+    deviceId: row.deviceId,
+    defaultRemoved: row.deviceRevokedAt !== null,
+    policy: parsePolicy(row.commandPolicy),
+  };
+}
+
+/**
+ * Whether a project has a copy on a machine that still stands, other than the
+ * one named. A project whose only machine was removed is gone for every caller,
+ * at once; one that lives elsewhere too has only lost its default.
+ */
+export async function livesElsewhere(
+  env: Pick<Env, "DB">,
+  projectId: string,
+  deviceId: string,
+): Promise<boolean> {
+  const other = await env.DB.prepare(
+    `SELECT 1 FROM project_locations l
+       JOIN devices d ON d.id = l.device_id
+      WHERE l.project_id = ?1 AND l.device_id != ?2 AND d.revoked_at IS NULL
+      LIMIT 1`,
+  )
+    .bind(projectId, deviceId)
+    .first();
+  return other !== null;
 }
 
 /**

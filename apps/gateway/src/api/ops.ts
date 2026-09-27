@@ -3,6 +3,7 @@ import { endAllProjects } from "../account-access.js";
 import { auditDeletionStatement, deviceProjectDeletionStatement } from "../audit-deletions.js";
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
+import { moveDefaultLocationStatements } from "../locations-default.js";
 import { isCliClient, isDashboardClient } from "../oauth/clients.js";
 
 /**
@@ -102,13 +103,19 @@ export async function revokeDevice(env: Env, userId: string, deviceId: string): 
 }
 
 /**
- * Deletes a machine's row and everything hanging off it: its projects, their
- * audit history through the deletion queue, and its outbox entries.
+ * Deletes a machine's row and everything hanging off it: the projects that
+ * lived nowhere else, their audit history through the deletion queue, and its
+ * outbox entries.
+ *
+ * A project that lives somewhere else as well stays, and the first statements
+ * are what keep it: they move its default location off this machine, so the
+ * cascade that follows finds nothing of that project to take. A project whose
+ * removal was asked for is left to go, however many places it is in.
  *
  * The archive has no device column, so a machine is not something it can be
  * asked to forget. Its projects are, and they can only be enumerated while
- * the machine is still here: the cascade below takes them with it. Returns
- * false when there was no such device for this user.
+ * the machine is still here. Returns false when there was no such device for
+ * this user.
  */
 export async function permanentlyDeleteDevice(
   env: Pick<Env, "DB">,
@@ -116,6 +123,7 @@ export async function permanentlyDeleteDevice(
   deviceId: string,
 ): Promise<boolean> {
   const results = await env.DB.batch([
+    ...moveDefaultLocationStatements(env, userId, deviceId),
     deviceProjectDeletionStatement(env, userId, deviceId),
     env.DB.prepare(
       `DELETE FROM audit_outbox

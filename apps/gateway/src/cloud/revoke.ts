@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { revokeDevice } from "../api/ops.js";
+import { livesElsewhere } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { destroyCloudProject } from "./provisioning.js";
@@ -10,8 +11,9 @@ import { destroyCloudProject } from "./provisioning.js";
  * For a laptop that is the soft delete `revokeDevice` does. A cloud machine
  * is different: revoked, it is a Sprite nobody can reach that still costs
  * money, so revoking it is a request to take it down. And the machine that
- * holds the default branch carries the project, whose other machines would
- * be orphaned by its deletion: that one takes the whole project with it.
+ * holds the project root of a project that lives only on Exeora Cloud carries
+ * the project, whose other machines would be orphaned by its deletion: that
+ * one takes the whole project with it.
  */
 export async function revokeOwnedDevice(
   env: Env,
@@ -34,7 +36,10 @@ export async function revokeOwnedDevice(
   // intent and revokes the device itself, so a relay that cannot be reached
   // at this moment leaves a machine on its way out, not one that is merely
   // unreachable and still running.
-  if (machine.workspaceId === null) {
+  // The machine that holds the project root takes the project with it only
+  // when the project lives nowhere else. One that is also on somebody's own
+  // machine loses this copy and keeps the others.
+  if (machine.workspaceId === null && !(await livesElsewhere(env, machine.projectId, deviceId))) {
     if (await destroyCloudProject(env, userId, machine.projectId)) return true;
   }
   await env.CLOUD_MACHINE.getByName(deviceId).destroy({ userId, deviceId, ...machine });

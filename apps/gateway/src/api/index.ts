@@ -13,10 +13,12 @@ import { audit } from "./audit.js";
 import { clients } from "./clients.js";
 import { cloud } from "./cloud.js";
 import { devices } from "./devices.js";
+import { locations } from "./locations.js";
 import { me } from "./me.js";
 import { projects } from "./projects.js";
 import type { ApiEnv } from "./router.js";
 import { workspace } from "./workspace.js";
+import { workspaceCreate } from "./workspace-create.js";
 import { workspaces } from "./workspaces.js";
 
 /**
@@ -61,7 +63,9 @@ api.get("/api/health", (c) => c.json({ ok: true, service: "exeora-gateway" }));
 api.route("/", me);
 api.route("/", devices);
 api.route("/", projects);
+api.route("/", locations);
 api.route("/", workspaces);
+api.route("/", workspaceCreate);
 api.route("/", workspace);
 api.route("/", clients);
 api.route("/", accountClients);

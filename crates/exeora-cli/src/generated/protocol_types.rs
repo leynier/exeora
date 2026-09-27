@@ -1255,6 +1255,39 @@ pub mod error {
 ///                            }
 ///                          },
 ///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "adopted",
+///                            "branch",
+///                            "kind",
+///                            "localPath"
+///                          ],
+///                          "properties": {
+///                            "adopted": {
+///                              "type": "boolean"
+///                            },
+///                            "branch": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "prepared"
+///                            },
+///                            "localPath": {
+///                              "type": "string",
+///                              "minLength": 1
+///                            }
+///                          },
+///                          "additionalProperties": false
 ///                        }
 ///                      ]
 ///                    }
@@ -2223,6 +2256,61 @@ pub mod error {
 ///                      "maxLength": 60,
 ///                      "minLength": 1,
 ///                      "pattern": "^[a-z0-9][a-z0-9-]*$"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "repository"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "project_prepare"
+///                    },
+///                    "repository": {
+///                      "type": "object",
+///                      "required": [
+///                        "credential",
+///                        "name",
+///                        "slug",
+///                        "url"
+///                      ],
+///                      "properties": {
+///                        "credential": {
+///                          "default": "machine",
+///                          "type": "string",
+///                          "enum": [
+///                            "exeora",
+///                            "machine"
+///                          ]
+///                        },
+///                        "defaultBranch": {
+///                          "type": "string",
+///                          "maxLength": 255,
+///                          "minLength": 1
+///                        },
+///                        "name": {
+///                          "type": "string",
+///                          "maxLength": 100,
+///                          "minLength": 1
+///                        },
+///                        "slug": {
+///                          "type": "string",
+///                          "maxLength": 60,
+///                          "minLength": 1,
+///                          "pattern": "^[a-z0-9][a-z0-9-]*$"
+///                        },
+///                        "url": {
+///                          "type": "string",
+///                          "maxLength": 1000,
+///                          "minLength": 1
+///                        }
+///                      },
+///                      "additionalProperties": false
 ///                    }
 ///                  },
 ///                  "additionalProperties": false
@@ -5157,6 +5245,39 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "adopted",
+///                        "branch",
+///                        "kind",
+///                        "localPath"
+///                      ],
+///                      "properties": {
+///                        "adopted": {
+///                          "type": "boolean"
+///                        },
+///                        "branch": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "prepared"
+///                        },
+///                        "localPath": {
+///                          "type": "string",
+///                          "minLength": 1
+///                        }
+///                      },
+///                      "additionalProperties": false
 ///                    }
 ///                  ]
 ///                }
@@ -6476,6 +6597,39 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "adopted",
+///        "branch",
+///        "kind",
+///        "localPath"
+///      ],
+///      "properties": {
+///        "adopted": {
+///          "type": "boolean"
+///        },
+///        "branch": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "prepared"
+///        },
+///        "localPath": {
+///          "type": "string",
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -6524,6 +6678,13 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
     Unpublished {
         clean: bool,
         reasons: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueReasonsItem>,
+    },
+    #[serde(rename = "prepared")]
+    Prepared {
+        adopted: bool,
+        branch: ::std::option::Option<::std::string::String>,
+        #[serde(rename = "localPath")]
+        local_path: ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea`
@@ -7207,6 +7368,84 @@ impl<'de> ::serde::Deserialize<'de>
 pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueGitWorkspacesItem {
     pub branch: ::std::option::Option<::std::string::String>,
     pub path: ::std::string::String,
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueOperation`
 ///
@@ -10690,6 +10929,61 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                }
 ///              },
 ///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "repository"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "project_prepare"
+///                },
+///                "repository": {
+///                  "type": "object",
+///                  "required": [
+///                    "credential",
+///                    "name",
+///                    "slug",
+///                    "url"
+///                  ],
+///                  "properties": {
+///                    "credential": {
+///                      "default": "machine",
+///                      "type": "string",
+///                      "enum": [
+///                        "exeora",
+///                        "machine"
+///                      ]
+///                    },
+///                    "defaultBranch": {
+///                      "type": "string",
+///                      "maxLength": 255,
+///                      "minLength": 1
+///                    },
+///                    "name": {
+///                      "type": "string",
+///                      "maxLength": 100,
+///                      "minLength": 1
+///                    },
+///                    "slug": {
+///                      "type": "string",
+///                      "maxLength": 60,
+///                      "minLength": 1,
+///                      "pattern": "^[a-z0-9][a-z0-9-]*$"
+///                    },
+///                    "url": {
+///                      "type": "string",
+///                      "maxLength": 1000,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                }
+///              },
+///              "additionalProperties": false
 ///            }
 ///          ]
 ///        },
@@ -11496,6 +11790,61 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "repository"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "project_prepare"
+///        },
+///        "repository": {
+///          "type": "object",
+///          "required": [
+///            "credential",
+///            "name",
+///            "slug",
+///            "url"
+///          ],
+///          "properties": {
+///            "credential": {
+///              "default": "machine",
+///              "type": "string",
+///              "enum": [
+///                "exeora",
+///                "machine"
+///              ]
+///            },
+///            "defaultBranch": {
+///              "type": "string",
+///              "maxLength": 255,
+///              "minLength": 1
+///            },
+///            "name": {
+///              "type": "string",
+///              "maxLength": 100,
+///              "minLength": 1
+///            },
+///            "slug": {
+///              "type": "string",
+///              "maxLength": 60,
+///              "minLength": 1,
+///              "pattern": "^[a-z0-9][a-z0-9-]*$"
+///            },
+///            "url": {
+///              "type": "string",
+///              "maxLength": 1000,
+///              "minLength": 1
+///            }
+///          },
+///          "additionalProperties": false
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -11588,6 +11937,10 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
         reuse_existing_branch: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         slug: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionSlug>,
+    },
+    #[serde(rename = "project_prepare")]
+    ProjectPrepare {
+        repository: ExeoraProtocolTypesRelayMessageActionRepository,
     },
 }
 ///`ExeoraProtocolTypesRelayMessageActionArea`
@@ -12251,6 +12604,473 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRemoteBranch {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionRepository`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "credential",
+///    "name",
+///    "slug",
+///    "url"
+///  ],
+///  "properties": {
+///    "credential": {
+///      "default": "machine",
+///      "type": "string",
+///      "enum": [
+///        "exeora",
+///        "machine"
+///      ]
+///    },
+///    "defaultBranch": {
+///      "type": "string",
+///      "maxLength": 255,
+///      "minLength": 1
+///    },
+///    "name": {
+///      "type": "string",
+///      "maxLength": 100,
+///      "minLength": 1
+///    },
+///    "slug": {
+///      "type": "string",
+///      "maxLength": 60,
+///      "minLength": 1,
+///      "pattern": "^[a-z0-9][a-z0-9-]*$"
+///    },
+///    "url": {
+///      "type": "string",
+///      "maxLength": 1000,
+///      "minLength": 1
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageActionRepository {
+    pub credential: ExeoraProtocolTypesRelayMessageActionRepositoryCredential,
+    #[serde(
+        rename = "defaultBranch",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub default_branch:
+        ::std::option::Option<ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch>,
+    pub name: ExeoraProtocolTypesRelayMessageActionRepositoryName,
+    pub slug: ExeoraProtocolTypesRelayMessageActionRepositorySlug,
+    pub url: ExeoraProtocolTypesRelayMessageActionRepositoryUrl,
+}
+///`ExeoraProtocolTypesRelayMessageActionRepositoryCredential`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "default": "machine",
+///  "type": "string",
+///  "enum": [
+///    "exeora",
+///    "machine"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesRelayMessageActionRepositoryCredential {
+    #[serde(rename = "exeora")]
+    Exeora,
+    #[serde(rename = "machine")]
+    Machine,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageActionRepositoryCredential {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Exeora => f.write_str("exeora"),
+            Self::Machine => f.write_str("machine"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionRepositoryCredential {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "exeora" => Ok(Self::Exeora),
+            "machine" => Ok(Self::Machine),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionRepositoryCredential {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryCredential
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryCredential
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ExeoraProtocolTypesRelayMessageActionRepositoryCredential {
+    fn default() -> Self {
+        ExeoraProtocolTypesRelayMessageActionRepositoryCredential::Machine
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 255,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 255usize {
+            return Err("longer than 255 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryDefaultBranch
+{
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionRepositoryName`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 100,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionRepositoryName(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionRepositoryName {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionRepositoryName>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionRepositoryName) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionRepositoryName {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 100usize {
+            return Err("longer than 100 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionRepositoryName {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryName
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRepositoryName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionRepositorySlug`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 60,
+///  "minLength": 1,
+///  "pattern": "^[a-z0-9][a-z0-9-]*$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionRepositorySlug(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionRepositorySlug {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionRepositorySlug>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionRepositorySlug) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionRepositorySlug {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 60usize {
+            return Err("longer than 60 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-z0-9][a-z0-9-]*$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[a-z0-9][a-z0-9-]*$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionRepositorySlug {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositorySlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositorySlug
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRepositorySlug {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionRepositoryUrl`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 1000,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionRepositoryUrl(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionRepositoryUrl {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionRepositoryUrl>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionRepositoryUrl) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionRepositoryUrl {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1000usize {
+            return Err("longer than 1000 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionRepositoryUrl {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryUrl
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionRepositoryUrl
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRepositoryUrl {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,

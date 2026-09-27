@@ -62,11 +62,25 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
     return (
       ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path) ||
       /^\/api\/projects\/[^/]+\/workspaces$/.test(path) ||
+      /^\/api\/projects\/[^/]+\/locations$/.test(path) ||
       /^\/api\/relay\/[^/]+$/.test(path)
     );
   }
-  if (method === "POST") return path === "/api/devices" || path === "/api/projects";
-  if (method === "PUT") return /^\/api\/projects\/[^/]+\/workspaces\/[^/]+$/.test(path);
+  if (method === "POST") {
+    return (
+      path === "/api/devices" ||
+      path === "/api/projects" ||
+      // `exeora project add --on` puts a project on another of the person's machines.
+      /^\/api\/projects\/[^/]+\/locations$/.test(path)
+    );
+  }
+  if (method === "PUT") {
+    return (
+      /^\/api\/projects\/[^/]+\/workspaces\/[^/]+$/.test(path) ||
+      // The CLI reports the state of its own copy: cloning, ready, failed.
+      /^\/api\/projects\/[^/]+\/locations\/[^/]+$/.test(path)
+    );
+  }
   return (
     method === "DELETE" &&
     (/^\/api\/projects\/[^/]+$/.test(path) ||

@@ -5,10 +5,10 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { beginAudit, finishAudit } from "../audit.js";
-import { isCloudProject } from "../cloud/workspace-tools.js";
 import { db, schema } from "../db/client.js";
 import { newId } from "../ids.js";
 import { callRelayWorkspace } from "../relay-client.js";
+import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
 import type { ApiEnv } from "./router.js";
 
@@ -73,11 +73,14 @@ workspace.post(
     const projectId = c.req.param("id");
     const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
     if (!target) return c.json({ error: "not_found" }, 404);
-    // A cloud workspace is a machine, made through the Cloud routes; the
-    // machine that would run this action has no worktrees to create.
-    if (action.action === "workspace_create" && (await isCloudProject(c.env, projectId))) {
+    // On Exeora Cloud a workspace is a machine, and the machine that would
+    // run this action has no worktrees to create. `POST …/workspaces` makes
+    // one wherever it is asked to; this route only reaches the user's own.
+    if (action.action === "workspace_create" && (await isCloudMachine(c.env, target.deviceId))) {
       return c.json({ error: "use_cloud_api" }, 400);
     }
+    // Preparing a copy is what the gateway asks of a machine, never a page.
+    if (action.action === "project_prepare") return c.json({ error: "not_found" }, 404);
     const audit = await beginAudit(c.env, {
       userId,
       projectId,
@@ -212,7 +215,7 @@ async function ownedTarget(
   selector?: string,
 ): Promise<ResolvedTarget | null> {
   const project = await db(env)
-    .select({ deviceId: schema.projects.deviceId })
+    .select({ deviceId: schema.projects.deviceId, removedAt: schema.devices.revokedAt })
     .from(schema.projects)
     .innerJoin(schema.devices, eq(schema.projects.deviceId, schema.devices.id))
     .where(
@@ -220,12 +223,15 @@ async function ownedTarget(
         eq(schema.projects.id, projectId),
         eq(schema.projects.userId, userId),
         eq(schema.devices.userId, userId),
-        isNull(schema.devices.revokedAt),
       ),
     )
     .get();
   if (!project) return null;
-  if (!selector || selector === "main") return { deviceId: project.deviceId };
+  // Only the project root needs the default location's machine. A workspace
+  // on another machine is served there whatever became of the default.
+  if (!selector || selector === "main") {
+    return project.removedAt === null ? { deviceId: project.deviceId } : null;
+  }
 
   const ws = await db(env)
     .select({
@@ -244,9 +250,10 @@ async function ownedTarget(
     )
     .get();
   if (!ws) return null;
-  // A workspace with a machine of its own is served there and nowhere else;
+  // A workspace is served by the machine that holds it and nowhere else;
   // once that machine is revoked the workspace is gone with it.
   if (ws.deviceId !== null && ws.deviceRevokedAt !== null) return null;
+  if (ws.deviceId === null && project.removedAt !== null) return null;
   return {
     deviceId: ws.deviceId ?? project.deviceId,
     workspaceId: ws.id,
