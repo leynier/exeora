@@ -144,9 +144,16 @@ const run = (fields: Partial<CloudHookRun>): CloudHookRun => ({
   ...fields,
 });
 
+/** Says how the install script is going, and waits for the relay to have written it. */
 async function say(socket: WebSocket, state: CloudHookRun) {
   socket.send(encodeMessage({ type: "cloud.hook.state", hook: "install", run: state }));
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const kept = hookRunOf((await row())?.installHook ?? null);
+    if (kept?.runId === state.runId && kept.status === state.status) return;
+    if (Date.now() > deadline) throw new Error("the relay never wrote what the machine said");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 beforeEach(async () => {

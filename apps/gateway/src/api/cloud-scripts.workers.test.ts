@@ -146,8 +146,22 @@ const stored = async (column: "installHook" | "resumeHook") => {
   return hookRunOf(row?.[column] ?? null);
 };
 
-/** Lets the relay take a frame that was sent without an answer to wait for. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+/**
+ * Waits for what a frame did. Nothing answers a frame an instance sends, so
+ * the only way to know the relay has read one is to see what it wrote, and
+ * how long that takes is the runner's to say, not a number chosen here.
+ */
+async function eventually(check: () => Promise<void>): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      return await check();
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
 
 describe("the scripts of a project, on its page", () => {
   it("has none until somebody writes one, and lets the repository's run", async () => {
@@ -257,27 +271,35 @@ describe("what an instance is told, and what it says back", () => {
 
   it("keeps what the instance says of a run, and never goes back on it", async () => {
     const { socket } = await instance(["cloud-v1", CLOUD_HOOKS_FEATURE]);
-    const say = async (hook: "install" | "resume", state: CloudHookRun) => {
+    const say = (hook: "install" | "resume", state: CloudHookRun) =>
       socket.send(encodeMessage({ type: "cloud.hook.state", hook, run: state }));
-      await settle();
-    };
 
-    await say("install", run({ status: "running", exitCode: null, finishedAt: null }));
-    expect(await stored("installHook")).toMatchObject({ status: "running" });
+    say("install", run({ status: "running", exitCode: null, finishedAt: null }));
+    await eventually(async () =>
+      expect(await stored("installHook")).toMatchObject({ status: "running" }),
+    );
 
-    await say("install", run({ status: "failed", exitCode: 3, output: "npm ERR! missing" }));
-    expect(await stored("installHook")).toMatchObject({ status: "failed", exitCode: 3 });
+    say("install", run({ status: "failed", exitCode: 3, output: "npm ERR! missing" }));
+    await eventually(async () =>
+      expect(await stored("installHook")).toMatchObject({ status: "failed", exitCode: 3 }),
+    );
 
     // The beginning of the same run, arriving late, and a run from before.
-    await say("install", run({ status: "running", exitCode: null, finishedAt: null }));
-    await say("install", run({ runId: "run_0", startedAt: 500 }));
+    // Neither is kept, and what tells that they were read is what follows.
+    say("install", run({ status: "running", exitCode: null, finishedAt: null }));
+    say("install", run({ runId: "run_0", startedAt: 500 }));
+    say("resume", run({ runId: "run_r", trigger: "cold" }));
+    await eventually(async () =>
+      expect(await stored("resumeHook")).toMatchObject({ runId: "run_r", trigger: "cold" }),
+    );
     expect(await stored("installHook")).toMatchObject({ runId: "run_1", status: "failed" });
 
     // A later run replaces it, and each script is kept apart.
-    await say("install", run({ runId: "run_2", startedAt: 3_000 }));
-    await say("resume", run({ runId: "run_r", trigger: "cold" }));
-    expect(await stored("installHook")).toMatchObject({ runId: "run_2", status: "ok" });
-    expect(await stored("resumeHook")).toMatchObject({ runId: "run_r", trigger: "cold" });
+    say("install", run({ runId: "run_2", startedAt: 3_000 }));
+    await eventually(async () =>
+      expect(await stored("installHook")).toMatchObject({ runId: "run_2", status: "ok" }),
+    );
+    expect(await stored("resumeHook")).toMatchObject({ runId: "run_r" });
   });
 
   it("shows what a script printed only when it went wrong", async () => {
@@ -296,7 +318,8 @@ describe("what an instance is told, and what it says back", () => {
         run: run({ runId: "run_r", trigger: "warm", output: "started the database" }),
       }),
     );
-    await settle();
+    await eventually(async () => expect(await stored("resumeHook")).not.toBeNull());
+    await eventually(async () => expect(await stored("installHook")).not.toBeNull());
 
     const machines = await listMachines(env, USER);
     const shown = machines.find((machine) => machine.deviceId === INSTANCE);
