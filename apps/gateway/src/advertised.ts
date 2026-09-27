@@ -34,39 +34,47 @@ export async function advertisedTools(
   if (!userId) return undefined;
 
   const project = await db(env)
-    .select({ deviceId: schema.projects.deviceId })
+    .select({ deviceId: schema.projects.deviceId, kind: schema.devices.kind })
     .from(schema.projects)
+    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
     .get();
 
   if (!project) return undefined;
 
-  const [capabilities, cloud] = await Promise.all([
+  const [capabilities, onCloud] = await Promise.all([
     env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).capabilities(),
     isCloudProject(env, projectId),
   ]);
+  const place = { onCloud, rootOnCloud: project.kind === "cloud" };
 
-  if (!capabilities) return cloud ? cloudTools(new Set(TOOL_NAMES)) : undefined;
+  if (!capabilities) return onCloud ? cloudTools(new Set(TOOL_NAMES), place) : undefined;
 
   // Intersected with what this gateway knows, because the executor may be the
   // newer of the two: a tool this build has no schema for is a name and nothing
   // it could register.
   const announced = new Set<string>(capabilities.tools);
   const offered = new Set(TOOL_NAMES.filter((name) => announced.has(name)));
-  return cloud ? cloudTools(offered) : offered;
+  return onCloud ? cloudTools(offered, place) : offered;
 }
 
 /**
- * On a cloud project the gateway answers the workspace lifecycle tools, so
- * they are offered whatever the machine announced, and the two that only
- * make sense for a worktree on disk are withdrawn.
+ * For a project that is on Exeora Cloud the gateway answers the workspace
+ * lifecycle tools there, so they are offered whatever the default machine
+ * announced. The tools that only make sense for a checkout on somebody's disk
+ * are withdrawn when the default location is Cloud itself: they take no
+ * `where`, so the default is the only machine they could ever reach.
  */
-function cloudTools(offered: Set<ToolName>): Set<ToolName> {
-  for (const name of ["list_git_workspaces", "create_workspace", "remove_workspace"] as const) {
-    offered.add(name);
+function cloudTools(
+  offered: Set<ToolName>,
+  place: { onCloud: boolean; rootOnCloud: boolean },
+): Set<ToolName> {
+  for (const name of ["create_workspace", "remove_workspace"] as const) offered.add(name);
+  if (place.rootOnCloud) {
+    offered.delete("list_git_workspaces");
+    offered.delete("attach_workspace");
+    offered.delete("detach_workspace");
   }
-  offered.delete("attach_workspace");
-  offered.delete("detach_workspace");
   return offered;
 }
 

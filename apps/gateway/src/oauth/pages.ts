@@ -132,7 +132,7 @@ export function consentPage(options: {
         <p class="lede">
           ${
             target
-              ? html`It is asking for access to one project on one of your machines.`
+              ? html`It is asking for access to one of your projects.`
               : html`It is asking for access to the projects you have connected to Exeora.`
           }
         </p>
@@ -143,17 +143,30 @@ export function consentPage(options: {
           target
             ? html`<dl class="target">
               <div><dt>Project</dt><dd>${target.project}</dd></div>
-              <div><dt>Machine</dt><dd>${target.machine}</dd></div>
-              <div class="stack"><dt>Directory</dt><dd><code>${target.localPath}</code></dd></div>
+              ${
+                target.repository
+                  ? html`<div class="stack">
+                      <dt>Repository</dt>
+                      <dd><code>${target.repository}</code></dd>
+                    </div>`
+                  : html`<div class="stack">
+                      <dt>Directory</dt>
+                      <dd><code>${target.localPath}</code></dd>
+                    </div>`
+              }
+              <div><dt>Lives on</dt><dd>${placeNames(target.locations, target.machine)}</dd></div>
             </dl>`
             : ""
         }
 
         <div class="warn">
           This grants <strong>${name}</strong> the ability to read, edit and run commands in
-          ${target ? html`that directory` : html`the project you connect it to`}, on
-          ${target ? html`${target.machine}` : html`whichever machine is serving it`}. Commands are
-          not filtered. Only approve applications you trust.
+          ${target ? html`that project` : html`the project you connect it to`}, on
+          ${
+            target
+              ? html`${placeNames(target.locations, target.machine)}`
+              : html`whichever machine is serving it`
+          }. Commands are not filtered. Only approve applications you trust.
         </div>
 
         ${
@@ -272,7 +285,8 @@ export function accountConsentPage(options: {
                       <span class="who-what">
                         <span class="name">${project.project}</span>
                         <span class="where"
-                          >${project.machine} · <code>${project.localPath}</code></span
+                          ><code>${project.repository ?? project.localPath}</code> ·
+                          ${placeNames(project.locations, project.machine)}</span
                         >
                       </span>
                     </label>
@@ -283,7 +297,7 @@ export function accountConsentPage(options: {
 
               <div class="warn">
                 This grants <strong>${name}</strong> the ability to read, edit and run commands in
-                every project it reaches, on the machine serving it. It chooses which of them to
+                every project it reaches, wherever that project lives. It chooses which of them to
                 work in, one at a time. Commands are not filtered. Only approve applications you
                 trust.
               </div>
@@ -385,4 +399,11 @@ export function errorPage(message: string) {
       </div>
     `,
   );
+}
+
+/** "Laptop", "Laptop and Desktop", "Laptop, Desktop and Exeora Cloud". */
+function placeNames(locations: readonly string[], fallback: string): string {
+  if (locations.length === 0) return fallback;
+  if (locations.length === 1) return locations[0] ?? fallback;
+  return `${locations.slice(0, -1).join(", ")} and ${locations.at(-1)}`;
 }

@@ -153,7 +153,9 @@ function summarise(project: AccountProject) {
   return {
     slug: project.slug,
     name: project.name,
+    repository: project.repository,
     machine: project.machine,
     online: project.online,
+    locations: project.locations,
   };
 }

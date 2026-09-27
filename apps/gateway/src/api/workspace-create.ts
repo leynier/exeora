@@ -1,4 +1,4 @@
-import { ExeoraError } from "@exeora/protocol";
+import { DEFAULT_POLICY, ExeoraError } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
@@ -7,6 +7,7 @@ import { z } from "zod";
 import { beginAudit, finishAudit } from "../audit.js";
 import { addCloudLocation } from "../cloud/location.js";
 import { createCloudWorkspace } from "../cloud/provisioning.js";
+import { destroyCloudWorkspace } from "../cloud/teardown.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
@@ -17,13 +18,14 @@ import {
   locationNames,
   locationsOf,
 } from "../locations.js";
-import { callRelayWorkspace } from "../relay-client.js";
+import { callRelayTool, callRelayWorkspace } from "../relay-client.js";
 import { prepareLocation } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
 import type { ApiEnv } from "./router.js";
 
 /**
- * Making a workspace from the dashboard, wherever the project lives.
+ * Making and removing a workspace from the dashboard, wherever the project
+ * lives.
  *
  * One request for every place: a worktree on one of the user's machines, which
  * is cloned first when that machine has no copy, or a machine of its own on
@@ -175,3 +177,118 @@ async function createOnMachine(
     return c.json({ error: code, message: error.message }, status);
   }
 }
+
+const removal = z.object({
+  /** Remove it with work that was never committed, or on Cloud never pushed. */
+  force: z.boolean().default(false),
+  deleteBranch: z.boolean().default(false),
+});
+
+/**
+ * Removes a workspace and its working copy.
+ *
+ * On a user's machine the CLI does it, with the rules the `remove_workspace`
+ * tool has always had: it refuses a checkout with uncommitted changes unless
+ * forced. On Exeora Cloud the machine is taken down, and what it refuses
+ * unless forced is work the remote does not have, because the machine is the
+ * only copy of it.
+ */
+workspaceCreate.post(
+  "/api/projects/:id/workspaces/:workspaceId/remove",
+  zValidator("json", removal),
+  async (c) => {
+    const userId = c.get("userId");
+    const projectId = c.req.param("id");
+    const body = c.req.valid("json");
+
+    const row = await db(c.env)
+      .select({
+        id: schema.workspaces.id,
+        slug: schema.workspaces.slug,
+        deviceId: schema.workspaces.deviceId,
+        defaultDevice: schema.projects.deviceId,
+        cloud: schema.cloudMachines.deviceId,
+      })
+      .from(schema.workspaces)
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.workspaces.projectId))
+      .leftJoin(schema.cloudMachines, eq(schema.cloudMachines.workspaceId, schema.workspaces.id))
+      .where(
+        and(
+          eq(schema.workspaces.id, c.req.param("workspaceId")),
+          eq(schema.workspaces.projectId, projectId),
+          eq(schema.projects.userId, userId),
+        ),
+      )
+      .get();
+    if (!row) return c.json({ error: "not_found" }, 404);
+
+    const deviceId = row.deviceId ?? row.defaultDevice;
+    const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, deviceId));
+    const audit = await beginAudit(c.env, {
+      userId,
+      projectId,
+      workspaceId: row.id,
+      workspaceSlug: row.slug,
+      tool: "source_control.workspace_remove",
+      endpoint: "dashboard",
+      caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+    });
+
+    try {
+      if (row.cloud) {
+        if (!body.force) {
+          const value = await callRelayWorkspace(relay, {
+            requestId: newId("req"),
+            projectId,
+            workspaceId: row.id,
+            workspaceSlug: row.slug,
+            action: { action: "unpublished" },
+            signal: c.req.raw.signal,
+          });
+          if (value.kind === "unpublished" && !value.clean) {
+            throw new ExeoraError(
+              "TOOL_FAILED",
+              `This workspace holds work the remote does not have (${value.reasons.join("; ")}), and its machine is the only copy. Push it, or remove it anyway.`,
+            );
+          }
+        }
+        await destroyCloudWorkspace(c.env, userId, projectId, row.id);
+        await finishAudit(c.env, audit, { status: "ok" });
+        return c.json({ ok: true, status: "removing" }, 202);
+      }
+
+      // The person who owns the account is asking, from their own dashboard:
+      // the account's policy is about what agents may do. The checkout's own
+      // `exeora.toml` is still applied by the machine.
+      await callRelayTool(relay, {
+        requestId: newId("req"),
+        projectId,
+        workspaceId: row.id,
+        workspaceSlug: row.slug,
+        tool: "remove_workspace",
+        args: { force: body.force, deleteBranch: body.deleteBranch },
+        client: { name: "Exeora Dashboard" },
+        policy: DEFAULT_POLICY,
+        signal: c.req.raw.signal,
+      });
+      await finishAudit(c.env, audit, { status: "ok" });
+      return c.json({ ok: true, status: "removed" });
+    } catch (error) {
+      const code = error instanceof ExeoraError ? error.code : "INTERNAL_ERROR";
+      await finishAudit(c.env, audit, { status: "error", errorCode: code });
+      if (!(error instanceof ExeoraError)) {
+        console.error("workspace removal failed", error);
+        return c.json({ error: code, message: "The workspace could not be removed." }, 500);
+      }
+      const status =
+        code === "LOCAL_EXECUTOR_OFFLINE" || code === "EXECUTOR_WAKING" || code === "TOOL_TIMEOUT"
+          ? 409
+          : code === "FORBIDDEN"
+            ? 403
+            : 422;
+      // `unforced` lets the page offer "remove anyway" for exactly the refusals
+      // that forcing answers, and not for a machine that is simply off.
+      return c.json({ error: code, message: error.message, unforced: !body.force }, status);
+    }
+  },
+);

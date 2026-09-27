@@ -13,6 +13,7 @@ import { relayName } from "../api/ops.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
+import { locationsOf } from "../locations.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import type { CloudEnv } from "./access.js";
 import { addCloudLocation, type CloudLocationError } from "./location.js";
@@ -103,24 +104,67 @@ export async function listWorkspacesWithCloud(
   userId: string,
   projectId: string,
 ) {
-  const rows = await db(env)
+  const project = await db(env)
     .select({
-      slug: schema.workspaces.slug,
-      name: schema.workspaces.name,
-      branch: schema.workspaces.branch,
-      managed: schema.workspaces.managed,
-      status: schema.cloudMachines.status,
-      error: schema.cloudMachines.error,
+      id: schema.projects.id,
+      deviceId: schema.projects.deviceId,
+      localPath: schema.projects.localPath,
+      defaultBranch: schema.projects.defaultBranch,
+      cloudBranch: schema.cloudProjects.defaultBranch,
     })
-    .from(schema.workspaces)
-    .innerJoin(schema.projects, eq(schema.workspaces.projectId, schema.projects.id))
-    .leftJoin(schema.cloudMachines, eq(schema.cloudMachines.workspaceId, schema.workspaces.id))
-    .where(and(eq(schema.workspaces.projectId, projectId), eq(schema.projects.userId, userId)))
-    .all();
-  return rows.map(({ status, error, ...workspace }) => ({
-    ...workspace,
-    ...(status ? { cloud: { status, error } } : {}),
-  }));
+    .from(schema.projects)
+    .leftJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
+    .get();
+  if (!project) return [];
+
+  const [rows, locations] = await Promise.all([
+    db(env)
+      .select({
+        slug: schema.workspaces.slug,
+        name: schema.workspaces.name,
+        branch: schema.workspaces.branch,
+        managed: schema.workspaces.managed,
+        deviceId: schema.workspaces.deviceId,
+        status: schema.cloudMachines.status,
+        error: schema.cloudMachines.error,
+      })
+      .from(schema.workspaces)
+      .leftJoin(schema.cloudMachines, eq(schema.cloudMachines.workspaceId, schema.workspaces.id))
+      .where(eq(schema.workspaces.projectId, projectId))
+      .orderBy(schema.workspaces.createdAt)
+      .all(),
+    locationsOf(env, userId, [project]).then((all) => all.get(project.id) ?? []),
+  ]);
+
+  const chosen = locations.find((location) => location.default);
+  // A cloud workspace is a machine of its own, which no location names: it is
+  // on Exeora Cloud, and that is what it is listed under.
+  const cloud = locations.find((location) => location.kind === "cloud");
+  const where = (deviceId: string, onCloud: boolean) =>
+    onCloud ? cloud?.slug : locations.find((location) => location.deviceId === deviceId)?.slug;
+
+  return [
+    // The root first. It is where a call that names no workspace lands, and an
+    // agent that was told a project has no workspaces would otherwise conclude
+    // there is nowhere to work.
+    {
+      slug: CLOUD_MAIN_WORKSPACE_SLUG,
+      name: "project root",
+      branch: project.defaultBranch ?? project.cloudBranch,
+      managed: false,
+      root: true,
+      ...(chosen ? { location: chosen.slug } : {}),
+    },
+    ...rows.map(({ status, error, deviceId, ...workspace }) => {
+      const location = where(deviceId ?? project.deviceId, status !== null);
+      return {
+        ...workspace,
+        ...(location ? { location } : {}),
+        ...(status ? { cloud: { status, error } } : {}),
+      };
+    }),
+  ];
 }
 
 async function listGitWorkspaces(env: Pick<Env, "DB">, projectId: string, defaultBranch: string) {

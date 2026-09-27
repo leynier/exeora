@@ -27,13 +27,41 @@ export const WorkspaceRef = z
     "A connected workspace's slug or stable id. Use main, or omit it, for the project root.",
   );
 
+/**
+ * What a place a project lives is doing. `asleep` is a machine Exeora runs
+ * that wakes on the next call, which is why it counts as reachable; `offline`
+ * is somebody's own machine that is off or not connected, which does not.
+ */
+export const LocationState = z.enum([
+  "online",
+  "asleep",
+  "offline",
+  "setting up",
+  "failed",
+  "not cloned",
+  "removed",
+]);
+
+export const LocationSummary = z.object({
+  /** What `where` takes: the machine's name as a slug, or `cloud`. */
+  name: z.string(),
+  kind: z.enum(["local", "cloud"]),
+  state: LocationState,
+  /** Where a call that names no workspace lands. */
+  default: z.boolean(),
+});
+
 export const ProjectSummary = z.object({
   slug: z.string(),
   name: z.string(),
-  /** The machine serving it, by name. Never its path on disk. */
+  /** The repository, as `host/owner/name`. Null for a directory that has no remote. */
+  repository: z.string().nullable(),
+  /** The default location, by name. Never a path on disk. */
   machine: z.string(),
-  /** Whether that machine has checked in recently enough to answer a call. */
+  /** Whether the default location can answer a call: online, or asleep and about to wake. */
   online: z.boolean(),
+  /** Every place the project lives. A workspace can be made in any of them. */
+  locations: z.array(LocationSummary),
 });
 
 export const ListProjectsInput = z.object({});
@@ -48,10 +76,15 @@ export const ListWorkspacesOutput = z.object({
   project: z.string(),
   workspaces: z.array(
     z.object({
+      /** What `workspace` takes. `main` is the project root at the default location. */
       slug: z.string(),
       name: z.string(),
       branch: z.string().nullable(),
       managed: z.boolean(),
+      /** The location that holds it, as `list_projects` names it. */
+      location: z.string().optional(),
+      /** True for the project root, which is always there and cannot be removed. */
+      root: z.boolean().optional(),
       /** Present only for a workspace hosted on an Exeora Cloud machine. */
       cloud: CloudWorkspaceState.optional(),
     }),
@@ -62,7 +95,7 @@ export const ACCOUNT_TOOL_DEFINITIONS = {
   list_workspaces: {
     title: "List workspaces",
     description:
-      "List the Git workspaces connected under a project. Pass a project slug or id when this connection reaches more than one project.",
+      "List a project's workspaces: the project root, as `main`, and every other branch that has a working copy, with the location that holds each. Pass a project slug or id when this connection reaches more than one project.",
     inputSchema: ListWorkspacesInput,
     outputSchema: ListWorkspacesOutput,
     readOnly: true,
@@ -70,8 +103,9 @@ export const ACCOUNT_TOOL_DEFINITIONS = {
   list_projects: {
     title: "List projects",
     description:
-      "List the projects this connection can reach. When more than one is listed, every other " +
-      "tool call must name its project by slug or id.",
+      "List the projects this connection can reach, with the locations each one lives in: the " +
+      "user's machines and Exeora Cloud. When more than one project is listed, every other tool " +
+      "call must name its project by slug or id.",
     inputSchema: ListProjectsInput,
     outputSchema: ListProjectsOutput,
     readOnly: true,

@@ -128,9 +128,10 @@ export const WORKSPACE_TOOL_DEFINITIONS = {
   list_git_workspaces: {
     title: "List Git workspaces",
     description:
-      "List every Git workspace in this repository, including workspaces that are not connected " +
-      "to Exeora. Returns absolute local paths so one can be passed to attach_workspace. Requires " +
-      "the connected machine to be online; list_workspaces is the offline inventory of connected workspaces.",
+      "List every Git workspace of this repository on one of the user's machines, including ones " +
+      "that are not connected to Exeora. Returns absolute local paths so one can be passed to " +
+      "attach_workspace. Requires that machine to be online; list_workspaces is the inventory of " +
+      "connected workspaces across every location and works offline.",
     inputSchema: ListGitWorkspacesInput,
     outputSchema: ListGitWorkspacesOutput,
     readOnly: true,
@@ -138,9 +139,12 @@ export const WORKSPACE_TOOL_DEFINITIONS = {
   create_workspace: {
     title: "Create workspace",
     description:
-      "Create a native Git workspace under Exeora's managed workspace root and connect it to this " +
-      "project. Omit the routing workspace to base it on the project root's HEAD, or name a connected " +
-      "workspace to use that checkout as the source. Always use this tool rather than executing raw git commands.",
+      "Create a workspace: a branch with a working copy of its own, in one of the project's " +
+      "locations. `where` chooses the location, a machine name or `cloud`; without it the default " +
+      "location is used. Omit the routing workspace to base it on the project root's HEAD, or name " +
+      "a connected workspace to start from that checkout, beside it. The first workspace on a " +
+      "machine clones the repository there, and one on Exeora Cloud starts a machine, so this can " +
+      "take a minute. Always use this tool rather than executing raw git commands.",
     inputSchema: CreateWorkspaceInput,
     outputSchema: ConnectWorkspaceOutput,
     readOnly: false,
@@ -166,9 +170,10 @@ export const WORKSPACE_TOOL_DEFINITIONS = {
   remove_workspace: {
     title: "Remove workspace",
     description:
-      "Disconnect and physically remove a Git workspace. Refuses uncommitted changes unless force " +
-      "is true, and keeps the branch unless deleteBranch is true. The MCP routing workspace argument is required. " +
-      "Always use this tool rather than executing raw git commands.",
+      "Disconnect and physically remove a workspace. Refuses uncommitted changes unless force " +
+      "is true, and on Exeora Cloud also work that was never pushed, since the machine is its only " +
+      "copy. Keeps the branch unless deleteBranch is true. The MCP routing workspace argument is " +
+      "required. Always use this tool rather than executing raw git commands.",
     inputSchema: RemoveWorkspaceInput,
     outputSchema: RemoveWorkspaceOutput,
     readOnly: false,

@@ -221,6 +221,8 @@ describe("the account consent screen", () => {
         project: `project ${index}`,
         machine: "minipc",
         localPath: "/work",
+        repository: null,
+        locations: ["minipc"],
         granted: false,
       })),
     }).toString();

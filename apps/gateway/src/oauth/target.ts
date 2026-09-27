@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
+import { locationsOf } from "../locations.js";
 
 /**
  * What an MCP client is actually asking for.
@@ -13,8 +14,13 @@ import { db, schema } from "../db/client.js";
 
 export interface AuthTarget {
   project: string;
+  /** The default location, by name. */
   machine: string;
   localPath: string;
+  /** `host/owner/name`, or null for a directory that has no remote. */
+  repository: string | null;
+  /** Every place the project lives, by name. A grant reaches all of them. */
+  locations: string[];
 }
 
 /**
@@ -87,16 +93,52 @@ export async function resolveAuthTarget(
 
   const row = await db(env)
     .select({
+      id: schema.projects.id,
+      deviceId: schema.projects.deviceId,
       project: schema.projects.name,
       localPath: schema.projects.localPath,
-      machine: schema.devices.name,
+      repository: schema.projects.repoKey,
     })
     .from(schema.projects)
-    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
     .get();
+  if (!row) return null;
 
-  return row ?? null;
+  const places = await placesOf(env, userId, [row]);
+  return {
+    project: row.project,
+    localPath: row.localPath,
+    repository: row.repository,
+    ...(places.get(row.id) ?? { machine: "a machine that was removed", locations: [] }),
+  };
+}
+
+/**
+ * Where each project lives, in the words the consent screens use: the default
+ * location's name, and the names of all of them. A grant is for the project,
+ * so it reaches every one, and the person approving should see them all.
+ */
+async function placesOf(
+  env: Pick<Env, "DB">,
+  userId: string,
+  projects: ReadonlyArray<{ id: string; deviceId: string; localPath: string }>,
+): Promise<Map<string, { machine: string; locations: string[] }>> {
+  const all = await locationsOf(env, userId, projects);
+  return new Map(
+    projects.map((project) => {
+      const standing = (all.get(project.id) ?? []).filter(
+        (location) => location.state !== "removed",
+      );
+      const chosen = standing.find((location) => location.default);
+      return [
+        project.id,
+        {
+          machine: chosen?.name ?? "a machine that was removed",
+          locations: standing.map((location) => location.name),
+        },
+      ];
+    }),
+  );
 }
 
 /** One project as the account consent screen offers it. */
@@ -105,6 +147,8 @@ export interface AccountTargetProject {
   project: string;
   machine: string;
   localPath: string;
+  repository: string | null;
+  locations: string[];
   /** Whether this client already reaches it, so the box arrives ticked. */
   granted: boolean;
 }
@@ -130,13 +174,13 @@ export async function resolveAccountTarget(
   const rows = await db(env)
     .select({
       id: schema.projects.id,
+      deviceId: schema.projects.deviceId,
       project: schema.projects.name,
       localPath: schema.projects.localPath,
-      machine: schema.devices.name,
+      repository: schema.projects.repoKey,
       grantedAt: schema.projectClients.authorizedAt,
     })
     .from(schema.projects)
-    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .leftJoin(
       schema.projectClients,
       and(
@@ -150,7 +194,12 @@ export async function resolveAccountTarget(
     .orderBy(schema.projects.name)
     .all();
 
-  return rows.map(({ grantedAt, ...rest }) => ({ ...rest, granted: grantedAt !== null }));
+  const places = await placesOf(env, userId, rows);
+  return rows.map(({ grantedAt, deviceId: _deviceId, ...rest }) => ({
+    ...rest,
+    ...(places.get(rest.id) ?? { machine: "a machine that was removed", locations: [] }),
+    granted: grantedAt !== null,
+  }));
 }
 
 /** Narrows a list of project ids to the ones this user owns, keeping order. */

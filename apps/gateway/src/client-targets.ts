@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { parsePolicy } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
-import { isDeviceOnline, presenceCutoff } from "./presence.js";
+import { type LocationView, locationsOf } from "./locations.js";
 
 /**
  * Where a call lands: which machine serves a project and whether the caller may
@@ -164,55 +164,86 @@ export interface AccountProject {
   id: string;
   slug: string;
   name: string;
+  /** `host/owner/name`, or null for a directory with no remote. */
+  repository: string | null;
+  /** The default location, by name. */
   machine: string;
+  /** Whether the default location can answer: online, or a cloud machine asleep. */
   online: boolean;
+  locations: Array<{
+    name: string;
+    kind: LocationView["kind"];
+    state: LocationView["state"];
+    default: boolean;
+  }>;
+}
+
+/** A location that answers a call made now: up, or asleep and woken by the call. */
+export function answers(location: Pick<LocationView, "state">): boolean {
+  return location.state === "online" || location.state === "asleep";
 }
 
 /**
- * Every project this client reaches through the account URL.
+ * Every project this client reaches through the account URL, with the places
+ * each one lives.
  *
- * `online` comes from the device's own presence columns rather than from asking
- * each relay, which would be one Durable Object round trip per project to
- * answer a question the database already knows. `localPath` is deliberately not
- * selected: the gateway never sends a machine's own paths to a tool, and
- * listing projects is not the place to start.
+ * Presence comes from the devices' own columns rather than from asking each
+ * relay, which would be one Durable Object round trip per machine to answer a
+ * question the database already knows. Paths are deliberately left out: the
+ * gateway never sends a machine's own paths to a tool, and listing projects is
+ * not the place to start.
+ *
+ * A project is listed for as long as it lives somewhere. Losing the machine of
+ * its default location does not hide it, because its workspaces elsewhere are
+ * still reachable; a project whose every machine was removed is gone.
  */
 export async function accountProjects(
   env: Pick<Env, "DB">,
   entry: { userId: string; clientId: string },
 ): Promise<AccountProject[]> {
-  const cutoff = presenceCutoff();
-
   const rows = await db(env)
     .select({
       id: schema.projects.id,
       slug: schema.projects.slug,
       name: schema.projects.name,
-      machine: schema.devices.name,
-      lastSeenAt: schema.devices.lastSeenAt,
-      disconnectedAt: schema.devices.disconnectedAt,
-      revokedAt: schema.devices.revokedAt,
+      repoKey: schema.projects.repoKey,
+      deviceId: schema.projects.deviceId,
+      localPath: schema.projects.localPath,
     })
     .from(schema.projectClients)
     .innerJoin(schema.projects, eq(schema.projects.id, schema.projectClients.projectId))
-    .innerJoin(schema.devices, eq(schema.devices.id, schema.projects.deviceId))
     .where(
       and(
         eq(schema.projectClients.userId, entry.userId),
         eq(schema.projectClients.clientId, entry.clientId),
         eq(schema.projectClients.endpoint, "account"),
         isNull(schema.projectClients.revokedAt),
-        isNull(schema.devices.revokedAt),
       ),
     )
     .orderBy(schema.projects.name)
     .all();
 
-  return rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    machine: row.machine,
-    online: isDeviceOnline(row, cutoff),
-  }));
+  const locations = await locationsOf(env, entry.userId, rows);
+
+  return rows.flatMap((row) => {
+    const all = (locations.get(row.id) ?? []).filter((location) => location.state !== "removed");
+    if (all.length === 0) return [];
+    const chosen = all.find((location) => location.default);
+    return [
+      {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        repository: row.repoKey,
+        machine: chosen?.name ?? "removed",
+        online: chosen ? answers(chosen) : false,
+        locations: all.map((location) => ({
+          name: location.slug,
+          kind: location.kind,
+          state: location.state,
+          default: location.default,
+        })),
+      },
+    ];
+  });
 }

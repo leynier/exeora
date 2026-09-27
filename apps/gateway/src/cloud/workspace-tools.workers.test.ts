@@ -245,8 +245,16 @@ describe("workspace tools on a cloud project", () => {
       outcome: "active",
     });
     const listed = await listWorkspacesWithCloud(env, USER, PROJECT);
+    // The project root comes first: it is where a call that names no
+    // workspace lands, and leaving it out reads as nowhere to work.
     expect(listed).toMatchObject([
-      { slug: "feature-x", branch: "feature/x", cloud: { status: "ready", error: null } },
+      { slug: "main", branch: "main", root: true, location: "cloud" },
+      {
+        slug: "feature-x",
+        branch: "feature/x",
+        location: "cloud",
+        cloud: { status: "ready", error: null },
+      },
     ]);
     const tools = await advertisedTools(env, USER, PROJECT);
     expect(tools?.has("create_workspace")).toBe(true);

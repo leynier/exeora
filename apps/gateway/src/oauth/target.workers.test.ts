@@ -152,6 +152,8 @@ describe("the projects an account consent may offer", () => {
         project: "exeora",
         machine: "minipc",
         localPath: "/home/you/work/exeora",
+        repository: null,
+        locations: ["minipc"],
         granted: true,
       },
     ]);
@@ -206,6 +208,8 @@ describe("resolving it for display", () => {
       project: "exeora",
       machine: "minipc",
       localPath: "/home/you/work/exeora",
+      repository: null,
+      locations: ["minipc"],
     });
   });
 
