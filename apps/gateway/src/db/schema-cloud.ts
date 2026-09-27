@@ -105,6 +105,16 @@ export const cloudMachines = sqliteTable(
      * machine's object never stored anything. Null for the main machine.
      */
     createdFrom: text("created_from"),
+    /**
+     * The last run of each of the project's scripts on this machine, as
+     * `CloudHookRun` JSON. They are what happened after the machine was made,
+     * so they never touch `status`: a machine whose install script failed is
+     * a machine that is ready and has something to say.
+     */
+    installHook: text("install_hook"),
+    resumeHook: text("resume_hook"),
+    /** What the machine came with and what was added to it, as `ToolsReport` JSON. */
+    toolsReport: text("tools_report"),
     createdAt: stamp("created_at"),
     updatedAt: stamp("updated_at"),
     readyAt: integer("ready_at", { mode: "timestamp_ms" }),
@@ -116,6 +126,38 @@ export const cloudMachines = sqliteTable(
     index("cloud_machines_project").on(table.projectId),
     index("cloud_machines_user_status").on(table.userId, table.status),
   ],
+);
+
+/**
+ * The scripts a project runs in its instances, as written on its page.
+ *
+ * On the project rather than on its Cloud row, which goes when the project is
+ * taken off Exeora Cloud: somebody who puts it back should find what they
+ * wrote. Null is no script, which leaves the file in the repository to run.
+ */
+export const projectCloudScripts = sqliteTable(
+  "project_cloud_scripts",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    installScript: text("install_script"),
+    resumeScript: text("resume_script"),
+    /**
+     * Whether the files in the repository may run. They are not tool calls,
+     * so the project's policy and approvals do not reach them: whoever can
+     * push to the branch runs code in the instance. This is how that is
+     * switched off without giving up the scripts written on the page.
+     */
+    runRepositoryScripts: integer("run_repository_scripts", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    updatedAt: stamp("updated_at"),
+  },
+  (table) => [index("project_cloud_scripts_user").on(table.userId)],
 );
 
 export type CloudProject = typeof cloudProjects.$inferSelect;

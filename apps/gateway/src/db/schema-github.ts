@@ -45,6 +45,12 @@ export const githubInstallations = sqliteTable(
       .default("selected"),
     /** Set while the account's owner has the app suspended: GitHub mints nothing for it. */
     suspendedAt: integer("suspended_at", { mode: "timestamp_ms" }),
+    /**
+     * What the installation has granted the app, as GitHub's own JSON. The
+     * app may ask for more than an installation has accepted yet, and this is
+     * how the dashboard knows to say so. Null until GitHub has said.
+     */
+    permissions: text("permissions"),
     createdAt: stamp("created_at"),
     updatedAt: stamp("updated_at"),
   },

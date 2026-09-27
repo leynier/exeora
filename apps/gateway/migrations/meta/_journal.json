@@ -169,6 +169,13 @@
       "when": 1790475388490,
       "tag": "0023_repository_renames_and_github_user",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1790534570957,
+      "tag": "0024_cloud_hooks",
+      "breakpoints": true
     }
   ]
 }

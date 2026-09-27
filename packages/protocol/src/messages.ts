@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CloudHookRunMessage, CloudHookStateMessage, CloudHooksConfig } from "./cloud-hooks.js";
 import { ERROR_CODES } from "./errors.js";
 import { MAX_MCP_TOOL_NAME_LENGTH, MAX_MCP_TOOLS_PER_PROJECT } from "./limits.js";
 import { CommandPolicy } from "./policy.js";
@@ -233,6 +234,7 @@ export const ExecutorMessage = z.discriminatedUnion("type", [
   TerminalOutputMessage,
   TerminalExitMessage,
   TerminalErrorMessage,
+  CloudHookStateMessage,
 ]);
 
 export type HelloMessage = z.infer<typeof HelloMessage>;
@@ -264,6 +266,8 @@ export const HelloAckMessage = z.object({
   latestCliVersion: z.string().optional(),
   /** Present only when fixed heartbeat frames are handled at the edge. */
   heartbeatMode: z.literal("auto").optional(),
+  /** The project's scripts, for an instance of Exeora Cloud that runs them. */
+  cloudHooks: CloudHooksConfig.optional(),
 });
 
 export const HeartbeatAckMessage = z.object({
@@ -427,6 +431,7 @@ export const RelayMessage = z.discriminatedUnion("type", [
   TerminalInputMessage,
   TerminalResizeMessage,
   TerminalCloseMessage,
+  CloudHookRunMessage,
 ]);
 
 export type HelloAckMessage = z.infer<typeof HelloAckMessage>;
