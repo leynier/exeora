@@ -1,16 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   BASELINE_CAPABILITIES,
-  CLOUD_FEATURE,
+  type CloudHook,
   decodeExecutorMessage,
   type ExecutorCapabilities,
   encodeMessage,
-  HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_REQUEST,
   HEARTBEAT_RESPONSE,
-  MIN_SUPPORTED_PROTOCOL_VERSION,
-  PROTOCOL_VERSION,
 } from "@exeora/protocol";
+import { recordHookState } from "./cloud/hooks.js";
 import { observeTool } from "./cost-metrics.js";
 import "./env.js";
 import { touchDevice } from "./presence.js";
@@ -32,7 +30,6 @@ import {
   failUnreadableResult,
   hasOtherExecutor,
   offline,
-  replaceOtherExecutors,
   resolveTerminalApproval,
   type SocketState,
   sendCancel,
@@ -49,6 +46,7 @@ import {
   noteExecutorActivity,
   storeCloudConfig,
 } from "./relay-do-cloud.js";
+import { type HookRequest, handleHello, requestHookRun } from "./relay-do-hello.js";
 import {
   acceptTerminalSocket,
   closeTerminalTarget,
@@ -61,7 +59,6 @@ import {
   issueTerminalTicket,
   listTerminalSummaries,
   persistDetachedTerminal,
-  resetExecutorTerminals,
   scheduleWorkspaceAlarm,
 } from "./relay-do-terminal.js";
 import { decodeCallerRequest } from "./relay-internal.js";
@@ -164,63 +161,14 @@ export class DeviceRelay extends DurableObject<Env> {
     }
 
     switch (message.type) {
-      case "hello": {
-        // A range, not an equality. Anything a newer CLI gained is negotiated
-        // through `capabilities`, so an older one is behind rather than broken,
-        // and only a change it would get actively wrong raises the floor.
-        const supported =
-          message.protocolVersion >= MIN_SUPPORTED_PROTOCOL_VERSION &&
-          message.protocolVersion <= PROTOCOL_VERSION;
+      case "hello":
+        return handleHello(this.relay(), socket, state, message);
 
-        if (!supported) {
-          const direction =
-            message.protocolVersion > PROTOCOL_VERSION
-              ? "This CLI is newer than the gateway. It will work again once the gateway catches up."
-              : "Update the CLI.";
-
-          socket.send(
-            encodeMessage({
-              type: "shutdown",
-              reason:
-                `This gateway speaks protocol v${MIN_SUPPORTED_PROTOCOL_VERSION} to v${PROTOCOL_VERSION}; ` +
-                `the CLI speaks v${message.protocolVersion}. ${direction}`,
-            }),
-          );
-          socket.close(1008, "protocol version mismatch");
-          return;
-        }
-
-        replaceOtherExecutors(this.ctx, socket);
-        await clearMcpCatalogs(this.ctx);
-        socket.serializeAttachment({
-          role: "executor",
-          deviceId: state.deviceId || message.deviceId,
-          active: true,
-          ...(message.capabilities ? { capabilities: message.capabilities } : {}),
-        } satisfies ExecutorSocketState);
-        this.cloud.holdsTasks = message.capabilities?.features?.includes(CLOUD_FEATURE) ?? false;
-        await resetExecutorTerminals(this.ctx);
-
-        socket.send(
-          encodeMessage({
-            type: "hello.ack",
-            serverTime: Date.now(),
-            heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
-            heartbeatMode: "auto",
-            ...(this.env.LATEST_CLI_VERSION
-              ? { latestCliVersion: this.env.LATEST_CLI_VERSION }
-              : {}),
-          }),
-        );
-        // The id from the upgrade URL, which the Worker checked belongs to the
-        // caller, in preference to the one in the frame. `devices` is keyed by
-        // id alone, so trusting the frame would let any account refresh the
-        // presence and CLI version of a machine it does not own.
-        await touchDevice(this.env, state.deviceId || message.deviceId, {
-          cliVersion: message.cliVersion,
-          force: true,
-          connected: true,
-        });
+      case "cloud.hook.state": {
+        // A script running is the instance at work, and what it says about
+        // the run is kept for the page that shows the instance.
+        noteExecutorActivity(this.cloud);
+        await recordHookState(this.env, state.deviceId, message.hook, message.run);
         return;
       }
 
@@ -371,6 +319,18 @@ export class DeviceRelay extends DurableObject<Env> {
     const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
     if (!wake.ok) return null;
     return issueTerminalTicket(this.ctx, projectId, workspaceId, workspaceSlug, origin);
+  }
+
+  /** What the helpers beside this file are handed: the object's own state. */
+  private relay() {
+    return { ctx: this.ctx, env: this.env, cloud: this.cloud };
+  }
+
+  /** Asks the instance to run one of its project's scripts again, waking it first. */
+  async runCloudHook(hook: CloudHook): Promise<HookRequest | "waking"> {
+    const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
+    if (!wake.ok) return "waking";
+    return requestHookRun(this.relay(), hook);
   }
 
   /**

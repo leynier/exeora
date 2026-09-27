@@ -61,6 +61,40 @@ describe("OAuth scope ceilings", () => {
     expect(isMachineApiRequest("GET", "/api/devices")).toBe(false);
   });
 
+  it("lets a machine ask for the token of `gh`, and the person's CLI not", () => {
+    expect(isMachineApiRequest("POST", "/api/projects/prj_one/gh-token")).toBe(true);
+    expect(isMachineApiRequest("POST", "/api/projects/prj_one/git-credential")).toBe(true);
+
+    // That path, by that method, and nothing around it.
+    for (const method of ["GET", "PUT", "PATCH", "DELETE"]) {
+      expect(isMachineApiRequest(method, "/api/projects/prj_one/gh-token"), method).toBe(false);
+    }
+    for (const path of [
+      "/api/projects/prj_one/gh-token/",
+      "/api/projects/prj_one/gh-token/more",
+      "/api/projects/prj_one/gh-tokens",
+      "/api/projects/prj_one/x-gh-token",
+      "/api/projects/prj_one/workspaces/gh-token",
+      "/api/projects//gh-token",
+      "/api/projects/gh-token",
+      "/api/cloud/projects/prj_one/gh-token",
+      "/v2/api/projects/prj_one/gh-token",
+      "/api/projects/prj_one",
+      "/api/projects/prj_one/policy",
+      "/api/projects",
+      "/api/github",
+    ]) {
+      expect(isMachineApiRequest("POST", path), path).toBe(false);
+    }
+
+    // It acts as the person wherever they can act, so it is for an instance
+    // alone: a token of the CLI is turned away before the route is reached.
+    for (const method of ["GET", "POST", "PUT", "DELETE"]) {
+      expect(isExecutorApiRequest(method, "/api/projects/prj_one/gh-token"), method).toBe(false);
+    }
+    expect(isExecutorApiRequest("POST", "/api/projects/prj_one/git-credential")).toBe(true);
+  });
+
   it("grants only the scopes requested within each first-party client ceiling", async () => {
     await env.OAUTH_KV.put("dashboard_client_id", "dashboard");
     await env.OAUTH_KV.put("cli_client_id", "cli");

@@ -168,3 +168,107 @@ describe("machines behind the current release", () => {
     expect(olderThan("dev", "0.18.0")).toBe(false);
   });
 });
+
+describe("scripts that ended badly", () => {
+  const run = (patch: Record<string, unknown> = {}) => ({
+    runId: "run_1",
+    status: "failed",
+    source: "dashboard",
+    trigger: "setup",
+    scriptSha256: null,
+    exitCode: 3,
+    startedAt: 1,
+    finishedAt: 2,
+    truncated: false,
+    ...patch,
+  });
+  const ready = (patch: Record<string, unknown>) =>
+    ({ ...failed, state: "online", error: null, ...patch }) as unknown as Machine;
+  const items = (machines: Machine[]) =>
+    attentionItems({ projects: [], machines, accountClients: [] });
+
+  it("lists an instance whose script failed, and sends the person to its project", () => {
+    expect(items([ready({ hooks: { supported: true, install: run(), resume: null } })])).toEqual([
+      {
+        key: "hooks:dev_failed",
+        title: "The install script failed on the instance for fix/login of Widgets.",
+        action: "The instance is ready. Read what the script printed, then run it again.",
+        to: "/projects/prj_widgets",
+        linkLabel: "Open project",
+      },
+    ]);
+  });
+
+  it("says a script that ran out of time did", () => {
+    const [item] = items([
+      ready({
+        state: "asleep",
+        hooks: { supported: true, install: null, resume: run({ status: "timed_out" }) },
+      }),
+    ]);
+    expect(item?.title).toBe(
+      "The resume script ran out of time on the instance for fix/login of Widgets.",
+    );
+  });
+
+  it("lists an instance once when both of its scripts ended badly", () => {
+    const listed = items([
+      ready({
+        hooks: { supported: true, install: run(), resume: run({ status: "timed_out" }) },
+      }),
+    ]);
+    expect(listed.map((item) => item.key)).toEqual(["hooks:dev_failed"]);
+    expect(listed[0]?.title).toBe(
+      "The install and resume scripts failed on the instance for fix/login of Widgets.",
+    );
+  });
+
+  it("says nothing of a script that went well, has no script, or is running", () => {
+    expect(
+      items([
+        ready({
+          hooks: {
+            supported: true,
+            install: run({ status: "ok" }),
+            resume: run({ status: "skipped", source: "none" }),
+          },
+        }),
+        ready({
+          deviceId: "dev_running",
+          hooks: { supported: true, install: run({ status: "running" }), resume: null },
+        }),
+        ready({ deviceId: "dev_old", hooks: { supported: false, install: null, resume: null } }),
+        ready({ deviceId: "dev_silent" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("says nothing of tools that are merely missing", () => {
+    expect(
+      items([
+        ready({
+          hooks: { supported: true, install: null, resume: null },
+          tools: {
+            tools: [
+              { name: "jq", state: "failed", version: null, required: false, reason: "no apt" },
+            ],
+            environment: {
+              os: "linux",
+              arch: "x86_64",
+              sudo: false,
+              apt: false,
+              memoryDisk: false,
+            },
+          },
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("lists an instance that failed as the instance it is, and not for its scripts", () => {
+    const listed = items([
+      { ...failed, hooks: { supported: true, install: run(), resume: null } } as unknown as Machine,
+    ]);
+    expect(listed.map((item) => item.key)).toEqual(["instance:dev_failed"]);
+  });
+});

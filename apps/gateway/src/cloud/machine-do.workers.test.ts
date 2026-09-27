@@ -63,6 +63,13 @@ function fakeSprites(answer: (request: Request) => Response | undefined = () => 
       );
     }
     if (path.endsWith("/exec")) {
+      // Two scripts are run on a machine, and each is told by its own last word.
+      const script = await request.clone().text();
+      if (script.includes("EXEORA_TOOLS_OK")) {
+        return new Response(
+          "EXEORA_TOOL gh installed 2.101.0 yes -\nEXEORA_ENV os=ubuntu-25.10 arch=x86_64 sudo=no apt=no shm=yes\nEXEORA_TOOLS_OK\n\n__EXEORA_EXIT_0__\n",
+        );
+      }
       return new Response("bootstrap: done\nEXEORA_BOOTSTRAP_OK\n\n__EXEORA_EXIT_0__\n");
     }
     if (request.method === "PUT" && path.endsWith("/services/exeora")) {
@@ -185,11 +192,18 @@ describe("provisioning a cloud machine", () => {
     expect((await row())?.spriteUrl).toBe("https://sprite.test");
 
     expect(await step()).toBe(true);
-    expect((await machine().status())?.phase).toBe("service");
+    expect((await machine().status())?.phase).toBe("tools");
     // The bootstrap delivered the secrets; nothing keeps them after that.
     await expect(
       runInDurableObject(machine(), (_instance, state) => state.storage.get("secrets")),
     ).resolves.toBeUndefined();
+
+    expect(await step()).toBe(true);
+    expect((await machine().status())?.phase).toBe("service");
+    expect(JSON.parse((await row())?.toolsReport ?? "null")).toMatchObject({
+      tools: [{ name: "gh", state: "installed", required: true }],
+      environment: { os: "ubuntu-25.10", memoryDisk: true },
+    });
 
     expect(await step()).toBe(true);
     expect((await machine().status())?.phase).toBe("wait-hello");
@@ -244,7 +258,7 @@ describe("provisioning a cloud machine", () => {
       (instance as unknown as { env: Env }).env = env as unknown as Env;
     });
     expect(await step()).toBe(true);
-    expect((await machine().status())?.phase).toBe("service");
+    expect((await machine().status())?.phase).toBe("tools");
     await expect(
       runInDurableObject(machine(), (_instance, state) => state.storage.get("secrets")),
     ).resolves.toBeUndefined();

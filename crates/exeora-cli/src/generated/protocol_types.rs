@@ -1472,6 +1472,127 @@ pub mod error {
 ///            }
 ///          },
 ///          "additionalProperties": false
+///        },
+///        {
+///          "type": "object",
+///          "required": [
+///            "hook",
+///            "run",
+///            "type"
+///          ],
+///          "properties": {
+///            "hook": {
+///              "type": "string",
+///              "enum": [
+///                "install",
+///                "resume"
+///              ]
+///            },
+///            "run": {
+///              "type": "object",
+///              "required": [
+///                "exitCode",
+///                "finishedAt",
+///                "runId",
+///                "scriptSha256",
+///                "source",
+///                "startedAt",
+///                "status",
+///                "trigger",
+///                "truncated"
+///              ],
+///              "properties": {
+///                "exitCode": {
+///                  "anyOf": [
+///                    {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": -9007199254740991.0
+///                    },
+///                    {
+///                      "type": "null"
+///                    }
+///                  ]
+///                },
+///                "finishedAt": {
+///                  "anyOf": [
+///                    {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": -9007199254740991.0
+///                    },
+///                    {
+///                      "type": "null"
+///                    }
+///                  ]
+///                },
+///                "output": {
+///                  "type": "string",
+///                  "maxLength": 16000
+///                },
+///                "runId": {
+///                  "type": "string",
+///                  "maxLength": 64,
+///                  "minLength": 1
+///                },
+///                "scriptSha256": {
+///                  "anyOf": [
+///                    {
+///                      "type": "string",
+///                      "maxLength": 64,
+///                      "minLength": 64
+///                    },
+///                    {
+///                      "type": "null"
+///                    }
+///                  ]
+///                },
+///                "source": {
+///                  "type": "string",
+///                  "enum": [
+///                    "dashboard",
+///                    "repository",
+///                    "none"
+///                  ]
+///                },
+///                "startedAt": {
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": -9007199254740991.0
+///                },
+///                "status": {
+///                  "type": "string",
+///                  "enum": [
+///                    "running",
+///                    "ok",
+///                    "failed",
+///                    "timed_out",
+///                    "skipped"
+///                  ]
+///                },
+///                "trigger": {
+///                  "type": "string",
+///                  "enum": [
+///                    "setup",
+///                    "changed",
+///                    "manual",
+///                    "cold",
+///                    "warm"
+///                  ]
+///                },
+///                "truncated": {
+///                  "default": false,
+///                  "type": "boolean"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            "type": {
+///              "type": "string",
+///              "const": "cloud.hook.state"
+///            }
+///          },
+///          "additionalProperties": false
 ///        }
 ///      ],
 ///      "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -1544,6 +1665,59 @@ pub mod error {
 ///            "type"
 ///          ],
 ///          "properties": {
+///            "cloudHooks": {
+///              "type": "object",
+///              "required": [
+///                "repository",
+///                "scripts"
+///              ],
+///              "properties": {
+///                "repository": {
+///                  "default": true,
+///                  "type": "boolean"
+///                },
+///                "scripts": {
+///                  "anyOf": [
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "install",
+///                        "resume"
+///                      ],
+///                      "properties": {
+///                        "install": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string",
+///                              "maxLength": 16384
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "resume": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string",
+///                              "maxLength": 16384
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "null"
+///                    }
+///                  ]
+///                }
+///              },
+///              "additionalProperties": false
+///            },
 ///            "heartbeatIntervalMs": {
 ///              "type": "integer",
 ///              "maximum": 9007199254740991.0,
@@ -2562,6 +2736,81 @@ pub mod error {
 ///            "type": {
 ///              "type": "string",
 ///              "const": "terminal.close"
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        {
+///          "type": "object",
+///          "required": [
+///            "config",
+///            "hook",
+///            "type"
+///          ],
+///          "properties": {
+///            "config": {
+///              "type": "object",
+///              "required": [
+///                "repository",
+///                "scripts"
+///              ],
+///              "properties": {
+///                "repository": {
+///                  "default": true,
+///                  "type": "boolean"
+///                },
+///                "scripts": {
+///                  "anyOf": [
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "install",
+///                        "resume"
+///                      ],
+///                      "properties": {
+///                        "install": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string",
+///                              "maxLength": 16384
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "resume": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string",
+///                              "maxLength": 16384
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "null"
+///                    }
+///                  ]
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            "hook": {
+///              "type": "string",
+///              "enum": [
+///                "install",
+///                "resume"
+///              ]
+///            },
+///            "type": {
+///              "type": "string",
+///              "const": "cloud.hook.run"
 ///            }
 ///          },
 ///          "additionalProperties": false
@@ -5462,6 +5711,127 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "hook",
+///        "run",
+///        "type"
+///      ],
+///      "properties": {
+///        "hook": {
+///          "type": "string",
+///          "enum": [
+///            "install",
+///            "resume"
+///          ]
+///        },
+///        "run": {
+///          "type": "object",
+///          "required": [
+///            "exitCode",
+///            "finishedAt",
+///            "runId",
+///            "scriptSha256",
+///            "source",
+///            "startedAt",
+///            "status",
+///            "trigger",
+///            "truncated"
+///          ],
+///          "properties": {
+///            "exitCode": {
+///              "anyOf": [
+///                {
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": -9007199254740991.0
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "finishedAt": {
+///              "anyOf": [
+///                {
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": -9007199254740991.0
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "output": {
+///              "type": "string",
+///              "maxLength": 16000
+///            },
+///            "runId": {
+///              "type": "string",
+///              "maxLength": 64,
+///              "minLength": 1
+///            },
+///            "scriptSha256": {
+///              "anyOf": [
+///                {
+///                  "type": "string",
+///                  "maxLength": 64,
+///                  "minLength": 64
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "source": {
+///              "type": "string",
+///              "enum": [
+///                "dashboard",
+///                "repository",
+///                "none"
+///              ]
+///            },
+///            "startedAt": {
+///              "type": "integer",
+///              "maximum": 9007199254740991.0,
+///              "minimum": -9007199254740991.0
+///            },
+///            "status": {
+///              "type": "string",
+///              "enum": [
+///                "running",
+///                "ok",
+///                "failed",
+///                "timed_out",
+///                "skipped"
+///              ]
+///            },
+///            "trigger": {
+///              "type": "string",
+///              "enum": [
+///                "setup",
+///                "changed",
+///                "manual",
+///                "cold",
+///                "warm"
+///              ]
+///            },
+///            "truncated": {
+///              "default": false,
+///              "type": "boolean"
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        "type": {
+///          "type": "string",
+///          "const": "cloud.hook.state"
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ],
 ///  "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -5549,6 +5919,11 @@ pub enum ExeoraProtocolTypesExecutorMessage {
         message: ExeoraProtocolTypesExecutorMessageMessage,
         #[serde(rename = "sessionId")]
         session_id: ExeoraProtocolTypesExecutorMessageSessionId,
+    },
+    #[serde(rename = "cloud.hook.state")]
+    CloudHookState {
+        hook: ExeoraProtocolTypesExecutorMessageHook,
+        run: ExeoraProtocolTypesExecutorMessageRun,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageCapabilities`
@@ -5818,6 +6193,78 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageData {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageHook`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "install",
+///    "resume"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageHook {
+    #[serde(rename = "install")]
+    Install,
+    #[serde(rename = "resume")]
+    Resume,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageHook {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Install => f.write_str("install"),
+            Self::Resume => f.write_str("resume"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageHook {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "install" => Ok(Self::Install),
+            "resume" => Ok(Self::Resume),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesExecutorMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesExecutorMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`ExeoraProtocolTypesExecutorMessageMessage`
@@ -9261,6 +9708,619 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
+///`ExeoraProtocolTypesExecutorMessageRun`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "exitCode",
+///    "finishedAt",
+///    "runId",
+///    "scriptSha256",
+///    "source",
+///    "startedAt",
+///    "status",
+///    "trigger",
+///    "truncated"
+///  ],
+///  "properties": {
+///    "exitCode": {
+///      "anyOf": [
+///        {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": -9007199254740991.0
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "finishedAt": {
+///      "anyOf": [
+///        {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": -9007199254740991.0
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "output": {
+///      "type": "string",
+///      "maxLength": 16000
+///    },
+///    "runId": {
+///      "type": "string",
+///      "maxLength": 64,
+///      "minLength": 1
+///    },
+///    "scriptSha256": {
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 64,
+///          "minLength": 64
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "source": {
+///      "type": "string",
+///      "enum": [
+///        "dashboard",
+///        "repository",
+///        "none"
+///      ]
+///    },
+///    "startedAt": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": -9007199254740991.0
+///    },
+///    "status": {
+///      "type": "string",
+///      "enum": [
+///        "running",
+///        "ok",
+///        "failed",
+///        "timed_out",
+///        "skipped"
+///      ]
+///    },
+///    "trigger": {
+///      "type": "string",
+///      "enum": [
+///        "setup",
+///        "changed",
+///        "manual",
+///        "cold",
+///        "warm"
+///      ]
+///    },
+///    "truncated": {
+///      "default": false,
+///      "type": "boolean"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageRun {
+    #[serde(rename = "exitCode")]
+    pub exit_code: ::std::option::Option<i64>,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: ::std::option::Option<i64>,
+    #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+    pub output: ::std::option::Option<ExeoraProtocolTypesExecutorMessageRunOutput>,
+    #[serde(rename = "runId")]
+    pub run_id: ExeoraProtocolTypesExecutorMessageRunRunId,
+    #[serde(rename = "scriptSha256")]
+    pub script_sha256: ::std::option::Option<ExeoraProtocolTypesExecutorMessageRunScriptSha256>,
+    pub source: ExeoraProtocolTypesExecutorMessageRunSource,
+    #[serde(rename = "startedAt")]
+    pub started_at: i64,
+    pub status: ExeoraProtocolTypesExecutorMessageRunStatus,
+    pub trigger: ExeoraProtocolTypesExecutorMessageRunTrigger,
+    pub truncated: bool,
+}
+///`ExeoraProtocolTypesExecutorMessageRunOutput`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 16000
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageRunOutput(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageRunOutput {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageRunOutput> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesExecutorMessageRunOutput) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunOutput {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16000usize {
+            return Err("longer than 16000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunOutput {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunOutput
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunOutput
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageRunOutput {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageRunRunId`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 64,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageRunRunId(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageRunRunId {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageRunRunId> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesExecutorMessageRunRunId) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunRunId {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunRunId
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesExecutorMessageRunRunId {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageRunRunId {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageRunScriptSha256`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 64,
+///  "minLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesExecutorMessageRunScriptSha256(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageRunScriptSha256 {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageRunScriptSha256>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesExecutorMessageRunScriptSha256) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunScriptSha256 {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        if value.chars().count() < 64usize {
+            return Err("shorter than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunScriptSha256 {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunScriptSha256
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunScriptSha256
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesExecutorMessageRunScriptSha256 {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageRunSource`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "dashboard",
+///    "repository",
+///    "none"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageRunSource {
+    #[serde(rename = "dashboard")]
+    Dashboard,
+    #[serde(rename = "repository")]
+    Repository,
+    #[serde(rename = "none")]
+    None,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageRunSource {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Dashboard => f.write_str("dashboard"),
+            Self::Repository => f.write_str("repository"),
+            Self::None => f.write_str("none"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunSource {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "dashboard" => Ok(Self::Dashboard),
+            "repository" => Ok(Self::Repository),
+            "none" => Ok(Self::None),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunSource {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunSource
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunSource
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageRunStatus`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "running",
+///    "ok",
+///    "failed",
+///    "timed_out",
+///    "skipped"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageRunStatus {
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "ok")]
+    Ok,
+    #[serde(rename = "failed")]
+    Failed,
+    #[serde(rename = "timed_out")]
+    TimedOut,
+    #[serde(rename = "skipped")]
+    Skipped,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageRunStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Running => f.write_str("running"),
+            Self::Ok => f.write_str("ok"),
+            Self::Failed => f.write_str("failed"),
+            Self::TimedOut => f.write_str("timed_out"),
+            Self::Skipped => f.write_str("skipped"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "running" => Ok(Self::Running),
+            "ok" => Ok(Self::Ok),
+            "failed" => Ok(Self::Failed),
+            "timed_out" => Ok(Self::TimedOut),
+            "skipped" => Ok(Self::Skipped),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunStatus {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageRunTrigger`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "setup",
+///    "changed",
+///    "manual",
+///    "cold",
+///    "warm"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageRunTrigger {
+    #[serde(rename = "setup")]
+    Setup,
+    #[serde(rename = "changed")]
+    Changed,
+    #[serde(rename = "manual")]
+    Manual,
+    #[serde(rename = "cold")]
+    Cold,
+    #[serde(rename = "warm")]
+    Warm,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageRunTrigger {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Setup => f.write_str("setup"),
+            Self::Changed => f.write_str("changed"),
+            Self::Manual => f.write_str("manual"),
+            Self::Cold => f.write_str("cold"),
+            Self::Warm => f.write_str("warm"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageRunTrigger {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "setup" => Ok(Self::Setup),
+            "changed" => Ok(Self::Changed),
+            "manual" => Ok(Self::Manual),
+            "cold" => Ok(Self::Cold),
+            "warm" => Ok(Self::Warm),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesExecutorMessageRunTrigger {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunTrigger
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageRunTrigger
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///`ExeoraProtocolTypesExecutorMessageSessionId`
 ///
 /// <details><summary>JSON schema</summary>
@@ -10214,6 +11274,59 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        "type"
 ///      ],
 ///      "properties": {
+///        "cloudHooks": {
+///          "type": "object",
+///          "required": [
+///            "repository",
+///            "scripts"
+///          ],
+///          "properties": {
+///            "repository": {
+///              "default": true,
+///              "type": "boolean"
+///            },
+///            "scripts": {
+///              "anyOf": [
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "install",
+///                    "resume"
+///                  ],
+///                  "properties": {
+///                    "install": {
+///                      "anyOf": [
+///                        {
+///                          "type": "string",
+///                          "maxLength": 16384
+///                        },
+///                        {
+///                          "type": "null"
+///                        }
+///                      ]
+///                    },
+///                    "resume": {
+///                      "anyOf": [
+///                        {
+///                          "type": "string",
+///                          "maxLength": 16384
+///                        },
+///                        {
+///                          "type": "null"
+///                        }
+///                      ]
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            }
+///          },
+///          "additionalProperties": false
+///        },
 ///        "heartbeatIntervalMs": {
 ///          "type": "integer",
 ///          "maximum": 9007199254740991.0,
@@ -11235,6 +12348,81 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "config",
+///        "hook",
+///        "type"
+///      ],
+///      "properties": {
+///        "config": {
+///          "type": "object",
+///          "required": [
+///            "repository",
+///            "scripts"
+///          ],
+///          "properties": {
+///            "repository": {
+///              "default": true,
+///              "type": "boolean"
+///            },
+///            "scripts": {
+///              "anyOf": [
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "install",
+///                    "resume"
+///                  ],
+///                  "properties": {
+///                    "install": {
+///                      "anyOf": [
+///                        {
+///                          "type": "string",
+///                          "maxLength": 16384
+///                        },
+///                        {
+///                          "type": "null"
+///                        }
+///                      ]
+///                    },
+///                    "resume": {
+///                      "anyOf": [
+///                        {
+///                          "type": "string",
+///                          "maxLength": 16384
+///                        },
+///                        {
+///                          "type": "null"
+///                        }
+///                      ]
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        "hook": {
+///          "type": "string",
+///          "enum": [
+///            "install",
+///            "resume"
+///          ]
+///        },
+///        "type": {
+///          "type": "string",
+///          "const": "cloud.hook.run"
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ],
 ///  "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -11246,6 +12434,12 @@ impl ::std::convert::TryFrom<::std::string::String>
 pub enum ExeoraProtocolTypesRelayMessage {
     #[serde(rename = "hello.ack")]
     HelloAck {
+        #[serde(
+            rename = "cloudHooks",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        cloud_hooks: ::std::option::Option<ExeoraProtocolTypesRelayMessageCloudHooks>,
         #[serde(rename = "heartbeatIntervalMs")]
         heartbeat_interval_ms: i64,
         #[serde(
@@ -11418,6 +12612,11 @@ pub enum ExeoraProtocolTypesRelayMessage {
     TerminalClose {
         #[serde(rename = "sessionId")]
         session_id: ExeoraProtocolTypesRelayMessageSessionId,
+    },
+    #[serde(rename = "cloud.hook.run")]
+    CloudHookRun {
+        config: ExeoraProtocolTypesRelayMessageConfig,
+        hook: ExeoraProtocolTypesRelayMessageHook,
     },
 }
 ///`ExeoraProtocolTypesRelayMessageAction`
@@ -13279,6 +14478,524 @@ impl ::std::default::Default for ExeoraProtocolTypesRelayMessageClient {
         }
     }
 }
+///`ExeoraProtocolTypesRelayMessageCloudHooks`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "repository",
+///    "scripts"
+///  ],
+///  "properties": {
+///    "repository": {
+///      "default": true,
+///      "type": "boolean"
+///    },
+///    "scripts": {
+///      "anyOf": [
+///        {
+///          "type": "object",
+///          "required": [
+///            "install",
+///            "resume"
+///          ],
+///          "properties": {
+///            "install": {
+///              "anyOf": [
+///                {
+///                  "type": "string",
+///                  "maxLength": 16384
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "resume": {
+///              "anyOf": [
+///                {
+///                  "type": "string",
+///                  "maxLength": 16384
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageCloudHooks {
+    pub repository: bool,
+    pub scripts: ::std::option::Option<ExeoraProtocolTypesRelayMessageCloudHooksScripts>,
+}
+///`ExeoraProtocolTypesRelayMessageCloudHooksScripts`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "install",
+///    "resume"
+///  ],
+///  "properties": {
+///    "install": {
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 16384
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "resume": {
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 16384
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageCloudHooksScripts {
+    pub install: ::std::option::Option<ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall>,
+    pub resume: ::std::option::Option<ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume>,
+}
+///`ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 16384
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16384usize {
+            return Err("longer than 16384 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageCloudHooksScriptsInstall {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 16384
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16384usize {
+            return Err("longer than 16384 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageCloudHooksScriptsResume {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageConfig`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "repository",
+///    "scripts"
+///  ],
+///  "properties": {
+///    "repository": {
+///      "default": true,
+///      "type": "boolean"
+///    },
+///    "scripts": {
+///      "anyOf": [
+///        {
+///          "type": "object",
+///          "required": [
+///            "install",
+///            "resume"
+///          ],
+///          "properties": {
+///            "install": {
+///              "anyOf": [
+///                {
+///                  "type": "string",
+///                  "maxLength": 16384
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            },
+///            "resume": {
+///              "anyOf": [
+///                {
+///                  "type": "string",
+///                  "maxLength": 16384
+///                },
+///                {
+///                  "type": "null"
+///                }
+///              ]
+///            }
+///          },
+///          "additionalProperties": false
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageConfig {
+    pub repository: bool,
+    pub scripts: ::std::option::Option<ExeoraProtocolTypesRelayMessageConfigScripts>,
+}
+///`ExeoraProtocolTypesRelayMessageConfigScripts`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "install",
+///    "resume"
+///  ],
+///  "properties": {
+///    "install": {
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 16384
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    },
+///    "resume": {
+///      "anyOf": [
+///        {
+///          "type": "string",
+///          "maxLength": 16384
+///        },
+///        {
+///          "type": "null"
+///        }
+///      ]
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageConfigScripts {
+    pub install: ::std::option::Option<ExeoraProtocolTypesRelayMessageConfigScriptsInstall>,
+    pub resume: ::std::option::Option<ExeoraProtocolTypesRelayMessageConfigScriptsResume>,
+}
+///`ExeoraProtocolTypesRelayMessageConfigScriptsInstall`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 16384
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageConfigScriptsInstall(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageConfigScriptsInstall {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageConfigScriptsInstall>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageConfigScriptsInstall) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageConfigScriptsInstall {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16384usize {
+            return Err("longer than 16384 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageConfigScriptsInstall {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageConfigScriptsInstall
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageConfigScriptsInstall
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageConfigScriptsInstall {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageConfigScriptsResume`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 16384
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageConfigScriptsResume(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageConfigScriptsResume {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageConfigScriptsResume>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageConfigScriptsResume) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageConfigScriptsResume {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 16384usize {
+            return Err("longer than 16384 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageConfigScriptsResume {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageConfigScriptsResume
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageConfigScriptsResume
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageConfigScriptsResume {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ExeoraProtocolTypesRelayMessageData`
 ///
 /// <details><summary>JSON schema</summary>
@@ -13345,6 +15062,78 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageData {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageHook`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "install",
+///    "resume"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesRelayMessageHook {
+    #[serde(rename = "install")]
+    Install,
+    #[serde(rename = "resume")]
+    Resume,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageHook {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Install => f.write_str("install"),
+            Self::Resume => f.write_str("resume"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageHook {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "install" => Ok(Self::Install),
+            "resume" => Ok(Self::Resume),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageHook {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`ExeoraProtocolTypesRelayMessagePolicy`

@@ -372,7 +372,7 @@ exeora config unset workspace-root</pre>
   </p>
 
   <p>
-    <code>exeora connect --cloud</code> is the other side: what an instance itself runs as a service. It reads a machine token from disk instead of signing in, holds the instance awake while it works, and answers the gateway's wake requests. There is no reason to run it on a laptop.
+    <code>exeora connect --cloud</code> is the other side: what an instance itself runs as a service. It reads a machine token from disk instead of signing in, holds the instance awake while it works, and answers the gateway's wake requests. Since 0.19.0 it also runs the project's <a href="/docs/cloud/#scripts">scripts</a> there, and <code>gh</code> on the instance is <a href="/docs/cloud/#gh">signed in as you</a>. There is no reason to run it on a laptop.
   </p>
 
   <h2>init</h2>

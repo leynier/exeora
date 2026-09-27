@@ -65,7 +65,11 @@
     { "name": "RL_WRITE", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
     // Keyed by user: tool calls. Deliberately generous, because a coding agent
     // reading its way through a repository is meant to be fast.
-    { "name": "RL_MCP", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }
+    { "name": "RL_MCP", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } },
+    // Keyed by instance: what a machine of Exeora Cloud asks for itself, which
+    // is a token for `gh`. Its own budget, so a script that calls `gh` in a
+    // loop cannot spend the one its owner registers machines with.
+    { "name": "RL_MACHINE", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } }
   ],
 
   // The OAuth screens are the one place this Worker renders HTML, and they
@@ -78,7 +82,13 @@
   "rules": [
     {
       "type": "Text",
-      "globs": ["**/tokens.css", "**/install.sh", "**/install.ps1", "**/bootstrap.sh"],
+      "globs": [
+        "**/tokens.css",
+        "**/install.sh",
+        "**/install.ps1",
+        "**/bootstrap.sh",
+        "**/tools.sh"
+      ],
       "fallthrough": true
     }
   ],

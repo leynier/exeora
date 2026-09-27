@@ -124,10 +124,52 @@ export async function userFetch(
   return response;
 }
 
+/** The person's token as it is handed to something that will hold it for a while. */
+export interface UserToken {
+  token: string;
+  /** Milliseconds since the epoch, or null for a token that does not expire. */
+  expiresAt: number | null;
+  /** Who GitHub says the person is, or null where that was not kept. */
+  login: string | null;
+}
+
+/**
+ * The person's token with when it runs out and whose it is, renewed first
+ * when it is about to expire. It is what `gh` in an instance acts with: as
+ * the person, and for no longer than GitHub gave them.
+ *
+ * Throws `GitHubReconnectError` when there is none to be had.
+ */
+export async function currentUserToken(
+  env: UserTokenEnv,
+  userId: string,
+  fetcher: typeof fetch,
+  now: number = Date.now(),
+): Promise<UserToken> {
+  const { token, expiresAt, login } = await current(env, userId, fetcher, now);
+  return { token, expiresAt, login: login === "" ? null : login };
+}
+
 interface Current {
   token: string;
   /** The stored form of `token`, which is how a later write knows it is still the one. */
   sealedAccess: string;
+  expiresAt: number | null;
+  login: string;
+}
+
+/** A token that could be opened, with what the row it came from says of it. */
+function held(
+  token: string,
+  sealedAccess: string,
+  row: { accessExpiresAt: Date | null; login: string },
+): Current {
+  return {
+    token,
+    sealedAccess,
+    expiresAt: row.accessExpiresAt?.getTime() ?? null,
+    login: row.login,
+  };
 }
 
 async function current(
@@ -144,7 +186,7 @@ async function current(
   const expiresAt = row.accessExpiresAt?.getTime() ?? null;
   if (expiresAt === null || expiresAt - now > RENEW_MARGIN_MS) {
     const token = await open(config, row.accessCiphertext);
-    if (token !== null) return { token, sealedAccess: row.accessCiphertext };
+    if (token !== null) return held(token, row.accessCiphertext, row);
     // Encrypted under a key this gateway no longer has: gone for good.
     await forget(env, userId, { access: row.accessCiphertext });
     throw new GitHubReconnectError();
@@ -163,7 +205,7 @@ async function current(
     const latest = await read(env, userId);
     if (latest?.accessCiphertext && latest.accessCiphertext !== row.accessCiphertext) {
       const token = await open(config, latest.accessCiphertext);
-      if (token !== null) return { token, sealedAccess: latest.accessCiphertext };
+      if (token !== null) return held(token, latest.accessCiphertext, latest);
     }
     await forget(env, userId, { access: row.accessCiphertext });
     throw new GitHubReconnectError();
@@ -185,11 +227,11 @@ async function current(
     const latest = await read(env, userId);
     const token = latest?.accessCiphertext ? await open(config, latest.accessCiphertext) : null;
     if (latest?.accessCiphertext && token !== null) {
-      return { token, sealedAccess: latest.accessCiphertext };
+      return held(token, latest.accessCiphertext, latest);
     }
     throw new GitHubReconnectError();
   }
-  return { token: granted.accessToken, sealedAccess: values.accessCiphertext };
+  return held(granted.accessToken, values.accessCiphertext, { ...values, login: row.login });
 }
 
 /** Null when GitHub refuses the refresh token itself, which no retry will change. */

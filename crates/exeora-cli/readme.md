@@ -91,5 +91,31 @@ also selected by `EXEORA_CLOUD=1`. It reads:
 - `EXEORA_CLOUD_HTTP_PORT` (default `8080`): where `/wake` and `/healthz` answer; the gateway fetches `/wake` before it dispatches to a machine that may be asleep.
 - `EXEORA_SPRITE_API_SOCKET` (default `/.sprite/api.sock`): the runtime socket the keep-awake task is refreshed through while there is work.
 - `EXEORA_CLOUD_FATAL_DELAY_MS` (default `5000`): how long a fatal start-up error waits before exiting, so a broken machine does not spin through restarts.
+- `EXEORA_HOOKS_DIR` (default `~/.exeora/hooks`): where the state of the project's scripts, the scripts of its page and the requests to run one are kept.
+
+### Scripts
+
+A project may run two scripts in its instances: `install`, which makes a checkout ready once, and `resume`, which runs every time the instance comes back from a sleep. Each is written on the project's page or in the repository, as `.exeora/cloud_install.sh` and `.exeora/cloud_resume.sh`. A script on the page replaces the file of the same hook.
+
+The service runs them after the gateway acknowledges its hello, one at a time, install first. `install` runs when its script is not the one that was last attempted, so one that failed is not run again until it changes or somebody asks. `resume` runs once for each time the instance came back, not once for each connection. They run with `/bin/bash` in the checkout, with no stdin, and with `CI=1`, `DEBIAN_FRONTEND=noninteractive`, `EXEORA_HOOK`, `EXEORA_HOOK_SOURCE` and, for a resume, `EXEORA_RESUME_KIND` (`cold` or `warm`) added to the environment. An install is stopped after 20 minutes and a resume after 2, with everything they started. The last 8000 bytes of output are kept.
+
+A script may leave something running, such as a dev server. The script is over when it exits, and what it left is not killed. What is left keeps the script's output open, so send it somewhere of its own (`nohup npm run dev > dev.log 2>&1 &`) if it should outlive a restart of the service.
+
+While a script runs, a command, a call to a proxied MCP tool and a terminal wait for it, for 30 seconds at most, and then go ahead beside it. Reading, editing and git are never held.
+
+```sh
+exeora cloud-hook status                 # what the instance remembers, as JSON
+exeora cloud-hook run install|resume     # asks the service to run it again
+```
+
+`cloud-hook` is for a shell on the instance and is left out of `exeora --help`. `run` runs nothing itself: it leaves a request in `~/.exeora/hooks/requests`, which the service takes within a second, and prints the run once it is over.
+
+### `gh`
+
+On an instance `gh` is a short script that runs `exeora gh-shim -- "$@"`, which asks the gateway for the token of the person the project belongs to and becomes the real GitHub CLI with `GH_TOKEN` set for that one process. The real one is looked for in `EXEORA_REAL_GH`, then `~/.local/share/exeora/bin/gh`, then on the `PATH`; without one it exits 127.
+
+The token is kept between runs only in memory, in `/dev/shm/exeora-<uid>/gh-token.json`, for 30 minutes or until five minutes before it ends, whichever is sooner. Where `/dev/shm` is not a filesystem in memory nothing is kept and the gateway is asked every time. `EXEORA_GH_CACHE_DIR` names another folder, which is used only if it is in memory too.
+
+A caller that sets `GH_TOKEN` or `GITHUB_TOKEN` is passed through untouched, and so is any machine without `EXEORA_MACHINE_TOKEN_FILE`. When there is no token the real `gh` still runs, and the reason is printed on stderr, in one line, only when the command exits 4 (it needed a sign-in) or is `gh auth status`.
 
 The other side is the ordinary signed-in commands above with `--on cloud`. `exeora cloud add|list|credential|remove` and `exeora cloud workspace create|remove` are their older spelling and still work.

@@ -7,6 +7,7 @@ interface __BaseEnv_Env {
 	RL_AUTH: RateLimit;
 	RL_WRITE: RateLimit;
 	RL_MCP: RateLimit;
+	RL_MACHINE: RateLimit;
 	ASSETS: Fetcher;
 	AUDIT_STREAM: import("cloudflare:pipelines").Pipeline<import("cloudflare:pipelines").PipelineRecord>;
 	EXEORA_BASE_URL: "https://exeora.dev";

@@ -5,6 +5,7 @@ mod processes;
 mod skills;
 
 pub use processes::ProcessRegistry;
+pub(crate) use processes::{ScriptOutcome, ScriptSpec, run_script};
 
 use crate::{
     error::{ErrorCode, ExeoraError},

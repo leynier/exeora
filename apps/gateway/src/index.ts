@@ -33,7 +33,7 @@ import { propsOf } from "./props.js";
 import {
   callerAddress,
   isRateLimitedAuthRequest,
-  limiterFor,
+  limitFor,
   tooManyRequests,
   withinLimit,
 } from "./rate-limit.js";
@@ -68,11 +68,11 @@ export const authenticated = new Hono<{ Bindings: Env }>();
  * NAT and let anyone with a second address around it.
  */
 authenticated.use("*", async (c, next) => {
-  const { userId } = propsOf(c.executionCtx);
-  if (!userId) return next();
+  const props = propsOf(c.executionCtx);
+  if (!props.userId) return next();
 
-  const limiter = limiterFor(c.env, c.req.method, c.req.path);
-  if (limiter && !(await withinLimit(limiter, userId))) return tooManyRequests();
+  const limit = limitFor(c.env, c.req.method, c.req.path, props);
+  if (limit && !(await withinLimit(limit.limiter, limit.key))) return tooManyRequests();
 
   return next();
 });

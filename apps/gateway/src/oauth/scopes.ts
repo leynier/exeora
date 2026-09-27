@@ -45,15 +45,21 @@ export function hasEveryScope(
 /** Where git on a machine asks for the token it clones and pushes with. */
 const GIT_CREDENTIAL = /^\/api\/projects\/[^/]+\/git-credential$/;
 
+/** Where `gh` on a machine asks for the token it acts as the person with. */
+const GH_TOKEN = /^\/api\/projects\/[^/]+\/gh-token$/;
+
 /**
- * The two routes a cloud machine's token may reach: its own relay socket, and
- * the git credential of a project, which the route itself narrows to the one
- * project the machine was made for. Everything else on the API belongs to the
- * person, and a machine token carrying their user id must not become a way to
- * act as them.
+ * The three routes a cloud machine's token may reach: its own relay socket,
+ * and the git credential and the `gh` token of a project, which the routes
+ * themselves narrow to the one project the machine was made for. Everything
+ * else on the API belongs to the person, and a machine token carrying their
+ * user id must not become a way to act as them.
+ *
+ * The `gh` token is not among what the person's CLI may reach, below: it is
+ * for an instance, and a machine of their own has a `gh` of its own.
  */
 export function isMachineApiRequest(method: string, path: string): boolean {
-  if (method === "POST") return GIT_CREDENTIAL.test(path);
+  if (method === "POST") return GIT_CREDENTIAL.test(path) || GH_TOKEN.test(path);
   return method === "GET" && /^\/api\/relay\/[^/]+$/.test(path);
 }
 

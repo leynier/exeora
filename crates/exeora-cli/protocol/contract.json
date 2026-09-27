@@ -1277,6 +1277,127 @@
             "message"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "cloud.hook.state"
+            },
+            "hook": {
+              "type": "string",
+              "enum": [
+                "install",
+                "resume"
+              ]
+            },
+            "run": {
+              "type": "object",
+              "properties": {
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ok",
+                    "failed",
+                    "timed_out",
+                    "skipped"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "dashboard",
+                    "repository",
+                    "none"
+                  ]
+                },
+                "trigger": {
+                  "type": "string",
+                  "enum": [
+                    "setup",
+                    "changed",
+                    "manual",
+                    "cold",
+                    "warm"
+                  ]
+                },
+                "scriptSha256": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "exitCode": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "startedAt": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "finishedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "output": {
+                  "type": "string",
+                  "maxLength": 16000
+                },
+                "truncated": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "runId",
+                "status",
+                "source",
+                "trigger",
+                "scriptSha256",
+                "exitCode",
+                "startedAt",
+                "finishedAt",
+                "truncated"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "hook",
+            "run"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -1306,6 +1427,59 @@
             "heartbeatMode": {
               "type": "string",
               "const": "auto"
+            },
+            "cloudHooks": {
+              "type": "object",
+              "properties": {
+                "scripts": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "install": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 16384
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resume": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 16384
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "install",
+                        "resume"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "repository": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "scripts",
+                "repository"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -2310,6 +2484,81 @@
           "required": [
             "type",
             "sessionId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "cloud.hook.run"
+            },
+            "hook": {
+              "type": "string",
+              "enum": [
+                "install",
+                "resume"
+              ]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "scripts": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "install": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 16384
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resume": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 16384
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "install",
+                        "resume"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "repository": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "scripts",
+                "repository"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "hook",
+            "config"
           ],
           "additionalProperties": false
         }

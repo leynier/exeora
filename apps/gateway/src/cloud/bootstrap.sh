@@ -61,6 +61,10 @@ write("branch", payload.branch);
 write("createBranchFrom", payload.createBranchFrom ?? "");
 write("cliVersion", payload.cliVersion);
 write("gitHost", new URL(payload.repoUrl).host);
+// The first release that signs gh in. An older CLI has no such command, and
+// a `gh` that called it would be one that never runs.
+const [major, minor] = payload.cliVersion.split(".").map((part) => Number.parseInt(part, 10));
+write("ghShim", major > 0 || minor >= 19 ? "yes" : "no");
 fs.writeFileSync(path.join(conf, "machine-token.tmp"), `${payload.machineToken}\n`, { mode: 0o600 });
 fs.writeFileSync(path.join(conf, "config.json.tmp"), `${JSON.stringify(payload.cliConfig, null, 2)}\n`, { mode: 0o600 });
 if (payload.credential) {
@@ -131,6 +135,25 @@ __EXEORA_HELPER__
   chmod 700 "$CONF/git-credential-helper"
   git config --global "credential.https://$(field gitHost).helper" "$CONF/git-credential-helper"
   git config --global credential.useHttpPath false
+fi
+# `gh` is the CLI too: it asks the gateway who the owner of this instance is
+# on GitHub each time it runs, and hands the real gh a token that is kept in
+# memory and nowhere on this disk. The real one is put beside it by the tools
+# step. Like the git helper it runs under whatever an agent starts, which has
+# none of the service's environment, so it names the token and the gateway.
+if [ "$(field ghShim)" = yes ]; then
+  cat > "$BIN/gh.tmp" <<'__EXEORA_GH__'
+#!/bin/sh
+# Written by Exeora. The GitHub CLI itself is at ~/.local/share/exeora/bin/gh.
+export EXEORA_MACHINE_TOKEN_FILE="${EXEORA_MACHINE_TOKEN_FILE:-$HOME/.config/exeora/machine-token}"
+export EXEORA_GATEWAY_URL="${EXEORA_GATEWAY_URL:-$(cat "$HOME/.exeora/fields/gatewayUrl")}"
+exec "$HOME/.local/bin/exeora" gh-shim -- "$@"
+__EXEORA_GH__
+  chmod 755 "$BIN/gh.tmp"
+  mv -f "$BIN/gh.tmp" "$BIN/gh"
+elif [ -f "$BIN/gh" ] && grep -Fq 'Written by Exeora' "$BIN/gh"; then
+  # Left by a run that installed a newer CLI than this one.
+  rm -f "$BIN/gh"
 fi
 git config --global push.autoSetupRemote true
 git config --global user.name >/dev/null 2>&1 || git config --global user.name "Exeora Cloud"
@@ -244,6 +267,13 @@ if [ ! -f "$READY" ]; then
   touch "$READY"
 else
   git -C "$WS" fetch --prune origin || echo "run: fetch failed, continuing with the local checkout" >&2
+fi
+# A repository that keeps files in LFS pushes them through a hook of its own,
+# which git-lfs puts in the checkout and nowhere else. Without it a push sends
+# the pointer and leaves the file on this machine. Asked for on every start,
+# since a cold wake does not clone again, and never a reason to stop.
+if command -v git-lfs >/dev/null 2>&1; then
+  git -C "$WS" lfs install >/dev/null 2>&1 || echo "run: git-lfs could not set its hooks, continuing" >&2
 fi
 # The refresher must not outlive this script: exec keeps the pid, not the
 # children, and a stray refresher would hold the machine awake for good.

@@ -24,6 +24,11 @@ export const CLOUD_MIN_CLI_VERSION = "0.17.0";
 
 /** Whether a CLI release, by version, can run as a cloud machine's service. */
 export function cliSupportsCloud(version: string | undefined): boolean {
+  return cliAtLeast(version, CLOUD_MIN_CLI_VERSION);
+}
+
+/** Whether a CLI release is the one named or a later one. False for anything unreadable. */
+export function cliAtLeast(version: string | undefined, minimum: string): boolean {
   if (!version) return false;
   const parse = (value: string) =>
     value
@@ -31,7 +36,7 @@ export function cliSupportsCloud(version: string | undefined): boolean {
       ?.split(".")
       .map((part) => Number.parseInt(part, 10)) ?? [];
   const have = parse(version);
-  const need = parse(CLOUD_MIN_CLI_VERSION);
+  const need = parse(minimum);
   if (have.length !== 3 || have.some((part) => Number.isNaN(part))) return false;
   for (let index = 0; index < 3; index += 1) {
     const a = have[index] ?? 0;

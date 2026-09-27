@@ -44,6 +44,29 @@ pub const KEEPALIVE_MIN_INTERVAL_MS: u64 = 30_000;
 pub const REJECTED_BACKOFF_MIN_MS: u64 = 60_000;
 pub const REJECTED_BACKOFF_MAX_MS: u64 = 300_000;
 
+// The scripts a project runs in its instances. Shared with the gateway
+// through `packages/protocol/src/cloud-hooks.ts`, and kept equal to it by
+// hand: the generated types are not what runs.
+/// Announced by a cloud CLI that runs the scripts.
+pub const CLOUD_HOOKS_FEATURE: &str = "cloud-hooks-v1";
+/// Largest script the project's page takes, in bytes.
+pub const MAX_CLOUD_SCRIPT_BYTES: usize = 16_384;
+/// Long, because installing dependencies is.
+pub const CLOUD_INSTALL_TIMEOUT_MS: u64 = 1_200_000;
+/// Short, because it runs in front of somebody's first command.
+pub const CLOUD_RESUME_TIMEOUT_MS: u64 = 120_000;
+/// How long a command waits for a running script before it goes ahead.
+pub const CLOUD_HOOK_GATE_MS: u64 = 30_000;
+/// What a waiting command leaves of its own deadline for itself.
+pub const CLOUD_HOOK_GATE_MARGIN_MS: u64 = 5_000;
+/// How much of a script's output is kept, from its end, in bytes.
+pub const CLOUD_HOOK_OUTPUT_BYTES: usize = 8_000;
+/// How long a script's output is still read once the script itself is over.
+pub const CLOUD_HOOK_SETTLE_MS: u64 = 2_000;
+/// Where each script is looked for in the repository, from the checkout's root.
+pub const CLOUD_INSTALL_FILE: &str = ".exeora/cloud_install.sh";
+pub const CLOUD_RESUME_FILE: &str = ".exeora/cloud_resume.sh";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolName {

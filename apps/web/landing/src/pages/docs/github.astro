@@ -23,13 +23,14 @@ import Doc from "../../layouts/Doc.astro";
     <li><strong>A list to pick from.</strong> <strong>Add project</strong> in the dashboard lists the repositories you can reach, most recently pushed first. <code>exeora project add</code> with no argument, run outside a checkout, offers the same list in the terminal.</li>
     <li><strong>No token to paste.</strong> A project picked from the list is connected to its repository. Instances on Exeora Cloud clone, fetch and push it with short-lived tokens.</li>
     <li><strong>A way in for a machine that has none.</strong> On a machine of yours the same tokens are used when its own git credentials cannot reach the remote.</li>
+    <li><strong><code>gh</code> signed in on an instance.</strong> Inside an instance on Exeora Cloud, <code>gh</code> <a href="#gh">acts as you</a>.</li>
   </ul>
 
   <p>A project becomes connected when it is picked from the list in the dashboard, or added from a machine with <code>exeora project add</code> while its repository is one you can reach on GitHub. Projects you already had are connected at the moment you connect GitHub, under the same condition. A project whose repository is added to the installation later is connected at that moment.</p>
 
   <h2 id="permissions">What the app is allowed to do</h2>
 
-  <p>The app asks for three repository permissions, and the tokens Exeora makes never carry more:</p>
+  <p>The app asks for eight repository permissions, and nothing Exeora does on GitHub goes beyond them:</p>
 
   <table>
     <thead>
@@ -39,10 +40,29 @@ import Doc from "../../layouts/Doc.astro";
       <tr><td>Contents</td><td>Read and write</td><td>Clone and fetch, and push a branch.</td></tr>
       <tr><td>Metadata</td><td>Read-only</td><td>Name the repository and its default branch.</td></tr>
       <tr><td>Pull requests</td><td>Read and write</td><td>Open the pull request for a branch that was pushed.</td></tr>
+      <tr><td>Workflows</td><td>Read and write</td><td>Push a branch that changes a file under <code>.github/workflows/</code>, which GitHub refuses without it.</td></tr>
+      <tr><td>Issues</td><td>Read and write</td><td>Let <code>gh</code> on an instance read, open and comment on issues.</td></tr>
+      <tr><td>Actions</td><td>Read-only</td><td>Let <code>gh</code> on an instance read workflow runs, as <code>gh run list</code> does.</td></tr>
+      <tr><td>Checks</td><td>Read-only</td><td>Let <code>gh</code> on an instance read the checks of a pull request, as <code>gh pr checks</code> does.</td></tr>
+      <tr><td>Commit statuses</td><td>Read-only</td><td>Let <code>gh</code> on an instance read the statuses of a commit, which is the other half of what <code>gh pr checks</code> shows.</td></tr>
     </tbody>
   </table>
 
-  <p>An installation that was not given pull requests still clones and pushes: Exeora asks for a token without that permission when GitHub refuses the full one. The app also receives GitHub's events about the installation and its repositories, which is how Exeora learns that a repository was renamed, removed or deleted without waiting for a clone to fail.</p>
+  <p>The tokens git uses carry the first four at most. The other four are for <code>gh</code>, which acts with your own token.</p>
+
+  <h3 id="new-permissions">Accepting permissions that were added</h3>
+
+  <p>Issues, Actions, Checks, Commit statuses and Workflows were added after the first three. GitHub does not grant an addition by itself. It asks the owner of each installation to accept it, and until they do that installation holds what it held before:</p>
+
+  <ul>
+    <li><strong>Everything that worked keeps working.</strong> Cloning, fetching, pushing and opening a pull request are as they were.</li>
+    <li><strong><code>gh</code> cannot read issues, checks or workflow runs</strong> in the repositories of that installation.</li>
+    <li><strong>A push that changes a file under <code>.github/workflows/</code> is refused by GitHub.</strong> Any other push goes through.</li>
+  </ul>
+
+  <p>The GitHub card under <strong>Settings</strong> shows a notice beside an installation that has permissions pending. <strong>Review on GitHub</strong> opens that installation on GitHub, which is where its owner accepts them. Exeora cannot accept them for you. The notice goes once GitHub has told Exeora that they were accepted.</p>
+
+  <p>An installation that has not accepted Workflows, or was not given pull requests, still clones and pushes: Exeora asks for a token without that permission when GitHub refuses the full one. The app also receives GitHub's events about the installation and its repositories, which is how Exeora learns that a repository was renamed, removed or deleted without waiting for a clone to fail.</p>
 
   <h2 id="tokens">How tokens are scoped, and how long they last</h2>
 
@@ -58,6 +78,14 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>An agent that is allowed to run commands in a project can run git there, and git can ask for a token. That is the same as on any machine that holds git credentials and lets an agent run commands. Use the project's <a href="/docs/policy/">policy</a> to decide whether an agent may run git at all.</p>
 
+  <h2 id="gh"><code>gh</code> on an instance acts as you</h2>
+
+  <p>Git holds a token of the installation, cut down to one repository and to what git does. <code>gh</code> does what a person does: it reads an issue, looks at a run, comments on a pull request. So inside an instance on Exeora Cloud it acts as you, the person who owns the project, with the token GitHub gave you when you connected. <code>gh pr list --author @me</code> lists your pull requests, and what <code>gh</code> writes is written in your name.</p>
+
+  <p>That token reaches every repository the app is installed on that you can access, not only the project's. Anything that runs in the instance as its user can use <code>gh</code> with it, which includes the commands an agent runs and the project's <a href="/docs/cloud/#scripts">scripts</a>. It has one caller: the instance, for the one project it was made for. Your own CLI runs where your own <code>gh</code> is already signed in, and the dashboard has no use for a token, so neither is answered.</p>
+
+  <p>The instance asks the gateway for the token when <code>gh</code> runs, keeps it in memory for 30 minutes at most, and never writes it to its disk. How that works, and what <code>gh</code> does in a project that is not connected, is in <a href="/docs/cloud/#gh">gh on Exeora Cloud</a>.</p>
+
   <h2 id="who-reaches-what">You reach only what you can reach on GitHub</h2>
 
   <p>An installation belongs to a person or an organisation on GitHub, and it may hold many repositories. What one member of that organisation may see is a different list. Exeora asks GitHub as you, with your own token, before it lists a repository, connects a project to one, or makes a token for one. An organisation that gave the app forty repositories shows you the six you can open there.</p>
@@ -69,7 +97,7 @@ import Doc from "../../layouts/Doc.astro";
   <ul>
     <li><strong>The installations your account was shown by GitHub</strong>: GitHub's id for each, the account or organisation it is on, whether it was given all repositories or selected ones, and whether it is suspended.</li>
     <li><strong>Which repository each connected project is</strong>: GitHub's id for it, its full name, and whether it is private.</li>
-    <li><strong>Your GitHub login and the token that speaks to GitHub as you</strong>, with the token that renews it. GitHub issues the first for eight hours. Both are stored encrypted, under a key the gateway holds, and Exeora renews them before they run out.</li>
+    <li><strong>Your GitHub login and the token that speaks to GitHub as you</strong>, with the token that renews it. GitHub issues the first for eight hours. Both are stored encrypted, under a key the gateway holds, and Exeora renews them before they run out. The first is handed to your instances on Exeora Cloud for <code>gh</code>. The one that renews it never leaves the gateway.</li>
   </ul>
 
   <p>The tokens that clone and push are not in that list. They are made on request and written nowhere: not in the database, and not on the machine, where the credential helper answers git and stores nothing. For a connected project there is no long-lived repository token on any machine.</p>
@@ -86,11 +114,11 @@ import Doc from "../../layouts/Doc.astro";
       <tr><td>The app was uninstalled</td><td>The installation is removed from every Exeora account that held it, and the projects that cloned through it lose access.</td></tr>
       <tr><td>The installation was suspended</td><td>No token is made for it until it is resumed on GitHub.</td></tr>
       <tr><td>The repository was renamed or moved to another owner</td><td>The project follows it to the new address, on Exeora Cloud too: an instance that already holds a copy is pointed at the new address the next time it is set up.</td></tr>
-      <tr><td>GitHub stopped accepting your authorization</td><td>Exeora forgets the token and asks you to connect again. Nothing is reached through GitHub until you do.</td></tr>
+      <tr><td>GitHub stopped accepting your authorization</td><td>Exeora forgets the token and asks you to connect again. Nothing is reached through GitHub until you do, and <code>gh</code> on your instances says the connection has to be made again.</td></tr>
     </tbody>
   </table>
 
-  <p>Losing access removes nothing. The project, its locations and its working copies stay. A machine of yours keeps working with its own git credentials. An instance on Exeora Cloud can no longer fetch or push, and what is already cloned on it stays readable and editable. The connection comes back when the access does: when the repository is added to the installation again, or when you connect GitHub again.</p>
+  <p>Losing access removes nothing. The project, its locations and its working copies stay. A machine of yours keeps working with its own git credentials. An instance on Exeora Cloud can no longer fetch or push, <code>gh</code> there is no longer signed in, and what is already cloned on it stays readable and editable. The connection comes back when the access does: when the repository is added to the installation again, or when you connect GitHub again.</p>
 
   <h2 id="disconnect">Disconnecting</h2>
 

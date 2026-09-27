@@ -110,6 +110,94 @@ import Doc from "../../layouts/Doc.astro";
     Exeora when it is ready, and <code>list_workspaces</code> or the project's page says so.
   </p>
 
+  <h2 id="gh-not-installed">An instance failed because <code>gh</code> could not be installed</h2>
+
+  <p>
+    The instance is <code>failed</code> with <em>"The GitHub CLI (gh) could not be installed on the machine"</em>, followed by the reason. <code>gh</code> is the one tool an instance is not handed over without. The reason is what the instance said: the download failed, no time was left, the checksum of the download did not match, or there is no build for the architecture of the machine.
+  </p>
+
+  <p>
+    Most often the cause is a network that is back a minute later. Press <strong>Retry</strong> on the instance, from the project's page or from <strong>Machines</strong> under the Exeora Cloud tab. When the same reason comes back, the details on the row hold what the instance printed: write to <a href="mailto:hello@exeora.dev">hello@exeora.dev</a> with them.
+  </p>
+
+  <h2 id="tool-missing">A tool is missing on an instance</h2>
+
+  <p>
+    Three causes, and <strong>About this instance</strong> on the row of the instance tells them apart:
+  </p>
+
+  <ul>
+    <li>
+      <strong>It could not be installed.</strong> The row says how many tools could not be installed, and About this instance lists the tool under Failed or Skipped with the reason. The instance is ready without it. Tools are installed only while an instance is set up, so install the tool from the <a href="/docs/cloud/#scripts">install script</a>, or destroy the instance and start it again to have every tool attempted again.
+    </li>
+    <li>
+      <strong>The instance was made before the tools existed.</strong> About this instance lists no tools at all. Push what the instance holds, destroy it and start it again.
+    </li>
+    <li>
+      <strong>The tool was never one of them.</strong> Docker and database servers are not installed, and neither is anything only one repository needs. <a href="/docs/cloud/#tools">What an instance comes with</a> is the whole list. Install anything else from the install script.
+    </li>
+  </ul>
+
+  <h2 id="install-script-failed">The install script failed</h2>
+
+  <p>
+    The instance is ready, and its row carries a warning such as <em>"The install script failed (exit 1). It came from the repository. Fix the script, then run it again."</em> <strong>Details</strong> under it shows the end of what the script printed. The usual causes:
+  </p>
+
+  <ul>
+    <li>
+      <strong>A command in the script failed.</strong> The exit code in the warning is the script's own, and the output says which command it was.
+    </li>
+    <li>
+      <strong>Something asked a question.</strong> A script has no terminal to ask on. Give each command the flag that answers ahead of time.
+    </li>
+    <li>
+      <strong>It ran out of time.</strong> The warning says so, and the output ends with a line that starts with <code>[exeora] Stopped</code>. The limit is 20 minutes. Take out what the instance does not need to be worked in.
+    </li>
+    <li>
+      <strong>It ran out of memory.</strong> The output ends with a line that starts with <code>[exeora] Killed</code> and names the limit. Build fewer things at once.
+    </li>
+    <li>
+      <strong>A tool it calls is missing.</strong> See <a href="#tool-missing">a tool is missing on an instance</a>.
+    </li>
+  </ul>
+
+  <p>
+    Fix the script where the warning says it came from, then press <strong>Run again</strong>. A script on the project's page is used as it is at that moment. A file of the repository is read from the checkout of the instance, so the fix has to be pulled there first. A command an agent ran while the script was failing may have found dependencies missing: run it again after the script has ended well.
+  </p>
+
+  <h2 id="resume-script-failed">The resume script failed or ran out of time</h2>
+
+  <p>
+    The instance is ready, and its row carries the warning. The resume script has 2 minutes, because it runs in front of the first command after a sleep. One that ran out of time was stopped at that limit.
+  </p>
+
+  <ul>
+    <li>
+      <strong>It does work that belongs in the install script.</strong> Installing dependencies is done once, and the disk keeps it through a sleep. Leave to the resume script only what a sleep takes away, such as a service that has to be running.
+    </li>
+    <li>
+      <strong>It waits for what it started.</strong> Start a service in the background, so that the script itself ends.
+    </li>
+    <li>
+      <strong>It fails the second time it runs.</strong> The script runs at every resume, and one resume can run it more than once. Write it so that finding its work already done is not an error.
+    </li>
+  </ul>
+
+  <p>
+    Fix the script, then press <strong>Run again</strong> on the row. <strong>Details</strong> shows the end of what it printed.
+  </p>
+
+  <h2 id="scripts-unsupported">"Scripts do not run on this instance"</h2>
+
+  <p>
+    <strong>About this instance</strong> says <em>"Scripts do not run on this instance, which was made before they existed"</em>, and <strong>Run again</strong> is refused with <em>"This instance was made before scripts existed"</em>. The instance was made with a CLI older than 0.19.0, which is the first that runs scripts. It keeps working as it did, without them, and <code>gh</code> is not signed in there.
+  </p>
+
+  <p>
+    Destroy the instance and start it again. Push what it holds first, because the instance is the only copy of work that was never pushed. A workspace is started again by creating it on Exeora Cloud on the same branch, and the project root with <strong>Start instance</strong> on the project's page.
+  </p>
+
   <h2><code>slug_taken</code> on <code>exeora project add</code></h2>
 
   <p>
@@ -184,6 +272,66 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     Later on, the dashboard asking you to connect again means GitHub stopped accepting the
     authorization your account had. See <a href="/docs/github/#lost-access">when access is lost</a>.
+  </p>
+
+  <h2 id="gh-not-signed-in"><code>gh</code> says it is not signed in</h2>
+
+  <p>
+    On an instance, a <code>gh</code> command that needed to be signed in and was not ends with a line that starts with <code>exeora: gh is not signed in:</code> and gives the reason. <code>gh auth status</code> prints the same line.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>The line says</th><th>What it means, and what to do</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>This project is not connected to GitHub and has no token</td>
+        <td>The account has not connected GitHub, the repository is not one the connection reaches, or the project <a href="/docs/github/#lost-access">lost access</a>. Connect GitHub under <strong>Settings</strong>, or add the repository to the installation on GitHub.</td>
+      </tr>
+      <tr>
+        <td>The connection to GitHub has to be made again</td>
+        <td>GitHub stopped accepting the authorization your account had. Choose <strong>Connect GitHub</strong> under Settings again.</td>
+      </tr>
+      <tr>
+        <td>The repository of this project is not on github.com</td>
+        <td>The project has a repository token for another host, and a token made for another host is not shown to GitHub. Set <code>GH_TOKEN</code> for the command when <code>gh</code> is needed there.</td>
+      </tr>
+      <tr>
+        <td>This Exeora has no connection to GitHub</td>
+        <td>A gateway of your own with no GitHub App. Set <code>GH_TOKEN</code>, add a repository token to the project, or give the gateway an app as the <a href="/docs/self-hosting/">self-hosting</a> guide describes.</td>
+      </tr>
+      <tr>
+        <td>GitHub did not answer Exeora</td>
+        <td>Run the command again in a moment.</td>
+      </tr>
+      <tr>
+        <td>Exeora was asked for a token too many times</td>
+        <td>An instance may ask thirty times a minute. Wait a minute, then run the command again.</td>
+      </tr>
+      <tr>
+        <td>Exeora could not be asked for a token</td>
+        <td>The instance did not reach the gateway. The line says why. Check the network of the instance, then run the command again.</td>
+      </tr>
+      <tr>
+        <td>Exeora refused this machine a token</td>
+        <td>The instance no longer belongs to the project. Check it under <strong>Machines</strong>, on the Exeora Cloud tab.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The answers that say no are remembered on the instance for a minute, so that a loop calling <code>gh</code> does not ask every time round. After mending the cause, wait a minute before running the command again. An instance made with a CLI older than 0.19.0 never signs <code>gh</code> in: see <a href="#scripts-unsupported">"Scripts do not run on this instance"</a>.
+  </p>
+
+  <h2 id="gh-permissions"><code>gh</code> cannot read issues, checks or workflow runs</h2>
+
+  <p>
+    <code>gh</code> is signed in, and GitHub refuses <code>gh issue list</code>, <code>gh pr checks</code> or <code>gh run list</code>. The installation of the Exeora GitHub App that holds the repository has not accepted the permissions the app added. A push that changes a file under <code>.github/workflows/</code> is refused by GitHub for the same reason.
+  </p>
+
+  <p>
+    Open <strong>Settings</strong>. The GitHub card shows a notice beside each installation that has permissions pending. <strong>Review on GitHub</strong> opens the installation, where its owner accepts them. On an organisation that is one of its owners: ask them when you are not one. See <a href="/docs/github/#new-permissions">accepting permissions that were added</a>.
   </p>
 
   <h2>The gateway closed the connection</h2>

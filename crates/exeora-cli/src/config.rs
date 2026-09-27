@@ -397,7 +397,7 @@ pub fn credential_fallback_path() -> Result<PathBuf> {
     Ok(base.join("exeora/credentials.json"))
 }
 
-fn home_dir() -> Result<PathBuf> {
+pub(crate) fn home_dir() -> Result<PathBuf> {
     env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from)
         .context("Could not determine the home directory")

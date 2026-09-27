@@ -47,10 +47,53 @@ import Doc from "../../layouts/Doc.astro";
     A workspace branch that exists on the remote is checked out as it is. One that does not is created from the base you name, or from the default branch, and stays local until you push it. <code>list_workspaces</code> reports the status of each instance: <code>creating</code>, <code>ready</code>, <code>error</code> with why, or <code>destroying</code>. The dashboard shows the same, with the step an instance that is being created has reached.
   </p>
 
+  <h2 id="tools">What an instance comes with</h2>
+
+  <p>
+    An instance starts from an image that has Node.js, Python, Go, Ruby, Rust, Java, Bun, Git and curl. While it is set up, in the step <strong>Installing tools</strong>, Exeora adds the tools below. Each is looked for before it is installed, so an instance that already has one keeps its own, in the version it came with.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Tool</th><th>Command</th><th>Version installed</th><th>Installed from</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>GitHub CLI</td><td><code>gh</code></td><td>2.101.0</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>uv</td><td><code>uv</code></td><td>0.12.19</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>jq</td><td><code>jq</code></td><td>1.8.2</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>ripgrep</td><td><code>rg</code></td><td>15.2.0</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>yq</td><td><code>yq</code></td><td>4.53.6</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>Git LFS</td><td><code>git-lfs</code></td><td>3.8.0</td><td>Its release, checked against a SHA-256</td></tr>
+      <tr><td>pnpm</td><td><code>pnpm</code></td><td>12.6.0</td><td>npm</td></tr>
+      <tr><td>Yarn</td><td><code>yarn</code></td><td>1.22.22</td><td>npm</td></tr>
+      <tr><td>unzip</td><td><code>unzip</code></td><td>The system's</td><td>apt</td></tr>
+      <tr><td>zip</td><td><code>zip</code></td><td>The system's</td><td>apt</td></tr>
+      <tr><td>make</td><td><code>make</code></td><td>The system's</td><td>apt</td></tr>
+      <tr><td>A C toolchain</td><td><code>cc</code></td><td>The system's</td><td>apt, as <code>build-essential</code></td></tr>
+      <tr><td>tmux</td><td><code>tmux</code></td><td>The system's</td><td>apt</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Every tool is attempted every time, and one that fails does not stop the others. Only <code>gh</code> blocks. When it cannot be installed the instance is <code>failed</code>, with the reason, and <strong>Retry</strong> sets it up again. Any other tool that could not be installed leaves the instance ready: its row says how many are missing, and <strong>About this instance</strong> lists every tool as already there, installed, failed or skipped, with the reason beside the last two.
+  </p>
+
+  <p>
+    A tool is skipped when the instance has nothing to install it with: no npm for pnpm and Yarn, or no <code>apt-get</code> or no root without a password for the five that come from apt. Install it from the install script in another way.
+  </p>
+
+  <p>
+    Docker and database servers are not installed, and neither is anything only one repository needs. The <a href="#scripts">install script</a> is the place for those.
+  </p>
+
   <h2>When an instance fails</h2>
 
   <p>
-    An instance that could not be set up says why and what to do about it, in a sentence, with what the instance actually said folded behind it. The repository refused access, no repository was found at the address, the branch does not exist, Cloud could not start the instance, or setting it up took too long. <strong>Retry</strong> on the instance sets it up again, from the project's page or from <strong>Machines</strong> under the Exeora Cloud tab. When the cause is a token, set a new one first: a retry uses it.
+    An instance that could not be set up says why and what to do about it, in a sentence, with what the instance actually said folded behind it. The repository refused access, no repository was found at the address, the branch does not exist, Cloud could not start the instance, <code>gh</code> could not be installed, or setting it up took too long. <strong>Retry</strong> on the instance sets it up again, from the project's page or from <strong>Machines</strong> under the Exeora Cloud tab. When the cause is a token, set a new one first: a retry uses it.
+  </p>
+
+  <p>
+    A <a href="#scripts">script</a> that fails is not one of these. It leaves the instance ready, with a warning.
   </p>
 
   <h2>Sleeping and waking</h2>
@@ -67,10 +110,92 @@ import Doc from "../../layouts/Doc.astro";
     An instance that is asleep runs nothing and still takes one place of the <a href="/docs/plans/">plan</a>, because its disk is kept. Destroying the instance frees that place.
   </p>
 
+  <h2 id="scripts">Scripts</h2>
+
+  <p>
+    A project can run two scripts inside its instances. They are the place for what the repository needs beyond the tools above: its dependencies, a database, a service that has to be running.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Script</th><th>When it runs</th><th>Limit</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cloud Install script</td>
+        <td>Once when an instance is set up, after the clone and before the instance is shown as ready. Again when the script changes, and when somebody presses <strong>Run again</strong>.</td>
+        <td>20 minutes</td>
+      </tr>
+      <tr>
+        <td>Cloud Resume script</td>
+        <td>Every time an instance resumes: after a short sleep that froze its processes, and after a longer one that ended them. On a new instance it runs once the install script has ended.</td>
+        <td>2 minutes</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    A script that reaches its limit is stopped and reported as having run out of time. One resume can, rarely, run the resume script more than once, so write it to be safe to run twice.
+  </p>
+
+  <h3 id="scripts-where">Where they are written</h3>
+
+  <p>
+    Each script can be written in two places. On the project's page, the card <strong>Cloud scripts</strong> has a field for each. In the repository they are the files <code>.exeora/cloud_install.sh</code> and <code>.exeora/cloud_resume.sh</code>.
+  </p>
+
+  <p>
+    The page replaces the repository, script by script. Text in a field means the file for that script is ignored: it does not run before the text or after it. An empty field means the file runs when it exists. Under each field the card says which of the two will run as it stands.
+  </p>
+
+  <p>
+    The switch <strong>Run the scripts found in the repository</strong> turns the files off. With it off, a script whose field is empty runs nothing.
+  </p>
+
+  <p>
+    A script written on the page can hold 16 384 bytes. A larger one is refused when it is saved: shorten it, or have it call a file of the repository. A file in the repository can hold 1 048 576 bytes.
+  </p>
+
+  <h3 id="scripts-how">How they run</h3>
+
+  <p>
+    A script is run with <code>bash</code>, as the instance's user, in the checkout. There is no terminal to ask anything on, and <code>CI=1</code> is set so that what it calls does not try. One script runs at a time, the install script before the resume script, and the instance stays awake while one runs. The end of what a script printed is kept, 8 000 bytes of it.
+  </p>
+
+  <p>
+    <code>EXEORA_HOOK</code> is <code>install</code> or <code>resume</code>, and <code>EXEORA_HOOK_SOURCE</code> is <code>dashboard</code> or <code>repository</code>. For the resume script <code>EXEORA_RESUME_KIND</code> is <code>warm</code> after a sleep that froze the processes and <code>cold</code> after one that ended them.
+  </p>
+
+  <p>
+    An edit made on the page reaches the instances that already exist the next time each resumes. Nothing has to be made again. An install script that changed runs again at that moment. One that failed and did not change is not run again at every resume: change it, or press <strong>Run again</strong>.
+  </p>
+
+  <p>
+    While a script runs, what an agent starts waits for it: <code>run_command</code>, <code>start_command</code>, a tool of a <a href="/docs/mcp-proxy/">proxied MCP server</a>, and a terminal that is being opened. The wait is 30 seconds at most, because a client gives up on a call after about a minute. Past it the command goes ahead and the script goes on beside it. A command that ran beside an install script may find dependencies missing: run it again once the script has ended. Reading and editing files never wait.
+  </p>
+
+  <h3 id="scripts-failed">When a script fails</h3>
+
+  <p>
+    A script that fails does not fail the instance. The instance is ready, with a warning on its row: which script failed or ran out of time, its exit code, and where it came from. <strong>Details</strong> shows the end of what it printed, and <strong>Run again</strong> runs it once more. The instance is also listed under <strong>Needs your attention</strong> on the Overview. Fix the script, then run it again.
+  </p>
+
+  <h3 id="scripts-instances">Which instances run them</h3>
+
+  <p>
+    Scripts run only on instances made with CLI 0.19.0 or later. An older instance keeps working, and <strong>About this instance</strong> says that scripts do not run there. Destroy it and start it again to get them, after pushing what it holds: the instance is the only copy of work that was never pushed.
+  </p>
+
+  <h3 id="scripts-policy">Scripts are outside the policy</h3>
+
+  <p>
+    A script is not a tool call. The project's <a href="/docs/policy/">policy</a> and its approvals do not apply to it, and the audit log does not record it. A script on the page is written by you. A script kept in the repository is written by whoever can push to the branch: they run code in the instance, even in a project set to read only. Turn off <strong>Run the scripts found in the repository</strong> to stop that. See <a href="/docs/security/#scripts">security</a>.
+  </p>
+
   <h2 id="private-repositories">Private repositories</h2>
 
   <p>
-    A project <a href="/docs/github/">connected to GitHub</a> keeps no repository token on its instances. Git there is wired to <code>exeora git-credential</code>, which asks the gateway for a token that lasts an hour and reaches that one repository, each time git needs one.
+    A project <a href="/docs/github/">connected to GitHub</a> keeps no repository token on its instances. Git there is wired to <code>exeora git-credential</code>, which asks the gateway for a token that lasts an hour and reaches that one repository, each time git needs one. <code>gh</code> is signed in another way, with a token that reaches more: see <a href="#gh">gh</a>.
   </p>
 
   <p>
@@ -78,7 +203,33 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
-    The instance's own credential is separate: a machine token that does two things and nothing else. It opens that instance's relay socket, and it asks for the git credential of the one project the instance was made for. A token taken from one instance reaches no other project and nothing else on the API.
+    The instance's own credential is separate: a machine token that does three things and nothing else. It opens that instance's relay socket, it asks for the git credential of the one project the instance was made for, and it asks for the token <code>gh</code> runs with in that project. A token taken from one instance reaches no other project and nothing else on the API. Through the token for <code>gh</code> it reaches what you reach on GitHub, as described below.
+  </p>
+
+  <h2 id="gh">gh</h2>
+
+  <p>
+    Inside an instance of a project <a href="/docs/github/">connected to GitHub</a>, <code>gh</code> is signed in as you, the person who owns the project, through the Exeora GitHub App. <code>gh auth status</code>, <code>gh pr create</code>, <code>gh pr list --author @me</code>, <code>gh issue list</code>, <code>gh run list</code> and <code>gh pr checks</code> work, from a command an agent runs, from a script and from a terminal.
+  </p>
+
+  <p>
+    On an instance <code>gh</code> is a small wrapper, and the GitHub CLI itself is kept in a place of its own. The wrapper asks the gateway for your token and hands it to the GitHub CLI in the environment of that one process. The token is never written to the instance's disk or to the configuration of <code>gh</code>. It is kept in memory, under <code>/dev/shm</code>, in a folder only the instance's user can open, for 30 minutes at most, so that not every run of <code>gh</code> asks the gateway. It expires on its own: GitHub issues it for eight hours. The token that renews it stays at the gateway.
+  </p>
+
+  <p>
+    Git is separate. It still uses a token that reaches only the project's repository and lasts an hour.
+  </p>
+
+  <p>
+    A project that is not connected to GitHub may have a repository token set by hand. There <code>gh</code> uses that token when the repository is on github.com. When it is on another host <code>gh</code> is not signed in, because a token made for another host is not shown to GitHub: set <code>GH_TOKEN</code> for the command when <code>gh</code> is needed there. A command that sets <code>GH_TOKEN</code> or <code>GITHUB_TOKEN</code> itself runs <code>gh</code> with that token on any instance.
+  </p>
+
+  <p>
+    <strong>What the token reaches.</strong> It is your token, so it reaches every repository the Exeora GitHub App is installed on that you can access, not only the project's. Anything that runs in the instance as its user can use <code>gh</code> with it. That includes the commands an agent runs and the project's scripts. To narrow it, give the app fewer repositories with <strong>Change repositories</strong> under Settings, and use the project's <a href="/docs/policy/">policy</a> to decide which commands an agent may run. See <a href="/docs/security/#gh">security</a>.
+  </p>
+
+  <p>
+    <code>gh</code> is signed in only on instances made with CLI 0.19.0 or later. What it can read also depends on the <a href="/docs/github/#permissions">permissions</a> the installation has accepted.
   </p>
 
   <h2>Limits</h2>

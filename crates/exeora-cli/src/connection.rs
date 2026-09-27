@@ -2,14 +2,15 @@ use crate::{
     CLI_VERSION,
     api::ApiClient,
     auth::AuthManager,
+    cloud::hooks::gate::{self, Gate},
     config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     error::{ErrorCode, ExeoraError},
     mcp::McpManager,
     policy::{CommandPolicy, effective_policy, mcp_policy_allows, policy_allows},
     protocol::{
-        CLOUD_FEATURE, HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS,
-        MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROJECT_CLONE_FEATURE, PROTOCOL_VERSION,
-        REJECTED_BACKOFF_MAX_MS, REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
+        CLOUD_FEATURE, CLOUD_HOOKS_FEATURE, HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST,
+        HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROJECT_CLONE_FEATURE,
+        PROTOCOL_VERSION, REJECTED_BACKOFF_MAX_MS, REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
     },
     tools::{CallScope, ToolEngine},
     workspace::{
@@ -26,7 +27,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex as StdMutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -57,6 +58,9 @@ struct ResolvedTarget {
 
 pub type InFlight = Arc<Mutex<HashMap<String, ActiveCall>>>;
 type LifecycleLock = Arc<Mutex<()>>;
+/// The frames of terminals whose opening waits at the gate, by session, in
+/// the order they came.
+type HeldTerminals = Arc<StdMutex<HashMap<String, Vec<Value>>>>;
 
 /// Where the CLI runs, which decides what a lost connection means.
 ///
@@ -101,7 +105,39 @@ fn is_work_frame(kind: Option<&str>) -> bool {
             | Some("terminal.input")
             | Some("terminal.resize")
             | Some("terminal.close")
+            | Some("cloud.hook.run")
     )
+}
+
+/// The tools that start something, and so wait for a script of the project
+/// that is making the checkout ready. Every other tool tells the truth about
+/// a checkout in any state, and goes straight through.
+fn waits_for_scripts(tool: ToolName) -> bool {
+    matches!(tool, ToolName::RunCommand | ToolName::StartCommand)
+}
+
+/// Holds a call while a script of the project runs, for as long as the gate
+/// allows. Called from the task of the call, once the call is in flight, so
+/// a cancel still reaches it and the machine is still held awake for it.
+async fn wait_at_gate(
+    gate: Option<&Gate>,
+    expires_at: Option<u64>,
+    cancel: &CancellationToken,
+    json_output: bool,
+) {
+    let Some(gate) = gate.filter(|gate| gate.is_closed()) else {
+        return;
+    };
+    let started = Instant::now();
+    let opened = tokio::select! {
+        opened = gate.wait(gate::bound(expires_at, now_ms())) => opened,
+        _ = cancel.cancelled() => return,
+    };
+    emit_event(
+        json_output,
+        "gate",
+        json!({ "opened": opened, "waitedMs": started.elapsed().as_millis() as u64 }),
+    );
 }
 
 /// Ctrl-C on a laptop; the service runtime's SIGTERM on a machine.
@@ -123,20 +159,39 @@ fn spawn_signal_watchers(stop: CancellationToken) {
 }
 
 /// Waits out a reconnect delay, unless a stop or a wake request cuts it short.
+///
+/// A cloud machine goes on looking at the clock while it waits. Without
+/// that, the first look of the next connection would find the whole wait
+/// since the last one and take it for a pause, and a machine that had only
+/// been unable to reach the gateway would run its resume script. A pause
+/// that does happen during the wait is seen here, and ends the wait.
 async fn wait_before_reconnect(
     delay: Duration,
     stop: &CancellationToken,
     mode: &ConnectMode,
+    json_output: bool,
 ) -> bool {
-    tokio::select! {
-        _ = tokio::time::sleep(delay) => true,
-        _ = stop.cancelled() => false,
-        _ = async {
-            match mode.cloud() {
-                Some(runtime) => runtime.reconnect_requested().await,
-                None => std::future::pending::<()>().await,
+    let wait = tokio::time::sleep(delay);
+    tokio::pin!(wait);
+    let mut clock = tokio::time::interval(Duration::from_secs(1));
+    clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = &mut wait => return true,
+            _ = stop.cancelled() => return false,
+            _ = async {
+                match mode.cloud() {
+                    Some(runtime) => runtime.reconnect_requested().await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => return true,
+            _ = clock.tick(), if !mode.is_local() => {
+                if let Some(gap_ms) = mode.cloud().and_then(|runtime| runtime.observe_resume()) {
+                    emit_event(json_output, "resume", json!({ "gapMs": gap_ms, "source": "clock" }));
+                    return true;
+                }
             }
-        } => true,
+        }
     }
 }
 
@@ -187,6 +242,7 @@ pub async fn connect_forever(
     if let Some(runtime) = mode.cloud() {
         runtime.spawn_http_server();
         runtime.spawn_keepalive(engine.clone(), workspace.clone(), in_flight.clone());
+        runtime.spawn_hook_requests();
     }
 
     loop {
@@ -250,7 +306,7 @@ pub async fn connect_forever(
                 if !json_output {
                     eprintln!("{reason} Retrying in {}s.", rejected_delay.as_secs());
                 }
-                if !wait_before_reconnect(rejected_delay, &stop, &mode).await {
+                if !wait_before_reconnect(rejected_delay, &stop, &mode, json_output).await {
                     break;
                 }
                 rejected_delay =
@@ -270,7 +326,7 @@ pub async fn connect_forever(
                     "close",
                     json!({ "reason": format!("Disconnected. Reconnecting in {}s.", delay.as_secs()) }),
                 );
-                if !wait_before_reconnect(delay, &stop, &mode).await {
+                if !wait_before_reconnect(delay, &stop, &mode, json_output).await {
                     break;
                 }
             }
@@ -280,7 +336,7 @@ pub async fn connect_forever(
                     "close",
                     json!({ "reason": format!("{error}. Reconnecting in {}s.", delay.as_secs()) }),
                 );
-                if !wait_before_reconnect(delay, &stop, &mode).await {
+                if !wait_before_reconnect(delay, &stop, &mode, json_output).await {
                     break;
                 }
                 delay = (delay * 2).min(Duration::from_secs(30));
@@ -290,6 +346,9 @@ pub async fn connect_forever(
     engine.kill_all().await;
     workspace.kill_all().await;
     mcp.shutdown().await;
+    if let Some(runtime) = mode.cloud() {
+        runtime.hooks.stop().await;
+    }
     if !json_output {
         println!("Disconnected.");
     }
@@ -516,7 +575,27 @@ async fn connect_once(
         "authorization",
         HeaderValue::from_str(&format!("Bearer {token}"))?,
     );
-    let (mut socket, _) = match connect_async(request).await {
+    // A cloud machine looks at the clock while it dials too, for the reason
+    // given at `wait_before_reconnect`. A pause in the middle of dialling
+    // leaves an attempt that belongs to before the pause; it is made again.
+    let dialled = {
+        let dialling = connect_async(request);
+        tokio::pin!(dialling);
+        let mut clock = tokio::time::interval(Duration::from_secs(1));
+        clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                dialled = &mut dialling => break dialled,
+                _ = clock.tick(), if !mode.is_local() => {
+                    if let Some(gap_ms) = mode.cloud().and_then(|runtime| runtime.observe_resume()) {
+                        emit_event(json_output, "resume", json!({ "gapMs": gap_ms, "source": "clock" }));
+                        return Ok(ConnectOutcome::Resumed);
+                    }
+                }
+            }
+        }
+    };
+    let (mut socket, _) = match dialled {
         Ok(connection) => connection,
         Err(WebSocketError::Http(response))
             if matches!(response.status().as_u16(), 401 | 403 | 404) =>
@@ -566,6 +645,12 @@ async fn connect_once(
     let mut roots_tick = tokio::time::interval(Duration::from_secs(1));
     roots_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut known_roots = served_roots(&config_path);
+    let gate = mode.cloud().map(|runtime| runtime.hooks.gate());
+    let held_terminals: HeldTerminals = Arc::new(StdMutex::new(HashMap::new()));
+    // Ends with this connection, however it ends: a terminal that was still
+    // waiting at the gate is one the gateway has forgotten by then.
+    let connection = CancellationToken::new();
+    let _ended = connection.clone().drop_guard();
 
     loop {
         tokio::select! {
@@ -597,7 +682,7 @@ async fn connect_once(
             }
             _ = resume_tick.tick() => {
                 let gap = match mode.cloud() {
-                    Some(runtime) => runtime.resume_check(),
+                    Some(runtime) => runtime.observe_resume(),
                     None => local_resume.check(),
                 };
                 if let Some(gap_ms) = gap {
@@ -642,6 +727,10 @@ async fn connect_once(
                                 match mode.cloud() {
                                     Some(runtime) => {
                                         runtime.mark_heard();
+                                        // Before the link reads as connected: that is
+                                        // what lets the gateway send work, and the gate
+                                        // has to be closed by the time it does.
+                                        runtime.hooks.hello(message.get("cloudHooks").filter(|hooks| !hooks.is_null()), out_tx.clone());
                                         runtime.mark_connected();
                                     }
                                     None => local_resume.mark(),
@@ -674,17 +763,22 @@ async fn connect_once(
                                 }
                                 return Ok(ConnectOutcome::Rejected(reason.to_owned()));
                             }
+                            Some("cloud.hook.run") => {
+                                if let Some(runtime) = mode.cloud() {
+                                    runtime.hooks.run_requested(&message, out_tx.clone());
+                                }
+                            }
                             Some("tool.call") => {
-                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), mcp.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
+                                spawn_tool_call(message, config_path.clone(), api.clone(), engine.clone(), workspace.clone(), mcp.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local(), gate.clone()).await;
                             }
                             Some("mcp.call") => {
-                                spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
+                                spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output, gate.clone()).await;
                             }
                             Some("workspace.call") => {
                                 spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
                             }
                             Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
-                                handle_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone()).await;
+                                route_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone(), gate.clone(), held_terminals.clone(), connection.clone()).await;
                             }
                             _ => {}
                         }
@@ -731,6 +825,7 @@ async fn spawn_tool_call(
     outgoing: mpsc::UnboundedSender<Value>,
     json_output: bool,
     cloud: bool,
+    gate: Option<Gate>,
 ) {
     let Some(request_id) = message
         .get("requestId")
@@ -871,7 +966,11 @@ async fn spawn_tool_call(
         .and_then(|client| client.get("id"))
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let expires_at = message.get("expiresAt").and_then(Value::as_u64);
     tokio::spawn(async move {
+        if waits_for_scripts(tool) {
+            wait_at_gate(gate.as_ref(), expires_at, &cancel, json_output).await;
+        }
         let result = if tool.is_workspace_tool() {
             execute_workspace_tool(
                 &config_path,
@@ -927,6 +1026,7 @@ async fn spawn_mcp_call(
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
     json_output: bool,
+    gate: Option<Gate>,
 ) {
     let Some(request_id) = message
         .get("requestId")
@@ -1048,7 +1148,10 @@ async fn spawn_mcp_call(
             workspace_slug.as_deref().unwrap_or("main")
         );
     }
+    let expires_at = message.get("expiresAt").and_then(Value::as_u64);
     tokio::spawn(async move {
+        // A proxied tool may start anything, so it waits like a command.
+        wait_at_gate(gate.as_ref(), expires_at, &cancel, json_output).await;
         let result = tokio::select! {
             _ = cancel.cancelled() => Err(ExeoraError::new(
                 ErrorCode::Cancelled,
@@ -1344,11 +1447,12 @@ fn announced_projects(config_path: &Path, at_start: &[ProjectEntry]) -> Vec<Proj
 /// created for, so only a person's own machine announces that.
 fn announced_features(local: bool) -> Vec<&'static str> {
     let mut features = vec!["source-control-v1", "terminal-v1", "mcp-proxy-v1"];
-    features.push(if local {
-        PROJECT_CLONE_FEATURE
+    if local {
+        features.push(PROJECT_CLONE_FEATURE);
     } else {
-        CLOUD_FEATURE
-    });
+        // The scripts of a project run in its instances and nowhere else.
+        features.extend([CLOUD_FEATURE, CLOUD_HOOKS_FEATURE]);
+    }
     features
 }
 
@@ -1657,6 +1761,84 @@ async fn create_and_connect_workspace(
             "localPath": entry.root,
         }
     }))
+}
+
+/// Hands a terminal frame on, or holds it while a script of the project is
+/// making the checkout ready.
+///
+/// Only an opening waits at the gate. It waits in a task of its own, since
+/// this is called from the loop that keeps the socket alive, and what
+/// arrives for the same terminal in the meantime is kept and handed on
+/// after it in the order it came: input that overtook the opening would be
+/// input for a terminal that does not exist.
+async fn route_terminal_message(
+    message: Value,
+    config_path: PathBuf,
+    workspace: Arc<WorkspaceEngine>,
+    outgoing: mpsc::Sender<Value>,
+    gate: Option<Gate>,
+    held: HeldTerminals,
+    connection: CancellationToken,
+) {
+    let session = message
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let opening = message.get("type").and_then(Value::as_str) == Some("terminal.open");
+    // Decided with the lock held and acted on once it is let go: what is
+    // handed on is awaited, and a lock of this kind must not be held then.
+    let waiting = {
+        let mut held = held.lock().unwrap_or_else(|poison| poison.into_inner());
+        if let Some(frames) = session.as_ref().and_then(|session| held.get_mut(session)) {
+            // The task that holds this terminal hands the frame on in its turn.
+            frames.push(message);
+            return;
+        }
+        match (session, gate.filter(|gate| opening && gate.is_closed())) {
+            (Some(session), Some(gate)) => {
+                held.insert(session.clone(), vec![message]);
+                Ok((session, gate))
+            }
+            _ => Err(message),
+        }
+    };
+    let (session, gate) = match waiting {
+        Ok(waiting) => waiting,
+        Err(message) => {
+            handle_terminal_message(message, config_path, workspace, outgoing).await;
+            return;
+        }
+    };
+    tokio::spawn(async move {
+        let opened = tokio::select! {
+            _ = gate.wait(gate::bound(None, now_ms())) => true,
+            _ = connection.cancelled() => false,
+        };
+        loop {
+            let frames = {
+                let mut held = held.lock().unwrap_or_else(|poison| poison.into_inner());
+                match held.get_mut(&session) {
+                    Some(frames) if !frames.is_empty() => std::mem::take(frames),
+                    _ => {
+                        held.remove(&session);
+                        break;
+                    }
+                }
+            };
+            for frame in frames {
+                // A connection that ended took its terminals with it.
+                if opened && !connection.is_cancelled() {
+                    handle_terminal_message(
+                        frame,
+                        config_path.clone(),
+                        workspace.clone(),
+                        outgoing.clone(),
+                    )
+                    .await;
+                }
+            }
+        }
+    });
 }
 
 async fn handle_terminal_message(
@@ -2004,10 +2186,13 @@ fn platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        announced_features, announced_projects, awake_event, execute_workspace_tool,
-        handshake_rejection, reconcile_projects, resolve_target, result_frame,
-        spawn_workspace_call,
+        HeldTerminals, announced_features, announced_projects, awake_event, execute_workspace_tool,
+        handshake_rejection, is_work_frame, reconcile_projects, resolve_target, result_frame,
+        route_terminal_message, spawn_workspace_call, waits_for_scripts,
     };
+    #[cfg(unix)]
+    use super::{InFlight, spawn_tool_call};
+    use crate::cloud::hooks::gate::Gate;
     use crate::{
         config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         error::ErrorCode,
@@ -2018,6 +2203,7 @@ mod tests {
         workspace::WorkspaceEngine,
     };
     use serde_json::{Value, json};
+    use std::sync::Mutex as StdMutex;
     use std::{collections::HashMap, fs, path::Path, process::Command, sync::Arc, time::Duration};
     use tempfile::tempdir;
     use tokio::sync::{Mutex, mpsc};
@@ -2277,6 +2463,338 @@ done
         assert!(!announced_features(true).contains(&"cloud-v1"));
         assert!(announced_features(false).contains(&"cloud-v1"));
         assert!(!announced_features(false).contains(&"project-clone-v1"));
+    }
+
+    #[test]
+    fn announces_the_scripts_only_from_an_instance() {
+        assert!(announced_features(false).contains(&"cloud-hooks-v1"));
+        assert!(!announced_features(true).contains(&"cloud-hooks-v1"));
+    }
+
+    #[test]
+    fn a_request_to_run_a_script_is_work() {
+        assert!(is_work_frame(Some("cloud.hook.run")));
+        assert!(is_work_frame(Some("tool.call")));
+        assert!(!is_work_frame(Some("hello.ack")));
+        assert!(!is_work_frame(Some("heartbeat.ack")));
+    }
+
+    /// A machine that serves one project, and the door the relay's calls
+    /// come through, with a gate the test holds.
+    #[cfg(unix)]
+    struct Served {
+        _directory: tempfile::TempDir,
+        config_path: std::path::PathBuf,
+        api: crate::api::ApiClient,
+        gate: Gate,
+        outgoing: mpsc::UnboundedSender<Value>,
+        results: mpsc::UnboundedReceiver<Value>,
+    }
+
+    #[cfg(unix)]
+    impl Served {
+        async fn new() -> Self {
+            let directory = tempdir().unwrap();
+            let root = directory.path().join("project");
+            fs::create_dir(&root).unwrap();
+            fs::write(root.join("notes.txt"), "hello\n").unwrap();
+            let config_path = directory.path().join("config.json");
+            let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+            config.upsert_project(ProjectEntry::directory(
+                "prj_1".to_owned(),
+                "project".to_owned(),
+                "Project".to_owned(),
+                fs::canonicalize(&root).unwrap(),
+            ));
+            config.save().unwrap();
+            let (outgoing, results) = mpsc::unbounded_channel();
+            Self {
+                _directory: directory,
+                config_path,
+                api: Gateway::gone().api().await,
+                gate: Gate::new(),
+                outgoing,
+                results,
+            }
+        }
+
+        async fn call(&self, id: &str, tool: &str, arguments: Value, expires_at: Option<u64>) {
+            let mut message = json!({
+                "type": "tool.call",
+                "requestId": id,
+                "projectId": "prj_1",
+                "tool": tool,
+                "arguments": arguments,
+            });
+            if let Some(expires_at) = expires_at {
+                message["expiresAt"] = json!(expires_at);
+            }
+            spawn_tool_call(
+                message,
+                self.config_path.clone(),
+                self.api.clone(),
+                Arc::new(ToolEngine::new().unwrap()),
+                Arc::new(WorkspaceEngine::new()),
+                Arc::new(McpManager::load(&self.config_path, &[])),
+                Arc::new(Mutex::new(())),
+                Arc::new(Mutex::new(HashMap::new())),
+                self.outgoing.clone(),
+                true,
+                true,
+                Some(self.gate.clone()),
+            )
+            .await;
+        }
+
+        async fn answer(&mut self, within: Duration) -> Option<Value> {
+            tokio::time::timeout(within, self.results.recv())
+                .await
+                .ok()
+                .flatten()
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_waits_for_the_scripts_and_a_read_does_not() {
+        let mut served = Served::new().await;
+        let hold = served.gate.hold();
+
+        // A read tells the truth about a checkout in any state.
+        served
+            .call(
+                "req_read",
+                "read_file",
+                json!({ "path": "notes.txt" }),
+                None,
+            )
+            .await;
+        let read = served
+            .answer(Duration::from_secs(10))
+            .await
+            .expect("a read does not wait");
+        assert_eq!(read["requestId"], "req_read");
+        assert_eq!(read["result"]["ok"], true, "{read}");
+
+        // A command does not start while a script is making the checkout.
+        served
+            .call(
+                "req_run",
+                "run_command",
+                json!({ "command": "echo ran" }),
+                None,
+            )
+            .await;
+        assert_eq!(served.answer(Duration::from_millis(500)).await, None);
+
+        drop(hold);
+        let ran = served
+            .answer(Duration::from_secs(10))
+            .await
+            .expect("the command runs once the script is over");
+        assert_eq!(ran["requestId"], "req_run");
+        assert_eq!(ran["result"]["value"]["stdout"], "ran\n", "{ran}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_goes_ahead_when_the_script_outlasts_its_wait() {
+        let mut served = Served::new().await;
+        let _hold = served.gate.hold();
+
+        // Its deadline leaves it a fraction of a second to wait, less the
+        // margin it keeps for itself.
+        let started = std::time::Instant::now();
+        served
+            .call(
+                "req_run",
+                "run_command",
+                json!({ "command": "echo ran" }),
+                Some(crate::protocol::now_ms() + 5_300),
+            )
+            .await;
+        let ran = served
+            .answer(Duration::from_secs(10))
+            .await
+            .expect("the command runs beside the script");
+        assert_eq!(ran["result"]["value"]["stdout"], "ran\n", "{ran}");
+        assert!(started.elapsed() >= Duration::from_millis(250));
+        // The script is still running.
+        assert!(served.gate.is_closed());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_that_is_cancelled_at_the_gate_does_not_go_on_waiting() {
+        let mut served = Served::new().await;
+        let _hold = served.gate.hold();
+        let in_flight: InFlight = Arc::new(Mutex::new(HashMap::new()));
+        spawn_tool_call(
+            json!({
+                "type": "tool.call",
+                "requestId": "req_run",
+                "projectId": "prj_1",
+                "tool": "run_command",
+                "arguments": { "command": "echo ran" },
+            }),
+            served.config_path.clone(),
+            served.api.clone(),
+            Arc::new(ToolEngine::new().unwrap()),
+            Arc::new(WorkspaceEngine::new()),
+            Arc::new(McpManager::load(&served.config_path, &[])),
+            Arc::new(Mutex::new(())),
+            in_flight.clone(),
+            served.outgoing.clone(),
+            true,
+            true,
+            Some(served.gate.clone()),
+        )
+        .await;
+        // In flight while it waits, so a cancel finds it and the machine
+        // is held awake for it.
+        assert_eq!(served.answer(Duration::from_millis(300)).await, None);
+        let call = in_flight.lock().await;
+        call.get("req_run").expect("in flight").cancel.cancel();
+        drop(call);
+
+        let answer = served
+            .answer(Duration::from_secs(10))
+            .await
+            .expect("an answer");
+        assert_eq!(answer["result"]["ok"], false);
+        assert_eq!(answer["result"]["error"]["code"], "CANCELLED", "{answer}");
+        assert!(in_flight.lock().await.is_empty());
+    }
+
+    /// The messages of the errors a terminal's frames were answered with,
+    /// in the order they were answered.
+    async fn terminal_errors(frames: &mut mpsc::Receiver<Value>, count: usize) -> Vec<String> {
+        let mut errors = Vec::new();
+        while errors.len() < count {
+            let Ok(Some(frame)) =
+                tokio::time::timeout(Duration::from_secs(10), frames.recv()).await
+            else {
+                break;
+            };
+            errors.push(frame["message"].as_str().unwrap_or_default().to_owned());
+        }
+        errors
+    }
+
+    #[tokio::test]
+    async fn a_terminal_waits_for_the_scripts_with_what_was_typed_behind_it() {
+        let directory = tempdir().unwrap();
+        let config_path = directory.path().join("config.json");
+        let workspace = Arc::new(WorkspaceEngine::new());
+        let (outgoing, mut frames) = mpsc::channel(16);
+        let held: HeldTerminals = Arc::new(StdMutex::new(HashMap::new()));
+        let connection = CancellationToken::new();
+        let gate = Gate::new();
+        let hold = gate.hold();
+        let send = |message: Value| {
+            route_terminal_message(
+                message,
+                config_path.clone(),
+                workspace.clone(),
+                outgoing.clone(),
+                Some(gate.clone()),
+                held.clone(),
+                connection.clone(),
+            )
+        };
+
+        // Neither can succeed, and each fails in words of its own, which is
+        // what tells the order they were handled in.
+        send(json!({ "type": "terminal.open", "sessionId": "term_1", "cols": 80, "rows": 24 }))
+            .await;
+        send(json!({ "type": "terminal.input", "sessionId": "term_1", "data": "not base64!" }))
+            .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            frames.try_recv().is_err(),
+            "handled while the gate was closed"
+        );
+
+        // A terminal that is not waiting is not held up by one that is.
+        send(json!({ "type": "terminal.input", "sessionId": "term_2", "data": "not base64!" }))
+            .await;
+        assert_eq!(
+            terminal_errors(&mut frames, 1).await,
+            ["Invalid terminal input encoding."]
+        );
+
+        drop(hold);
+        assert_eq!(
+            terminal_errors(&mut frames, 2).await,
+            [
+                "A terminal project is required.",
+                "Invalid terminal input encoding."
+            ]
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(held.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_terminal_still_waiting_when_the_connection_ends_is_never_opened() {
+        let directory = tempdir().unwrap();
+        let (outgoing, mut frames) = mpsc::channel(16);
+        let held: HeldTerminals = Arc::new(StdMutex::new(HashMap::new()));
+        let connection = CancellationToken::new();
+        let gate = Gate::new();
+        let _hold = gate.hold();
+        route_terminal_message(
+            json!({ "type": "terminal.open", "sessionId": "term_1", "cols": 80, "rows": 24 }),
+            directory.path().join("config.json"),
+            Arc::new(WorkspaceEngine::new()),
+            outgoing,
+            Some(gate.clone()),
+            held.clone(),
+            connection.clone(),
+        )
+        .await;
+        assert!(held.lock().unwrap().contains_key("term_1"));
+
+        connection.cancel();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(held.lock().unwrap().is_empty());
+        assert!(frames.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn a_terminal_opens_at_once_when_no_script_is_running() {
+        let directory = tempdir().unwrap();
+        let (outgoing, mut frames) = mpsc::channel(16);
+        let held: HeldTerminals = Arc::new(StdMutex::new(HashMap::new()));
+        for gate in [None, Some(Gate::new())] {
+            route_terminal_message(
+                json!({ "type": "terminal.open", "sessionId": "term_1", "cols": 80, "rows": 24 }),
+                directory.path().join("config.json"),
+                Arc::new(WorkspaceEngine::new()),
+                outgoing.clone(),
+                gate,
+                held.clone(),
+                CancellationToken::new(),
+            )
+            .await;
+            // Handled before the call returned, as it always was.
+            assert_eq!(
+                frames.try_recv().unwrap()["message"],
+                "A terminal project is required."
+            );
+            assert!(held.lock().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn only_what_starts_something_waits_for_the_scripts() {
+        for tool in ToolName::ALL {
+            assert_eq!(
+                waits_for_scripts(tool),
+                matches!(tool, ToolName::RunCommand | ToolName::StartCommand),
+                "{tool}"
+            );
+        }
     }
 
     #[tokio::test]
