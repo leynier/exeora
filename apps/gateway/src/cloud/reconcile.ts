@@ -64,7 +64,9 @@ export async function reconcileCloud(
         .set({
           status: "error",
           step: null,
-          error: "Provisioning timed out. Retry to try again.",
+          error: "Setting the machine up took too long. Retry to try again.",
+          errorCode: "timed_out",
+          errorDetail: null,
           updatedAt: new Date(now),
         })
         .where(eq(schema.cloudMachines.deviceId, row.deviceId))

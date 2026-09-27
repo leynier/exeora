@@ -286,7 +286,10 @@ describe("provisioning a cloud machine", () => {
     expect(await step()).toBe(true);
     expect((await machine().status())?.phase).toBe("error");
     expect(await row()).toMatchObject({ status: "error" });
-    expect((await row())?.error).toContain("token was rejected");
+    // The person is told what to do; what the provider said is the detail.
+    expect(await row()).toMatchObject({ errorCode: "machine_unavailable" });
+    expect((await row())?.error).not.toMatch(/sprite/i);
+    expect((await row())?.errorDetail).toContain("token was rejected");
     expect(await step()).toBe(false);
   });
 

@@ -99,6 +99,11 @@ export function offline(message: string): CallerResponse {
   return { type: "error", error: { code: "LOCAL_EXECUTOR_OFFLINE", message } };
 }
 
+/** A cloud machine that did not come up in time: the one offline that is worth retrying. */
+export function waking(message: string): CallerResponse {
+  return { type: "error", error: { code: "EXECUTOR_WAKING", message } };
+}
+
 export function executorSocket(ctx: DurableObjectState): WebSocket | undefined {
   const sockets = ctx.getWebSockets("executor");
   return (

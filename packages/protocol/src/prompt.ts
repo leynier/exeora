@@ -170,7 +170,8 @@ const POLICY = `## What the project allows
 - Every project carries a policy set by whoever owns the machine. It can be read only, it can name the commands that are permitted, it can name the ones that are refused, and it can hide tools outright. It can also require a person to confirm anything that changes something.
 - \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are answers, not obstacles. Someone decided, or someone was asked and did not answer. Say what was refused and stop. Do not reach for a different tool, reshape the command, or route around it in any other way. This is the one thing you must never do here.
 - When a list of commands is in force, shell syntax is refused outright: \`;\`, \`&&\`, \`|\`, backticks and \`$(...)\` will not go through whatever the first word is.
-- \`LOCAL_EXECUTOR_OFFLINE\` means the machine is asleep or \`exeora connect\` is not running. Retrying will not fix it. Say so and let the user.
+- \`LOCAL_EXECUTOR_OFFLINE\` means the user's machine is off, asleep, or \`exeora connect\` is not running on it. Retrying will not fix it. Say so and let the user.
+- \`EXECUTOR_WAKING\` means a machine Exeora runs was asleep and is coming up. Wait a few seconds and send the same call again, once or twice. If it keeps answering this, say so and stop.
 - \`PATH_ESCAPE\` and \`PATH_NOT_FOUND\` are about the path you sent rather than about permission. Reread it and send the real one.
 - \`UNKNOWN_PROCESS\` is the same kind of answer: this call does not own that handle. Do not hunt for it.`;
 
@@ -226,9 +227,9 @@ const INSTRUCTIONS = `Exeora runs these tools on the user's own machine, inside 
 - Project paths are relative to the project root. Reads and command \`cwd\` may also use \`~/.agents/AGENTS.md\` and \`~/.agents/skills/\`; writes cannot. Other absolute paths and \`..\` are \`PATH_ESCAPE\`. Read \`AGENTS.md\` first (skip PATH_ESCAPE); call \`list_skills\` once.
 - Search with \`grep\` before reading. \`list_files\` for shape, \`read_file\` last; when a read comes back \`truncated\`, continue with \`offset\`.
 - \`edit_file\` for a file that exists, \`write_file\` only for one you are creating, \`apply_patch\` when several files must change together. \`oldString\` must be unique; when an edit is refused, add surrounding lines rather than retrying it.
-- \`run_command\` for anything that finishes (stdin closed, killed at ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)}). \`start_command\` with \`get_command_output\`, \`send_command_input\` and \`kill_command\` for dev servers, watchers and anything interactive. Follow-up process calls must repeat the same project and workspace. Kill what you start. \`UNKNOWN_PROCESS\` means this call does not own that handle: report it and stop.
-- A project's policy can make it read only, restrict which commands run, hide tools, and require a person to confirm. \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are decisions: report them and stop, never work around them. \`LOCAL_EXECUTOR_OFFLINE\` means the machine is not connected.
-- Not every Exeora tool is necessarily offered here. Call what you can see; an absent one is policy, not a fault.`;
+- \`run_command\` for anything that finishes (stdin closed, killed at ${SECONDS(DEFAULT_COMMAND_TIMEOUT_MS)}). \`start_command\` with \`get_command_output\`, \`send_command_input\` and \`kill_command\` for dev servers, watchers and anything interactive. Follow-up process calls repeat the same project and workspace. Kill what you start. \`UNKNOWN_PROCESS\` means this call does not own that handle: report it and stop.
+- A project's policy can make it read only, restrict commands, hide tools, and require a person to confirm. \`FORBIDDEN\`, \`APPROVAL_DECLINED\` and \`APPROVAL_TIMEOUT\` are decisions: report and stop, never work around them. \`LOCAL_EXECUTOR_OFFLINE\` means the machine is not connected; on \`EXECUTOR_WAKING\`, retry shortly.
+- Not every Exeora tool is offered here. Call what you can see; an absent one is policy, not a fault.`;
 
 const INSTRUCTIONS_ACCOUNT = `This connection reaches several projects: \`list_projects\` shows them, and every other tool call must name its \`project\` when more than one is reachable. The choice is per call, so conversations do not move each other.`;
 

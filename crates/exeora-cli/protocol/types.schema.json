@@ -255,6 +255,7 @@
                           "type": "string",
                           "enum": [
                             "LOCAL_EXECUTOR_OFFLINE",
+                            "EXECUTOR_WAKING",
                             "TOOL_TIMEOUT",
                             "CANCELLED",
                             "PATH_ESCAPE",
@@ -347,6 +348,7 @@
                           "type": "string",
                           "enum": [
                             "LOCAL_EXECUTOR_OFFLINE",
+                            "EXECUTOR_WAKING",
                             "TOOL_TIMEOUT",
                             "CANCELLED",
                             "PATH_ESCAPE",
@@ -1028,6 +1030,7 @@
                           "type": "string",
                           "enum": [
                             "LOCAL_EXECUTOR_OFFLINE",
+                            "EXECUTOR_WAKING",
                             "TOOL_TIMEOUT",
                             "CANCELLED",
                             "PATH_ESCAPE",

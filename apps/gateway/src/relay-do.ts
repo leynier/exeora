@@ -40,6 +40,7 @@ import {
   settleCaller,
   type TerminalCallerState,
   type ToolCallerState,
+  waking,
 } from "./relay-do-callers.js";
 import {
   type CloudRelayConfig,
@@ -466,7 +467,7 @@ export class DeviceRelay extends DurableObject<Env> {
     // costs nothing on the path every call takes today.
     const wake = await ensureAwake(this.ctx, this.cloud, this.env, this.fetcher);
     if (!wake.ok) {
-      settleCaller(socket, offline(wake.message));
+      settleCaller(socket, wake.waking ? waking(wake.message) : offline(wake.message));
       return;
     }
     // Re-read after the wait: the caller may have cancelled meanwhile, and the

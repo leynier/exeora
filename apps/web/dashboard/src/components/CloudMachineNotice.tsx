@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { cloudApi } from "../api-cloud.js";
 import { keys, useCloudProjects } from "../queries.js";
+import { MachineFailure, needsToken } from "./MachineFailure.js";
 import { useToast } from "./toast.js";
 import { EmptyState } from "./ui.js";
 
@@ -61,7 +62,12 @@ export function CloudMachineNotice({
   if (machine.status === "error") {
     return (
       <EmptyState title="This machine failed to start">
-        <p className="text-error">{machine.error ?? "Provisioning failed."}</p>
+        <MachineFailure machine={machine} />
+        {needsToken(machine) && (
+          <p className="text-body-md text-foreground-muted mt-2">
+            Set the token under {cloudLink}; saving it retries this machine.
+          </p>
+        )}
         <button
           type="button"
           className="btn mt-4"

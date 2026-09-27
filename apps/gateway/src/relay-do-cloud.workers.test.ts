@@ -83,8 +83,8 @@ describe("waking a cloud machine", () => {
     const started = Date.now();
     const error = await failureOf(() => call("req_asleep"));
 
-    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
-    expect((error as { message?: string }).message).toContain("did not wake up");
+    expect(error.code).toBe("EXECUTOR_WAKING");
+    expect((error as { message?: string }).message).toContain("still waking up");
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(fetcher).toHaveBeenCalled();
     const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
@@ -108,8 +108,8 @@ describe("waking a cloud machine", () => {
       }),
     );
 
-    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
-    expect((error as { message?: string }).message).toContain("did not wake up");
+    expect(error.code).toBe("EXECUTOR_WAKING");
+    expect((error as { message?: string }).message).toContain("still waking up");
     expect(fetcher).toHaveBeenCalled();
   });
 

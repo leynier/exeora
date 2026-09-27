@@ -20,6 +20,10 @@ export interface CloudMachineView {
   status: CloudMachineStatus;
   step: string | null;
   error: string | null;
+  /** The kind of failure, which decides the action the dashboard offers. */
+  errorCode: string | null;
+  /** What the machine said, for the "Details" of a failure. */
+  errorDetail: string | null;
   online: boolean;
   createdAt: number;
   readyAt: number | null;
@@ -66,6 +70,8 @@ export async function listCloudProjects(
       status: schema.cloudMachines.status,
       step: schema.cloudMachines.step,
       error: schema.cloudMachines.error,
+      errorCode: schema.cloudMachines.errorCode,
+      errorDetail: schema.cloudMachines.errorDetail,
       createdAt: schema.cloudMachines.createdAt,
       readyAt: schema.cloudMachines.readyAt,
       workspaceSlug: schema.workspaces.slug,
@@ -98,6 +104,8 @@ export async function listCloudProjects(
         status: machine.status,
         step: machine.step,
         error: machine.error,
+        errorCode: machine.errorCode,
+        errorDetail: machine.errorDetail,
         online: isDeviceOnline(machine, cutoff),
         createdAt: machine.createdAt.getTime(),
         readyAt: machine.readyAt?.getTime() ?? null,

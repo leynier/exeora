@@ -98,6 +98,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     <code>LOCAL_EXECUTOR_OFFLINE</code> means no CLI is connected for that project's machine. Nothing
-    is queued, on purpose: see <a href="/docs/troubleshooting/">troubleshooting</a>.
+    is queued, on purpose. <code>EXECUTOR_WAKING</code> means a machine Exeora Cloud runs was asleep
+    and is coming up, and the call is worth sending again. See{" "}
+    <a href="/docs/troubleshooting/">troubleshooting</a>.
   </p>
 </Doc>

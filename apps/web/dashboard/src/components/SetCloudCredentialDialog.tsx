@@ -13,6 +13,7 @@ export function SetCloudCredentialDialog({
   pending,
   projectName,
   hasCredential,
+  failed,
   onSubmit,
   onCancel,
 }: {
@@ -20,6 +21,8 @@ export function SetCloudCredentialDialog({
   pending: boolean;
   projectName: string;
   hasCredential: boolean;
+  /** How many of its machines are waiting on a token that works. */
+  failed: number;
   onSubmit: (input: { token: string | null; username?: string }) => void;
   onCancel: () => void;
 }) {
@@ -59,6 +62,9 @@ export function SetCloudCredentialDialog({
       <p className="text-body-md text-foreground-muted mt-2">
         Used by machines created or retried from now on. Machines already running keep the token
         they were set up with.
+        {failed > 0
+          ? ` Saving it retries the ${failed === 1 ? "machine" : `${failed} machines`} that failed.`
+          : ""}
       </p>
       <label className="mt-4 block">
         <span className={label}>Access token</span>
@@ -108,7 +114,7 @@ export function SetCloudCredentialDialog({
             )
           }
         >
-          {pending ? "Working…" : "Save token"}
+          {pending ? "Working…" : failed > 0 ? "Save and retry" : "Save token"}
         </button>
       </div>
     </dialog>

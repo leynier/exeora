@@ -8,6 +8,12 @@
 export const ERROR_CODES = [
   /** No CLI is currently connected for the device that owns the project. */
   "LOCAL_EXECUTOR_OFFLINE",
+  /**
+   * The machine is one Exeora runs, it was asleep, and it did not come up in
+   * time. Unlike the code above this one is worth a second try: the machine
+   * is on its way, and nobody has to go and start anything.
+   */
+  "EXECUTOR_WAKING",
   /** The executor did not answer within the relay deadline. */
   "TOOL_TIMEOUT",
   /**

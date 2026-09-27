@@ -24,6 +24,8 @@ const cloudProject = {
       status: "creating",
       step: "Installing",
       error: null,
+      errorCode: null as string | null,
+      errorDetail: null as string | null,
       online: false,
       createdAt: Date.now(),
       readyAt: null,
@@ -35,7 +37,9 @@ const cloudProject = {
       branch: "feature/login",
       status: "error",
       step: null,
-      error: "The CLI did not connect in time.",
+      error: "The machine could not be set up. Retry, and check the details if it fails again.",
+      errorCode: "setup_failed" as string | null,
+      errorDetail: "The CLI never connected. The service wrote no log." as string | null,
       online: false,
       createdAt: Date.now(),
       readyAt: null,
@@ -75,6 +79,19 @@ async function mockApi(
       "/api/devices": [],
       "/api/projects": [],
       "/api/clients": [],
+      "/api/account-clients": [
+        {
+          clientId: "client_chatgpt",
+          clientName: "ChatGPT",
+          clientUri: null,
+          mcpName: null,
+          mcpVersion: null,
+          authorizedAt: Date.now(),
+          lastUsedAt: null,
+          allProjects: false,
+          projects: [{ id: "pcl_1", projectId: "prj_cloud", revokedAt: null }],
+        },
+      ],
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
       "/api/terminals": { items: [] },
@@ -102,7 +119,10 @@ test("lists Cloud right after Machines and shows each machine's state", async ({
   await expect(page.getByRole("heading", { name: "Widgets" })).toBeVisible();
   await expect(page.getByText("2 of 2 machines in use")).toBeVisible();
   await expect(page.getByText("Installing")).toBeVisible();
-  await expect(page.getByText("The CLI did not connect in time.")).toBeVisible();
+  await expect(page.getByText("The machine could not be set up.")).toBeVisible();
+  // What the machine said is there for whoever asks, folded away.
+  await page.getByText("Details", { exact: true }).click();
+  await expect(page.getByText("The service wrote no log.")).toBeVisible();
   await expect(page.getByText("private")).toBeVisible();
   // At the cap, so nothing new can be started until a machine goes.
   await expect(page.getByRole("button", { name: "Add repository" })).toBeDisabled();
@@ -124,14 +144,16 @@ test("retries a failed machine from its row", async ({ page }) => {
   expect(retried).toContain("/api/cloud/machines/dev_cloud_feature/retry");
 });
 
-test("replaces a repository's token without recreating it", async ({ page }) => {
+test("replaces a repository's token and retries what failed in one step", async ({ page }) => {
   const puts: Array<{ path: string; body: unknown }> = [];
+  const retried: string[] = [];
   await signedIn(page);
   await mockApi(page, {
     onRequest: (request) => {
       if (request.method() === "PUT") {
         puts.push({ path: new URL(request.url()).pathname, body: request.postDataJSON() });
       }
+      if (request.method() === "POST") retried.push(new URL(request.url()).pathname);
     },
   });
   await page.goto("/dashboard/");
@@ -140,14 +162,44 @@ test("replaces a repository's token without recreating it", async ({ page }) => 
   await page.getByRole("button", { name: "Replace token" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Access token").fill("ghp_new");
-  await dialog.getByRole("button", { name: "Save token" }).click();
-  await expect(page.getByRole("status")).toContainText("Token saved.");
+  await dialog.getByRole("button", { name: "Save and retry" }).click();
+  await expect(page.getByRole("status")).toContainText("Trying the failed machine again.");
+  expect(retried).toEqual(["/api/cloud/machines/dev_cloud_feature/retry"]);
   expect(puts).toEqual([
     {
       path: `/api/cloud/projects/${cloudProject.projectId}/credential`,
       body: { token: "ghp_new" },
     },
   ]);
+});
+
+test("offers the token as the way out of a clone that was refused", async ({ page }) => {
+  const [main, failed] = cloudProject.machines;
+  if (!main || !failed) throw new Error("the fixture has two machines");
+  await signedIn(page);
+  await mockApi(page, {
+    projects: [
+      {
+        ...cloudProject,
+        hasCredential: false,
+        machines: [
+          main,
+          {
+            ...failed,
+            error: "The repository refused access. Set a token that can read it, then retry.",
+            errorCode: "clone_auth_failed",
+            errorDetail: "fatal: Authentication failed",
+          },
+        ],
+      },
+    ],
+  });
+  await page.goto("/dashboard/");
+  await page.getByRole("link", { name: "Cloud", exact: true }).click();
+
+  await expect(page.getByText("The repository refused access.")).toBeVisible();
+  // Once for the repository and once on the row that needs it.
+  await expect(page.getByRole("button", { name: "Set token" })).toHaveCount(2);
 });
 
 test("adds a repository by URL and posts what the dialog derived", async ({ page }) => {
@@ -169,6 +221,9 @@ test("adds a repository by URL and posts what the dialog derived", async ({ page
   await dialog.getByLabel("Repository URL").fill("https://github.com/example/Gadgets.git");
   await expect(dialog.getByText("slug: gadgets")).toBeVisible();
   await dialog.getByLabel("Access token").fill("ghp_secret");
+  // A client that chose its projects is asked about here, ticked, rather than
+  // left to find out on another page that it cannot see the new one.
+  await expect(dialog.getByLabel("ChatGPT")).toBeChecked();
   await dialog.getByRole("button", { name: "Add repository" }).click();
 
   await expect(page.getByRole("status")).toContainText("Creating a machine for Gadgets.");
@@ -178,6 +233,7 @@ test("adds a repository by URL and posts what the dialog derived", async ({ page
     repoUrl: "https://github.com/example/Gadgets.git",
     defaultBranch: "main",
     token: "ghp_secret",
+    clientIds: ["client_chatgpt"],
   });
 });
 

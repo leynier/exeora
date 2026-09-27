@@ -59,7 +59,8 @@ export interface CloudWakeState {
   wakeTimeoutMs: number;
 }
 
-export type WakeOutcome = { ok: true } | { ok: false; message: string };
+/** `waking` says the failure is a machine still coming up, which a caller may try again. */
+export type WakeOutcome = { ok: true } | { ok: false; message: string; waking?: true };
 
 export function createCloudWakeState(): CloudWakeState {
   return { awakeUntil: 0, holdsTasks: false, wakeTimeoutMs: CLOUD_WAKE_TIMEOUT_MS };
@@ -155,7 +156,8 @@ async function wakeSprite(
     if (Date.now() + CLOUD_WAKE_POLL_MS >= deadline) {
       return {
         ok: false,
-        message: "The cloud workspace did not wake up in time. Try again in a few seconds.",
+        waking: true,
+        message: "The machine was asleep and is still waking up. Try again in a few seconds.",
       };
     }
     await new Promise((resolve) => setTimeout(resolve, CLOUD_WAKE_POLL_MS));

@@ -143,12 +143,15 @@ describe("the Cloud sweep", () => {
     });
     expect(deleted).toEqual(["/v1/sprites/exeora-0123456789abcdefghjkmn"]);
     const dead = await db(env)
-      .select({ status: schema.cloudMachines.status, error: schema.cloudMachines.error })
+      .select({
+        status: schema.cloudMachines.status,
+        errorCode: schema.cloudMachines.errorCode,
+      })
       .from(schema.cloudMachines)
       .where(eq(schema.cloudMachines.deviceId, "dev_reconcile_dead"))
       .get();
     expect(dead).toMatchObject({ status: "error" });
-    expect(dead?.error).toContain("timed out");
+    expect(dead?.errorCode).toBe("timed_out");
     const going = await env.CLOUD_MACHINE.getByName("dev_reconcile_going").status();
     expect(going).toMatchObject({ phase: "destroy" });
   });

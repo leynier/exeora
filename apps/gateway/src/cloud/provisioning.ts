@@ -369,6 +369,8 @@ export async function retryCloudMachine(
       status: "creating",
       step: "Creating machine",
       error: null,
+      errorCode: null,
+      errorDetail: null,
       updatedAt: new Date(),
     })
     .where(

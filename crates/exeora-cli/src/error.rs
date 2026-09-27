@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum ErrorCode {
     #[serde(rename = "LOCAL_EXECUTOR_OFFLINE")]
     LocalExecutorOffline,
+    #[serde(rename = "EXECUTOR_WAKING")]
+    ExecutorWaking,
     #[serde(rename = "TOOL_TIMEOUT")]
     ToolTimeout,
     #[serde(rename = "CANCELLED")]
@@ -43,6 +45,7 @@ impl ErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::LocalExecutorOffline => "LOCAL_EXECUTOR_OFFLINE",
+            Self::ExecutorWaking => "EXECUTOR_WAKING",
             Self::ToolTimeout => "TOOL_TIMEOUT",
             Self::Cancelled => "CANCELLED",
             Self::PathEscape => "PATH_ESCAPE",

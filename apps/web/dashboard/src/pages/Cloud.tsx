@@ -93,12 +93,27 @@ export function Cloud() {
   });
 
   const setCredential = useMutation({
-    mutationFn: (input: { projectId: string; token: string | null; username?: string }) =>
-      cloudApi.setCredential(input.projectId, input.token, input.username),
-    onSuccess: (_result, input) => {
+    // Saving a token is almost always the answer to a machine that could not
+    // clone, so the machines that failed are retried with it in the same step
+    // rather than left for somebody to find the button.
+    mutationFn: async (input: {
+      projectId: string;
+      token: string | null;
+      username?: string;
+      retry: string[];
+    }) => {
+      await cloudApi.setCredential(input.projectId, input.token, input.username);
+      const retried = await Promise.allSettled(
+        (input.token ? input.retry : []).map((deviceId) => cloudApi.retryMachine(deviceId)),
+      );
+      return retried.filter((result) => result.status === "fulfilled").length;
+    },
+    onSuccess: (retried, input) => {
       toast(
         input.token
-          ? "Token saved. Retry a failed machine to clone with it."
+          ? retried > 0
+            ? "Token saved. Trying the failed machine again."
+            : "Token saved."
           : "Token removed. New machines clone without one.",
       );
       setCredentialFor(null);
@@ -235,10 +250,15 @@ export function Cloud() {
         pending={setCredential.isPending}
         projectName={credentialFor?.name ?? ""}
         hasCredential={credentialFor?.hasCredential ?? false}
+        failed={failedMachines(credentialFor).length}
         onCancel={() => setCredentialFor(null)}
         onSubmit={(input) => {
           if (!credentialFor) return;
-          setCredential.mutate({ projectId: credentialFor.projectId, ...input });
+          setCredential.mutate({
+            projectId: credentialFor.projectId,
+            ...input,
+            retry: failedMachines(credentialFor),
+          });
         }}
       />
 
@@ -265,4 +285,11 @@ export function Cloud() {
       />
     </>
   );
+}
+
+/** The machines of a project that stopped on an error, by device. */
+function failedMachines(project: CloudProject | null): string[] {
+  return (project?.machines ?? [])
+    .filter((machine) => machine.status === "error")
+    .map((machine) => machine.deviceId);
 }

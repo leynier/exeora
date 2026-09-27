@@ -2,6 +2,7 @@ import type { CloudCliConfig, CloudMachineStatus } from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { permanentlyDeleteDevice, relayName, revokeDevice } from "../api/ops.js";
 import { db, schema } from "../db/client.js";
+import { explainFailure } from "./machine-errors.js";
 import "../env.js";
 import {
   bootstrapFatalReason,
@@ -279,9 +280,20 @@ export async function writeMachineRow(
     readyAt?: Date;
   },
 ): Promise<void> {
+  // The one place a failure is put into words. `error: null` clears all three
+  // columns, so a machine that recovered carries nothing of what went wrong.
+  const failure = typeof patch.error === "string" ? explainFailure(patch.error) : undefined;
+  const explained =
+    patch.error === undefined
+      ? {}
+      : {
+          error: failure?.message ?? null,
+          errorCode: failure?.code ?? null,
+          errorDetail: failure?.detail ?? null,
+        };
   await db(env)
     .update(schema.cloudMachines)
-    .set({ ...patch, updatedAt: new Date() })
+    .set({ ...patch, ...explained, updatedAt: new Date() })
     .where(eq(schema.cloudMachines.deviceId, deviceId))
     .run();
 }

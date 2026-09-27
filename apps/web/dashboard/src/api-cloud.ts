@@ -19,7 +19,12 @@ export interface CloudMachine {
   status: CloudMachineStatus;
   /** What the machine is doing right now, while it is being created. */
   step: string | null;
+  /** Why it failed, as a sentence to act on. */
   error: string | null;
+  /** The kind of failure, which decides the action offered next to it. */
+  errorCode: string | null;
+  /** What the machine itself said. */
+  errorDetail: string | null;
   online: boolean;
   createdAt: number;
   readyAt: number | null;

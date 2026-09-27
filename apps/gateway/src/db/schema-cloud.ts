@@ -78,8 +78,12 @@ export const cloudMachines = sqliteTable(
     status: text("status", { enum: CLOUD_MACHINE_STATUSES }).notNull().default("creating"),
     /** What provisioning is doing right now, for the dashboard. */
     step: text("step"),
-    /** Why provisioning stopped, when `status` is `error`. */
+    /** Why provisioning stopped, when `status` is `error`: a sentence to act on. */
     error: text("error"),
+    /** The kind of failure, which is what decides the action offered next to it. */
+    errorCode: text("error_code"),
+    /** What the machine itself said, kept for when the sentence is not enough. */
+    errorDetail: text("error_detail"),
     /**
      * The ref a workspace branch was asked to start from, kept here so a
      * retry starts it there too, even one after the first hand-off to the

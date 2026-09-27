@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { relativeTime } from "../api.js";
 import type { CloudMachine, CloudProject } from "../api-cloud.js";
+import { MachineFailure, needsToken } from "./MachineFailure.js";
 import { Badge, Card, Divided, Row, StatusDot } from "./ui.js";
 
 /** Where a machine is in its life, in the words the row shows. */
@@ -17,7 +18,7 @@ export function machineState(machine: CloudMachine): {
         ? { tone: "success", badge: "ready", detail: "online" }
         : { tone: "success", badge: "ready", detail: "sleeping · wakes on the next call" };
     case "error":
-      return { tone: "error", badge: "failed", detail: machine.error ?? "Provisioning failed." };
+      return { tone: "error", badge: "failed", detail: machine.branch ?? "" };
     case "destroying":
       return { tone: "neutral", badge: "removing", detail: "Taking the machine down" };
   }
@@ -110,20 +111,19 @@ export function CloudProjectCard({
                     <p className="text-title-md truncate font-mono">{machine.workspaceSlug}</p>
                     <Badge tone={state.tone}>{state.badge}</Badge>
                   </div>
-                  <p
-                    className={`text-body-md truncate ${
-                      machine.status === "error" ? "text-error" : "text-foreground-faint"
-                    }`}
-                    title={state.detail}
-                  >
-                    {machine.branch && machine.branch !== machine.workspaceSlug
-                      ? `${machine.branch} · `
-                      : ""}
-                    {state.detail}
-                    {machine.status === "ready" && !machine.online && machine.readyAt
-                      ? ` · ready ${relativeTime(machine.readyAt)}`
-                      : ""}
-                  </p>
+                  {machine.status === "error" ? (
+                    <MachineFailure machine={machine} />
+                  ) : (
+                    <p className="text-body-md text-foreground-faint truncate" title={state.detail}>
+                      {machine.branch && machine.branch !== machine.workspaceSlug
+                        ? `${machine.branch} · `
+                        : ""}
+                      {state.detail}
+                      {machine.status === "ready" && !machine.online && machine.readyAt
+                        ? ` · ready ${relativeTime(machine.readyAt)}`
+                        : ""}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -131,6 +131,16 @@ export function CloudProjectCard({
                   <Link to={workspaceHref(project, machine)} className="btn">
                     Open workspace
                   </Link>
+                )}
+                {machine.status === "error" && needsToken(machine) && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={busy || !canProvision}
+                    onClick={onSetCredential}
+                  >
+                    {project.hasCredential ? "Replace token" : "Set token"}
+                  </button>
                 )}
                 {machine.status === "error" && (
                   <button

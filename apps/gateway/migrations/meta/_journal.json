@@ -127,6 +127,13 @@
       "when": 1790468521114,
       "tag": "0017_account_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1790468871624,
+      "tag": "0018_machine_error_codes",
+      "breakpoints": true
     }
   ]
 }

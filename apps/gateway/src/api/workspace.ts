@@ -258,6 +258,7 @@ function workspaceError(c: Context<ApiEnv>, error: unknown) {
   if (error instanceof ExeoraError) {
     const status =
       error.code === "LOCAL_EXECUTOR_OFFLINE" ||
+      error.code === "EXECUTOR_WAKING" ||
       error.code === "UNKNOWN_WORKSPACE" ||
       error.code === "WORKSPACE_UNAVAILABLE"
         ? 409

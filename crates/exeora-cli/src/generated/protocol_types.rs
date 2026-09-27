@@ -504,6 +504,7 @@ pub mod error {
 ///                          "type": "string",
 ///                          "enum": [
 ///                            "LOCAL_EXECUTOR_OFFLINE",
+///                            "EXECUTOR_WAKING",
 ///                            "TOOL_TIMEOUT",
 ///                            "CANCELLED",
 ///                            "PATH_ESCAPE",
@@ -596,6 +597,7 @@ pub mod error {
 ///                          "type": "string",
 ///                          "enum": [
 ///                            "LOCAL_EXECUTOR_OFFLINE",
+///                            "EXECUTOR_WAKING",
 ///                            "TOOL_TIMEOUT",
 ///                            "CANCELLED",
 ///                            "PATH_ESCAPE",
@@ -1277,6 +1279,7 @@ pub mod error {
 ///                          "type": "string",
 ///                          "enum": [
 ///                            "LOCAL_EXECUTOR_OFFLINE",
+///                            "EXECUTOR_WAKING",
 ///                            "TOOL_TIMEOUT",
 ///                            "CANCELLED",
 ///                            "PATH_ESCAPE",
@@ -4403,6 +4406,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                      "type": "string",
 ///                      "enum": [
 ///                        "LOCAL_EXECUTOR_OFFLINE",
+///                        "EXECUTOR_WAKING",
 ///                        "TOOL_TIMEOUT",
 ///                        "CANCELLED",
 ///                        "PATH_ESCAPE",
@@ -4495,6 +4499,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                      "type": "string",
 ///                      "enum": [
 ///                        "LOCAL_EXECUTOR_OFFLINE",
+///                        "EXECUTOR_WAKING",
 ///                        "TOOL_TIMEOUT",
 ///                        "CANCELLED",
 ///                        "PATH_ESCAPE",
@@ -5176,6 +5181,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                      "type": "string",
 ///                      "enum": [
 ///                        "LOCAL_EXECUTOR_OFFLINE",
+///                        "EXECUTOR_WAKING",
 ///                        "TOOL_TIMEOUT",
 ///                        "CANCELLED",
 ///                        "PATH_ESCAPE",
@@ -5830,6 +5836,7 @@ pub struct ExeoraProtocolTypesExecutorMessageProjectsItem {
 ///              "type": "string",
 ///              "enum": [
 ///                "LOCAL_EXECUTOR_OFFLINE",
+///                "EXECUTOR_WAKING",
 ///                "TOOL_TIMEOUT",
 ///                "CANCELLED",
 ///                "PATH_ESCAPE",
@@ -8826,6 +8833,7 @@ impl<'de> ::serde::Deserialize<'de>
 ///      "type": "string",
 ///      "enum": [
 ///        "LOCAL_EXECUTOR_OFFLINE",
+///        "EXECUTOR_WAKING",
 ///        "TOOL_TIMEOUT",
 ///        "CANCELLED",
 ///        "PATH_ESCAPE",
@@ -8867,6 +8875,7 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant1Error {
 ///  "type": "string",
 ///  "enum": [
 ///    "LOCAL_EXECUTOR_OFFLINE",
+///    "EXECUTOR_WAKING",
 ///    "TOOL_TIMEOUT",
 ///    "CANCELLED",
 ///    "PATH_ESCAPE",
@@ -8902,6 +8911,8 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant1Error {
 pub enum ExeoraProtocolTypesExecutorMessageResultVariant1ErrorCode {
     #[serde(rename = "LOCAL_EXECUTOR_OFFLINE")]
     LocalExecutorOffline,
+    #[serde(rename = "EXECUTOR_WAKING")]
+    ExecutorWaking,
     #[serde(rename = "TOOL_TIMEOUT")]
     ToolTimeout,
     #[serde(rename = "CANCELLED")]
@@ -8939,6 +8950,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant1Err
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::LocalExecutorOffline => f.write_str("LOCAL_EXECUTOR_OFFLINE"),
+            Self::ExecutorWaking => f.write_str("EXECUTOR_WAKING"),
             Self::ToolTimeout => f.write_str("TOOL_TIMEOUT"),
             Self::Cancelled => f.write_str("CANCELLED"),
             Self::PathEscape => f.write_str("PATH_ESCAPE"),
@@ -8963,6 +8975,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant1Err
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
             "LOCAL_EXECUTOR_OFFLINE" => Ok(Self::LocalExecutorOffline),
+            "EXECUTOR_WAKING" => Ok(Self::ExecutorWaking),
             "TOOL_TIMEOUT" => Ok(Self::ToolTimeout),
             "CANCELLED" => Ok(Self::Cancelled),
             "PATH_ESCAPE" => Ok(Self::PathEscape),
