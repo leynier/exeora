@@ -14,7 +14,13 @@ import {
   githubHeaders,
 } from "./app.js";
 import { repositoriesCacheKey } from "./repositories.js";
-import { type GrantedTokens, parseGrant, storeUserTokens, TOKEN_ENDPOINT } from "./user-token.js";
+import {
+  type GitHubPerson,
+  type GrantedTokens,
+  parseGrant,
+  storeUserTokens,
+  TOKEN_ENDPOINT,
+} from "./user-token.js";
 
 /**
  * Which installations of the app an account holds.
@@ -100,7 +106,7 @@ export async function completeConnection(
   }
 
   let visible: UserInstallation[];
-  let login: string;
+  let person: GitHubPerson;
   let granted: GrantedTokens;
   try {
     const token = await exchangeCode(config, input.code, fetcher);
@@ -114,7 +120,7 @@ export async function completeConnection(
     visible = (await userInstallations(token.accessToken, fetcher)).filter(
       (installation) => String(installation.app_id) === config.appId,
     );
-    login = await userLogin(token.accessToken, fetcher);
+    person = await whoAuthorized(token.accessToken, fetcher);
   } catch (error) {
     if (!(error instanceof GitHubError)) throw error;
     return failure("github_unavailable", error.message);
@@ -178,13 +184,13 @@ export async function completeConnection(
     if (!seen.has(row.installationId)) await disconnect(env, userId, row.id);
   }
 
-  await storeUserTokens(env, config, userId, login, granted, now.getTime());
+  await storeUserTokens(env, config, userId, person, granted, now.getTime());
   // The lists kept for the picker were made for whoever was connected before.
   for (const row of held) {
     await env.OAUTH_KV.delete(repositoriesCacheKey(userId, row.installationId));
   }
 
-  return { ok: true, installations: usable.length, login };
+  return { ok: true, installations: usable.length, login: person.login };
 }
 
 export async function listInstallations(
@@ -296,16 +302,19 @@ async function userInstallations(
   return found;
 }
 
-async function userLogin(userToken: string, fetcher: typeof fetch): Promise<string> {
+async function whoAuthorized(userToken: string, fetcher: typeof fetch): Promise<GitHubPerson> {
   const response = await githubFetch(fetcher, `${GITHUB_API}/user`, {
     headers: githubHeaders(`Bearer ${userToken}`),
   });
   await expectOk(response);
-  const body = (await response.json()) as { login?: unknown };
+  const body = (await response.json()) as { login?: unknown; id?: unknown };
   if (typeof body.login !== "string" || body.login === "") {
     throw new GitHubError(502, "GitHub did not say who authorized. Connect again.");
   }
-  return body.login;
+  return {
+    login: body.login,
+    id: typeof body.id === "number" && Number.isSafeInteger(body.id) ? body.id : null,
+  };
 }
 
 function accountType(value: string): GitHubAccountType {

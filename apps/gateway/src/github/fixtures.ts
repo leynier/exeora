@@ -239,13 +239,17 @@ export const tokenOf = (userId: string) => `ghu_${userId}`;
  */
 export async function authorize(
   userId: string,
-  granted: Partial<GrantedTokens> & { now?: number } = {},
+  granted: Partial<GrantedTokens> & {
+    now?: number;
+    login?: string;
+    githubUserId?: number | null;
+  } = {},
 ): Promise<void> {
   await storeUserTokens(
     env,
     { credentialsKey: CLOUD_CREDENTIALS_KEY },
     userId,
-    "octocat",
+    { login: granted.login ?? "octocat", id: granted.githubUserId ?? null },
     {
       accessToken: granted.accessToken ?? tokenOf(userId),
       expiresIn: granted.expiresIn ?? null,

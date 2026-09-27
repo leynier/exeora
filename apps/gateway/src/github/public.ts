@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { getSessionUserId } from "../oauth/session.js";
-import { githubConfig } from "./app.js";
+import { GitHubError, githubConfig } from "./app.js";
 import { completeConnection } from "./installations.js";
 import { linkByRepository } from "./links.js";
 import { outbound } from "./outbound.js";
@@ -113,11 +113,18 @@ githubPublic.post(GITHUB_WEBHOOK_PATH, async (c) => {
   } catch {
     return c.json({ error: "invalid_payload" }, 400);
   }
-  const handled = await handleWebhook(
-    c.env,
-    c.req.header("X-GitHub-Event") ?? "",
-    payload,
-    outbound(),
-  );
-  return handled ? c.json({ ok: true }) : c.body(null, 204);
+  try {
+    const handled = await handleWebhook(
+      c.env,
+      c.req.header("X-GitHub-Event") ?? "",
+      payload,
+      outbound(),
+    );
+    return handled ? c.json({ ok: true }) : c.body(null, 204);
+  } catch (error) {
+    if (!(error instanceof GitHubError)) throw error;
+    // Said as a failure, so the delivery shows as one on GitHub, where it
+    // can be sent again. Answering 200 would say it was acted on.
+    return c.json({ error: "github_unavailable", message: error.message }, 502);
+  }
 });

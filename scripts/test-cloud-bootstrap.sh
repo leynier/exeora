@@ -73,8 +73,12 @@ payload() {
   [ "${4:-}" = public ] && credential=""
   [ "${4:-}" = helper ] && credential=',"credentialHelper":{"projectId":"prj_test"}'
   [ "${4:-}" = both ] && credential="$credential"',"credentialHelper":{"projectId":"prj_test"}'
+  # PAYLOAD_REPO_URL is the address to clone when it is not the usual one,
+  # PAYLOAD_PREVIOUS a JSON array of the addresses the repository had before.
+  local previous=""
+  [ -n "${PAYLOAD_PREVIOUS:-}" ] && previous=",\"previousRepoUrls\":$PAYLOAD_PREVIOUS"
   cat <<EOF_PAYLOAD
-{"gatewayUrl":"https://exeora.test","installUrl":"https://exeora.test/linux/install.sh","cliVersion":"1.2.3","machineToken":"$3","repoUrl":"$REPO_URL","branch":"$1"$from$credential,"cliConfig":{"gatewayUrl":"https://exeora.test","deviceId":"dev_test","deviceName":"cloud-test","projects":[{"id":"prj_test","slug":"widgets","name":"Widgets","root":"/home/sprite/workspace"}],"workspaces":[],"workspaceRoot":"/home/sprite/workspaces"}}
+{"gatewayUrl":"https://exeora.test","installUrl":"https://exeora.test/linux/install.sh","cliVersion":"1.2.3","machineToken":"$3","repoUrl":"${PAYLOAD_REPO_URL:-$REPO_URL}","branch":"$1"$from$credential$previous,"cliConfig":{"gatewayUrl":"https://exeora.test","deviceId":"dev_test","deviceName":"cloud-test","projects":[{"id":"prj_test","slug":"widgets","name":"Widgets","root":"/home/sprite/workspace"}],"workspaces":[],"workspaceRoot":"/home/sprite/workspaces"}}
 EOF_PAYLOAD
 }
 
@@ -181,6 +185,46 @@ bootstrap "$home_a" "$(payload feature/new main "$TOKEN" public)" >/dev/null
 home_l="$root/machine-l"
 if bootstrap "$home_l" "$(payload main "" "$TOKEN" both)" >/dev/null 2>&1; then
   fail "a payload with a token and a helper was accepted"
+fi
+
+# A repository that was renamed is the same repository at another address. A
+# machine that is set up again holds a checkout of the old one, and follows it
+# when the gateway says that is where the repository used to be.
+RENAMED_URL="https://example.test/Gadgets.git"
+home_m="$root/machine-m"
+bootstrap "$home_m" "$(payload feature/existing "" "$TOKEN")" >/dev/null
+run_service "$home_m"
+[ "$(git -C "$home_m/workspace" config --get remote.origin.url)" = "$REPO_URL" ] || fail "cloned from an unexpected address"
+touch "$home_m/workspace/kept"
+HOME="$home_m" git config --global "url.$origin.insteadOf" "$RENAMED_URL"
+# Told the new address and not that it is the same repository, it refuses,
+# as it does any checkout of another repository.
+bootstrap "$home_m" "$(PAYLOAD_REPO_URL="$RENAMED_URL" payload feature/existing "" "$TOKEN")" >/dev/null
+if out="$(run_service "$home_m" 2>&1)"; then fail "a checkout of another repository was accepted"; fi
+printf '%s\n' "$out" | grep -q "holds another repository" || fail "no reason for refusing another repository: $out"
+[ "$(git -C "$home_m/workspace" config --get remote.origin.url)" = "$REPO_URL" ] || fail "the origin of a refused checkout was changed"
+# Nor is it let through by an earlier address that is some other repository's.
+bootstrap "$home_m" "$(PAYLOAD_REPO_URL="$RENAMED_URL" PAYLOAD_PREVIOUS='["https://example.test/unrelated.git","https://elsewhere.test/widgets.git"]' payload feature/existing "" "$TOKEN")" >/dev/null
+if run_service "$home_m" >/dev/null 2>&1; then fail "an unrelated earlier address let another repository through"; fi
+# Told both, it follows: the same checkout, pointed at the new address. The
+# earlier address is recognised however it was written.
+bootstrap "$home_m" "$(PAYLOAD_REPO_URL="$RENAMED_URL" PAYLOAD_PREVIOUS='["https://example.test/older-name.git","https://Example.test/widgets"]' payload feature/existing "" "$TOKEN")" >/dev/null
+[ "$(cat "$home_m/.exeora/fields/previousRepoUrls")" = "$(printf 'https://example.test/older-name.git\nhttps://Example.test/widgets')" ] || fail "earlier addresses not written one per line"
+run_service "$home_m"
+[ "$(git -C "$home_m/workspace" config --get remote.origin.url)" = "$RENAMED_URL" ] || fail "the origin did not follow the rename"
+[ -e "$home_m/workspace/kept" ] || fail "re-cloned over a rename"
+[ "$(git -C "$home_m/workspace" rev-parse HEAD)" = "$existing_commit" ] || fail "the checkout changed over a rename"
+# And again, now that the origin is the address it was given: nothing to do.
+run_service "$home_m"
+[ "$(git -C "$home_m/workspace" config --get remote.origin.url)" = "$RENAMED_URL" ] || fail "the origin changed on the run after a rename"
+# The same address written another way was never another repository.
+HOME="$home_m" git config --global "url.$origin.insteadOf" "https://example.test/gadgets"
+bootstrap "$home_m" "$(PAYLOAD_REPO_URL="https://example.test/gadgets" payload feature/existing "" "$TOKEN")" >/dev/null
+run_service "$home_m"
+# An earlier address that is not a plain https one is refused with the payload.
+home_n="$root/machine-n"
+if bootstrap "$home_n" "$(PAYLOAD_PREVIOUS='["git@example.test:widgets.git"]' payload main "" "$TOKEN")" >/dev/null 2>&1; then
+  fail "an earlier address that is not https was accepted"
 fi
 
 # A branch the remote already has is checked out as it is.

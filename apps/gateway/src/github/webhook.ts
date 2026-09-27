@@ -1,14 +1,18 @@
 import { repositoryKey } from "@exeora/protocol";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { previousUrls } from "../cloud/repository.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
-import type { AccessEnv } from "./access.js";
+import { type AccessEnv, accessCacheKey } from "./access.js";
 import { linkMatching } from "./links.js";
+import { reconcileInstallation } from "./reconcile.js";
 import { cloneUrl, repositoriesCacheKey } from "./repositories.js";
+import { forgetGitHubPerson } from "./user-token.js";
 
 /**
  * What GitHub tells the gateway as it happens: an installation removed or
- * suspended, a repository taken out of one, renamed, moved or deleted.
+ * suspended, a repository taken out of one, renamed, moved or deleted, a
+ * person taking their authorization back.
  *
  * Without these the gateway would learn of each the hard way, as a clone that
  * fails. With them the project says it lost access before anybody tries.
@@ -52,6 +56,7 @@ interface Payload {
   repository_selection?: unknown;
   repositories_added?: unknown;
   repositories_removed?: unknown;
+  sender?: { id?: unknown; login?: unknown } | null;
 }
 
 interface NamedRepository {
@@ -62,8 +67,10 @@ interface NamedRepository {
 
 /**
  * Acts on a delivery whose signature was checked. False for one that asks
- * for nothing. The fetcher is for the one event that has to ask GitHub
- * something: whether a person may read a repository that was just added.
+ * for nothing. The fetcher is for the events that have to ask GitHub
+ * something: whether a person may read a repository that was just added,
+ * and what an installation still holds once some of it was taken away.
+ * Throws a `GitHubError` when that could not be asked.
  */
 export async function handleWebhook(
   env: WebhookEnv,
@@ -115,9 +122,12 @@ async function dispatch(
     if (action === "unsuspend") return suspended(env, installationId, null);
     return false;
   }
+  if (event === "github_app_authorization") {
+    return action === "revoked" ? authorizationRevoked(env, body) : false;
+  }
   if (event === "installation_repositories" && installationId !== null) {
     if (action === "removed") {
-      return repositoriesRemoved(env, installationId, body);
+      return repositoriesRemoved(env, installationId, body, fetcher);
     }
     if (action === "added") {
       return repositoriesAdded(env, installationId, body, holders, fetcher);
@@ -157,11 +167,60 @@ async function suspended(env: WebhookEnv, installationId: number, at: Date | nul
   return true;
 }
 
-async function repositoriesRemoved(env: WebhookEnv, installationId: number, body: Payload) {
+async function repositoriesRemoved(
+  env: WebhookEnv,
+  installationId: number,
+  body: Payload,
+  fetcher: typeof fetch,
+) {
   await selectionChanged(env, installationId, body);
   const removed = list(body.repositories_removed).map((repository) => repository.id);
-  if (removed.length === 0) return true;
-  return lost(env, removed, installationId);
+  if (removed.length > 0) await lost(env, removed, installationId);
+  // An installation cut down from every repository to a chosen few says so
+  // with an empty list. What it names is believed, and what it holds now is
+  // asked, whenever the list could be less than the whole of what left.
+  if (removed.length === 0 || body.repository_selection === "selected") {
+    await reconcileInstallation(env, installationId, fetcher);
+  }
+  return true;
+}
+
+/**
+ * The person took their authorization back on GitHub. Their token is
+ * worthless from that moment, and is forgotten now rather than at the next
+ * request it fails, so the account is told to connect again straight away.
+ * What was remembered about their access goes with it: it was true of
+ * somebody GitHub no longer answers for.
+ */
+async function authorizationRevoked(env: WebhookEnv, body: Payload): Promise<boolean> {
+  const login = typeof body.sender?.login === "string" ? body.sender.login : "";
+  const person = { login, id: id(body.sender?.id) };
+  if (person.id === null && login === "") return false;
+
+  const accounts = await forgetGitHubPerson(env, person);
+  if (accounts.length === 0) return true;
+  const links = await db(env)
+    .select({
+      userId: schema.githubRepositories.userId,
+      repoId: schema.githubRepositories.repoId,
+    })
+    .from(schema.githubRepositories)
+    .where(inArray(schema.githubRepositories.userId, accounts))
+    .all();
+  const held = await db(env)
+    .select({
+      userId: schema.githubInstallations.userId,
+      installationId: schema.githubInstallations.installationId,
+    })
+    .from(schema.githubInstallations)
+    .where(inArray(schema.githubInstallations.userId, accounts))
+    .all();
+  const keys = [
+    ...links.map((link) => accessCacheKey(link.userId, link.repoId)),
+    ...held.map((row) => repositoriesCacheKey(row.userId, row.installationId)),
+  ];
+  for (const key of keys) await env.OAUTH_KV.delete(key).catch(() => undefined);
+  return true;
 }
 
 async function repositoriesAdded(
@@ -200,16 +259,51 @@ async function selectionChanged(env: WebhookEnv, installationId: number, body: P
     .run();
 }
 
+/** How many earlier addresses of one repository are remembered. */
+const MAX_PREVIOUS = 20;
+
 /**
  * A repository under a new name, or a new owner. GitHub's id for it is the
  * same, which is how the projects that are this repository are found; their
  * address and key follow the name, so the next machine to join still
  * recognises the project as its own.
+ *
+ * On Exeora Cloud the address is what the next machine clones, so it follows
+ * too, and the one it had is kept beside it: a machine that is set up again
+ * holds a checkout of the old address, and has to be told that it is the
+ * same repository rather than another one.
  */
 async function renamed(env: WebhookEnv, repository: NamedRepository): Promise<boolean> {
   const url = cloneUrl(repository.fullName);
   const now = Date.now();
+  const cloud = await db(env)
+    .select({
+      projectId: schema.cloudProjects.projectId,
+      repoUrl: schema.cloudProjects.repoUrl,
+      previousRepoUrls: schema.cloudProjects.previousRepoUrls,
+    })
+    .from(schema.cloudProjects)
+    .innerJoin(
+      schema.githubRepositories,
+      eq(schema.githubRepositories.projectId, schema.cloudProjects.projectId),
+    )
+    .where(eq(schema.githubRepositories.repoId, repository.id))
+    .all();
+  const moved = cloud
+    .filter((row) => row.repoUrl !== url)
+    .map((row) => {
+      // Renamed back to a name it had before, that name is its address
+      // again and no longer one of the earlier ones.
+      const previous = [...previousUrls(row.previousRepoUrls), row.repoUrl].filter(
+        (earlier, index, all) => earlier !== url && all.indexOf(earlier) === index,
+      );
+      return env.DB.prepare(
+        `UPDATE cloud_projects SET repo_url = ?2, previous_repo_urls = ?3, updated_at = ?4
+          WHERE project_id = ?1`,
+      ).bind(row.projectId, url, JSON.stringify(previous.slice(-MAX_PREVIOUS)), now);
+    });
   await env.DB.batch([
+    ...moved,
     env.DB.prepare(
       `UPDATE projects SET repo_url = ?2, repo_key = ?3
         WHERE id IN (SELECT project_id FROM github_repositories WHERE repo_id = ?1)`,

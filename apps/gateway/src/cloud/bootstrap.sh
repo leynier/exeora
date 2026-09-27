@@ -68,6 +68,10 @@ if (payload.credential) {
   write("gitUsername", payload.credential.username);
   fs.writeFileSync(path.join(conf, "git-token.tmp"), `${payload.credential.secret}\n`, { mode: 0o600 });
 }
+// Addresses the repository had before. One per line, for run.sh to look its
+// checkout's origin up in, so none of them may hold a line break.
+need("previousRepoUrls", payload.previousRepoUrls === undefined || (Array.isArray(payload.previousRepoUrls) && payload.previousRepoUrls.length <= 50 && payload.previousRepoUrls.every((value) => typeof value === "string" && /^https:\/\/\S+$/.test(value))));
+write("previousRepoUrls", (payload.previousRepoUrls ?? []).map((value) => `${value}\n`).join(""));
 if (payload.credentialHelper) {
   need("credentialHelper", !payload.credential && isId(payload.credentialHelper.projectId));
   write("credentialProject", payload.credentialHelper.projectId);
@@ -181,13 +185,37 @@ hold
 ( while sleep 120; do hold; done ) &
 HOLDER=$!
 trap 'kill "$HOLDER" 2>/dev/null || true' EXIT
+# A repository by what it is on its host, however its address was written:
+# no scheme, no user, no trailing slash or `.git`, and in one case.
+identity() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+    | sed -E -e 's#^[a-z][a-z0-9+.-]*://##' -e 's#^[^@/]*@##' -e 's#/+$##' -e 's#\.git$##' -e 's#/+$##'
+}
 if [ ! -d "$WS/.git" ]; then
   git clone "$REPO" "$WS"
-elif [ "$(git -C "$WS" config --get remote.origin.url)" != "$REPO" ]; then
+else
   # The stored value, not `remote get-url`: that one applies insteadOf
   # rewrites and would not compare equal to what was cloned.
-  echo "run: $WS holds another repository" >&2
-  exit 1
+  ORIGIN="$(git -C "$WS" config --get remote.origin.url || true)"
+  if [ "$ORIGIN" != "$REPO" ] && [ "$(identity "$ORIGIN")" != "$(identity "$REPO")" ]; then
+    # A repository that was renamed or moved is the same repository under
+    # another address. The gateway says which addresses it had, and a
+    # checkout of one of them follows it to the new one. A checkout of
+    # anything else is another repository, and is never touched.
+    KNOWN=""
+    if [ -f "$FIELDS/previousRepoUrls" ]; then
+      while IFS= read -r earlier || [ -n "$earlier" ]; do
+        [ -n "$earlier" ] || continue
+        if [ "$(identity "$earlier")" = "$(identity "$ORIGIN")" ]; then KNOWN=1; fi
+      done < "$FIELDS/previousRepoUrls"
+    fi
+    if [ -z "$KNOWN" ]; then
+      echo "run: $WS holds another repository" >&2
+      exit 1
+    fi
+    echo "run: the repository moved, following it to its new address"
+    git -C "$WS" remote set-url origin "$REPO"
+  fi
 fi
 if [ ! -f "$READY" ]; then
   git -C "$WS" fetch --prune origin

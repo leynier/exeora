@@ -8,6 +8,7 @@ import type { CloudEnv } from "./access.js";
 import { cliConfigFor } from "./bootstrap.js";
 import { type MachineSeed, provisionInput } from "./machine-do.js";
 import type { Credential, ProvisionError } from "./provisioning.js";
+import { previousUrls } from "./repository.js";
 
 /**
  * How a machine starts: the device row that reserves its slot, the refusal
@@ -65,6 +66,14 @@ export async function startMachine(
     // the machine would be the one credential there that never expires, so
     // none is sent, even where one is stored from before the connection.
     const connected = await hasProjectCredential(env, input.project.id);
+    // Read here rather than handed in, so every caller that starts a
+    // machine tells it the same: the addresses the repository used to have.
+    const cloud = await db(env)
+      .select({ previousRepoUrls: schema.cloudProjects.previousRepoUrls })
+      .from(schema.cloudProjects)
+      .where(eq(schema.cloudProjects.projectId, input.project.id))
+      .get();
+    const previousRepoUrls = previousUrls(cloud?.previousRepoUrls);
     await env.CLOUD_MACHINE.getByName(input.seed.deviceId).provision({
       ...provisionInput({
         seed: input.seed,
@@ -83,6 +92,7 @@ export async function startMachine(
         credential: connected ? undefined : input.credential,
       }),
       ...(connected ? { credentialHelper: { projectId: input.project.id } } : {}),
+      ...(previousRepoUrls.length > 0 ? { previousRepoUrls } : {}),
     });
   } catch (error) {
     // The rows are there and say `creating`; make them say what happened,

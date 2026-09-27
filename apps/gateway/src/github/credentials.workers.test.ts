@@ -321,16 +321,27 @@ describe("POST /api/projects/:id/git-credential", () => {
   });
 
   it("does not take GitHub being busy for the person having lost access", async () => {
-    github({}, (request) =>
-      request.url.endsWith("/repositories/51")
+    // The second kind of rate limit: a 403 like a refusal, with no header
+    // to tell it by.
+    let limited = true;
+    const { asked } = github({}, (request) =>
+      limited && request.url.endsWith("/repositories/51")
         ? Response.json(
-            { message: "API rate limit exceeded" },
-            { status: 403, headers: { "x-ratelimit-remaining": "0" } },
+            { message: "You have exceeded a secondary rate limit. Please wait a few minutes." },
+            { status: 403 },
           )
         : undefined,
     );
     const response = await ask(PATH);
+    // Said as something to try again, which is what git's helper does with it.
     expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: "github_unavailable" });
+    expect(minting(asked)).toEqual([]);
+    expect((await link(PROJECT))?.lostAccessAt).toBeNull();
+    expect(await env.OAUTH_KV.get(accessCacheKey(USER, 51))).toBeNull();
+
+    limited = false;
+    expect((await ask(PATH)).status).toBe(200);
     expect((await link(PROJECT))?.lostAccessAt).toBeNull();
   });
 

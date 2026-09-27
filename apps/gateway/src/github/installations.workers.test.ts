@@ -71,7 +71,7 @@ function github(
       return Response.json({ message: "Bad credentials" }, { status: 401 });
     }
     const url = new URL(asked.url);
-    if (url.pathname === "/user") return Response.json({ login: "octocat" });
+    if (url.pathname === "/user") return Response.json({ login: "octocat", id: 583_231 });
     if (url.pathname === "/user/installations") {
       const page = Number(url.searchParams.get("page") ?? "1");
       const batch = installations.slice((page - 1) * 100, page * 100);
@@ -164,7 +164,8 @@ describe("connecting GitHub", () => {
     // The person's token is what later says what they may reach, so it is
     // kept, and kept encrypted, with the means to renew it.
     const kept = await token(USER);
-    expect(kept?.login).toBe("octocat");
+    // By GitHub's id as well as by name: a name can change hands.
+    expect(kept).toMatchObject({ login: "octocat", githubUserId: 583_231 });
     expect(JSON.stringify(kept)).not.toContain("ghu_user_token");
     expect(JSON.stringify(kept)).not.toContain("ghr_refresh");
     expect(await decryptSecret(CLOUD_CREDENTIALS_KEY, kept?.accessCiphertext ?? "")).toBe(

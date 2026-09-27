@@ -162,6 +162,13 @@
       "when": 1790472833673,
       "tag": "0022_github_user_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790475388490,
+      "tag": "0023_repository_renames_and_github_user",
+      "breakpoints": true
     }
   ]
 }

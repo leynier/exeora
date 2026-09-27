@@ -52,16 +52,27 @@ export function parseGrant(body: unknown): GrantedTokens | null {
   };
 }
 
+/** The person on GitHub, as GitHub names them. */
+export interface GitHubPerson {
+  login: string;
+  /** GitHub's id for them, which outlasts a change of login. */
+  id: number | null;
+}
+
 /** Keeps what a connection was granted, in place of whatever was kept before. */
 export async function storeUserTokens(
   env: Pick<Env, "DB">,
   config: Pick<GitHubConfig, "credentialsKey">,
   userId: string,
-  login: string,
+  person: GitHubPerson,
   granted: GrantedTokens,
   now: number = Date.now(),
 ): Promise<void> {
-  const values = { login, ...(await sealed(config, granted, now)) };
+  const values = {
+    login: person.login,
+    githubUserId: person.id,
+    ...(await sealed(config, granted, now)),
+  };
   await db(env)
     .insert(schema.githubUserTokens)
     .values({ userId, ...values })
@@ -213,6 +224,47 @@ async function refresh(
     );
   }
   return parseGrant(body);
+}
+
+/**
+ * Forgets the token of every account connected as a person who took their
+ * authorization back on GitHub, and answers with those accounts. Matched on
+ * GitHub's id for the person; on the login only for a row kept before the id
+ * was, since a login that was given up can be somebody else's by now.
+ */
+export async function forgetGitHubPerson(
+  env: Pick<Env, "DB">,
+  person: GitHubPerson,
+): Promise<string[]> {
+  const rows = await db(env)
+    .select({
+      userId: schema.githubUserTokens.userId,
+      login: schema.githubUserTokens.login,
+      githubUserId: schema.githubUserTokens.githubUserId,
+    })
+    .from(schema.githubUserTokens)
+    .all();
+  const login = person.login.toLowerCase();
+  const theirs = rows
+    .filter((row) =>
+      row.githubUserId === null
+        ? login !== "" && row.login.toLowerCase() === login
+        : row.githubUserId === person.id,
+    )
+    .map((row) => row.userId);
+  for (const userId of theirs) {
+    await db(env)
+      .update(schema.githubUserTokens)
+      .set({
+        accessCiphertext: null,
+        accessExpiresAt: null,
+        refreshCiphertext: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.githubUserTokens.userId, userId))
+      .run();
+  }
+  return theirs;
 }
 
 async function read(env: Pick<Env, "DB">, userId: string) {

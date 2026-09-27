@@ -96,7 +96,7 @@ Create the app at <https://github.com/settings/apps/new> (or under an organizati
 | Webhook URL | `https://your.example.com/api/github/webhook`, active |
 | Webhook secret | `openssl rand -hex 32`, the same value as `GITHUB_APP_WEBHOOK_SECRET` |
 | Repository permissions | Contents: read and write. Metadata: read-only. Pull requests: read and write |
-| Subscribe to events | Repository. The installation events are always delivered |
+| Subscribe to events | Repository. The installation events, and a person revoking their authorization, are always delivered |
 | Where can this app be installed | Any account, unless the gateway serves only yours |
 
 Then generate a private key on the app's page, which downloads a `.pem`, and a client secret:

@@ -71,6 +71,8 @@ export interface ProvisionInput {
    * one that was written there.
    */
   credentialHelper?: { projectId: string } | undefined;
+  /** Addresses the repository had before it was renamed or moved. */
+  previousRepoUrls?: string[] | undefined;
   secrets: {
     machineToken: string;
     credential?: { username: string; secret: string } | undefined;
@@ -153,6 +155,7 @@ async function bootstrap(context: StepContext, record: MachineRecord): Promise<S
     createBranchFrom: input.createBranchFrom,
     credential: secrets.credential,
     credentialHelper: input.credentialHelper,
+    previousRepoUrls: input.previousRepoUrls,
     cliConfig: input.cliConfig,
   });
   const result = await execSprite(

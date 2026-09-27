@@ -30,6 +30,13 @@ export const cloudProjects = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     /** HTTPS clone URL. Every machine of the project clones this. */
     repoUrl: text("repo_url").notNull(),
+    /**
+     * Addresses the repository had before it was renamed or moved, as a JSON
+     * array, oldest first. A machine that cloned from one of them holds the
+     * same repository under its old name, and is let through to the new one
+     * rather than refused as holding something else. Null until a rename.
+     */
+    previousRepoUrls: text("previous_repo_urls"),
     /** The branch the main machine checks out and new workspaces branch from. */
     defaultBranch: text("default_branch").notNull(),
     /**

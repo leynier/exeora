@@ -110,6 +110,12 @@ export const githubUserTokens = sqliteTable("github_user_tokens", {
   /** Null for an app whose user tokens do not expire, which is given none. */
   refreshCiphertext: text("refresh_ciphertext"),
   login: text("login").notNull(),
+  /**
+   * GitHub's id for the person, which is what a webhook about them is
+   * matched on: a login can be changed, and then taken by somebody else.
+   * Null on rows stored before it was kept.
+   */
+  githubUserId: integer("github_user_id"),
   updatedAt: stamp("updated_at"),
 });
 

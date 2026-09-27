@@ -208,6 +208,31 @@ export function defaultBranchOf(lines: string[]): string | undefined {
   return at.find((name) => name === "main") ?? at.find((name) => name === "master") ?? at[0];
 }
 
+/**
+ * The addresses a repository had before it was renamed or moved, as
+ * `cloud_projects.previous_repo_urls` keeps them: a JSON array. Anything
+ * that is not a plain https address is left out, since each of them ends up
+ * in a machine's payload, where nothing else is accepted.
+ */
+export function previousUrls(stored: string | null | undefined): string[] {
+  if (!stored) return [];
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => {
+      if (typeof entry !== "string" || /\s/.test(entry)) return false;
+      try {
+        const url = new URL(entry);
+        return url.protocol === "https:" && url.username === "" && url.password === "";
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
 function failed(code: ProbeErrorCode, message: string): Probe {
   return { ok: false, code, message };
 }

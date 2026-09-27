@@ -37,6 +37,12 @@ export interface BootstrapPayload {
    * of this project each time one is needed. Nothing secret travels with it.
    */
   credentialHelper?: { projectId: string } | undefined;
+  /**
+   * Addresses the repository had before it was renamed or moved. A checkout
+   * that is already on the machine and was cloned from one of them is the
+   * same repository, and is pointed at `repoUrl` instead of being refused.
+   */
+  previousRepoUrls?: string[] | undefined;
   cliConfig: CloudCliConfig;
 }
 

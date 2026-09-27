@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { defaultBranchOf, pktLines, probeRepository } from "./repository.js";
+import { defaultBranchOf, pktLines, previousUrls, probeRepository } from "./repository.js";
 
 /**
  * The probe against advertisements written by hand, framed the way a server
@@ -256,6 +256,29 @@ describe("probeRepository", () => {
     );
     expect(detached).toMatchObject({ ok: false, code: "branch_not_found" });
     expect((detached as { message: string }).message).toContain("Name the branch");
+  });
+});
+
+describe("the addresses a repository had before", () => {
+  it("are read as a list of plain https addresses, and as none from anything else", () => {
+    expect(
+      previousUrls(
+        JSON.stringify([
+          "https://github.com/acme/api.git",
+          "https://token@github.com/acme/api.git",
+          "git@github.com:acme/api.git",
+          "http://github.com/acme/api.git",
+          "https://github.com/acme/with space.git",
+          7,
+          "",
+          "https://github.com/acme/older.git",
+        ]),
+      ),
+    ).toEqual(["https://github.com/acme/api.git", "https://github.com/acme/older.git"]);
+    expect(previousUrls(null)).toEqual([]);
+    expect(previousUrls("")).toEqual([]);
+    expect(previousUrls("not json")).toEqual([]);
+    expect(previousUrls('{"0":"https://github.com/acme/api.git"}')).toEqual([]);
   });
 });
 
