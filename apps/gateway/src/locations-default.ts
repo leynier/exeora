@@ -66,6 +66,11 @@ export function moveDefaultLocationStatements(
  *
  * `projectId` narrows it to one project, for a location that is taken away
  * while its machine stays.
+ *
+ * Workspaces older than locations name no machine and read as the default's.
+ * They were working copies on the machine being left, so they go first: kept,
+ * they would read as being nowhere, and then as being on whichever machine
+ * the project is given next, which never held them.
  */
 export function keepRepositoriesStatements(
   env: Pick<Env, "DB">,
@@ -73,14 +78,10 @@ export function keepRepositoriesStatements(
   deviceId: string,
   projectId: string | null = null,
 ): D1PreparedStatement[] {
-  return [
-    nowhereStatement(env, userId),
-    env.DB.prepare(
-      `UPDATE projects
-          SET device_id = ?3
+  const kept = `
         WHERE user_id = ?1
           AND device_id = ?2
-          AND (?4 IS NULL OR id = ?4)
+          AND (?3 IS NULL OR id = ?3)
           AND (
             repo_key IS NOT NULL
             OR EXISTS (SELECT 1 FROM cloud_projects c WHERE c.project_id = projects.id)
@@ -90,8 +91,20 @@ export function keepRepositoriesStatements(
              WHERE c.project_id = projects.id
                AND c.deleting_at IS NOT NULL
                AND c.deleting_scope = 'project'
-          )`,
-    ).bind(userId, deviceId, nowhereId(userId), projectId),
+          )`;
+  return [
+    nowhereStatement(env, userId),
+    env.DB.prepare(
+      `DELETE FROM workspaces
+        WHERE device_id IS NULL
+          AND project_id IN (SELECT id FROM projects ${kept})`,
+    ).bind(userId, deviceId, projectId),
+    env.DB.prepare(`UPDATE projects SET device_id = ?4 ${kept}`).bind(
+      userId,
+      deviceId,
+      projectId,
+      nowhereId(userId),
+    ),
   ];
 }
 

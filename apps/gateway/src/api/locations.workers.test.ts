@@ -211,6 +211,76 @@ describe("projects and their locations over the API", () => {
     expect(await listed()).toMatchObject({ nowhere: false, deviceId: "dev_api_server" });
   });
 
+  it("takes the workspaces that name no machine with the last place, on Exeora Cloud too", async () => {
+    const bindings = { SPRITES_TOKEN: "org/1/secret", LATEST_CLI_VERSION: "0.18.0" };
+    const cloud = (path: string, method: string, body?: unknown) =>
+      request(path, { method, userId: USER, bindings, ...(body === undefined ? {} : { body }) });
+    const nameless = (projectId: string, id: string) =>
+      db(env)
+        .insert(schema.workspaces)
+        .values({
+          id,
+          projectId,
+          slug: id,
+          name: id,
+          branch: id,
+          localPath: `/worktrees/${id}`,
+          managed: true,
+          deviceId: null,
+        })
+        .run();
+    const workspacesOf = (projectId: string) =>
+      db(env)
+        .select({ id: schema.workspaces.id })
+        .from(schema.workspaces)
+        .where(eq(schema.workspaces.projectId, projectId))
+        .all();
+    const cloudOf = async (projectId: string) =>
+      (await locationsOf(projectId)).find((entry) => entry.kind === "cloud");
+
+    // Cloud is the default, with an instance for the project root.
+    const { body: first } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    expect(
+      (await cloud(`/api/projects/${first.id}/locations`, "POST", { kind: "cloud" })).status,
+    ).toBe(201);
+    const made = await cloud(`/api/projects/${first.id}/default-location`, "PUT", {
+      locationId: (await cloudOf(first.id))?.id,
+    });
+    expect(made.status).toBe(200);
+    const laptop = (await locationsOf(first.id)).find((entry) => entry.slug === "laptop");
+    expect((await call(`/api/projects/${first.id}/locations/${laptop?.id}`, "DELETE")).status).toBe(
+      200,
+    );
+    await nameless(first.id, "wsp_apicloudold");
+
+    const gone = await cloud(
+      `/api/projects/${first.id}/locations/${(await cloudOf(first.id))?.id}`,
+      "DELETE",
+    );
+    expect(gone.status).toBe(202);
+    expect(await workspacesOf(first.id)).toEqual([]);
+
+    // The default is a machine that was removed, and Cloud the one place left.
+    const { body: second } = await add(DESKTOP, "web", "https://github.com/acme/web.git");
+    expect(
+      (await cloud(`/api/projects/${second.id}/locations`, "POST", { kind: "cloud" })).status,
+    ).toBe(201);
+    await nameless(second.id, "wsp_webdesktopold");
+    expect((await call(`/api/devices/${DESKTOP}`, "DELETE")).status).toBe(200);
+
+    const left = await cloud(
+      `/api/projects/${second.id}/locations/${(await cloudOf(second.id))?.id}`,
+      "DELETE",
+    );
+    expect(left.status).toBe(202);
+    expect(await workspacesOf(second.id)).toEqual([]);
+    const listed = (await (await call("/api/projects")).json()) as Array<{
+      id: string;
+      nowhere: boolean;
+    }>;
+    expect(listed.find((entry) => entry.id === second.id)).toMatchObject({ nowhere: true });
+  });
+
   it("will not take a directory with no remote off the one machine it is on", async () => {
     const { body: project } = await add(LAPTOP, "notes");
     const [only] = await locationsOf(project.id);
