@@ -414,6 +414,15 @@ for row in "${ROWS[@]}"; do
 done
 settle_apt
 
+# Git is told of the filter git-lfs is. Without it a repository that keeps
+# files in LFS is checked out as the pointers to them, and stays so. Told to
+# git as a whole and to no repository, since none is cloned yet. Not having
+# it is no reason to stop, so a failure is a line here and nothing more.
+if PATH="$SERVICE_PATH" command -v git-lfs >/dev/null 2>&1; then
+  PATH="$SERVICE_PATH:$PATH" limited 30 git lfs install --skip-repo </dev/null >/dev/null 2>&1 \
+    || log "warning: git could not be told of git-lfs"
+fi
+
 printf 'EXEORA_ENV os=%s arch=%s sudo=%s apt=%s shm=%s\n' "$OS" "$ARCH" "$SUDO" "$APT" "$SHM"
 if [ -n "$BLOCKED" ]; then
   echo "EXEORA_TOOLS_FAILED $BLOCKED"
