@@ -38,6 +38,12 @@ const VIEWS: Record<State, Omit<StateView, "label">> = {
     live: false,
     meaning: "The repository is cloned here when the first workspace is made.",
   },
+  "no instance": {
+    tone: "neutral",
+    live: false,
+    meaning:
+      "Exeora Cloud holds no instance for the project root. The next call to it makes one, and so does Start instance.",
+  },
   removing: { tone: "neutral", live: false, meaning: "On its way out." },
   removed: { tone: "neutral", live: false, meaning: "Revoked. It no longer answers calls." },
 };

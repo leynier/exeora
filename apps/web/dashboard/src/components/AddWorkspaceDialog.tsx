@@ -7,7 +7,7 @@ import {
   createdSlug,
   projectsApi,
 } from "../api-projects.js";
-import { placement } from "../placement.js";
+import { noPlacement, placement } from "../placement.js";
 import { cloudLocation, defaultBranchOf, slugFromName } from "../projectModel.js";
 import { keys, refreshPlaces } from "../queries.js";
 import {
@@ -41,6 +41,7 @@ export function AddWorkspaceDialog({
   initialBranch = "",
   initialFrom = "",
   initialWhere,
+  onAddLocation,
   onCancel,
   onCreated,
 }: {
@@ -51,6 +52,11 @@ export function AddWorkspaceDialog({
   initialFrom?: string;
   /** The slug of the location to start on. The default location when left out. */
   initialWhere?: string;
+  /**
+   * Opens the dialog that adds a location, for a project that has none to
+   * choose from. Left out where the page has no such dialog to open.
+   */
+  onAddLocation?: () => void;
   onCancel: () => void;
   onCreated: (result: CreateWorkspaceResult) => void;
 }) {
@@ -100,6 +106,14 @@ export function AddWorkspaceDialog({
             create.isError ? errorText(create.error, "The workspace could not be created.") : null
           }
           onCancel={cancel}
+          onAddLocation={
+            onAddLocation
+              ? () => {
+                  cancel();
+                  onAddLocation();
+                }
+              : undefined
+          }
           onSubmit={(where, input) => create.mutate({ projectId: project.id, where, input })}
         />
       ) : null}
@@ -116,6 +130,7 @@ function Form({
   pending,
   error,
   onCancel,
+  onAddLocation,
   onSubmit,
 }: {
   project: Project;
@@ -126,6 +141,7 @@ function Form({
   pending: boolean;
   error: string | null;
   onCancel: () => void;
+  onAddLocation: (() => void) | undefined;
   /** The name of the location, for the sentence that follows, and what to send. */
   onSubmit: (where: string, input: CreateWorkspaceInput) => void;
 }) {
@@ -147,14 +163,7 @@ function Form({
   const [reuse, setReuse] = useState(false);
 
   const chosen = locations.find((location) => location.slug === where) ?? null;
-  const plan =
-    where === ""
-      ? {
-          sentence: "This project has no location that can take a workspace. Add a location first.",
-          progress: "",
-          blocked: true,
-        }
-      : placement(chosen, user);
+  const plan = where === "" ? noPlacement(project) : placement(chosen, user);
   const onMachine = chosen?.kind === "local";
   const defaultBranch = defaultBranchOf(project);
 
@@ -224,6 +233,16 @@ function Form({
           />
         </div>
         <p className="text-body-md text-foreground-muted mt-2">{plan.sentence}</p>
+        {/* With no location to choose, the way to one of the person's own
+            machines is a location added first. */}
+        {locations.length === 0 && onAddLocation ? (
+          <p className="text-body-md text-foreground-muted mt-2">
+            {where === "" ? null : "To use one of your machines instead, add it as a location. "}
+            <button type="button" className="underline" disabled={pending} onClick={onAddLocation}>
+              Add location
+            </button>
+          </p>
+        ) : null}
       </div>
 
       <Advanced>

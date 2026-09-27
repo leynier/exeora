@@ -4,6 +4,7 @@ import {
   callPlace,
   callPlaceLabel,
   canonicalSelector,
+  defaultRootIsOpen,
   needsWorkspaces,
   otherRootLabel,
   parseSelector,
@@ -148,6 +149,32 @@ describe("rootIsOpen", () => {
     expect(rootIsOpen({ ...desktop, status: "pending", state: "not cloned" })).toBe(false);
     expect(rootIsOpen({ ...cloud, deviceId: null })).toBe(false);
     expect(rootIsOpen({ ...desktop, state: "removed" })).toBe(false);
+  });
+});
+
+describe("defaultRootIsOpen", () => {
+  it("opens the root of a project that has a default machine", () => {
+    expect(defaultRootIsOpen({ nowhere: false, locations: [laptop, desktop, cloud] })).toBe(true);
+    // A default location with no copy yet is for the page to explain.
+    expect(
+      defaultRootIsOpen({
+        nowhere: false,
+        locations: [{ ...laptop, status: "pending", state: "not cloned" }],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not open the root of a project that lives nowhere", () => {
+    expect(defaultRootIsOpen({ nowhere: true, locations: [] })).toBe(false);
+    expect(
+      defaultRootIsOpen({ nowhere: true, locations: [{ ...desktop, state: "removed" }] }),
+    ).toBe(false);
+  });
+
+  it("does not open it while Exeora Cloud holds no instance for it", () => {
+    const resting = { ...cloud, deviceId: null, default: true, state: "no instance" as const };
+    expect(defaultRootIsOpen({ nowhere: true, locations: [resting] })).toBe(false);
+    expect(defaultRootIsOpen({ nowhere: true, locations: [resting, desktop] })).toBe(false);
   });
 });
 

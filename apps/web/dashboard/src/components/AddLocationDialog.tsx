@@ -4,6 +4,7 @@ import { errorText, type Project, type User } from "../api.js";
 import { type AddLocationInput, type Machine, projectsApi } from "../api-projects.js";
 import { CLOUD, type LocationCandidate, locationCandidates } from "../placement.js";
 import { refreshPlaces } from "../queries.js";
+import { livesNowhere } from "../survival.js";
 import { Dialog, DialogActions, DialogError, Field } from "./Dialog.js";
 import { StateBadge } from "./StateBadge.js";
 import { useToast } from "./toast.js";
@@ -33,12 +34,21 @@ export function AddLocationDialog({
   const toast = useToast();
 
   const add = useMutation({
-    mutationFn: (entry: { projectId: string; name: string; input: AddLocationInput }) =>
-      projectsApi.addLocation(entry.projectId, entry.input),
+    mutationFn: (entry: {
+      projectId: string;
+      name: string;
+      nowhere: boolean;
+      input: AddLocationInput;
+    }) => projectsApi.addLocation(entry.projectId, entry.input),
     onSuccess: (_result, entry) => {
+      // The first location of a project that lives nowhere is its default,
+      // and on Exeora Cloud that is a root with no instance yet.
+      const cloud = entry.nowhere
+        ? "The project is on Exeora Cloud, its default location. The next call to its root starts an instance, and so does Start instance."
+        : "The project is on Exeora Cloud. Add a workspace there to start an instance.";
       toast(
         "kind" in entry.input
-          ? "The project is on Exeora Cloud. Add a workspace there to start an instance."
+          ? cloud
           : `${entry.name} is a location now. The first workspace made there clones the repository.`,
       );
       void refreshPlaces(queryClient, entry.projectId);
@@ -57,7 +67,11 @@ export function AddLocationDialog({
     <Dialog
       open={open && project !== undefined}
       title="Add a location"
-      description="Another place this project has a copy: one of your machines, or Exeora Cloud."
+      description={
+        project && livesNowhere(project)
+          ? "A place for this project to live again: one of your machines, or Exeora Cloud."
+          : "Another place this project has a copy: one of your machines, or Exeora Cloud."
+      }
       onCancel={cancel}
     >
       {project ? (
@@ -67,7 +81,9 @@ export function AddLocationDialog({
           pending={add.isPending}
           error={add.isError ? errorText(add.error, "The location could not be added.") : null}
           onCancel={cancel}
-          onSubmit={(name, input) => add.mutate({ projectId: project.id, name, input })}
+          onSubmit={(name, input) =>
+            add.mutate({ projectId: project.id, name, nowhere: project.nowhere === true, input })
+          }
         />
       ) : null}
     </Dialog>
@@ -93,6 +109,11 @@ function Form({
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
   const chosen = candidates.find((candidate) => candidate.value === picked && !candidate.blocked);
+  // Cloud is the default location of a project that had none, so a call to
+  // the project root is enough to start an instance there.
+  const whenItStarts = project.nowhere
+    ? "No instance starts now. The next call to the project root starts one, and so does Start instance."
+    : "No instance starts until a workspace is added there.";
 
   let body: ReactNode;
   if (project.repoUrl === null) {
@@ -175,14 +196,13 @@ function Form({
       {chosen?.value === CLOUD ? (
         project.github ? (
           <p className="text-body-md text-foreground-muted mt-3">
-            Exeora Cloud clones {project.github.fullName} through GitHub. No instance starts until a
-            workspace is added there.
+            Exeora Cloud clones {project.github.fullName} through GitHub. {whenItStarts}
           </p>
         ) : (
           <>
             <p className="text-body-md text-foreground-muted mt-3">
-              No instance starts until a workspace is added there. A private repository needs a
-              token that can read it, and write to it to push.
+              {whenItStarts} A private repository needs a token that can read it, and write to it to
+              push.
             </p>
             <Field
               label="Access token"

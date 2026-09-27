@@ -66,6 +66,16 @@ export function rootIsOpen(
   return location.kind === "cloud" ? location.deviceId !== null : location.status === "ready";
 }
 
+/**
+ * Whether the root of the default location can be opened. A project that
+ * lives nowhere has no default machine to ask, and Exeora Cloud with no
+ * instance has nothing running to open until one is made.
+ */
+export function defaultRootIsOpen(project: Pick<Project, "nowhere" | "locations">): boolean {
+  if (project.nowhere === true) return false;
+  return project.locations.find((location) => location.default)?.state !== "no instance";
+}
+
 /** What the root of a location that is not the default is called, until its branch is known. */
 export function otherRootLabel(location: Pick<ProjectLocation, "name">): string {
   return `root · ${location.name}`;

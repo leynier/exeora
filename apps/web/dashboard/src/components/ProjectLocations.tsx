@@ -8,9 +8,10 @@ import {
   type Workspace,
 } from "../api.js";
 import { type Machine, projectsApi } from "../api-projects.js";
+import { cloudBlocker, instanceRefusal } from "../placement.js";
 import { groupByLocation, type ProjectTree } from "../projectModel.js";
 import { refreshPlaces } from "../queries.js";
-import { removalBlocker } from "../survival.js";
+import { isLastLocation, livesNowhere, removalBlocker, removalSentence } from "../survival.js";
 import { AddLocationDialog } from "./AddLocationDialog.js";
 import { AddWorkspaceDialog } from "./AddWorkspaceDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -59,16 +60,37 @@ export function ProjectLocations({
       );
       void refreshPlaces(queryClient, project.id);
     },
-    onError: (error) => toast(errorText(error, "The default could not be changed."), "error"),
+    // Making Exeora Cloud the default starts an instance, which the plan can refuse.
+    onError: (error) => toast(instanceRefusal(error, "The default could not be changed."), "error"),
+  });
+
+  // Exeora Cloud is the default already and holds no instance. Asking for it
+  // as the default again is what makes the instance, without waiting for the
+  // next call to the project root to do it.
+  const startInstance = useMutation({
+    mutationFn: (location: ProjectLocation) =>
+      projectsApi.setDefaultLocation(project.id, location.id),
+    onSuccess: () => {
+      toast(
+        `Setting up an instance for the root of ${project.name}. It is listed with its state until it is ready.`,
+      );
+      void refreshPlaces(queryClient, project.id);
+    },
+    onError: (error) =>
+      toast(instanceRefusal(error, "The instance could not be started."), "error"),
   });
 
   const removeLocation = useMutation({
-    mutationFn: (location: ProjectLocation) => projectsApi.removeLocation(project.id, location.id),
-    onSuccess: (_result, location) => {
+    mutationFn: (entry: { location: ProjectLocation; last: boolean }) =>
+      projectsApi.removeLocation(project.id, entry.location.id),
+    onSuccess: (_result, { location, last }) => {
+      const nowhere = last
+        ? " The project stays, and lives nowhere until it is given a location."
+        : "";
       toast(
         location.kind === "cloud"
-          ? `Taking ${project.name} off Exeora Cloud. Its instances are being destroyed.`
-          : `${project.name} no longer lives on ${location.name}. The files there are untouched.`,
+          ? `Taking ${project.name} off Exeora Cloud. Its instances are being destroyed.${nowhere}`
+          : `${project.name} no longer lives on ${location.name}. The files there are untouched.${nowhere}`,
       );
       setRemoving(null);
       void refreshPlaces(queryClient, project.id);
@@ -79,7 +101,8 @@ export function ProjectLocations({
     },
   });
 
-  const busy = makeDefault.isPending || removeLocation.isPending || controls.busy;
+  const busy =
+    makeDefault.isPending || startInstance.isPending || removeLocation.isPending || controls.busy;
 
   const menuFor = (location: ProjectLocation): MenuItem[] => [
     ...(!location.default && location.state !== "removed"
@@ -124,22 +147,46 @@ export function ProjectLocations({
           </div>
         }
       >
-        {tree.groups.length === 0 ? (
+        {livesNowhere(project) ? (
+          <section aria-label="No location">
+            <EmptyState title="This project lives nowhere">
+              The last place it had a copy is gone. It keeps its address, policy and clients, and
+              its root cannot be opened until it has a location again.
+              <div className="mt-5 flex justify-center">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setAddingLocation(true)}
+                >
+                  Add location
+                </button>
+              </div>
+            </EmptyState>
+          </section>
+        ) : tree.groups.length === 0 ? (
           <EmptyState title="This project has no location">
             Add one to give it a place to live.
           </EmptyState>
-        ) : (
-          tree.groups.map((group) => (
-            <LocationBlock
-              key={group.location.id}
-              project={project}
-              group={group}
-              menu={menuFor(group.location)}
-              busy={busy}
-              controls={controls}
-            />
-          ))
-        )}
+        ) : null}
+        {tree.groups.map((group) => (
+          <LocationBlock
+            key={group.location.id}
+            project={project}
+            group={group}
+            menu={menuFor(group.location)}
+            busy={busy}
+            controls={controls}
+            start={
+              group.location.state === "no instance"
+                ? {
+                    pending: startInstance.isPending,
+                    blocked: cloudBlocker(user),
+                    onStart: () => startInstance.mutate(group.location),
+                  }
+                : undefined
+            }
+          />
+        ))}
         <Unplaced project={project} tree={tree} controls={controls} />
       </Card>
 
@@ -147,6 +194,7 @@ export function ProjectLocations({
         open={addingWorkspace}
         project={project}
         user={user}
+        onAddLocation={() => setAddingLocation(true)}
         onCancel={() => setAddingWorkspace(false)}
         onCreated={() => setAddingWorkspace(false)}
       />
@@ -162,16 +210,15 @@ export function ProjectLocations({
       <ConfirmDialog
         open={removing !== null}
         title={`Remove ${removing?.name ?? ""} from ${project.name}?`}
-        body={
-          removing?.kind === "cloud"
-            ? "The project is taken off Exeora Cloud and stays in its other locations. This destroys:"
-            : "Exeora forgets that the project lives on this machine. This removes:"
-        }
+        body={removing ? removalSentence(project, removing) : ""}
         details={removing ? <RemovalList location={removing} tree={tree} /> : null}
         confirmLabel="Remove location"
         pending={removeLocation.isPending}
         onCancel={() => setRemoving(null)}
-        onConfirm={() => removing && removeLocation.mutate(removing)}
+        onConfirm={() =>
+          removing &&
+          removeLocation.mutate({ location: removing, last: isLastLocation(project, removing) })
+        }
       />
     </>
   );

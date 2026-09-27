@@ -2,6 +2,7 @@ import type { AccountClient, Project } from "./api.js";
 import type { Machine } from "./api-projects.js";
 import { clientLabel } from "./format.js";
 import { instanceLabel, instancesOf } from "./projectModel.js";
+import { livesNowhere } from "./survival.js";
 
 /**
  * What is wrong right now, and where each of those things is put right.
@@ -77,6 +78,17 @@ export function attentionItems(input: {
   }
 
   for (const project of input.projects) {
+    // Exeora Cloud with no instance is not listed: it is a place at rest, and
+    // the next call to the project root makes the instance.
+    if (livesNowhere(project)) {
+      items.push({
+        key: `nowhere:${project.id}`,
+        title: `${project.name} lives nowhere.`,
+        action: "Add a location.",
+        to: `/projects/${project.id}`,
+        linkLabel: "Open project",
+      });
+    }
     for (const location of project.locations) {
       // A failed instance of the project root is the Cloud location failing,
       // and it is already listed above as the instance it is.

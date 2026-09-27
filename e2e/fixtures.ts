@@ -4,7 +4,8 @@
  * One account, seen from two sides. `project` is the small one the workspace
  * specs have always used: a repository on one laptop. `widgets` is the one
  * that lives in three locations, which is what the Projects and Machines specs
- * are about.
+ * are about. `stray`, `resting` and `folder` are what is left once something a
+ * project lived on is gone, and are listed only by the specs that ask for them.
  */
 
 const now = Date.now();
@@ -62,6 +63,7 @@ export const project = {
   slug: "e2e",
   name: "E2E project",
   deviceId: "dev_e2e",
+  nowhere: false,
   localPath: "/work/e2e",
   repoUrl: "https://github.com/example/e2e.git" as string | null,
   defaultBranch: "main" as string | null,
@@ -83,6 +85,83 @@ export const otherProject = {
   locations: [location({ id: "loc_other", localPath: "/work/other" })],
   mcpUrl: "https://exeora.test/p/prj_other/mcp",
 };
+
+/** What an account's projects name as their machine while they have none. */
+const noMachine = "dev_none_e2e";
+
+/** A repository whose last machine was deleted: it stays, and lives nowhere. */
+export const stray = {
+  ...project,
+  id: "prj_stray",
+  slug: "stray",
+  name: "Stray",
+  deviceId: noMachine,
+  nowhere: true,
+  localPath: "/work/stray",
+  repoUrl: "https://github.com/example/stray.git",
+  locations: [] as ReturnType<typeof location>[],
+  mcpUrl: "https://exeora.test/p/prj_stray/mcp",
+};
+
+/**
+ * A repository on Exeora Cloud alone, after the instance for its root was
+ * destroyed: Cloud is still its default location, and holds no instance.
+ */
+export const resting = {
+  ...project,
+  id: "prj_resting",
+  slug: "resting",
+  name: "Resting",
+  deviceId: noMachine,
+  nowhere: true,
+  localPath: "/home/exeora/resting",
+  repoUrl: "https://github.com/example/resting.git",
+  locations: [
+    location({
+      id: "loc_resting_cloud",
+      kind: "cloud",
+      deviceId: null,
+      name: "Exeora Cloud",
+      slug: "cloud",
+      localPath: null,
+      online: false,
+      state: "no instance",
+    }),
+  ],
+  mcpUrl: "https://exeora.test/p/prj_resting/mcp",
+  cloud: {
+    repoUrl: "https://github.com/example/resting.git",
+    defaultBranch: "main",
+    hasCredential: false,
+  },
+};
+
+/** A directory with no remote, which is the copy on the laptop and nothing else. */
+export const folder = {
+  ...project,
+  id: "prj_folder",
+  slug: "folder",
+  name: "Folder",
+  localPath: "/work/folder",
+  repoUrl: null,
+  defaultBranch: null,
+  locations: [location({ id: "loc_folder", localPath: "/work/folder" })],
+  mcpUrl: "https://exeora.test/p/prj_folder/mcp",
+};
+
+/** A project as the machine that holds a copy of it lists it. */
+export function held(entry: { id: string; slug: string; name: string; localPath: string }) {
+  return {
+    projectId: entry.id,
+    slug: entry.slug,
+    name: entry.name,
+    localPath: entry.localPath as string | null,
+    status: "ready",
+    error: null,
+    default: true,
+    workspaces: 0,
+  };
+}
 
 export const workspace = {
   id: "wsp_feature",

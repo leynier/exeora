@@ -360,14 +360,18 @@ export function workspaceOptions(
     }
   }
   // `main` is always there to choose, as it is always there to call: for a
-  // default location that holds no copy yet, the page says what is missing.
+  // default location that holds no copy yet, and for a project with no
+  // default location at all, the page says what is missing.
   if (roots[0]?.value !== "main") {
     const home = project.locations.find((location) => location.default);
+    const missing =
+      home?.state === "no instance" ? home.state : project.nowhere && !home ? "no location" : null;
     roots.unshift({
       value: "main",
       label: [rootLabel(rootBranch ?? defaultBranchOf(project)), home?.name]
         .filter(Boolean)
         .join(" · "),
+      ...(missing ? { hint: missing } : {}),
     });
   }
   for (const entry of tree.unplaced) {

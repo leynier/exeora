@@ -18,6 +18,7 @@ describe("stateView", () => {
       "setting up",
       "failed",
       "not cloned",
+      "no instance",
       "removing",
       "removed",
     ]);
@@ -31,7 +32,7 @@ describe("stateView", () => {
     expect(stateView("online")).toMatchObject({ tone: "success", live: true });
     expect(stateView("failed").tone).toBe("error");
     expect(stateView("setting up").tone).toBe("brand");
-    for (const state of ["asleep", "offline", "not cloned", "removing", "removed"]) {
+    for (const state of ["asleep", "offline", "not cloned", "no instance", "removing", "removed"]) {
       expect(stateView(state)).toMatchObject({ tone: "neutral", live: false });
     }
   });
@@ -53,6 +54,8 @@ describe("isReachable", () => {
     expect(isReachable("setting up")).toBe(false);
     expect(isReachable("failed")).toBe(false);
     expect(isReachable("removing")).toBe(false);
+    // Nothing runs there to open until an instance is made.
+    expect(isReachable("no instance")).toBe(false);
   });
 });
 

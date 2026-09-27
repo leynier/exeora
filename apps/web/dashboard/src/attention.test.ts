@@ -70,6 +70,56 @@ describe("attentionItems", () => {
     expect(items[1]?.action).toContain("refused access");
   });
 
+  it("names each project that lives nowhere, and sends the person to it", () => {
+    const stray = (patch: Partial<Project>) =>
+      ({
+        id: "prj_stray",
+        name: "Stray",
+        nowhere: true,
+        locations: [],
+        github: null,
+        ...patch,
+      }) as Project;
+    const record = {
+      id: "loc_gone",
+      kind: "local",
+      name: "laptop",
+      status: "ready",
+      state: "removed",
+    };
+    const resting = { id: "loc_cloud", kind: "cloud", name: "Exeora Cloud", state: "no instance" };
+
+    const items = attentionItems({
+      projects: [
+        stray({}),
+        // The record of a removed machine is not somewhere it lives.
+        stray({ id: "prj_record", name: "Record", locations: [record] } as Partial<Project>),
+        // Exeora Cloud with no instance is a place at rest, not a problem.
+        stray({ id: "prj_resting", name: "Resting", locations: [resting] } as Partial<Project>),
+        stray({ id: "prj_home", name: "Home", nowhere: false }),
+      ],
+      machines: [],
+      accountClients: [],
+    });
+
+    expect(items).toEqual([
+      {
+        key: "nowhere:prj_stray",
+        title: "Stray lives nowhere.",
+        action: "Add a location.",
+        to: "/projects/prj_stray",
+        linkLabel: "Open project",
+      },
+      {
+        key: "nowhere:prj_record",
+        title: "Record lives nowhere.",
+        action: "Add a location.",
+        to: "/projects/prj_record",
+        linkLabel: "Open project",
+      },
+    ]);
+  });
+
   it("names the root instance by its branch and the default mark", () => {
     const [item] = attentionItems({
       projects: [],

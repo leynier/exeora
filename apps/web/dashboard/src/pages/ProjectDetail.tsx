@@ -28,7 +28,7 @@ import {
   useToolCalls,
   useWorkspaces,
 } from "../queries.js";
-import { callPlaceLabel } from "../selectors.js";
+import { callPlaceLabel, defaultRootIsOpen } from "../selectors.js";
 
 /**
  * One project: where it lives, how a client reaches it, who may, what they
@@ -116,9 +116,13 @@ export function ProjectDetail() {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Link to={workspaceHref(project.id, null)} className="btn btn-primary">
-            Open workspace
-          </Link>
+          {/* Nothing to open while the project lives nowhere, or while Exeora
+              Cloud holds no instance for its root. */}
+          {defaultRootIsOpen(project) ? (
+            <Link to={workspaceHref(project.id, null)} className="btn btn-primary">
+              Open workspace
+            </Link>
+          ) : null}
           <Menu
             label={`Actions for ${project.name}`}
             items={[

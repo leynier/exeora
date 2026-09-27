@@ -9,10 +9,9 @@ import { useToast } from "./toast.js";
 /**
  * The one way a project is removed.
  *
- * It used to be offered on two pages with two different warnings. It is
- * offered from the project's own page now, and from the instance that carries
- * a project living only on Exeora Cloud, and both open this: the same list of
- * what goes, the same request.
+ * It is offered from the project's own page and nowhere else. Nothing that
+ * happens to a location, a machine or an instance removes a project, so this
+ * is the only list of what goes with one, and the only request that does it.
  */
 export function RemoveProjectDialog({
   project,

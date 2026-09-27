@@ -13,8 +13,9 @@ import { Badge, Card, Divided, EmptyState, SkeletonRows } from "./ui.js";
 
 /**
  * Revoking is the urgent action: one click, reversible by registering again.
- * Deleting is only offered afterwards, because it also takes the projects
- * that live nowhere else, and there is no undo.
+ * Deleting is only offered afterwards, because there is no undo, and because
+ * it takes the directories with no remote that live on this machine alone. A
+ * repository is never deleted with a machine.
  */
 type Pending = { machine: LocalMachine; action: "revoke" | "delete" } | null;
 
@@ -49,18 +50,11 @@ export function LocalMachines({
     onError: (error) => fail(error, "The machine could not be revoked."),
   });
 
-  // A refusal stays in the dialog. The one the gateway gives when a project
-  // cannot be moved to Exeora Cloud names the project and the two ways out,
-  // and nothing was deleted, so there is something to read and act on.
   const remove = useMutation({
     mutationFn: (machine: LocalMachine) => api.deleteDevice(machine.deviceId),
     onSuccess: (_result, machine) => settle(`${machine.name} was deleted.`),
+    onError: (error) => fail(error, "The machine could not be deleted."),
   });
-
-  const dismiss = () => {
-    remove.reset();
-    setPending(null);
-  };
 
   const busy = revoke.isPending || remove.isPending;
   const impact = pending?.action === "delete" ? deletionImpact(pending.machine, projects) : null;
@@ -163,37 +157,31 @@ export function LocalMachines({
           impact ? (
             <div className="text-body-md text-foreground-muted mt-3 space-y-3">
               <ImpactList
-                title="Deleted with it, along with their activity history:"
-                none="No project is deleted: none lives only on this machine."
+                title="Deleted with it, along with their activity history. These are directories with no remote, so nothing could clone them elsewhere:"
+                none="No project is deleted: no directory with no remote lives only on this machine."
                 names={impact.deleted.map((held) => held.name)}
               />
               <ImpactList
-                title="These survive, in their other locations:"
+                title="These stay and live nowhere until they are given a location. Each keeps its address, policy and clients:"
+                none={null}
+                names={impact.nowhere.map((held) => held.name)}
+              />
+              <ImpactList
+                title="These stay on Exeora Cloud, with no instance for their project root. The next call to it makes one:"
+                none={null}
+                names={impact.resting.map((held) => held.name)}
+              />
+              <ImpactList
+                title="These stay in their other locations. Where this machine was the default location, another becomes the default:"
                 none={null}
                 names={impact.surviving.map((held) => held.name)}
               />
-              <ImpactList
-                title="These move to Exeora Cloud, which starts an instance for their project root:"
-                none={null}
-                names={impact.moving.map((held) => held.name)}
-              />
-              {impact.moving.length > 0 ? (
-                <p>
-                  Each of those instances counts against the limit of the plan. If one cannot be
-                  started, nothing is deleted.
-                </p>
-              ) : null}
             </div>
           ) : null
         }
-        error={
-          pending?.action === "delete" && remove.isError
-            ? errorText(remove.error, "The machine could not be deleted.")
-            : null
-        }
         confirmLabel={pending?.action === "delete" ? "Delete permanently" : "Revoke"}
         pending={busy}
-        onCancel={dismiss}
+        onCancel={() => setPending(null)}
         onConfirm={() => {
           if (!pending) return;
           if (pending.action === "delete") remove.mutate(pending.machine);

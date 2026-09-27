@@ -59,6 +59,7 @@ const project = (patch: Partial<Project> = {}): Project => ({
   slug: "widgets",
   name: "Widgets",
   deviceId: "dev_laptop",
+  nowhere: false,
   localPath: "/work/widgets",
   repoUrl: "https://github.com/example/widgets.git",
   defaultBranch: "master",
@@ -296,6 +297,18 @@ describe("groupByLocation", () => {
     expect(tree.groups[1]?.entries.map((entry) => entry.label)).toEqual(["feature/search"]);
   });
 
+  it("shows no root under Cloud that holds no instance, and keeps its workspaces", () => {
+    const resting = { ...cloud, deviceId: null, default: true, state: "no instance" as const };
+    const tree = groupByLocation(
+      project({ nowhere: true, deviceId: "dev_none_e2e", locations: [resting] }),
+      [onCloud],
+      machines.slice(1),
+    );
+    expect(tree.groups[0]?.entries.map((entry) => [entry.label, entry.root])).toEqual([
+      ["feature/search", false],
+    ]);
+  });
+
   it("reads a workspace older than locations as the default machine's", () => {
     const tree = groupByLocation(project(), [workspace({ deviceId: null })], []);
     expect(tree.groups[0]?.entries.map((entry) => entry.label)).toEqual([
@@ -383,6 +396,16 @@ describe("workspaceOptions", () => {
     const [root, ...rest] = workspaceOptions(project({ locations: [pending] }), [], []);
     expect(root).toEqual({ value: "main", label: "master · default branch · laptop" });
     expect(rest).toEqual([]);
+  });
+
+  it("keeps `main` for a project with no root to open, and says what is missing", () => {
+    const resting = { ...cloud, deviceId: null, default: true, state: "no instance" as const };
+    expect(workspaceOptions(project({ nowhere: true, locations: [resting] }), [], [])).toEqual([
+      { value: "main", label: "master · default branch · Exeora Cloud", hint: "no instance" },
+    ]);
+    expect(workspaceOptions(project({ nowhere: true, locations: [] }), [], [])).toEqual([
+      { value: "main", label: "master · default branch", hint: "no location" },
+    ]);
   });
 
   it("prefers the branch the root is really on", () => {

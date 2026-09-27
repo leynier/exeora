@@ -50,8 +50,8 @@ export type ToolName = (typeof TOOL_NAMES)[number];
  *
  * One vocabulary for every page, computed by the gateway, so the dashboard
  * never has to decide from two booleans and a timestamp whether something is
- * asleep or gone. `not cloned` is only ever a location, and `removing` only
- * ever an instance.
+ * asleep or gone. `not cloned` is only ever a location, `no instance` only
+ * ever Exeora Cloud as a location, and `removing` only ever an instance.
  */
 export type State =
   | "online"
@@ -60,6 +60,7 @@ export type State =
   | "setting up"
   | "failed"
   | "not cloned"
+  | "no instance"
   | "removing"
   | "removed";
 
@@ -94,8 +95,14 @@ export interface Project {
   id: string;
   slug: string;
   name: string;
-  /** The machine of the default location. */
+  /** The machine of the default location. It names no machine while `nowhere` is set. */
   deviceId: string;
+  /**
+   * The project has no default machine: its last machine was deleted, or the
+   * instance that held its root was destroyed. It keeps its URL, its policy
+   * and its clients, and its root cannot be opened until it has a copy again.
+   */
+  nowhere: boolean;
   localPath: string;
   /** The git remote. Null for a directory that has none, which lives where it is. */
   repoUrl: string | null;

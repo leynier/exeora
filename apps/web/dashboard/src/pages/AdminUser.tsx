@@ -382,7 +382,7 @@ export function AdminUser() {
         title={`${pendingDevice?.kind === "cloud" ? "Destroy" : "Revoke"} ${pendingDevice?.name ?? ""}?`}
         body={
           pendingDevice?.kind === "cloud"
-            ? "This is an instance of Exeora Cloud: revoking it destroys it, with anything that was not pushed from it. If it holds the default branch of a project that lives only on Exeora Cloud, the whole project goes with it, and every other instance of that project."
+            ? "This is an instance of Exeora Cloud: revoking it destroys it, with anything that was not pushed from it. The project it belongs to stays, with its address, policy and clients, and so does every other instance of that project."
             : "Its connection is closed immediately and it stops serving tool calls for this account."
         }
         confirmLabel={pendingDevice?.kind === "cloud" ? "Destroy instance" : "Revoke"}

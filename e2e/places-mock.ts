@@ -41,6 +41,10 @@ function bodyOf(request: Request): unknown {
  * in order, and answered the way the real routes answer when all goes well.
  * A spec that needs a refusal answers that one request itself through
  * `handle`.
+ *
+ * It lists `widgets` and `project` unless told otherwise. The projects that
+ * lost the places they lived, `stray` and `resting`, are passed in by the
+ * specs that are about them.
  */
 export async function mockPlaces(page: Page, options: PlacesOptions = {}): Promise<Sent[]> {
   const sent: Sent[] = [];

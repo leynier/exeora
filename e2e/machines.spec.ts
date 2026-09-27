@@ -1,6 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { openWorkspace, signedIn } from "./dashboard-mock.js";
-import { cloudUser, instance, laptop, machines, project, user, widgets } from "./fixtures.js";
+import {
+  cloudUser,
+  folder,
+  held,
+  instance,
+  laptop,
+  machines,
+  project,
+  user,
+  widgets,
+} from "./fixtures.js";
 import { mockPlaces } from "./places-mock.js";
 
 const cloud = "/dashboard/machines?view=cloud";
@@ -155,14 +165,16 @@ test("destroys the root instance and leaves the project where else it lives", as
     name: "Destroy the instance for master · default branch?",
   });
   await expect(dialog).toContainText("Anything on it that was not pushed is lost");
-  await expect(dialog).toContainText("The project keeps its other locations");
+  await expect(dialog).toContainText(
+    "The project stays, with its address, policy and clients, and keeps its other locations.",
+  );
   await dialog.getByRole("button", { name: "Destroy instance" }).click();
 
   await expect(page.getByRole("status")).toContainText("Destroying the instance");
   expect(sent).toEqual([{ method: "DELETE", path: "/api/devices/dev_cloud_root", body: null }]);
 });
 
-test("says the whole project goes with the root of one that lives only on Cloud", async ({
+test("destroys the root instance of a project that lives only on Cloud, and keeps the project", async ({
   page,
 }) => {
   const onlyCloud = {
@@ -181,22 +193,25 @@ test("says the whole project goes with the root of one that lives only on Cloud"
     .getByRole("menu", { name: "Actions for master · default branch" })
     .getByRole("menuitem", { name: "Destroy" })
     .click();
-  // Asked for as what it is, behind the one confirmation a project has.
-  const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
-  await expect(dialog).toContainText("Its MCP URL.");
-  await expect(dialog).toContainText("The instance on Exeora Cloud (master · default branch)");
-  await dialog.getByRole("button", { name: "Remove project" }).click();
+  // The instance is what is asked for, and never the project it belongs to.
+  const dialog = page.getByRole("dialog", {
+    name: "Destroy the instance for master · default branch?",
+  });
+  await expect(dialog).toContainText("Anything on it that was not pushed is lost");
+  await expect(dialog).toContainText("The project stays, with its address, policy and clients.");
+  await expect(dialog).toContainText(
+    "The next call to its root makes another instance, and so does Start instance on the project's page.",
+  );
+  await expect(page.getByRole("dialog", { name: "Remove Widgets?" })).toBeHidden();
+  await dialog.getByRole("button", { name: "Destroy instance" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Removing Widgets.");
-  expect(sent).toEqual([{ method: "DELETE", path: `/api/projects/${widgets.id}`, body: null }]);
+  await expect(page.getByRole("status")).toContainText("Destroying the instance");
+  expect(sent).toEqual([{ method: "DELETE", path: "/api/devices/dev_cloud_root", body: null }]);
 });
 
-test("takes the project with the root when the only other location is a removed machine", async ({
-  page,
-}) => {
-  // A laptop that was revoked is a record of where the project used to be.
-  // The gateway deletes the project with this instance, so the confirmation
-  // is the project's, and not the one that promises its other locations.
+test("keeps the project when the only other location is a removed machine", async ({ page }) => {
+  // A laptop that was revoked is a record of where the project used to be,
+  // so there is no machine for the default location to move to.
   const stranded = {
     ...widgets,
     deviceId: "dev_cloud_root",
@@ -217,12 +232,14 @@ test("takes the project with the root when the only other location is a removed 
     .getByRole("menu", { name: "Actions for master · default branch" })
     .getByRole("menuitem", { name: "Destroy" })
     .click();
-  const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
-  await expect(dialog).toContainText("Its MCP URL.");
-  await expect(page.getByText("The project keeps its other locations")).toBeHidden();
-  await dialog.getByRole("button", { name: "Remove project" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Destroy the instance for master · default branch?",
+  });
+  await expect(dialog).toContainText("The next call to its root makes another instance");
+  await expect(dialog).not.toContainText("its default location moves");
+  await dialog.getByRole("button", { name: "Destroy instance" }).click();
 
-  expect(sent).toEqual([{ method: "DELETE", path: `/api/projects/${widgets.id}`, body: null }]);
+  expect(sent).toEqual([{ method: "DELETE", path: "/api/devices/dev_cloud_root", body: null }]);
 });
 
 test("lists what each of my machines holds, behind a disclosure", async ({ page }) => {
@@ -246,16 +263,20 @@ test("lists what each of my machines holds, behind a disclosure", async ({ page 
   await expect(panel.getByText("/work/widgets")).toBeVisible();
 });
 
-test("deleting a machine names the projects that go and the ones that survive", async ({
-  page,
-}) => {
+test("deleting a machine lists what is deleted and what stays", async ({ page }) => {
   const revoked = machines.map((machine) =>
     machine.deviceId === laptop.deviceId
-      ? { ...machine, online: false, state: "removed", revokedAt: Date.now() }
+      ? {
+          ...machine,
+          online: false,
+          state: "removed",
+          revokedAt: Date.now(),
+          projects: [...machine.projects, held(folder)],
+        }
       : machine,
   );
   await signedIn(page);
-  const sent = await mockPlaces(page, { machines: revoked });
+  const sent = await mockPlaces(page, { projects: [widgets, project, folder], machines: revoked });
   await openWorkspace(page, "/dashboard/machines");
 
   const panel = page.getByRole("tabpanel");
@@ -263,12 +284,17 @@ test("deleting a machine names the projects that go and the ones that survive", 
   await panel.getByRole("button", { name: "Delete" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Delete Laptop?" });
-  // It lives only on the laptop. Widgets is on Exeora Cloud as well.
-  await expect(dialog.getByText("Deleted with it")).toBeVisible();
-  await expect(dialog.getByRole("listitem").filter({ hasText: project.name })).toBeVisible();
-  await expect(dialog.getByText("These survive, in their other locations:")).toBeVisible();
-  await expect(dialog.getByRole("listitem").filter({ hasText: "Widgets" })).toBeVisible();
-  await expect(dialog.getByRole("listitem")).toHaveText([project.name, "Widgets"]);
+  // Only the directory with no remote goes. The repository that lives here
+  // alone stays with nowhere to live, and Widgets has other locations.
+  await expect(
+    dialog.getByText("Deleted with it, along with their activity history."),
+  ).toBeVisible();
+  await expect(dialog.getByText("These are directories with no remote")).toBeVisible();
+  await expect(
+    dialog.getByText("These stay and live nowhere until they are given a location."),
+  ).toBeVisible();
+  await expect(dialog.getByText("These stay in their other locations.")).toBeVisible();
+  await expect(dialog.getByRole("listitem")).toHaveText([folder.name, project.name, "Widgets"]);
 
   await dialog.getByRole("button", { name: "Delete permanently" }).click();
   await expect(page.getByRole("status")).toContainText("Laptop was deleted.");
@@ -277,7 +303,7 @@ test("deleting a machine names the projects that go and the ones that survive", 
   ]);
 });
 
-test("says which projects move to Exeora Cloud, and why when the gateway cannot move one", async ({
+test("deleting a machine deletes no repository, and says which stay on Exeora Cloud", async ({
   page,
 }) => {
   // Widgets is on the laptop and on Exeora Cloud, where only workspaces run.
@@ -287,8 +313,6 @@ test("says which projects move to Exeora Cloud, and why when the gateway cannot 
       .filter((entry) => entry.slug !== "desktop")
       .map((entry) => (entry.kind === "cloud" ? { ...entry, deviceId: null } : entry)),
   };
-  const refusal =
-    "Widgets lives on this machine and on Exeora Cloud, and Cloud has no machine for its project root (plan_limit). Make Exeora Cloud its default location, or remove the project, then delete this machine.";
   await signedIn(page);
   const sent = await mockPlaces(page, {
     projects: [half, project],
@@ -299,14 +323,6 @@ test("says which projects move to Exeora Cloud, and why when the gateway cannot 
           ? { ...machine, online: false, state: "removed", revokedAt: Date.now() }
           : machine,
       ),
-    handle: async (route, request, path) => {
-      if (request.method() !== "DELETE" || !path.endsWith("/permanently")) return false;
-      await route.fulfill({
-        status: 409,
-        json: { error: "cloud_root_needed", message: refusal, project: "Widgets" },
-      });
-      return true;
-    },
   });
   await openWorkspace(page, "/dashboard/machines");
 
@@ -314,25 +330,48 @@ test("says which projects move to Exeora Cloud, and why when the gateway cannot 
   const dialog = page.getByRole("dialog", { name: "Delete Laptop?" });
   await expect(
     dialog.getByText(
-      "These move to Exeora Cloud, which starts an instance for their project root:",
+      "No project is deleted: no directory with no remote lives only on this machine.",
     ),
   ).toBeVisible();
-  await expect(dialog.getByText("These survive, in their other locations:")).toHaveCount(0);
+  await expect(
+    dialog.getByText(
+      "These stay on Exeora Cloud, with no instance for their project root. The next call to it makes one:",
+    ),
+  ).toBeVisible();
+  await expect(dialog.getByText("These stay in their other locations.")).toHaveCount(0);
   await expect(dialog.getByRole("listitem")).toHaveText([project.name, "Widgets"]);
 
   await dialog.getByRole("button", { name: "Delete permanently" }).click();
-  // Nothing was deleted, and the way out is two sentences long: it stays on
-  // screen, in the gateway's words, until it has been read.
-  await expect(dialog.getByRole("alert")).toHaveText(refusal);
-  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Laptop was deleted.");
   expect(sent).toEqual([
     { method: "DELETE", path: "/api/devices/dev_e2e/permanently", body: null },
   ]);
+});
 
-  // Closed and opened again, the dialog does not come back with the refusal.
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+test("says why a machine could not be deleted, and closes the confirmation", async ({ page }) => {
+  await signedIn(page);
+  await mockPlaces(page, {
+    machines: machines.map((machine) =>
+      machine.deviceId === laptop.deviceId
+        ? { ...machine, online: false, state: "removed", revokedAt: Date.now() }
+        : machine,
+    ),
+    handle: async (route, request, path) => {
+      if (request.method() !== "DELETE" || !path.endsWith("/permanently")) return false;
+      await route.fulfill({ status: 409, json: { error: "not_revoked" } });
+      return true;
+    },
+  });
+  await openWorkspace(page, "/dashboard/machines");
+
   await page.getByRole("tabpanel").getByRole("button", { name: "Delete" }).click();
-  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: "Delete Laptop?" });
+  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "Revoke this item before deleting it permanently.",
+  );
+  await expect(dialog).toBeHidden();
 });
 
 test("tells an account without Cloud what it is and who enables it", async ({ page }) => {
