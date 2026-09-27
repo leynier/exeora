@@ -379,25 +379,18 @@ impl HookRunner {
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
-    /// Takes what the gateway said as what is known, and keeps a copy of
-    /// the scripts for the day it cannot read them.
+    /// Takes what the gateway said as what is known, and keeps a copy of it
+    /// for the day it cannot read the scripts. On that day the copy is what
+    /// is gone by, whole: what the gateway sends then says nothing about the
+    /// project, and must not switch the repository's files back on.
     fn adopt(&self, inner: &mut Inner, config: HooksConfig) {
-        let kept = inner
-            .state
-            .config
-            .as_ref()
-            .and_then(|config| config.scripts.as_ref());
-        let scripts = config.scripts_or(kept);
-        let keep = Some(HooksConfig {
-            scripts: scripts.clone(),
-            repository: config.repository,
-        });
+        let adopted = config.or_kept(inner.state.config.as_ref());
         inner.known = Some(Known {
-            scripts,
-            repository: config.repository,
+            scripts: adopted.as_ref().and_then(|config| config.scripts.clone()),
+            repository: adopted.as_ref().is_some_and(|config| config.repository),
         });
-        if inner.state.config != keep {
-            inner.state.config = keep;
+        if adopted.is_some() && inner.state.config != adopted {
+            inner.state.config = adopted;
             self.save(&inner.state);
         }
     }

@@ -272,6 +272,51 @@ async fn scripts_the_gateway_could_not_read_are_the_ones_kept_from_last_time() {
 }
 
 #[tokio::test]
+async fn a_gateway_that_could_not_read_does_not_switch_the_repository_back_on() {
+    let mut machine = Machine::new();
+    machine.file(Hook::Install, "echo file >> installs\n");
+    machine.file(Hook::Resume, "echo file >> resumes\n");
+    // The page is empty and the repository's files are switched off.
+    let frames = machine
+        .hello(Some(
+            json!({ "scripts": { "install": null, "resume": null }, "repository": false }),
+        ))
+        .await;
+    assert!(machine.lines("installs").is_empty());
+    assert!(machine.lines("resumes").is_empty());
+    assert_eq!(
+        runs(&frames, Hook::Install).last().unwrap().source,
+        Source::None
+    );
+
+    // A cold start, and then a resume, with a gateway that cannot read the
+    // scripts and says in their place what it says by default.
+    let mut machine = machine.restarted();
+    machine
+        .hello(Some(json!({ "scripts": null, "repository": true })))
+        .await;
+    machine.hello(Some(json!({ "scripts": null }))).await;
+
+    assert!(machine.lines("installs").is_empty());
+    assert!(machine.lines("resumes").is_empty());
+
+    // Asked to run one again meanwhile, it still runs nothing of the repository.
+    let frames = machine
+        .asked_to_run(
+            Hook::Install,
+            json!({ "scripts": null, "repository": true }),
+        )
+        .await;
+    assert!(machine.lines("installs").is_empty());
+    assert!(
+        runs(&frames, Hook::Install)
+            .iter()
+            .all(|run| run.source == Source::None),
+        "{frames:?}"
+    );
+}
+
+#[tokio::test]
 async fn scripts_that_were_never_read_run_nothing() {
     let mut machine = Machine::new();
     machine.file(Hook::Install, "echo file >> installs\n");

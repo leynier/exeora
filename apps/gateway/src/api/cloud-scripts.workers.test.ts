@@ -10,7 +10,7 @@ import {
 } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { hookRunOf } from "../cloud/hooks.js";
+import { hookRunOf, hooksConfigFor } from "../cloud/hooks.js";
 import { db, schema } from "../db/client.js";
 import { listMachines } from "../machines-view.js";
 import { call as request } from "./clients-fixtures.js";
@@ -259,6 +259,30 @@ describe("what an instance is told, and what it says back", () => {
     const second = await instance(["cloud-v1", CLOUD_HOOKS_FEATURE]);
 
     expect(second.ack).toMatchObject({ cloudHooks: { scripts: { resume: "echo two\n" } } });
+  });
+
+  it("does not let the repository's files run when it could not read the scripts", async () => {
+    await call(scripts, "PUT", { install: null, resume: null, runRepositoryScripts: false });
+    const away = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("D1 is unavailable");
+        },
+      },
+    ) as D1Database;
+
+    // Not the project's word, and never one that lets more run than it would.
+    expect(await hooksConfigFor({ DB: away }, INSTANCE)).toEqual({
+      scripts: null,
+      repository: false,
+    });
+    expect(await hooksConfigFor(env, INSTANCE)).toEqual({
+      scripts: { install: null, resume: null },
+      repository: false,
+    });
+    // A machine that is not an instance is told nothing at all.
+    expect(await hooksConfigFor(env, LAPTOP)).toBeUndefined();
   });
 
   it("tells nothing to a CLI from before the scripts", async () => {

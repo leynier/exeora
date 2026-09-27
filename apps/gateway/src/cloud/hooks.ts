@@ -120,9 +120,12 @@ export async function saveScripts(
  * is not an instance of Exeora Cloud, which is told nothing.
  *
  * A database that could not be read is told as such, with `scripts: null`,
- * and the instance goes by what it was told last time. Answering "no scripts"
- * instead would send it to the repository's files, which the page may have
- * been written to replace.
+ * and the instance goes by what it was told last time, the switch for the
+ * repository's files included. Answering "no scripts" instead would send it
+ * to those files, which the page may have been written to replace. What is
+ * said of the switch then is that they may not run: it is not the project's
+ * word, and an instance that took it for one must not run what it was
+ * written to stop.
  */
 export async function hooksConfigFor(
   env: Pick<Env, "DB">,
@@ -142,7 +145,7 @@ export async function hooksConfigFor(
     };
   } catch (error) {
     console.error("could not read the scripts of a cloud project", error);
-    return { scripts: null, repository: true };
+    return { scripts: null, repository: false };
   }
 }
 

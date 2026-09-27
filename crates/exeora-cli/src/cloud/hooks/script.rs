@@ -137,13 +137,19 @@ impl HooksConfig {
         Ok(config)
     }
 
-    /// The scripts to go by: the ones just sent, or the copy kept from last
-    /// time when the gateway could not read them. None when there is neither,
-    /// and then nothing is known about the page, so nothing may run: the
-    /// files of the repository are not a stand-in for a page that could not
-    /// be read.
-    pub fn scripts_or(&self, kept: Option<&Scripts>) -> Option<Scripts> {
-        self.scripts.clone().or_else(|| kept.cloned())
+    /// What to go by: what was just sent, or the copy kept from last time
+    /// when the gateway could not read the scripts. The copy is taken whole,
+    /// with whether the repository's files may run: a gateway that could not
+    /// read the scripts could not read that either, and what it sends in its
+    /// place is a default, not the project's word. None when there is
+    /// neither, and then nothing is known about the page, so nothing may
+    /// run: the files of the repository are not a stand-in for a page that
+    /// could not be read.
+    pub fn or_kept(self, kept: Option<&Self>) -> Option<Self> {
+        if self.scripts.is_some() {
+            return Some(self);
+        }
+        kept.filter(|kept| kept.scripts.is_some()).cloned()
     }
 }
 
@@ -374,19 +380,34 @@ mod tests {
         let unread = HooksConfig::from_value(&json!({ "scripts": null, "repository": true }))
             .expect("config");
         assert_eq!(unread.scripts, None);
-        let kept = page(Some("echo kept"), None);
-        assert_eq!(unread.scripts_or(Some(&kept)), Some(kept.clone()));
+        // Kept with the repository's files switched off, which is what the
+        // gateway could not read and did not say.
+        let kept = HooksConfig {
+            scripts: Some(page(Some("echo kept"), None)),
+            repository: false,
+        };
+        assert_eq!(unread.clone().or_kept(Some(&kept)), Some(kept.clone()));
         // With nothing kept nothing is known, which is not an empty page.
-        assert_eq!(unread.scripts_or(None), None);
+        assert_eq!(unread.clone().or_kept(None), None);
+        // Nor with a copy that holds no scripts, from a release that kept one.
+        let hollow = HooksConfig {
+            scripts: None,
+            repository: true,
+        };
+        assert_eq!(unread.or_kept(Some(&hollow)), None);
 
         let read = HooksConfig::from_value(
             &json!({ "scripts": { "install": null, "resume": "echo new" }, "repository": false }),
         )
         .expect("config");
         assert!(!read.repository);
+        // What was read is what is gone by, whatever was kept.
         assert_eq!(
-            read.scripts_or(Some(&kept)),
-            Some(page(None, Some("echo new")))
+            read.or_kept(Some(&kept)),
+            Some(HooksConfig {
+                scripts: Some(page(None, Some("echo new"))),
+                repository: false,
+            })
         );
     }
 
