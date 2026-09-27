@@ -4,6 +4,7 @@ import type { LocationKind, LocationStatus } from "./db/schema-locations.js";
 import "./env.js";
 import { newId } from "./ids.js";
 import { pinLegacyWorkspacesStatement } from "./locations-default.js";
+import { isNowhere, nowhereId } from "./nowhere.js";
 import { isDeviceOnline, presenceCutoff } from "./presence.js";
 
 /**
@@ -26,6 +27,7 @@ export type LocationState =
   | "setting up"
   | "failed"
   | "not cloned"
+  | "no instance"
   | "removed";
 
 export interface LocationView {
@@ -76,6 +78,10 @@ export function locationSlug(name: string): string {
  * A project made before locations existed, or by a gateway that did not know
  * them yet, has no row for the machine it is on. It is given one here, so the
  * answer is right whichever way the project came to be.
+ *
+ * A project that lost its last machine has no default among its machines. If
+ * it is on Exeora Cloud, Cloud is its default all the same, holding no
+ * instance: the next call to the project root is what makes one.
  */
 export async function locationsOf(
   env: Pick<Env, "DB">,
@@ -118,6 +124,7 @@ export async function locationsOf(
   let rows = await read();
   const missing = projects.filter(
     (project) =>
+      !isNowhere(project.deviceId) &&
       !rows.some(
         (row) =>
           row.location.projectId === project.id && row.location.deviceId === project.deviceId,
@@ -136,6 +143,8 @@ export async function locationsOf(
     const list = byProject.get(row.location.projectId);
     if (!list) continue;
     const cloud = row.location.kind === "cloud";
+    const chosen = defaults.get(row.location.projectId);
+    const released = cloud && row.location.deviceId === null && isNowhere(chosen);
     const taken = new Set(list.map((entry) => entry.slug));
     const wanted = cloud ? CLOUD_LOCATION_SLUG : locationSlug(row.deviceName ?? "machine");
     let slug = wanted;
@@ -163,12 +172,11 @@ export async function locationsOf(
       status: row.location.status,
       error: row.location.error,
       errorCode: row.location.errorCode,
-      default:
-        row.location.deviceId !== null &&
-        row.location.deviceId === defaults.get(row.location.projectId),
+      default: released || (row.location.deviceId !== null && row.location.deviceId === chosen),
       online,
       state: stateOf({
         cloud,
+        released,
         online,
         revoked: Boolean(row.revokedAt),
         status: row.location.status,
@@ -183,6 +191,8 @@ export async function locationsOf(
 
 function stateOf(input: {
   cloud: boolean;
+  /** The default location, on Exeora Cloud, with no instance for the project root. */
+  released: boolean;
   online: boolean;
   revoked: boolean;
   status: LocationStatus;
@@ -191,6 +201,7 @@ function stateOf(input: {
 }): LocationState {
   if (input.revoked) return "removed";
   if (input.cloud) {
+    if (input.released) return "no instance";
     // Cloud with no root machine holds only workspaces, each with a state of
     // its own; the location is there, and nothing of it is running.
     if (!input.hasMachine) return "asleep";
@@ -258,6 +269,25 @@ export async function putLocalLocation(
       entry.status,
       entry.error ?? null,
       entry.errorCode ?? null,
+    )
+    .run();
+
+  // A project that lives nowhere takes the first machine it is given as its
+  // default. One that is on Exeora Cloud keeps Cloud, which was chosen.
+  await env.DB.prepare(
+    `UPDATE projects
+        SET device_id = ?3, local_path = COALESCE(?4, local_path)
+      WHERE id = ?1 AND user_id = ?2 AND device_id = ?5
+        AND NOT EXISTS (
+          SELECT 1 FROM project_locations l WHERE l.project_id = projects.id AND l.kind = 'cloud'
+        )`,
+  )
+    .bind(
+      entry.projectId,
+      entry.userId,
+      entry.deviceId,
+      entry.localPath ?? null,
+      nowhereId(entry.userId),
     )
     .run();
 

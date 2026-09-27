@@ -31,6 +31,9 @@ export const WorkspaceRef = z
  * What a place a project lives is doing. `asleep` is a machine Exeora runs
  * that wakes on the next call, which is why it counts as reachable; `offline`
  * is somebody's own machine that is off or not connected, which does not.
+ * `no instance` is Exeora Cloud as the default location with nothing made for
+ * the project root: the next call to the root makes it, and is told to come
+ * back in a minute.
  */
 export const LocationState = z.enum([
   "online",
@@ -39,6 +42,7 @@ export const LocationState = z.enum([
   "setting up",
   "failed",
   "not cloned",
+  "no instance",
   "removed",
 ]);
 

@@ -15,6 +15,7 @@ import "../env.js";
 import { newId } from "../ids.js";
 import { rootSelector } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
+import { isNowhere } from "../nowhere.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import type { CloudEnv } from "./access.js";
 import { addCloudLocation, type CloudLocationError } from "./location.js";
@@ -158,18 +159,26 @@ export async function listWorkspacesWithCloud(
       (location.kind === "cloud" || location.status === "ready"),
   );
 
+  // A project that lives nowhere has no root to work in, and saying it had
+  // one would send a call where nothing answers.
+  const rootless = isNowhere(project.deviceId) && !chosen;
+
   return [
     // The root first. It is where a call that names no workspace lands, and an
     // agent that was told a project has no workspaces would otherwise conclude
     // there is nowhere to work.
-    {
-      slug: CLOUD_MAIN_WORKSPACE_SLUG,
-      name: "project root",
-      branch: project.defaultBranch ?? project.cloudBranch,
-      managed: false,
-      root: true,
-      ...(chosen ? { location: chosen.slug } : {}),
-    },
+    ...(rootless
+      ? []
+      : [
+          {
+            slug: CLOUD_MAIN_WORKSPACE_SLUG,
+            name: "project root",
+            branch: project.defaultBranch ?? project.cloudBranch,
+            managed: false,
+            root: true,
+            ...(chosen ? { location: chosen.slug } : {}),
+          },
+        ]),
     ...elsewhere.map((location) => ({
       slug: rootSelector(location.slug),
       name: `project root on ${location.name}`,

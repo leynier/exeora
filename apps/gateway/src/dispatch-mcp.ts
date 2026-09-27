@@ -21,6 +21,7 @@ import "./env.js";
 import { newId } from "./ids.js";
 import type { DispatchResult } from "./mcp.js";
 import type { McpProxyCall } from "./mcp-proxy-tools.js";
+import { noDefault } from "./no-default.js";
 import { callRelayMcpTool, requestRelayApproval } from "./relay-client.js";
 import { decodeMcpCatalogs } from "./relay-mcp.js";
 
@@ -62,11 +63,14 @@ export async function dispatchMcpToDevice(
   }
 
   const workspace = await resolveWorkspace(env, projectId, call.workspace);
-  if (!workspace && project.defaultRemoved) {
-    throw new ExeoraError(
-      "LOCAL_EXECUTOR_OFFLINE",
-      "The machine of this project's default location was removed.",
-    );
+  if (!workspace) {
+    if (project.nowhere) throw await noDefault(env, userId, projectId, project.deviceId);
+    if (project.defaultRemoved) {
+      throw new ExeoraError(
+        "LOCAL_EXECUTOR_OFFLINE",
+        "The machine of this project's default location was removed.",
+      );
+    }
   }
   const deviceId = targetDevice(project, workspace);
   const relay = env.DEVICE_RELAY.getByName(relayName(userId, deviceId));

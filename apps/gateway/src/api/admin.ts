@@ -1,9 +1,10 @@
 import { zValidator } from "@hono/zod-validator";
-import { count, desc, eq, gte, isNull, max, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, max, ne, sql, sum } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { revokeOwnedDevice } from "../cloud/revoke.js";
 import { db, schema } from "../db/client.js";
+import { NOWHERE_KIND } from "../nowhere.js";
 import { normalizeEmail } from "../oauth/users.js";
 import { deviceOnline, deviceOnlineSql, isDeviceOnline, presenceCutoff } from "../presence.js";
 import { queryWarehouseCalls } from "../warehouse-calls.js";
@@ -65,7 +66,11 @@ admin.get("/api/admin/overview", async (c) => {
     weekErrorRow,
   ] = await Promise.all([
     database.select({ n: count() }).from(schema.users).get(),
-    database.select({ n: count() }).from(schema.devices).get(),
+    database
+      .select({ n: count() })
+      .from(schema.devices)
+      .where(ne(schema.devices.kind, NOWHERE_KIND))
+      .get(),
     database.select({ n: count() }).from(schema.devices).where(deviceOnline()).get(),
     database.select({ n: count() }).from(schema.projects).get(),
     database
@@ -201,7 +206,7 @@ admin.get("/api/admin/users/:id", async (c) => {
     database
       .select()
       .from(schema.devices)
-      .where(eq(schema.devices.userId, userId))
+      .where(and(eq(schema.devices.userId, userId), ne(schema.devices.kind, NOWHERE_KIND)))
       .orderBy(desc(schema.devices.createdAt))
       .all(),
     database

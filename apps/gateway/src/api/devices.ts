@@ -1,15 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { livesOnAnotherMachine } from "../client-targets.js";
-import { createCloudRoot } from "../cloud/location.js";
 import { revokeOwnedDevice } from "../cloud/revoke.js";
 import { db, schema } from "../db/client.js";
-import { setDefaultLocation } from "../locations.js";
 import { listMachines } from "../machines-view.js";
 import "../env.js";
 import { newId } from "../ids.js";
+import { isNowhere, NOWHERE_KIND } from "../nowhere.js";
 import { limitsFor } from "../plans.js";
 import { isDeviceOnline, presenceCutoff } from "../presence.js";
 import { permanentlyDeleteDevice } from "./ops.js";
@@ -87,7 +85,7 @@ devices.get("/api/devices", async (c) => {
   const rows = await db(c.env)
     .select()
     .from(schema.devices)
-    .where(eq(schema.devices.userId, c.get("userId")))
+    .where(and(eq(schema.devices.userId, c.get("userId")), ne(schema.devices.kind, NOWHERE_KIND)))
     .all();
 
   const cutoff = presenceCutoff();
@@ -110,6 +108,7 @@ devices.get("/api/machines", async (c) => {
  * references, and the relay refuses a socket whose device has `revokedAt` set.
  */
 devices.delete("/api/devices/:id", async (c) => {
+  if (isNowhere(c.req.param("id"))) return c.json({ error: "not_found" }, 404);
   const ok = await revokeOwnedDevice(c.env, c.get("userId"), c.req.param("id"));
   if (!ok) return c.json({ error: "not_found" }, 404);
   return c.json({ ok: true });
@@ -119,14 +118,16 @@ devices.delete("/api/devices/:id", async (c) => {
  * Permanent deletion, allowed only once a machine is revoked.
  *
  * Two steps rather than one on purpose: revoking is the urgent action and has
- * to stay a single click, while this one cannot be undone and takes the
- * machine's projects and their audit history with it through the foreign keys.
- * Requiring the machine to be stopped first means nobody reaches this by
- * misclicking next to `Revoke`.
+ * to stay a single click, while this one cannot be undone. It takes the
+ * directories that were only on this machine, and their audit history, with
+ * it through the foreign keys. A repository is kept, wherever else it lives
+ * or nowhere. Requiring the machine to be stopped first means nobody reaches
+ * this by misclicking next to `Revoke`.
  */
 devices.delete("/api/devices/:id/permanently", async (c) => {
   const userId = c.get("userId");
   const id = c.req.param("id");
+  if (isNowhere(id)) return c.json({ error: "not_found" }, 404);
 
   const device = await db(c.env)
     .select({ revokedAt: schema.devices.revokedAt })
@@ -137,82 +138,10 @@ devices.delete("/api/devices/:id/permanently", async (c) => {
   if (!device) return c.json({ error: "not_found" }, 404);
   if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
 
-  // A project that is also on Exeora Cloud stays, and needs a machine to be
-  // its default once this one is gone. Cloud that holds only workspaces has
-  // none for the project root, so one is asked for here, before anything is
-  // deleted: if it cannot be made, nothing is, and the person is told why.
-  const stranded = await moveStrandedProjectsToCloud(c.env, userId, id);
-  if (stranded) return c.json(stranded, 409);
-
   await permanentlyDeleteDevice(c.env, userId, id);
 
   return c.json({ ok: true });
 });
-/**
- * Moves the default of every project that would otherwise go with the machine
- * onto Exeora Cloud, where it already lives. Answers the refusal to send when
- * one of them could not be moved.
- */
-async function moveStrandedProjectsToCloud(
-  env: Env,
-  userId: string,
-  deviceId: string,
-): Promise<{ error: "cloud_root_needed"; message: string; project: string } | null> {
-  const rows = await db(env)
-    .select({
-      id: schema.projects.id,
-      name: schema.projects.name,
-      deviceId: schema.projects.deviceId,
-      localPath: schema.projects.localPath,
-    })
-    .from(schema.projects)
-    .innerJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
-    .where(
-      and(
-        eq(schema.projects.userId, userId),
-        eq(schema.projects.deviceId, deviceId),
-        isNull(schema.cloudProjects.deletingAt),
-      ),
-    )
-    .all();
-
-  for (const project of rows) {
-    if (await livesOnAnotherMachine(env, project.id, deviceId)) continue;
-    const root = await createCloudRoot(env, userId, project.id);
-    const moved =
-      "error" in root
-        ? root.error
-        : await setDefaultLocation(env, userId, project, {
-            id: await cloudLocationId(env, project.id),
-            deviceId: root.deviceId,
-            localPath: null,
-            state: "setting up",
-          });
-    if (moved !== true) {
-      return {
-        error: "cloud_root_needed",
-        project: project.name,
-        message: `${project.name} lives on this machine and on Exeora Cloud, and Cloud has no machine for its project root (${moved}). Make Exeora Cloud its default location, or remove the project, then delete this machine.`,
-      };
-    }
-  }
-  return null;
-}
-
-async function cloudLocationId(env: Pick<Env, "DB">, projectId: string): Promise<string> {
-  const row = await db(env)
-    .select({ id: schema.projectLocations.id })
-    .from(schema.projectLocations)
-    .where(
-      and(
-        eq(schema.projectLocations.projectId, projectId),
-        eq(schema.projectLocations.kind, "cloud"),
-      ),
-    )
-    .get();
-  return row?.id ?? "";
-}
-
 function toDeviceView(device: typeof schema.devices.$inferSelect, online = false) {
   return {
     id: device.id,

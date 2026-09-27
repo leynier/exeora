@@ -12,6 +12,7 @@ import "../env.js";
 import { linkByRepository } from "../github/links.js";
 import { hasUserToken } from "../github/user-token.js";
 import { locationsOf } from "../locations.js";
+import { isNowhere } from "../nowhere.js";
 import { registerProject } from "../project-register.js";
 import type { ApiEnv } from "./router.js";
 
@@ -143,6 +144,8 @@ projects.get("/api/projects", async (c) => {
       name: project.name,
       /** The machine of the default location. */
       deviceId: project.deviceId,
+      /** A repository with no default location: its last machine, or its instance, is gone. */
+      nowhere: isNowhere(project.deviceId),
       localPath: project.localPath,
       repoUrl: project.repoUrl,
       defaultBranch: project.defaultBranch,

@@ -122,7 +122,7 @@ describe("projects and their locations over the API", () => {
     expect(await added.json()).toMatchObject({ error: "no_repository" });
   });
 
-  it("moves the default, and will not remove it or the last location", async () => {
+  it("moves the default, and will not remove it while the project lives elsewhere", async () => {
     const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
     await add(DESKTOP, "api", "https://github.com/acme/api.git");
     const [laptop, desktop] = await locationsOf(project.id);
@@ -145,10 +145,110 @@ describe("projects and their locations over the API", () => {
     expect(removed.status).toBe(200);
     const left = await locationsOf(project.id);
     expect(left.map((location) => location.slug)).toEqual(["desktop"]);
+  });
 
-    const last = await call(`/api/projects/${project.id}/locations/${left[0]?.id}`, "DELETE");
+  it("keeps a repository that lost the only place it lived, and gives it the next one", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    const [only] = await locationsOf(project.id);
+
+    const last = await call(`/api/projects/${project.id}/locations/${only?.id}`, "DELETE");
+    expect(last.status).toBe(200);
+
+    const listed = async () =>
+      (
+        (await (await call("/api/projects")).json()) as Array<{
+          id: string;
+          nowhere: boolean;
+          deviceId: string;
+          mcpUrl: string;
+          locations: Location[];
+        }>
+      ).find((entry) => entry.id === project.id);
+    expect(await listed()).toMatchObject({ nowhere: true, locations: [] });
+    expect((await listed())?.mcpUrl).toContain(project.id);
+    // The machine that stands for no machine is not one of the account's.
+    const machines = (await (await call("/api/devices")).json()) as Array<{ id: string }>;
+    expect(machines.map((machine) => machine.id).sort()).toEqual([DESKTOP, LAPTOP].sort());
+
+    // The same repository from another machine is the same project, and the
+    // machine becomes where it lives.
+    const back = await add(DESKTOP, "whatever", "git@github.com:acme/api.git");
+    expect(back).toMatchObject({ status: 200, body: { id: project.id, location: "joined" } });
+    expect(await listed()).toMatchObject({
+      nowhere: false,
+      deviceId: DESKTOP,
+      locations: [expect.objectContaining({ slug: "desktop", default: true })],
+    });
+  });
+
+  it("will not take a directory with no remote off the one machine it is on", async () => {
+    const { body: project } = await add(LAPTOP, "notes");
+    const [only] = await locationsOf(project.id);
+
+    const last = await call(`/api/projects/${project.id}/locations/${only?.id}`, "DELETE");
+
     expect(last.status).toBe(409);
     expect(await last.json()).toMatchObject({ error: "last_location" });
+  });
+
+  it("keeps the repositories of a machine that is deleted, and lets its directories go", async () => {
+    const { body: repository } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    const { body: directory } = await add(LAPTOP, "notes");
+    await call(`/api/projects/${repository.id}/workspaces/wsp_apikept`, "PUT", {
+      slug: "fix-a",
+      name: "fix-a",
+      branch: "fix-a",
+      localPath: "/worktrees/fix-a",
+      managed: true,
+    });
+
+    expect((await call(`/api/devices/${LAPTOP}`, "DELETE")).status).toBe(200);
+    expect((await call(`/api/devices/${LAPTOP}/permanently`, "DELETE")).status).toBe(200);
+
+    const left = (await (await call("/api/projects")).json()) as Array<{
+      id: string;
+      nowhere: boolean;
+      locations: Location[];
+    }>;
+    expect(left.map((project) => project.id)).toEqual([repository.id]);
+    expect(left[0]).toMatchObject({ nowhere: true, locations: [] });
+    expect(left.some((project) => project.id === directory.id)).toBe(false);
+    // What was on the machine went with it: a workspace is a working copy.
+    const workspaces = await db(env)
+      .select({ id: schema.workspaces.id })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.projectId, repository.id))
+      .all();
+    expect(workspaces).toEqual([]);
+  });
+
+  it("does not list, revoke or delete the machine that stands for no machine", async () => {
+    const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
+    const [only] = await locationsOf(project.id);
+    await call(`/api/projects/${project.id}/locations/${only?.id}`, "DELETE");
+    const nowhere = (
+      await db(env)
+        .select({ deviceId: schema.projects.deviceId })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, project.id))
+        .get()
+    )?.deviceId;
+    if (!nowhere) throw new Error("the project was expected to stay");
+
+    const { machines } = (await (await call("/api/machines")).json()) as {
+      machines: Array<{ deviceId: string }>;
+    };
+    expect(machines.map((machine) => machine.deviceId)).not.toContain(nowhere);
+    expect((await call(`/api/devices/${nowhere}`, "DELETE")).status).toBe(404);
+    expect((await call(`/api/devices/${nowhere}/permanently`, "DELETE")).status).toBe(404);
+    // Nothing is registered onto it either.
+    const onto = await call("/api/projects", "POST", {
+      deviceId: nowhere,
+      name: "other",
+      slug: "other",
+      localPath: "/home/me/code/other",
+    });
+    expect(onto.status).toBe(409);
   });
 
   it("records a workspace on the machine that reported it", async () => {
@@ -295,8 +395,27 @@ describe("what the review of locations found", () => {
 
     expect(deleted.status).toBe(200);
     const left = await locationsOf(project.id);
-    // Cloud was given a machine for the project root, and became the default.
+    // Cloud is the default, and nothing was made for it: the instance for
+    // the project root comes with the first call that needs it, so the room
+    // left on the plan never decides whether a machine can be deleted.
     expect(left).toEqual([
+      expect.objectContaining({
+        slug: "cloud",
+        default: true,
+        deviceId: null,
+        state: "no instance",
+      }),
+    ]);
+
+    const started = await request(`/api/projects/${project.id}/default-location`, {
+      method: "PUT",
+      userId: USER,
+      bindings,
+      body: { locationId: left[0]?.id },
+    });
+    expect(started.status).toBe(200);
+    const after = ((await started.json()) as { locations: Location[] }).locations;
+    expect(after).toEqual([
       expect.objectContaining({ slug: "cloud", default: true, deviceId: expect.any(String) }),
     ]);
   });
