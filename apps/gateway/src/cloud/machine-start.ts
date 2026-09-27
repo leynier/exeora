@@ -2,6 +2,8 @@ import { CLOUD_MIN_CLI_VERSION } from "@exeora/protocol";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import "../env.js";
+import type { GitHubEnv } from "../github/app.js";
+import { hasProjectCredential } from "../github/credentials.js";
 import type { CloudEnv } from "./access.js";
 import { cliConfigFor } from "./bootstrap.js";
 import { type MachineSeed, provisionInput } from "./machine-do.js";
@@ -44,7 +46,7 @@ export function insertCloudDevice(
 }
 
 export async function startMachine(
-  env: CloudEnv,
+  env: CloudEnv & GitHubEnv,
   input: {
     seed: MachineSeed;
     project: { id: string; slug: string; name: string };
@@ -58,8 +60,13 @@ export async function startMachine(
 ): Promise<void> {
   const gatewayUrl = env.EXEORA_BASE_URL;
   try {
-    await env.CLOUD_MACHINE.getByName(input.seed.deviceId).provision(
-      provisionInput({
+    // A project connected to GitHub clones with tokens that last an hour,
+    // asked for by the machine each time git needs one. A token written into
+    // the machine would be the one credential there that never expires, so
+    // none is sent, even where one is stored from before the connection.
+    const connected = await hasProjectCredential(env, input.project.id);
+    await env.CLOUD_MACHINE.getByName(input.seed.deviceId).provision({
+      ...provisionInput({
         seed: input.seed,
         gatewayUrl,
         cliVersion: env.LATEST_CLI_VERSION,
@@ -73,9 +80,10 @@ export async function startMachine(
           workspace: input.workspace,
         }),
         machineToken: input.machineToken,
-        credential: input.credential,
+        credential: connected ? undefined : input.credential,
       }),
-    );
+      ...(connected ? { credentialHelper: { projectId: input.project.id } } : {}),
+    });
   } catch (error) {
     // The rows are there and say `creating`; make them say what happened,
     // so the person can retry rather than wait for a step that never ran.

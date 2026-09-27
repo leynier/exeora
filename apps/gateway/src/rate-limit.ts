@@ -88,11 +88,14 @@ export function limiterFor(
 
   // Creating a cloud machine is the most expensive write there is: a Sprite
   // per request. It shares the registration budget rather than getting its own.
+  // A git credential writes nothing here, but each one can be a token minted
+  // at GitHub in the account's name, which is a budget of its own to protect.
   if (
     method === "POST" &&
     (pathname === "/api/devices" ||
       pathname === "/api/projects" ||
-      pathname.startsWith("/api/cloud/"))
+      pathname.startsWith("/api/cloud/") ||
+      /^\/api\/projects\/[^/]+\/git-credential$/.test(pathname))
   ) {
     return env.RL_WRITE;
   }

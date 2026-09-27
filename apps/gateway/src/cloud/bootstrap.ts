@@ -31,6 +31,12 @@ export interface BootstrapPayload {
   /** A ref to start `branch` from when it does not exist on the remote yet. */
   createBranchFrom?: string | undefined;
   credential?: { username: string; secret: string } | undefined;
+  /**
+   * Instead of `credential`, for a project connected to GitHub: git is wired
+   * to `exeora git-credential`, which asks the gateway for a short-lived token
+   * of this project each time one is needed. Nothing secret travels with it.
+   */
+  credentialHelper?: { projectId: string } | undefined;
   cliConfig: CloudCliConfig;
 }
 

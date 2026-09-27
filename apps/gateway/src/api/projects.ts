@@ -100,9 +100,14 @@ projects.get("/api/projects", async (c) => {
       cloudRepoUrl: schema.cloudProjects.repoUrl,
       cloudBranch: schema.cloudProjects.defaultBranch,
       hasCredential: schema.cloudProjects.credentialCiphertext,
+      github: schema.githubRepositories,
     })
     .from(schema.projects)
     .leftJoin(schema.cloudProjects, eq(schema.cloudProjects.projectId, schema.projects.id))
+    .leftJoin(
+      schema.githubRepositories,
+      eq(schema.githubRepositories.projectId, schema.projects.id),
+    )
     .where(eq(schema.projects.userId, userId))
     .orderBy(schema.projects.name)
     .all();
@@ -114,7 +119,7 @@ projects.get("/api/projects", async (c) => {
   );
 
   return c.json(
-    rows.map(({ project, cloudRepoUrl, cloudBranch, hasCredential }) => ({
+    rows.map(({ project, cloudRepoUrl, cloudBranch, hasCredential, github }) => ({
       id: project.id,
       slug: project.slug,
       name: project.name,
@@ -135,6 +140,14 @@ projects.get("/api/projects", async (c) => {
               hasCredential: hasCredential !== null,
             }
           : null,
+      /** The repository the project clones through GitHub as, when it was connected. */
+      github: github
+        ? {
+            fullName: github.fullName,
+            private: github.private,
+            lostAccess: github.lostAccessAt !== null,
+          }
+        : null,
     })),
   );
 });

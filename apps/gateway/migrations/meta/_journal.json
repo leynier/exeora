@@ -148,6 +148,20 @@
       "when": 1790469841897,
       "tag": "0020_cloud_removal_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1790471409200,
+      "tag": "0021_github_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1790472833673,
+      "tag": "0022_github_user_tokens",
+      "breakpoints": true
     }
   ]
 }

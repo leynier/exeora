@@ -80,6 +80,44 @@ bun run secret CLOUD_CREDENTIALS_KEY
 
 Cloud needs a public `EXEORA_BASE_URL`: a machine dials the gateway from outside, so a development server on `localhost:8787` cannot host it. The bootstrap installs the CLI at `LATEST_CLI_VERSION` through your gateway's own installer, so publish a CLI release of at least the version in `CLOUD_MIN_CLI_VERSION` (`packages/protocol/src/cloud.ts`) and announce it before creating the first machine; provisioning refuses an older one with a `cli_unsupported` error. Once the secrets are in place, enable Cloud for an account from its page in the administration panel; administrators have it without being enabled.
 
+### GitHub repositories (optional)
+
+With a GitHub App of your own, an account connects GitHub once and picks its repositories from a list, and machines clone with tokens that last an hour instead of one somebody pasted. It is a different thing from the OAuth App of step 3, which only signs people in. It stays off until all six of the secrets below are set, and `CLOUD_CREDENTIALS_KEY` with them; with any of the seven missing the routes answer `github_disabled` and projects clone as before.
+
+`CLOUD_CREDENTIALS_KEY` is required here even on a gateway that does not use Exeora Cloud. What a person may list, link and clone is asked of GitHub with their own token, so that a member of an organization reaches the repositories they can open there and no others the app was given. That token has to be kept, and the key is what it is kept under: without it there is nowhere safe to keep one, so the connection stays off. Set it as described above (`openssl rand -hex 32`). Rotating it makes every connected account connect again.
+
+Create the app at <https://github.com/settings/apps/new> (or under an organization's settings) with:
+
+| Setting | Value |
+|---|---|
+| Callback URL | `https://your.example.com/api/github/callback` |
+| Request user authorization (OAuth) during installation | Checked |
+| Setup URL | Leave empty; GitHub disables it while the option above is checked |
+| Webhook URL | `https://your.example.com/api/github/webhook`, active |
+| Webhook secret | `openssl rand -hex 32`, the same value as `GITHUB_APP_WEBHOOK_SECRET` |
+| Repository permissions | Contents: read and write. Metadata: read-only. Pull requests: read and write |
+| Subscribe to events | Repository. The installation events are always delivered |
+| Where can this app be installed | Any account, unless the gateway serves only yours |
+
+Then generate a private key on the app's page, which downloads a `.pem`, and a client secret:
+
+```bash
+bun run secret GITHUB_APP_ID
+bun run secret GITHUB_APP_SLUG
+bun run secret GITHUB_APP_PRIVATE_KEY < exeora.private-key.pem
+bun run secret GITHUB_APP_CLIENT_ID
+bun run secret GITHUB_APP_CLIENT_SECRET
+bun run secret GITHUB_APP_WEBHOOK_SECRET
+```
+
+`GITHUB_APP_SLUG` is the name in the app's public address, `github.com/apps/<slug>`. The key is accepted as GitHub downloads it (`BEGIN RSA PRIVATE KEY`) and as PKCS#8. An installation that was not given pull requests still clones and pushes: the gateway asks for a token without that permission when GitHub refuses the full one.
+
+Leave "Expire user authorization tokens" on, which is GitHub's default: the gateway renews a person's token before it runs out and stores the new pair. An account whose token GitHub stops accepting is asked to connect again, and reaches nothing through GitHub until it does.
+
+A machine's token is cut down to what the project's owner can do on GitHub: none for someone who can no longer read the repository, and read-only for someone who may not push.
+
+Connecting finishes in the browser that started it. The way back from GitHub is accepted only in a browser signed in to Exeora as the account that asked, so a link made by one person does nothing in the browser of another.
+
 ## 5. Administrators
 
 On a fresh database, the **first account to sign in becomes the admin**. That person can open the administration panel and act on every account. Protect that first sign-in the same way you would protect any root account.
@@ -144,8 +182,9 @@ Repository secrets under Settings → Secrets and variables → Actions:
 | `COOKIE_SECRET` | `openssl rand -hex 32` |
 | `REQUEST_STATE_SECRET` | `openssl rand -hex 32`, different from the cookie secret |
 | `AUDIT_MAINTENANCE_SECRET` | Random maintenance secret, also used by the nightly workflow |
+| `GH_APP_ID`, `GH_APP_SLUG`, `GH_APP_PRIVATE_KEY`, `GH_APP_CLIENT_ID`, `GH_APP_CLIENT_SECRET`, `GH_APP_WEBHOOK_SECRET` | Optional: the GitHub App, as in step 4 |
 
-The GitHub ones are named `GH_OAUTH_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads. Google secrets keep the names the Worker uses.
+The GitHub ones are named `GH_OAUTH_*` and `GH_APP_*` because GitHub refuses repository secrets whose name begins with `GITHUB_`. The workflow renames them to the names the Worker reads. Google secrets keep the names the Worker uses.
 
 Provision `AUDIT_R2_SQL_TOKEN` directly on the Worker with `bun run secret`, as described above. It is deliberately not copied into GitHub Actions; Wrangler preserves existing Worker secrets when deploying new code.
 

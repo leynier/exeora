@@ -14,6 +14,7 @@ const FAILURES: Record<string, string> = {
   denied: "GitHub was not connected: the installation was cancelled.",
   state_invalid:
     "GitHub was not connected: the request took too long or was already used. Try again.",
+  state_used: "That link was already used. Start the connection again from here.",
   session_required:
     "GitHub was not connected: finish it in the browser where you are signed in to Exeora, then try again.",
   approval_pending:

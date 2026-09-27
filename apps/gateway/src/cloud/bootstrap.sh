@@ -68,6 +68,10 @@ if (payload.credential) {
   write("gitUsername", payload.credential.username);
   fs.writeFileSync(path.join(conf, "git-token.tmp"), `${payload.credential.secret}\n`, { mode: 0o600 });
 }
+if (payload.credentialHelper) {
+  need("credentialHelper", !payload.credential && isId(payload.credentialHelper.projectId));
+  write("credentialProject", payload.credentialHelper.projectId);
+}
 __EXEORA_NODE__
 field() { cat "$FIELDS/$1"; }
 
@@ -94,6 +98,23 @@ rm -f "$CONF/config.json.lock"
 if [ ! -f "$CONF/git-token.tmp" ]; then
   rm -f "$CONF/git-token" "$CONF/git-username" "$CONF/git-credential-helper"
   git config --global --unset-all "credential.https://$(field gitHost).helper" 2>/dev/null || true
+fi
+# A project connected to GitHub keeps no token here at all: the helper is the
+# CLI, which asks the gateway for one that lasts an hour each time git wants
+# it. It runs under git, from this script and from whatever an agent starts,
+# and neither has the service's environment, so the helper names the machine
+# token and the gateway itself. Registered here, after the CLI is installed
+# and the token is in place, since the first `git ls-remote` below uses it.
+if [ ! -f "$CONF/git-token.tmp" ] && [ -f "$FIELDS/credentialProject" ]; then
+  cat > "$CONF/git-credential-helper" <<'__EXEORA_HELPER__'
+#!/bin/sh
+export EXEORA_MACHINE_TOKEN_FILE="${EXEORA_MACHINE_TOKEN_FILE:-$HOME/.config/exeora/machine-token}"
+export EXEORA_GATEWAY_URL="${EXEORA_GATEWAY_URL:-$(cat "$HOME/.exeora/fields/gatewayUrl")}"
+exec "$HOME/.local/bin/exeora" git-credential --project "$(cat "$HOME/.exeora/fields/credentialProject")" "$@"
+__EXEORA_HELPER__
+  chmod 700 "$CONF/git-credential-helper"
+  git config --global "credential.https://$(field gitHost).helper" "$CONF/git-credential-helper"
+  git config --global credential.useHttpPath false
 fi
 if [ -f "$CONF/git-token.tmp" ]; then
   mv -f "$CONF/git-token.tmp" "$CONF/git-token"

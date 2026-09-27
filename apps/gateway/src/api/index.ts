@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import "../env.js";
+import { github } from "../github/routes.js";
 import {
   hasScope,
   insufficientScope,
@@ -42,9 +43,10 @@ api.use("/api/*", async (c, next) => {
   const props = propsOf(c.executionCtx);
   const userId = props.userId;
   if (!userId) return c.json({ error: "unauthorized" }, 401);
-  // A machine token names a device, and a device has one thing to do over
-  // HTTP: open its relay socket. It carries the owner's user id only so the
-  // relay can check the device is theirs, never to act as them here.
+  // A machine token names a device, and a device has two things to do over
+  // HTTP: open its relay socket, and ask for the git credential of its own
+  // project. It carries the owner's user id only so those can check the
+  // device is theirs, never to act as them here.
   if (props.deviceId !== undefined && !isMachineApiRequest(c.req.method, c.req.path)) {
     return insufficientScope(["dashboard:manage"]);
   }
@@ -71,6 +73,7 @@ api.route("/", clients);
 api.route("/", accountClients);
 api.route("/", audit);
 api.route("/", cloud);
+api.route("/", github);
 
 // Administration panel. Mounted last so its middleware only sees /api/admin/*
 // after the shared auth middleware has already bound the caller.

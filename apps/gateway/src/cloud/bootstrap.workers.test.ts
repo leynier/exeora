@@ -43,6 +43,30 @@ describe("the bootstrap script", () => {
     expect(script).toContain("set +x");
   });
 
+  it("names the project a machine asks its credential for, and carries no token with it", () => {
+    const script = renderBootstrap({
+      gatewayUrl: "https://exeora.dev",
+      installUrl: "https://exeora.dev/linux/install.sh",
+      cliVersion: "0.17.0",
+      machineToken: "exm_0123456789abcdefghjkmn_secretsecretsecretsecretsecretsecret",
+      repoUrl: "https://github.com/leynier/exeora.git",
+      branch: "feature",
+      credentialHelper: { projectId: "prj_1" },
+      cliConfig,
+    });
+    const lines = script.split("\n");
+    const open = lines.indexOf("cat > \"$HOME/.exeora/payload.json\" <<'__EXEORA_PAYLOAD__'");
+    const payload = JSON.parse(lines[open + 1] as string);
+    expect(payload.credentialHelper).toEqual({ projectId: "prj_1" });
+    expect(payload.credential).toBeUndefined();
+    // The helper reads the project from a file: the id is in the payload
+    // (and the CLI's config beside it) and in no command of the script.
+    expect(script).toContain(
+      'git-credential --project "$(cat "$HOME/.exeora/fields/credentialProject")" "$@"',
+    );
+    expect(script.replace(lines[open + 1] as string, "")).not.toContain("prj_1");
+  });
+
   it("judges a run by its exit status and its last line", () => {
     expect(
       bootstrapSucceeded({ output: "bootstrap: done\nEXEORA_BOOTSTRAP_OK\n", exitCode: 0 }),

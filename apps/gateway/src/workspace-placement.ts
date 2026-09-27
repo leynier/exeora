@@ -9,6 +9,8 @@ import { relayName } from "./api/ops.js";
 import { explainFailure } from "./cloud/machine-errors.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
+import type { GitHubEnv } from "./github/app.js";
+import { hasProjectCredential } from "./github/credentials.js";
 import { newId } from "./ids.js";
 import {
   findLocation,
@@ -210,28 +212,34 @@ export async function prepareLocation(
         `${location.name} is still cloning the repository. Call list_projects to see when it is ready, then try again.`,
       );
     }
-    const failure = explainFailure(error instanceof Error ? error.message : String(error));
+    const said = error instanceof Error ? error.message : String(error);
+    const failure = explainFailure(said);
+    // What the machine said is already a sentence about its own clone, with
+    // the cause and what to do there. It is kept; only the kind of failure is
+    // read out of it, which is what decides the action a page offers.
+    const message = error instanceof ExeoraError && said.length > 0 ? said : failure.message;
     await putLocalLocation(env, {
       ...report,
       status: "error",
-      error: failure.message,
+      error: message,
       errorCode: failure.code,
     });
     throw new ExeoraError(
       error instanceof ExeoraError ? error.code : "TOOL_FAILED",
-      `The project could not be cloned on ${location.name}. ${failure.message}`,
+      `The project could not be cloned on ${location.name}. ${message}`,
     );
   }
 }
 
 /**
- * Whose credentials a clone should try first. The account's connection to the
- * repository's host when it has one, which a later release of the gateway
- * fills in; until then, what git on the machine already has.
+ * Whose credentials a clone should try first. The account's connection to
+ * GitHub when the project is a repository it reaches, and otherwise what git
+ * on the machine already has. Decided from the database alone: the token
+ * itself is minted when git on the machine asks for it, not here.
  */
 export async function cloneCredential(
-  _env: Pick<Env, "DB">,
-  _projectId: string,
+  env: Pick<Env, "DB"> & GitHubEnv,
+  projectId: string,
 ): Promise<RepositoryRef["credential"]> {
-  return "machine";
+  return (await hasProjectCredential(env, projectId)) ? "exeora" : "machine";
 }

@@ -18,6 +18,7 @@ import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
 import { dispatchMcpToDevice } from "./dispatch-mcp.js";
+import { githubPublic, isGitHubPublicRequest } from "./github/public.js";
 import { createProjectMcpHandler, handshakeClientInfo } from "./mcp.js";
 import { ACCOUNT_MCP_ROUTE, createAccountMcpHandler } from "./mcp-account.js";
 import { CLI_SCOPES, DASHBOARD_SCOPES } from "./oauth/clients.js";
@@ -297,8 +298,18 @@ const provider = new OAuthProvider({
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (isRateLimitedAuthRequest(request.method, new URL(request.url).pathname)) {
+    const { pathname } = new URL(request.url);
+    if (isRateLimitedAuthRequest(request.method, pathname)) {
       if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) return tooManyRequests();
+    }
+
+    // GitHub's callback and webhook, answered before the provider sees them.
+    // Both are under `/api/`, an `apiRoute` the provider refuses without an
+    // access token, and neither caller has one: the first is a browser coming
+    // back from github.com, the second is GitHub. Two exact paths and no
+    // prefix, so nothing else under `/api/` is reachable this way.
+    if (isGitHubPublicRequest(request.method, pathname)) {
+      return githubPublic.fetch(request, env, ctx);
     }
 
     return provider.fetch(request, env, ctx);

@@ -95,6 +95,8 @@ export interface GitHubRepository {
   description: string | null;
   pushedAt: number | null;
   installationId: number;
+  /** Whether the person may push to it on GitHub. Without it Exeora only ever reads. */
+  canPush?: boolean;
   /** The project that is already this repository, when the account has one. */
   projectId: string | null;
 }

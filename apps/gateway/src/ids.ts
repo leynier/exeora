@@ -22,7 +22,8 @@ export type IdPrefix =
   | "apr"
   | "adl"
   | "lsh"
-  | "loc";
+  | "loc"
+  | "ghi";
 
 export function newId(prefix: IdPrefix): string {
   const bytes = crypto.getRandomValues(new Uint8Array(LENGTH));

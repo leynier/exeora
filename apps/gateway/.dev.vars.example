@@ -29,3 +29,22 @@ EXEORA_BASE_URL=http://localhost:8787
 SPRITES_TOKEN=
 # Encrypts repository tokens at rest: openssl rand -hex 32
 CLOUD_CREDENTIALS_KEY=
+
+# GitHub App, which connects an account's repositories. Not the OAuth app
+# above: that one signs people in, this one lists and clones. All six or none,
+# and CLOUD_CREDENTIALS_KEY above with them, which encrypts the token of each
+# person who connects: with any of the seven unset the routes answer
+# `github_disabled`.
+# Create it at https://github.com/settings/apps/new with
+#   callback: http://localhost:8787/api/github/callback
+#   "Request user authorization (OAuth) during installation" checked
+#   webhook:  <a public URL>/api/github/webhook (GitHub cannot reach localhost)
+GITHUB_APP_ID=
+# The name in the app's address, github.com/apps/<slug>
+GITHUB_APP_SLUG=
+# The .pem GitHub downloads, on one line with \n for each line break
+GITHUB_APP_PRIVATE_KEY=
+GITHUB_APP_CLIENT_ID=
+GITHUB_APP_CLIENT_SECRET=
+# Any long random string, the same one typed into the app: openssl rand -hex 32
+GITHUB_APP_WEBHOOK_SECRET=

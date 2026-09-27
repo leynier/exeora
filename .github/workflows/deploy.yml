@@ -64,18 +64,31 @@ jobs:
       # value. The two Exeora Cloud secrets are optional and treated the same
       # way: listed only when the repository holds them, since wrangler-action
       # refuses a listed secret without a value, and a gateway without Cloud
-      # (or with them set directly on the Worker) must still deploy.
+      # (or with them set directly on the Worker) must still deploy. The six
+      # of the GitHub App are optional in the same way, each on its own.
       - name: Choose the Worker secrets to set
         id: worker-secrets
         env:
           SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
           CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_SLUG: ${{ secrets.GH_APP_SLUG }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GITHUB_APP_CLIENT_ID: ${{ secrets.GH_APP_CLIENT_ID }}
+          GITHUB_APP_CLIENT_SECRET: ${{ secrets.GH_APP_CLIENT_SECRET }}
+          GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.GH_APP_WEBHOOK_SECRET }}
         run: |
           {
             echo 'names<<EOF'
             printf '%s\n' GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET COOKIE_SECRET REQUEST_STATE_SECRET AUDIT_MAINTENANCE_SECRET
             if [ -n "$SPRITES_TOKEN" ]; then echo SPRITES_TOKEN; fi
             if [ -n "$CLOUD_CREDENTIALS_KEY" ]; then echo CLOUD_CREDENTIALS_KEY; fi
+            if [ -n "$GITHUB_APP_ID" ]; then echo GITHUB_APP_ID; fi
+            if [ -n "$GITHUB_APP_SLUG" ]; then echo GITHUB_APP_SLUG; fi
+            if [ -n "$GITHUB_APP_PRIVATE_KEY" ]; then echo GITHUB_APP_PRIVATE_KEY; fi
+            if [ -n "$GITHUB_APP_CLIENT_ID" ]; then echo GITHUB_APP_CLIENT_ID; fi
+            if [ -n "$GITHUB_APP_CLIENT_SECRET" ]; then echo GITHUB_APP_CLIENT_SECRET; fi
+            if [ -n "$GITHUB_APP_WEBHOOK_SECRET" ]; then echo GITHUB_APP_WEBHOOK_SECRET; fi
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -100,3 +113,10 @@ jobs:
           AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}
           SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
           CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}
+          # The GitHub App, under GH_APP_* for the same reason as GH_OAUTH_*.
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_SLUG: ${{ secrets.GH_APP_SLUG }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GITHUB_APP_CLIENT_ID: ${{ secrets.GH_APP_CLIENT_ID }}
+          GITHUB_APP_CLIENT_SECRET: ${{ secrets.GH_APP_CLIENT_SECRET }}
+          GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.GH_APP_WEBHOOK_SECRET }}

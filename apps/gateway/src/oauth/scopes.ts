@@ -42,12 +42,18 @@ export function hasEveryScope(
   return scopes.every((scope) => hasScope(props, scope));
 }
 
+/** Where git on a machine asks for the token it clones and pushes with. */
+const GIT_CREDENTIAL = /^\/api\/projects\/[^/]+\/git-credential$/;
+
 /**
- * The one route a cloud machine's token may reach: its own relay socket.
- * Everything else on the API belongs to the person, and a machine token
- * carrying their user id must not become a way to act as them.
+ * The two routes a cloud machine's token may reach: its own relay socket, and
+ * the git credential of a project, which the route itself narrows to the one
+ * project the machine was made for. Everything else on the API belongs to the
+ * person, and a machine token carrying their user id must not become a way to
+ * act as them.
  */
 export function isMachineApiRequest(method: string, path: string): boolean {
+  if (method === "POST") return GIT_CREDENTIAL.test(path);
   return method === "GET" && /^\/api\/relay\/[^/]+$/.test(path);
 }
 
@@ -60,9 +66,16 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
   }
   if (method === "GET") {
     return (
-      ["/api/me", "/api/devices", "/api/machines", "/api/projects", "/api/tool-calls"].includes(
-        path,
-      ) ||
+      [
+        "/api/me",
+        "/api/devices",
+        "/api/machines",
+        "/api/projects",
+        "/api/tool-calls",
+        // `exeora project add` offers the repositories of a connected account.
+        "/api/github",
+        "/api/github/repositories",
+      ].includes(path) ||
       /^\/api\/projects\/[^/]+\/workspaces$/.test(path) ||
       /^\/api\/projects\/[^/]+\/locations$/.test(path) ||
       /^\/api\/relay\/[^/]+$/.test(path)
@@ -73,7 +86,9 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
       path === "/api/devices" ||
       path === "/api/projects" ||
       // `exeora project add --on` puts a project on another of the person's machines.
-      /^\/api\/projects\/[^/]+\/locations$/.test(path)
+      /^\/api\/projects\/[^/]+\/locations$/.test(path) ||
+      // `exeora git-credential`, for a clone on the person's own machine.
+      GIT_CREDENTIAL.test(path)
     );
   }
   if (method === "PUT") {

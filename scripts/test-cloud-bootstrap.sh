@@ -16,12 +16,18 @@ fail() { printf 'test-cloud-bootstrap: %s\n' "$*" >&2; exit 1; }
 
 # curl serves the installer, which is what install.sh would be minus the
 # download: an `exeora` that answers --version and records how it was run.
+# As a credential helper it answers with a token that is not one, and records
+# what it was asked and as whom, which is all the real one needs to be given.
 cat > "$root/installer.sh" <<'EOF_INSTALLER'
 mkdir -p "$EXEORA_INSTALL_DIR"
 {
   echo '#!/bin/sh'
   echo 'case "$1" in'
   echo "  --version) echo \"exeora $EXEORA_VERSION\" ;;"
+  echo '  git-credential)'
+  echo '    printf "%s\n" "$@" "token-file=${EXEORA_MACHINE_TOKEN_FILE:-}" "gateway=${EXEORA_GATEWAY_URL:-}" >> "$HOME/.exeora/credential-args"'
+  echo '    [ "$4" = get ] && printf "username=x-access-token\npassword=ghs_fake\n"'
+  echo '    exit 0 ;;'
   echo '  *) printf "%s\n" "$@" > "$HOME/.exeora/connect-args" ;;'
   echo 'esac'
 } > "$EXEORA_INSTALL_DIR/exeora"
@@ -59,10 +65,14 @@ REPO_URL="https://example.test/widgets.git"
 TOKEN="exm_abcdefghijklmnopqrstuv_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
 
 payload() {
-  # $1 branch, $2 createBranchFrom ("" for none), $3 machine token, $4 "public" for no credential
+  # $1 branch, $2 createBranchFrom ("" for none), $3 machine token,
+  # $4 "public" for no credential, "helper" for a project connected to GitHub,
+  # "both" for a payload the gateway never sends
   local from="" credential=',"credential":{"username":"x-access-token","secret":"ghp_test"}'
   [ -n "$2" ] && from=",\"createBranchFrom\":\"$2\""
   [ "${4:-}" = public ] && credential=""
+  [ "${4:-}" = helper ] && credential=',"credentialHelper":{"projectId":"prj_test"}'
+  [ "${4:-}" = both ] && credential="$credential"',"credentialHelper":{"projectId":"prj_test"}'
   cat <<EOF_PAYLOAD
 {"gatewayUrl":"https://exeora.test","installUrl":"https://exeora.test/linux/install.sh","cliVersion":"1.2.3","machineToken":"$3","repoUrl":"$REPO_URL","branch":"$1"$from$credential,"cliConfig":{"gatewayUrl":"https://exeora.test","deviceId":"dev_test","deviceName":"cloud-test","projects":[{"id":"prj_test","slug":"widgets","name":"Widgets","root":"/home/sprite/workspace"}],"workspaces":[],"workspaceRoot":"/home/sprite/workspaces"}}
 EOF_PAYLOAD
@@ -134,6 +144,43 @@ bootstrap "$home_a" "$(payload feature/new main "$TOKEN" public)" >/dev/null
 [ ! -e "$home_a/.config/exeora/git-credential-helper" ] || fail "stale helper kept"
 if HOME="$home_a" git config --global credential.https://example.test.helper >/dev/null 2>&1; then
   fail "stale helper still configured"
+fi
+
+# A project connected to GitHub keeps no token on the machine: git is wired
+# to the CLI, which is told the project and finds the machine token itself,
+# with none of the service's environment around it.
+home_k="$root/machine-k"
+out="$(bootstrap "$home_k" "$(payload feature/new main "$TOKEN" helper)")"
+[ "$(printf '%s\n' "$out" | tail -n 1)" = "EXEORA_BOOTSTRAP_OK" ] || fail "no sentinel with a helper: $out"
+[ ! -e "$home_k/.config/exeora/git-token" ] || fail "a token was written beside the helper"
+helper="$(HOME="$home_k" git config --global credential.https://example.test.helper)"
+[ "$helper" = "$home_k/.config/exeora/git-credential-helper" ] || fail "exeora helper not wired: $helper"
+[ "$(stat -c %a "$home_k/.config/exeora/git-credential-helper")" = "700" ] || fail "helper mode"
+asked="$(printf 'protocol=https\nhost=example.test\n\n' | env -u EXEORA_MACHINE_TOKEN_FILE -u EXEORA_GATEWAY_URL HOME="$home_k" "$home_k/.config/exeora/git-credential-helper" get)"
+[ "$asked" = "$(printf 'username=x-access-token\npassword=ghs_fake')" ] || fail "exeora helper output: $asked"
+[ "$(tail -n 6 "$home_k/.exeora/credential-args")" = "$(printf 'git-credential\n--project\nprj_test\nget\ntoken-file=%s\ngateway=https://exeora.test' "$home_k/.config/exeora/machine-token")" ] \
+  || fail "exeora helper was not run as the machine: $(cat "$home_k/.exeora/credential-args")"
+# Git itself reaches it, and gets the credential, for the repository's host.
+got="$(printf 'protocol=https\nhost=example.test\n\n' | HOME="$home_k" PATH="$fake_bin:$PATH" GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 git credential fill)"
+printf '%s\n' "$got" | grep -qx 'password=ghs_fake' || fail "git did not get the credential from the helper: $got"
+run_service "$home_k"
+[ "$(git -C "$home_k/workspace" branch --show-current)" = "feature/new" ] || fail "no checkout on a machine with a helper"
+
+# A machine that had a token and is retried once the project is connected
+# ends with the helper and without the token; one that is retried after the
+# connection was lost ends with neither.
+bootstrap "$home_a" "$(payload feature/new main "$TOKEN")" >/dev/null
+bootstrap "$home_a" "$(payload feature/new main "$TOKEN" helper)" >/dev/null
+[ ! -e "$home_a/.config/exeora/git-token" ] || fail "the stored token outlived the connection"
+grep -q 'git-credential --project' "$home_a/.config/exeora/git-credential-helper" || fail "the token helper was not replaced"
+bootstrap "$home_a" "$(payload feature/new main "$TOKEN" public)" >/dev/null
+[ ! -e "$home_a/.config/exeora/git-credential-helper" ] || fail "the exeora helper outlived the connection"
+[ ! -e "$home_a/.exeora/fields/credentialProject" ] || fail "the project of a helper that is gone was kept"
+
+# A token and a helper together is a payload the gateway never sends.
+home_l="$root/machine-l"
+if bootstrap "$home_l" "$(payload main "" "$TOKEN" both)" >/dev/null 2>&1; then
+  fail "a payload with a token and a helper was accepted"
 fi
 
 # A branch the remote already has is checked out as it is.

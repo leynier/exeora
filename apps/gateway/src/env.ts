@@ -80,6 +80,34 @@ declare global {
     CLOUD_CREDENTIALS_KEY?: string;
 
     /**
+     * The Exeora GitHub App, which is how an account connects its repositories:
+     * installed once on a person or an organisation, it lets the gateway list
+     * what it was given and clone with tokens that live an hour.
+     *
+     * A different thing from `GITHUB_CLIENT_ID` above, which is the OAuth App
+     * that signs people in and knows nothing about repositories. All six are
+     * needed together, and `CLOUD_CREDENTIALS_KEY` with them: what a person
+     * may reach is asked of GitHub with their own token, and without the key
+     * there is nowhere safe to keep it. With any of them unset the connection
+     * is off: the routes answer `github_disabled` and a project clones with
+     * whatever git on the machine has, which is how a gateway ran before this
+     * existed.
+     */
+    GITHUB_APP_ID?: string;
+    /** The app's name in its public address, `github.com/apps/<slug>`. */
+    GITHUB_APP_SLUG?: string;
+    /**
+     * The app's private key as PEM. PKCS#8 is what WebCrypto reads; PKCS#1
+     * (`BEGIN RSA PRIVATE KEY`) is what GitHub hands out, and is accepted too.
+     */
+    GITHUB_APP_PRIVATE_KEY?: string;
+    /** Exchanges the code GitHub sends back after an installation for the person who made it. */
+    GITHUB_APP_CLIENT_ID?: string;
+    GITHUB_APP_CLIENT_SECRET?: string;
+    /** HMAC key GitHub signs every webhook delivery with. */
+    GITHUB_APP_WEBHOOK_SECRET?: string;
+
+    /**
      * Injected into `env` by OAuthProvider before it calls either handler.
      * Declared here so there is a single Env type across the Worker rather
      * than an intersection that has to be threaded through every helper.

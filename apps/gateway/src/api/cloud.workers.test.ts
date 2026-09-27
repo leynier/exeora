@@ -1,7 +1,8 @@
 import { createExecutionContext, env, runInDurableObject } from "cloudflare:test";
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
+import { replaceOutbound } from "../github/outbound.js";
 import { api } from "./index.js";
 
 /**
@@ -43,7 +44,23 @@ const project = (slug: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+// A project made without naming its branch asks the repository for it. Every
+// repository here answers `main`, which is what these tests were written for.
+const SHA = "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d";
+const pkt = (line: string) => `${(line.length + 4).toString(16).padStart(4, "0")}${line}`;
+const ADVERTISEMENT = `${pkt("# service=git-upload-pack\n")}0000${pkt(
+  `${SHA} HEAD\0symref=HEAD:refs/heads/main agent=git/2\n`,
+)}0000`;
+let restoreOutbound: (() => void) | undefined;
+afterEach(() => restoreOutbound?.());
+
 beforeEach(async () => {
+  restoreOutbound = replaceOutbound(
+    async () =>
+      new Response(ADVERTISEMENT, {
+        headers: { "content-type": "application/x-git-upload-pack-advertisement" },
+      }),
+  );
   const database = db(env);
   for (const id of [ADMIN, ENABLED, PLAIN]) {
     await database.delete(schema.users).where(eq(schema.users.id, id)).run();

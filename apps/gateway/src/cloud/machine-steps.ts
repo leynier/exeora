@@ -65,6 +65,12 @@ export interface ProvisionInput {
   branch: string;
   createBranchFrom?: string | undefined;
   cliConfig: CloudCliConfig;
+  /**
+   * Set for a project connected to GitHub: git on the machine asks the
+   * gateway for a token through the CLI, for this project, instead of reading
+   * one that was written there.
+   */
+  credentialHelper?: { projectId: string } | undefined;
   secrets: {
     machineToken: string;
     credential?: { username: string; secret: string } | undefined;
@@ -146,6 +152,7 @@ async function bootstrap(context: StepContext, record: MachineRecord): Promise<S
     branch: input.branch,
     createBranchFrom: input.createBranchFrom,
     credential: secrets.credential,
+    credentialHelper: input.credentialHelper,
     cliConfig: input.cliConfig,
   });
   const result = await execSprite(

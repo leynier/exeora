@@ -8,6 +8,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { planOf } from "../api/plan.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
+import { linkProjectStatement, type RepositoryLink } from "../github/links.js";
 import { newId } from "../ids.js";
 import { limitsFor, type PlanId } from "../plans.js";
 import { type CloudEnv, cloudAccess, spriteNameFor } from "./access.js";
@@ -54,6 +55,8 @@ export async function createCloudProject(
     repoUrl: string;
     defaultBranch: string;
     credential?: Credential | undefined;
+    /** The repository it is on GitHub, which the caller checked its owner can read. */
+    github?: RepositoryLink | undefined;
   },
 ): Promise<{ projectId: string; deviceId: string } | ProvisionError> {
   // Checked here and not only at the routes: the workspace tools reach this
@@ -140,6 +143,8 @@ export async function createCloudProject(
       `INSERT INTO project_locations (id, project_id, user_id, kind, device_id, local_path, status)
        SELECT ?1, ?2, ?3, 'cloud', ?4, ?5, 'ready' FROM projects WHERE id = ?2`,
     ).bind(newId("loc"), projectId, userId, deviceId, CLOUD_WORKSPACE_ROOT),
+    // In the batch, so the machine started below already finds the link.
+    ...(input.github ? [linkProjectStatement(env, userId, projectId, input.github)] : []),
   ]);
 
   if ((results[0]?.meta.changes ?? 0) === 0) {
