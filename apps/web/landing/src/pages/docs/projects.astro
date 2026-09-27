@@ -120,7 +120,7 @@ exeora workspace create fix/login --project api --on cloud</pre>
   <p>Deleting the machine settles it for every project that lived there:</p>
 
   <ul>
-    <li><strong>A project that lives on another machine stays</strong>, and its default moves there. A copy that is ready is preferred to one that is not cloned yet, and the oldest location wins a tie.</li>
+    <li><strong>A project that lives on another machine stays</strong>, and its default moves there. A copy that is ready is preferred to one that is not cloned yet, then a machine of yours to Exeora Cloud, and then the oldest location.</li>
     <li><strong>A project that lived only on that machine goes with it</strong>, along with its activity history. The files on the machine are not deleted.</li>
     <li><strong>A project that is also on Exeora Cloud stays.</strong> When Cloud is the only other place it lives, Cloud is given an instance for the project root and becomes the default. If that instance cannot be made, because the plan has no room for it for example, the machine is not deleted and the dashboard says why.</li>
   </ul>

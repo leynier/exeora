@@ -64,7 +64,7 @@ beforeEach(async () => {
 });
 
 /** A CLI on the desktop that clones when asked and makes what it is told to. */
-async function desktop() {
+async function desktop(answers: { tool?: () => unknown } = {}) {
   const response = await env.DEVICE_RELAY.getByName(relayName(USER, DESKTOP)).fetch(
     new Request(`https://relay/connect?deviceId=${DESKTOP}`, { headers: { Upgrade: "websocket" } }),
   );
@@ -122,7 +122,7 @@ async function desktop() {
             type: "tool.result",
             requestId: message.requestId,
             durationMs: 1,
-            result: { ok: true, value: { outcome: "removed" } },
+            result: (answers.tool?.() ?? { ok: true, value: { outcome: "removed" } }) as never,
           }),
         );
       }
@@ -254,6 +254,42 @@ describe("a workspace made from the dashboard", () => {
       error: "LOCAL_EXECUTOR_OFFLINE",
       unforced: false,
     });
+  });
+
+  it("offers forcing for a working copy with changes, whatever code the machine used", async () => {
+    await db(env)
+      .insert(schema.workspaces)
+      .values({
+        id: "wsp_wc_dirty",
+        projectId: PROJECT,
+        slug: "fix-d",
+        name: "fix/d",
+        branch: "fix/d",
+        localPath: "/home/me/worktrees/api/fix-d",
+        managed: true,
+        deviceId: DESKTOP,
+      })
+      .run();
+    const cli = await desktop({
+      tool: () => ({
+        ok: false,
+        error: {
+          code: "INVALID_ARGUMENTS",
+          message: "fix-d has uncommitted changes. Pass force: true to remove it anyway.",
+        },
+      }),
+    });
+
+    const response = await call(`/api/projects/${PROJECT}/workspaces/wsp_wc_dirty/remove`, {});
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "INVALID_ARGUMENTS",
+      // Said to a person, who is given a button and no argument to pass.
+      message: "fix-d has uncommitted changes.",
+      unforced: true,
+    });
+    cli.socket.close(1000, "done");
   });
 
   it("does not remove a workspace of somebody else's project", async () => {

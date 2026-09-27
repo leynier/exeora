@@ -49,12 +49,25 @@ describe("what GitHub says of a person and a repository", () => {
     await env.OAUTH_KV.delete(accessCacheKey(USER, REPO));
     const refused = answering(() =>
       Response.json(
-        { message: "Resource not accessible by integration", status: "403" },
+        { message: "You must have read access to this repository.", status: "403" },
         { status: 403 },
       ),
     );
     expect(await ask(refused.fetcher)).toEqual({ pull: false, push: false });
     expect(await kept()).toEqual({ pull: false, push: false });
+  });
+
+  it("does not take the app lacking a permission for the person lacking access", async () => {
+    // GitHub's words for a token that may not do something. The person can
+    // still read the repository, and a link taken away here would stay gone.
+    const lacking = answering(() =>
+      Response.json({ message: "Resource not accessible by integration" }, { status: 403 }),
+    );
+
+    const error = await ask(lacking.fetcher).catch((thrown) => thrown);
+
+    expect(error).toBeInstanceOf(GitHubError);
+    expect(await kept()).toBeNull();
   });
 
   it("is no answer at all when GitHub is limiting requests, with or without a header to say so", async () => {

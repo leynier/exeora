@@ -300,7 +300,9 @@ workspaceCreate.post(
         .replace(/\s*Pass force[^.]*\./i, "")
         .replace(/,? or pass force[^.]*\./i, ".")
         .trim();
-      const unforced = !body.force && code === "TOOL_FAILED";
+      // The machine says so itself: a refusal that forcing answers names
+      // `force`, whatever code it came under, and no other refusal does.
+      const unforced = !body.force && /\bforce\b/i.test(error.message);
       return c.json({ error: code, message, unforced }, status);
     }
   },

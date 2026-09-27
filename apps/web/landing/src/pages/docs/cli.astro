@@ -219,8 +219,10 @@ exeora project remove api</pre>
     project of the account with its repository, and under it each location with its state and its
     path, the default marked with <code>*</code>. <code>locations add</code> clones nothing: the
     first workspace made in that location brings the copy. <code>locations remove</code> and{" "}
-    <code>project remove</code> ask first unless <code>-y</code> is given, never delete files on
-    your machines, and destroy the instances on Exeora Cloud.
+    <code>project remove</code> ask first unless <code>-y</code> is given, and never delete files
+    on your machines. Removing a machine of yours as a location forgets that copy and leaves every
+    other location alone. Removing Exeora Cloud as a location, or removing the project, destroys
+    its instances there.
   </p>
 
   <p>

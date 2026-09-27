@@ -60,10 +60,13 @@ export async function repositoryAccess(
  *
  * Only a definite answer is a verdict, because a verdict is remembered and
  * takes a project's link away. "Not found" is one: it is what GitHub says of
- * a repository the person may not see. 403 is one only when it says so in
- * words, since 403 is also how GitHub says "too many requests", and the
- * second kind of limit arrives with no header to tell it by. Everything else
- * is GitHub failing to answer, which is thrown, kept nowhere, and tried again.
+ * a repository the person may not see. 403 is one only when it says, in
+ * words, that the person is not let in, since 403 is also how GitHub says
+ * "too many requests", and the second kind of limit arrives with no header to
+ * tell it by. "Resource not accessible by integration" is not among those
+ * words: it is about what the app's token may do, not about the person.
+ * Everything else is GitHub failing to answer, which is thrown, kept nowhere,
+ * and tried again.
  */
 async function read(response: Response): Promise<RepositoryAccess> {
   if (response.ok) {
@@ -92,8 +95,7 @@ async function read(response: Response): Promise<RepositoryAccess> {
 /** How GitHub words either of its limits, whatever headers came with it. */
 const LIMITED = /rate limit|abuse detection|too many requests/i;
 /** How it words a person not being let in. */
-const REFUSED =
-  /resource not accessible|not accessible by|must have .{0,40}access|do(es)? not have (access|permission)/i;
+const REFUSED = /must have .{0,40}access|do(es)? not have (access|permission)/i;
 
 function unanswered(status: number): GitHubError {
   return new GitHubError(
