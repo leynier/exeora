@@ -281,13 +281,17 @@ impl CloneContext {
 
 type Outcome = Result<Prepared, (ErrorCode, String)>;
 
-/// The clones running in this process, one per project at most.
+/// The clones running in this process, one per project of a machine at most.
 ///
 /// A clone belongs to the machine, not to the call that asked for it: the
 /// relay gives a call about five minutes and a large repository takes longer.
 /// So the work runs in a task of its own and the call only waits for it. A
 /// call that is cancelled or runs out of time answers with its error and the
 /// clone goes on, reporting to the gateway how it ended.
+///
+/// They are told apart by the configuration they write to as well as by the
+/// project: two machines in one process, which is what tests are, would
+/// otherwise answer each other's calls.
 #[derive(Default)]
 pub struct Cloner {
     running: StdMutex<HashMap<String, watch::Receiver<Option<Outcome>>>>,
@@ -299,7 +303,7 @@ static SHARED: LazyLock<Arc<Cloner>> = LazyLock::new(|| Arc::new(Cloner::default
 /// that was dropped or panicked does not leave every later call waiting.
 struct Running {
     cloner: Arc<Cloner>,
-    project_id: String,
+    key: String,
 }
 
 impl Drop for Running {
@@ -308,7 +312,7 @@ impl Drop for Running {
             .running
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
-            .remove(&self.project_id);
+            .remove(&self.key);
     }
 }
 
@@ -346,20 +350,21 @@ impl Cloner {
         validate_project_id(project_id)?;
         validate_slug(&repository.slug)?;
         let name = repository.name.clone();
+        let key = format!("{}\n{project_id}", context.config_path.display());
         let mut receiver = {
             let mut running = self
                 .running
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner());
-            match running.get(project_id) {
+            match running.get(&key) {
                 // A second request for the same project waits for the first.
                 Some(receiver) => receiver.clone(),
                 None => {
                     let (sender, receiver) = watch::channel(None);
-                    running.insert(project_id.to_owned(), receiver.clone());
+                    running.insert(key.clone(), receiver.clone());
                     let guard = Running {
                         cloner: self.clone(),
-                        project_id: project_id.to_owned(),
+                        key,
                     };
                     let project_id = project_id.to_owned();
                     tokio::spawn(async move {
