@@ -8,13 +8,13 @@ import {
 } from "../account-access.js";
 import { rememberAuthorization } from "../clients.js";
 import { db, schema } from "../db/client.js";
-import { isDashboardClient } from "./clients.js";
 import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
 import {
   abandonParkedDeviceGrant,
   deviceCallbackSession,
   refuseUnboundDeviceGrant,
 } from "./device-continue.js";
+import { extensionConsent, rememberExtensionConsent, skipsConsent } from "./extension.js";
 import { accountConsentPage, consentPage, deviceDonePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
@@ -63,7 +63,7 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
       .get();
 
     if (user) {
-      if (await isDashboardClient(c.env, authRequest.clientId)) {
+      if (await skipsConsent(c.env, authRequest.clientId, userId)) {
         const { redirectTo } = await complete(c.env, authRequest, userId);
         return c.redirect(redirectTo);
       }
@@ -180,7 +180,7 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
     const user = await resolveUser(db(c.env), provider.id, identity, c.env.ADMIN_EMAILS);
     await setSession(c, user.id);
 
-    if (await isDashboardClient(c.env, pending.authRequest.clientId)) {
+    if (await skipsConsent(c.env, pending.authRequest.clientId, user.id)) {
       // Claimed rather than left parked, so the entry cannot be replayed.
       const claimed = await claimAuthorization(c.env, state);
       if (!claimed) return c.html(errorPage("This sign-in has expired. Start again."), 400);
@@ -359,6 +359,7 @@ async function complete(
   const scope = authScopeFromResource(authRequest.resource);
   const scopes = await grantedScopes(env, authRequest);
   const identity = { clientName: client?.clientName, clientUri: client?.clientUri };
+  const extension = await rememberExtensionConsent(env, authRequest.clientId, userId);
 
   const projectId =
     scope?.kind === "project" ? await ownedProjectId(env, scope.projectId, userId) : null;
@@ -388,6 +389,8 @@ async function complete(
     request: authRequest,
     userId,
     scope: scopes,
+    // Each Chrome signed in is a session of its own; one must not end another.
+    ...(extension ? { revokeExistingGrants: false } : {}),
     // `projectId` is here because a grant summary does not carry the resource
     // it was issued for, and revoking one client's access to one project means
     // finding exactly the grants that named it. `projectIds` is the same fact
@@ -426,6 +429,8 @@ export async function askForConsent(
 ) {
   const { authRequest, userId, userEmail, state } = options;
   const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId);
+  const extension = await extensionConsent(env, authRequest.clientId, { client, userEmail, state });
+  if (extension) return extension;
   const scope = authScopeFromResource(authRequest.resource);
   const common = {
     client,

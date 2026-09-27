@@ -402,3 +402,13 @@ export interface Approval {
   requestedAt: number;
   expiresAt: number;
 }
+
+/** Exeora for Chrome on this account. */
+export interface ExtensionStatus {
+  /** False on a gateway that names no extension id. */
+  enabled: boolean;
+  /** When the account approved it; null when it has not, or it was revoked. */
+  since: number | null;
+  /** Side panels holding a session right now, one per signed-in Chrome. */
+  sessions: number;
+}

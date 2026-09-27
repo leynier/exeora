@@ -18,6 +18,8 @@
       "!**/dist",
       "!**/public",
       "!**/.astro",
+      "!**/.output",
+      "!**/.wxt",
       "!**/.wrangler",
       "!crates/exeora-cli/protocol/*.json",
       "!**/worker-configuration.d.ts"

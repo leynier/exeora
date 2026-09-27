@@ -15,6 +15,7 @@ import {
   rootSelector,
 } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
+import { firstPartyOrigin } from "../oauth/clients.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -196,7 +197,11 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
   const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
   if (!target) return c.json({ error: "not_found" }, 404);
   const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, target.deviceId));
-  const origin = new URL(c.env.EXEORA_BASE_URL).origin;
+  // Bound to the UI that asked: the side panel's socket comes from the
+  // extension's origin, the dashboard's from the gateway's. A request from
+  // neither still gets the gateway's, which is what it always did.
+  const origin =
+    firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
   const ticket = await relay.createTerminalTicket(
     projectId,
     target.workspaceId,

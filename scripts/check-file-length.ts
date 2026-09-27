@@ -14,8 +14,10 @@ const MAX_LINES = 500;
 const SKIP_DIRS = new Set([
   ".git",
   ".astro",
+  ".output",
   ".vite",
   ".wrangler",
+  ".wxt",
   "bin",
   "dist",
   "docs",

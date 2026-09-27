@@ -1,6 +1,6 @@
 import type { AuthRequest } from "@cloudflare/workers-oauth-provider";
 import { peekMethod } from "../mcp.js";
-import { CLI_SCOPES, DASHBOARD_SCOPES, isCliClient, isDashboardClient } from "./clients.js";
+import { CLI_SCOPES, DASHBOARD_SCOPES, isCliClient, isFirstPartyUiClient } from "./clients.js";
 
 export const MCP_SCOPES = ["tools:read", "tools:execute"] as const;
 
@@ -26,7 +26,7 @@ export async function grantedScopes(
 }
 
 async function allowedScopes(env: Pick<Env, "OAUTH_KV">, clientId: string): Promise<OAuthScope[]> {
-  if (await isDashboardClient(env, clientId)) return [...DASHBOARD_SCOPES];
+  if (await isFirstPartyUiClient(env, clientId)) return [...DASHBOARD_SCOPES];
   if (await isCliClient(env, clientId)) return [...CLI_SCOPES];
   return [...MCP_SCOPES];
 }

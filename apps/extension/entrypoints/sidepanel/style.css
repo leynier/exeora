@@ -1,0 +1,15 @@
+@import "../../../web/dashboard/src/index.css";
+
+/* The dashboard's components live outside this package, and Tailwind only
+   generates the classes it finds in the files it scans. */
+@source "../../../web/dashboard/src";
+@source "../../lib";
+@source "./";
+
+/* Chrome gives every extension page a body font and size of its own, which
+   would win over the ones the dashboard sets on html. Unlayered, so this
+   wins over both. */
+body {
+  font-family: inherit;
+  font-size: inherit;
+}

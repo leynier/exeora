@@ -1,0 +1,25 @@
+import { configureApiSession } from "@dashboard/api.js";
+import { createAuth } from "./auth.js";
+
+/** The gateway this build talks to, fixed by `wxt.config.ts`. */
+export const GATEWAY = import.meta.env.EXEORA_GATEWAY_URL;
+
+export const auth = createAuth({
+  gateway: GATEWAY,
+  fetch: (input, init) => fetch(input, init),
+  local: browser.storage.local,
+  session: browser.storage.session,
+  identity: {
+    getRedirectURL: () => browser.identity.getRedirectURL(),
+    launchWebAuthFlow: (options) => browser.identity.launchWebAuthFlow(options),
+  },
+  now: () => Date.now(),
+});
+
+// Every screen borrowed from the dashboard calls the gateway through this.
+configureApiSession({ origin: GATEWAY, token: () => auth.token() });
+
+/** The same place in the full dashboard, in a tab of its own. */
+export function openDashboard(path: string): void {
+  void browser.tabs.create({ url: `${GATEWAY}/dashboard${path}` });
+}

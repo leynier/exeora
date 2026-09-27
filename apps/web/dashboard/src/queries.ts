@@ -29,6 +29,7 @@ export const keys = {
   terminals: ["terminals"] as const,
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
+  extension: ["extension"] as const,
   approvals: ["approvals"] as const,
   github: ["github"] as const,
   githubStatus: ["github", "status"] as const,
@@ -87,6 +88,8 @@ const LIVE = 15_000;
 const URGENT = 3_000;
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: api.me });
+
+export const useExtension = () => useQuery({ queryKey: keys.extension, queryFn: api.extension });
 
 /**
  * Admin queries stay quiet until `/api/me` confirms the allow-list. That keeps

@@ -388,6 +388,47 @@ export function deviceDonePage(outcome: "authorized" | "denied") {
   );
 }
 
+/**
+ * The consent screen for Exeora's Chrome extension.
+ *
+ * Its own screen because it asks for something no MCP client is given: the
+ * dashboard's reach over the whole account rather than tools in one project.
+ * Asked once per account; revoking the extension from Settings asks again.
+ */
+export function extensionConsentPage(options: {
+  client: ClientInfo | null;
+  userEmail: string;
+  state: string;
+}) {
+  const name = options.client?.clientName ?? "Exeora for Chrome";
+
+  return layout(
+    "Authorize",
+    html`
+      <div class="card">
+        <h1>Authorize ${name}</h1>
+        <p class="lede">The side panel is asking to work on your Exeora account from Chrome.</p>
+
+        <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
+
+        <div class="warn">
+          This lets <strong>${name}</strong> review, stage, commit, push and discard changes, and
+          open terminals, in every project on this account, on whichever machine serves it. It stays
+          signed in, across restarts, until you sign out of the panel or revoke it from Settings.
+        </div>
+
+        <form method="post" action="/oauth/approve">
+          <input type="hidden" name="state" value="${options.state}" />
+          <button class="btn" type="submit" name="decision" value="approve">Authorize</button>
+          <button class="btn secondary" type="submit" name="decision" value="deny">Cancel</button>
+        </form>
+      </div>
+
+      <p class="foot">You will only be asked this once. Revoke it at any time from Settings.</p>
+    `,
+  );
+}
+
 export function errorPage(message: string) {
   return layout(
     "Something went wrong",

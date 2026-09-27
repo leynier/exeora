@@ -209,6 +209,20 @@ One gateway is active at a time. Switching forgets the machine registration, the
 
 `EXEORA_GATEWAY_URL` still works and outranks the stored value, which makes it the right tool for one shell or one command rather than for living on a self-hosted gateway.
 
+## 9. Exeora for Chrome (optional)
+
+The Chrome extension signs in against one gateway, fixed when it is built, and the gateway only sends a sign-in to the extension ids it names. Build it for yours, then name its id in `apps/gateway/wrangler.jsonc`:
+
+```bash
+EXEORA_GATEWAY_URL=https://your.example.com bun run ext:build
+```
+
+```jsonc
+"EXEORA_EXTENSION_IDS": "helnfgncjgikiojakjdfppmmflbdjamo"
+```
+
+That is the id the committed key gives an unpacked build. A build published to the Chrome Web Store gets its own id; list both, comma separated. An empty value turns the extension off, and its sign-in page answers 404.
+
 ## Local development
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md).
