@@ -43,6 +43,13 @@ case "\$*" in *--unix-socket*) echo "\$*" >> "$root/hold-calls"; exit 0 ;; esac
 echo "\$*" >> "$root/curl-calls"
 cat "$root/installer.sh"
 EOF_CURL
+# git-lfs, as git runs it for `git lfs`: it records where it was asked to set
+# itself up, which is all the real one needs to be told.
+cat > "$fake_bin/git-lfs" <<EOF_LFS
+#!/usr/bin/env sh
+printf '%s %s\n' "\$(pwd)" "\$*" >> "$root/lfs-calls"
+EOF_LFS
+chmod +x "$fake_bin/git-lfs"
 # No root here: the script has to keep going without memory limits.
 printf '#!/usr/bin/env sh\nexit 1\n' > "$fake_bin/sudo"
 chmod +x "$fake_bin/curl" "$fake_bin/sudo"
@@ -140,6 +147,8 @@ run_service "$home_a"
 [ "$(git -C "$home_a/workspace" rev-parse HEAD)" = "$(git -C "$seed" rev-parse main)" ] || fail "not started from main"
 git -C "$origin" show-ref --quiet refs/heads/feature/new && fail "the new branch was pushed"
 grep -qx -- '--cloud' "$home_a/.exeora/connect-args" || fail "connect --cloud not run"
+# The checkout was given the hook that pushes what it keeps in LFS.
+grep -qx -- "$home_a/workspace install" "$root/lfs-calls" || fail "git-lfs was not set up in the checkout: $(cat "$root/lfs-calls" 2>/dev/null)"
 grep -q "tasks/exeora-setup" "$root/hold-calls" || fail "the machine was not held awake for the clone"
 # The refresher, a subshell of run.sh, did not outlive it.
 if pgrep -f "$home_a/.exeora/run.sh" >/dev/null 2>&1; then fail "hold refresher left running"; fi

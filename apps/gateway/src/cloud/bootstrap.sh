@@ -268,6 +268,13 @@ if [ ! -f "$READY" ]; then
 else
   git -C "$WS" fetch --prune origin || echo "run: fetch failed, continuing with the local checkout" >&2
 fi
+# A repository that keeps files in LFS pushes them through a hook of its own,
+# which git-lfs puts in the checkout and nowhere else. Without it a push sends
+# the pointer and leaves the file on this machine. Asked for on every start,
+# since a cold wake does not clone again, and never a reason to stop.
+if command -v git-lfs >/dev/null 2>&1; then
+  git -C "$WS" lfs install >/dev/null 2>&1 || echo "run: git-lfs could not set its hooks, continuing" >&2
+fi
 # The refresher must not outlive this script: exec keeps the pid, not the
 # children, and a stray refresher would hold the machine awake for good.
 kill "$HOLDER" 2>/dev/null || true
