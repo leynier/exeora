@@ -264,7 +264,8 @@ function BackIcon() {
   );
 }
 
-function NavIcon({ name }: { name: NavIconName }) {
+/** Exported for the places that name a section outside the rail, such as a tab. */
+export function NavIcon({ name }: { name: NavIconName }) {
   return (
     <svg
       viewBox="0 0 24 24"

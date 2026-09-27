@@ -99,6 +99,9 @@ me.get("/api/me", async (c) => {
     // than written into the dashboard so it follows `EXEORA_BASE_URL` in
     // development, exactly as every project's own URL does.
     accountMcpUrl: new URL(ACCOUNT_MCP_ROUTE, c.env.EXEORA_BASE_URL).toString(),
+    // The release a machine should be running, so the dashboard can say which
+    // of them are behind without asking each one.
+    latestCliVersion: c.env.LATEST_CLI_VERSION || null,
     limits,
     usage: {
       devices: deviceCount?.n ?? 0,

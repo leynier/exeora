@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-export type SelectOption = { value: string; label: string; hint?: string };
+export type SelectOption = {
+  value: string;
+  label: string;
+  hint?: string;
+  /** Listed so it can be seen, and not yet something to choose. */
+  disabled?: boolean;
+};
 
 /**
  * A dropdown we draw ourselves.
@@ -74,7 +80,7 @@ export function Select({
       place();
       const option =
         menu.querySelector<HTMLButtonElement>('[aria-selected="true"]') ??
-        menu.querySelector<HTMLButtonElement>('[role="option"]');
+        menu.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)');
       option?.focus();
     };
 
@@ -137,7 +143,9 @@ export function Select({
         className="popover-panel border-border bg-surface-elevated fixed inset-auto m-0 max-h-72 overflow-y-auto rounded-lg border p-1 shadow-xl shadow-black/40"
         onKeyDown={(event) => {
           const items = [
-            ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+            ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+              '[role="option"]:not(:disabled)',
+            ),
           ];
           const from = items.indexOf(document.activeElement as HTMLButtonElement);
           const step = { ArrowDown: from + 1, ArrowUp: from - 1, Home: 0, End: items.length - 1 }[
@@ -166,12 +174,13 @@ export function Select({
                 type="button"
                 role="option"
                 aria-selected={active}
+                disabled={option.disabled}
                 // The focus ring is pulled inwards: arrowing through the list
                 // moves focus, and at the default offset the ring would sit on
                 // top of the panel's own border.
                 className={`text-body-md duration-fast flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
                   active ? "text-foreground" : "text-foreground-muted"
-                } hover:bg-surface-variant hover:text-foreground focus-visible:bg-surface-variant focus-visible:text-foreground focus-visible:-outline-offset-2`}
+                } hover:bg-surface-variant hover:text-foreground focus-visible:bg-surface-variant focus-visible:text-foreground focus-visible:-outline-offset-2 disabled:pointer-events-none disabled:opacity-50`}
                 onClick={() => {
                   onChange(option.value);
                   panel.current?.hidePopover();

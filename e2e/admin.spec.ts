@@ -41,7 +41,7 @@ async function mockApi(page: Page) {
     const path = new URL(route.request().url()).pathname;
     const bodies: Record<string, unknown> = {
       "/api/me": user,
-      "/api/devices": [],
+      "/api/machines": { machines: [] },
       "/api/projects": [],
       "/api/clients": [],
       "/api/tool-calls": { items: [], cursor: null },

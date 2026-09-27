@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 
 /**
  * The small pieces every screen is built from. They live together because they
@@ -147,15 +148,18 @@ export function Stat({
   label,
   value,
   hint,
+  to,
   loading = false,
 }: {
   label: string;
   value: string;
   hint?: string;
+  /** Where the number is explained. A figure nobody can follow up on is decoration. */
+  to?: string;
   loading?: boolean;
 }) {
-  return (
-    <div className="border-border bg-surface rounded-xl border p-5">
+  const body = (
+    <>
       <p className="text-label-md text-foreground-faint font-mono uppercase">{label}</p>
       {loading ? (
         <Skeleton className="mt-2.5 h-7 w-16" />
@@ -163,7 +167,17 @@ export function Stat({
         <p className="text-headline-md mt-2 tabular-nums">{value}</p>
       )}
       {hint && <p className="text-body-md text-foreground-faint mt-1">{hint}</p>}
-    </div>
+    </>
+  );
+  const frame = "border-border bg-surface block rounded-xl border p-5";
+  if (!to) return <div className={frame}>{body}</div>;
+  return (
+    <Link
+      to={to}
+      className={`${frame} hover:border-foreground-faint duration-fast transition-colors`}
+    >
+      {body}
+    </Link>
   );
 }
 

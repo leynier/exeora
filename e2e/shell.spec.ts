@@ -1,58 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
-
-const user = {
-  id: "usr_e2e",
-  email: "e2e@example.com",
-  name: "E2E User",
-  avatarUrl: null,
-  plan: "free",
-  isAdmin: false,
-  cloudEnabled: false,
-  accountMcpUrl: "https://exeora.test/mcp",
-  limits: { maxDevices: 2, maxProjects: 3, maxCloudMachines: 2, retentionDays: 90 },
-  usage: { devices: 0, projects: 1, cloudMachines: 0, toolCallsMonth: 0 },
-};
-
-const project = {
-  id: "prj_e2e",
-  slug: "e2e",
-  name: "E2E project",
-  deviceId: "dev_e2e",
-  localPath: "/work/e2e",
-  mcpUrl: "https://exeora.test/p/prj_e2e/mcp",
-  policy: { mode: "allow_all", allow: [], deny: [], shell: true, approve: false, tools: null },
-  createdAt: Date.now(),
-  cloud: null,
-};
-
-async function signedIn(page: Page) {
-  await page.addInitScript(() => {
-    if (!window.location.pathname.startsWith("/dashboard")) return;
-    sessionStorage.setItem("exeora.access_token", "e2e-token");
-    sessionStorage.setItem("exeora.expires_at", String(Date.now() + 3_600_000));
-  });
-}
-
-async function mockApi(page: Page) {
-  await page.route("**/api/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const bodies: Record<string, unknown> = {
-      "/api/me": user,
-      "/api/devices": [],
-      "/api/projects": [project],
-      "/api/clients": [],
-      "/api/tool-calls": { items: [], cursor: null },
-      "/api/approvals": { items: [] },
-      [`/api/projects/${project.id}/workspaces`]: [],
-    };
-    const body = bodies[path];
-    if (body !== undefined) {
-      await route.fulfill({ status: 200, json: body });
-      return;
-    }
-    await route.fulfill({ status: 404 });
-  });
-}
+import { expect, test } from "@playwright/test";
+import { mockApi, project, signedIn } from "./dashboard-mock.js";
 
 test("drags the expanded sidebar width and remembers it", async ({ page }) => {
   await signedIn(page);
@@ -92,7 +39,7 @@ test("marks a project detail as nested and returns to the list", async ({ page }
   await signedIn(page);
   await mockApi(page);
   await page.goto("/dashboard/");
-  await page.getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
   await page.getByRole("link", { name: project.name }).click();
   await expect(page).toHaveURL(`/dashboard/projects/${project.id}`);
 

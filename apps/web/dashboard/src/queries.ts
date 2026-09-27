@@ -1,18 +1,25 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  type QueryClient,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import { api, type ToolCallFilters } from "./api.js";
-import { cloudApi, cloudInFlight } from "./api-cloud.js";
+import { type Machine, projectsApi } from "./api-projects.js";
 
 /**
  * Every query the dashboard makes, defined once.
  *
  * Keys live here rather than inline so invalidation can name exactly what it
- * means: revoking a device changes devices and, through the relay, activity,
+ * means: revoking a machine changes machines and, through the relay, activity,
  * but it does not change who is signed in.
  */
 
 export const keys = {
   me: ["me"] as const,
-  devices: ["devices"] as const,
+  /** Every machine query at once, with and without the provider's word. */
+  machines: ["machines"] as const,
+  machineList: (live: boolean) => ["machines", live ? "live" : "stored"] as const,
   projects: ["projects"] as const,
   workspaces: (projectId: string) => ["projects", projectId, "workspaces"] as const,
   workspaceCapabilities: (id: string, target: string) =>
@@ -22,7 +29,9 @@ export const keys = {
   clients: ["clients"] as const,
   accountClients: ["account-clients"] as const,
   approvals: ["approvals"] as const,
-  cloudProjects: ["cloud", "projects"] as const,
+  github: ["github"] as const,
+  githubStatus: ["github", "status"] as const,
+  githubRepositories: (query: string) => ["github", "repositories", query] as const,
   adminOverview: ["admin", "overview"] as const,
   adminUsers: ["admin", "users"] as const,
   adminUser: (id: string) => ["admin", "users", id] as const,
@@ -47,6 +56,24 @@ export const keys = {
   calls: (filters: ToolCallFilters = {}) => ["calls", "page", filters] as const,
   callPages: (filters: ToolCallFilters = {}) => ["calls", "pages", filters] as const,
 };
+
+/**
+ * What changes when a project, a location, a workspace or a machine is added
+ * or removed: the projects with their locations, every machine, the plan's
+ * usage and, when a project is named, its workspaces.
+ *
+ * `exact` on the projects, because their key is a prefix of every project's
+ * workspaces: without it one removal would refetch the workspaces of every
+ * project that happens to be cached.
+ */
+export function refreshPlaces(client: QueryClient, projectId?: string): Promise<unknown> {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: keys.projects, exact: true }),
+    client.invalidateQueries({ queryKey: keys.machines }),
+    client.invalidateQueries({ queryKey: keys.me }),
+    projectId ? client.invalidateQueries({ queryKey: keys.workspaces(projectId) }) : null,
+  ]);
+}
 
 /** Presence goes stale on its own, so it is polled rather than left to a reload. */
 const LIVE = 15_000;
@@ -92,32 +119,59 @@ export const useAdminUser = (id: string) => {
   });
 };
 
-export const useDevices = () =>
-  useQuery({ queryKey: keys.devices, queryFn: api.devices, refetchInterval: LIVE });
+/** Whether something is still on its way, which is when somebody is watching it. */
+export function machinesInFlight(machines: readonly Machine[]): boolean {
+  return machines.some((machine) => machine.state === "setting up" || machine.state === "removing");
+}
 
-/** Polled: a cloud project leaves the list only once its machines are gone. */
+/**
+ * Every machine that runs for the account: the person's own, and the instances
+ * of Exeora Cloud.
+ *
+ * One list for both lenses, so an instance is in the same state on the project
+ * page as on the Machines page. Polled fast while an instance is being set up
+ * or removed and at the presence cadence otherwise. `live` is kept under a key
+ * of its own, because it is a different answer: it carries what the provider
+ * says, and costs a request to the provider to get.
+ */
+export const useMachines = (live = false) =>
+  useQuery({
+    queryKey: keys.machineList(live),
+    queryFn: () => projectsApi.machines(live),
+    select: (page) => page.machines,
+    refetchInterval: (query) =>
+      query.state.data && machinesInFlight(query.state.data.machines) ? URGENT : LIVE,
+  });
+
+/** Polled: a project on Exeora Cloud leaves the list only once its instances are gone. */
 export const useProjects = () =>
   useQuery({ queryKey: keys.projects, queryFn: api.projects, refetchInterval: LIVE });
 
 /**
- * Cloud projects and their machines.
+ * Whether GitHub is set up on this gateway and connected to this account.
  *
- * Asked for every account, not only the ones that may create machines: one
- * switched off still owns what it made and can take it down. Polled fast
- * while a machine is being created or taken down, because that is the moment
- * someone is watching it, and at the presence cadence otherwise.
+ * Not polled: it changes when the person leaves for github.com and comes back,
+ * which is a page load. A gateway that predates GitHub answers 404, and the
+ * pages that ask treat no answer as not enabled rather than as a failure.
  */
-export const useCloudProjects = () => {
-  const me = useMe();
-  return useQuery({
-    queryKey: keys.cloudProjects,
-    queryFn: cloudApi.projects,
-    select: (page) => page.projects,
-    enabled: me.data !== undefined,
-    refetchInterval: (query) =>
-      query.state.data && cloudInFlight(query.state.data.projects) ? URGENT : LIVE,
+export const useGitHub = () =>
+  useQuery({ queryKey: keys.githubStatus, queryFn: projectsApi.github, staleTime: 60_000 });
+
+/**
+ * The repositories a connected account can pick from, narrowed by the server.
+ *
+ * The previous answer stays on screen while the next one is fetched, so the
+ * list does not blink to empty between two keystrokes.
+ */
+export const useGitHubRepositories = (query: string, enabled = true) =>
+  useQuery({
+    queryKey: keys.githubRepositories(query),
+    queryFn: () => projectsApi.githubRepositories(query),
+    select: (page) => page.repositories,
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
-};
 
 export const useWorkspaces = (projectId: string | undefined) =>
   useQuery({

@@ -53,7 +53,7 @@ export function WorkspaceTerminals({
       <ConfirmDialog
         open={confirming}
         title="Open a remote shell?"
-        body={`Commands run directly on your connected machine in ${targetLabel}. Exeora does not record keystrokes, commands, or terminal output.`}
+        body={`Commands run directly on the machine that holds ${targetLabel}. Exeora does not record keystrokes, commands, or terminal output.`}
         confirmLabel="Open terminal"
         onConfirm={() => {
           setConfirming(false);

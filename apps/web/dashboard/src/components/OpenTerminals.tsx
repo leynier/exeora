@@ -1,4 +1,5 @@
 import type { Project } from "../api.js";
+import { defaultBranchOf, rootLabel } from "../projectModel.js";
 
 export type OpenTerminalSession = {
   key: string;
@@ -7,6 +8,17 @@ export type OpenTerminalSession = {
   workspaceSlug: string | null;
   label: string;
 };
+
+/**
+ * What a session is called. One the Workspace page opened carries the name it
+ * had there. One that outlived a reload comes back from the gateway with a
+ * slug or nothing, and nothing is the project root, named by its branch.
+ */
+export function sessionLabel(session: OpenTerminalSession, projects: readonly Project[]): string {
+  if (session.label) return session.label;
+  const project = projects.find((item) => item.id === session.projectId);
+  return rootLabel(defaultBranchOf(project));
+}
 
 export function OpenTerminals({
   sessions,
@@ -32,7 +44,8 @@ export function OpenTerminals({
       </span>
       {sessions.map((session) => {
         const project = projects.find((item) => item.id === session.projectId);
-        const name = project?.name ?? session.label;
+        const label = sessionLabel(session, projects);
+        const name = project?.name ?? label;
         const selected = session.key === activeKey;
         return (
           <span
@@ -47,12 +60,12 @@ export function OpenTerminals({
               onClick={() => onSelect(session)}
             >
               {name}
-              <span className="text-foreground-faint"> / {session.label}</span>
+              <span className="text-foreground-faint"> / {label}</span>
             </button>
             <button
               type="button"
               className="text-label-md text-foreground-faint hover:text-error rounded px-1.5 py-0.5"
-              aria-label={`Close terminal ${session.label}`}
+              aria-label={`Close terminal ${label}`}
               onClick={() => onClose(session)}
             >
               ×

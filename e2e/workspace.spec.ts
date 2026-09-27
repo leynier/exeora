@@ -18,11 +18,13 @@ test("opens workspace from the tab with custom project and workspace dropdowns",
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
   await expect(page.locator("select")).toHaveCount(0);
   await expect(page.getByRole("button", { name: `Project ${project.name}` })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Workspace project root" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Workspace main · default · Laptop" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Workspace project root" }).click();
-  await page.getByRole("option", { name: /feature-trees/ }).click();
+  await page.getByRole("button", { name: "Workspace main · default · Laptop" }).click();
+  await page.getByRole("option", { name: "feature/trees · Laptop" }).click();
   await expect(page).toHaveURL(
     `/dashboard/workspace?project=${project.id}&workspace=${workspace.slug}`,
   );
@@ -34,16 +36,20 @@ test("keeps source control and terminal bound to the selected workspace", async 
   await signedIn(page);
   await mockApi(page, { onRequest: (request) => requests.push(request) });
   await page.goto("/dashboard/");
-  await page.getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("link", { name: "Projects", exact: true }).click();
   await page.getByRole("link", { name: project.name }).click();
-  await expect(page.getByText(workspace.name, { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Open workspace" }).nth(1).click();
+  // The header opens the project, the first row under the location is its
+  // root, and the workspace comes after both.
+  await expect(page.getByText(workspace.slug, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Open workspace" }).nth(2).click();
   await expect(page).toHaveURL(
     `/dashboard/workspace?project=${project.id}&workspace=${workspace.slug}`,
   );
 
   await expect(page.locator("select")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: `Workspace ${workspace.slug}` })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Workspace feature/trees · Laptop" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Current branch feature/trees" })).toBeVisible();
   const featureFile = page.getByRole("button", { name: /feature-tree\.txt/ });
   await expect(featureFile).toBeVisible();
@@ -68,12 +74,12 @@ test("keeps source control and terminal bound to the selected workspace", async 
   await expect(page.getByText("Start an interactive shell in feature-trees")).toBeVisible();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await expect(page.getByRole("dialog")).toContainText(
-    "Commands run directly on your connected machine in feature-trees",
+    "Commands run directly on the machine that holds feature-trees",
   );
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await page.getByRole("button", { name: `Workspace ${workspace.slug}` }).click();
-  await page.getByRole("option", { name: /project root/ }).click();
+  await page.getByRole("button", { name: "Workspace feature/trees · Laptop" }).click();
+  await page.getByRole("option", { name: "main · default · Laptop" }).click();
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
@@ -101,26 +107,36 @@ test("opens a branch from its existing workspace instead of switching in place",
   expect(switched).toEqual([]);
 });
 
-test("creates a workspace from Source Control", async ({ page }) => {
-  const created: string[] = [];
+test("creates a workspace from Source Control, where the one on screen is", async ({ page }) => {
+  const created: unknown[] = [];
   await signedIn(page);
   await mockApi(page, {
     onRequest: (request) => {
-      if (request.method() !== "POST" || !request.url().includes("/workspace/actions")) return;
-      const body = request.postDataJSON() as { action?: string; branch?: string };
-      if (body.action === "workspace_create") created.push(body.branch ?? "");
+      if (request.method() !== "POST") return;
+      if (!request.url().endsWith(`/api/projects/${project.id}/workspaces`)) return;
+      created.push(request.postDataJSON());
     },
   });
   await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
   await page.getByRole("button", { name: "Current branch main" }).click();
+  // What was typed to find a branch is the branch the workspace is for.
+  await page.getByPlaceholder("Find or create a branch").fill("fix-login");
   await page.getByRole("button", { name: "Create workspace" }).click();
-  const create = page.getByRole("dialog", { name: "Create a Git workspace?" });
-  await expect(create).toBeVisible();
-  await create.getByRole("textbox").fill("from-source-control");
-  await create.getByRole("button", { name: "Create workspace" }).click();
-  await expect.poll(() => created).toEqual(["from-source-control"]);
+
+  const create = page.getByRole("dialog", { name: "Add a workspace" });
+  await expect(create.getByLabel("Branch", { exact: true })).toHaveValue("fix-login");
+  await expect(create.getByLabel("Start from")).toHaveValue("main");
+  await expect(create.getByRole("button", { name: "Where" })).toContainText("Laptop");
+  await expect(create.getByText("A working copy of its own on Laptop")).toBeVisible();
+  await create.getByRole("button", { name: "Add workspace" }).click();
+
+  await expect
+    .poll(() => created)
+    .toEqual([{ branch: "fix-login", where: "laptop", from: "main" }]);
+  // The gateway added the location to the slug, and the link follows what it
+  // answered rather than what was asked for.
   await expect(page).toHaveURL(
-    `/dashboard/workspace?project=${project.id}&workspace=from-source-control`,
+    `/dashboard/workspace?project=${project.id}&workspace=fix-login-laptop`,
   );
 });
 
@@ -131,13 +147,13 @@ test("keeps an open terminal listed when switching workspaces", async ({ page })
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
-  await page.getByRole("button", { name: "Workspace project root" }).click();
-  await page.getByRole("option", { name: /feature-trees/ }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await page.getByRole("button", { name: "Workspace main · default · Laptop" }).click();
+  await page.getByRole("option", { name: "feature/trees · Laptop" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
   await page.getByRole("button", { name: "Source Control" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / project root" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default" }).click();
   await expect(page.getByRole("button", { name: "Terminal", exact: true })).toHaveClass(
     /border-brand/,
   );
@@ -150,17 +166,17 @@ test("keeps an open terminal listed on other dashboard pages", async ({ page }) 
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
-  await page.getByRole("link", { name: "Machines" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await page.getByRole("link", { name: "Machines", exact: true }).click();
   await expect(page).toHaveURL("/dashboard/machines");
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / project root" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default" }).click();
   await expect(page).toHaveURL(/\/dashboard\/workspace\?project=/);
   await expect(page).toHaveURL(/view=terminal/);
 });
 
 test("lists terminals that outlived a reload on every dashboard page", async ({ page }) => {
-  const chip = page.getByRole("button", { name: "E2E project / project root" });
+  const chip = page.getByRole("button", { name: "E2E project / main · default" });
   await signedIn(page);
   await mockApi(page, {
     terminals: [{ sessionId: "term_live", projectId: project.id, startedAt: Date.now() }],
@@ -169,10 +185,10 @@ test("lists terminals that outlived a reload on every dashboard page", async ({ 
   await expect(chip).toBeVisible();
   await page.reload();
   await expect(chip).toBeVisible();
-  await page.getByRole("link", { name: "Machines" }).click();
+  await page.getByRole("link", { name: "Machines", exact: true }).click();
   await expect(page).toHaveURL("/dashboard/machines");
   await expect(chip).toBeVisible();
-  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL("/dashboard/settings");
   await expect(chip).toBeVisible();
 });
@@ -184,11 +200,11 @@ test("keeps an open terminal listed when switching projects", async ({ page }) =
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
   await page.getByRole("button", { name: `Project ${project.name}` }).click();
   await page.getByRole("option", { name: otherProject.name }).click();
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / project root" }).click();
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default" }).click();
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
 });
 
@@ -239,7 +255,7 @@ test("switches branches from the toolbar picker", async ({ page }) => {
   await expect(page.getByPlaceholder("Find or create a branch")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Current" })).toBeVisible();
   await expect(page.getByRole("option", { name: /feature\/trees/ })).toBeVisible();
-  await expect(page.getByRole("option", { name: "origin/main Checkout" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "origin/main Check out" })).toBeVisible();
   await page.getByRole("option", { name: /^experiment/ }).click();
   await expect(page.getByRole("button", { name: "Current branch experiment" })).toBeVisible();
 });

@@ -1,5 +1,7 @@
 import { Link } from "react-router";
-import { isOnline, relativeTime } from "../api.js";
+import { relativeTime } from "../api.js";
+import { attentionItems } from "../attention.js";
+import { NeedsAttention } from "../components/NeedsAttention.js";
 import { Onboarding } from "../components/Onboarding.js";
 import {
   Badge,
@@ -10,126 +12,110 @@ import {
   Row,
   SkeletonRows,
   Stat,
-  StatusDot,
 } from "../components/ui.js";
-import { formatDuration } from "../format.js";
-import { useDevices, useProjects, useToolCalls } from "../queries.js";
+import { callWorkspaceLabel, instancesOf, localMachines } from "../projectModel.js";
+import { useAccountClients, useMachines, useMe, useProjects, useToolCalls } from "../queries.js";
+import { instanceExceptions, instanceSummary } from "../states.js";
 
 /**
- * The state of things, at a glance.
+ * The state of things, at a glance, and what in it needs somebody.
  *
  * The numbers are derived in the browser from data the API already returns:
- * there is no stats endpoint, and inventing one to compute an average of two
- * hundred rows would be the wrong trade.
+ * there is no stats endpoint, and inventing one to count a handful of rows
+ * would be the wrong trade. Each of them is a link to the page that explains
+ * it.
  */
 export function Overview() {
-  const devices = useDevices();
+  const me = useMe();
+  const machines = useMachines();
   const projects = useProjects();
   const calls = useToolCalls();
+  const accountClients = useAccountClients();
 
-  const machines = devices.data ?? [];
-  const online = machines.filter(isOnline);
+  const own = localMachines(machines.data ?? []).filter((machine) => machine.state !== "removed");
+  const online = own.filter((machine) => machine.state === "online");
+  const instances = instancesOf(machines.data ?? []);
   const recent = calls.data ?? [];
   const failed = recent.filter((call) => call.status === "error");
+  const list = projects.data ?? [];
 
-  const averageMs =
-    recent.length > 0
-      ? Math.round(recent.reduce((total, call) => total + call.durationMs, 0) / recent.length)
-      : 0;
-
-  if (devices.isError || projects.isError || calls.isError) {
+  if (machines.isError || projects.isError || calls.isError) {
     return <PageHeader title="Overview" subtitle="Live account data is temporarily unavailable." />;
   }
 
-  if (!devices.isLoading && machines.length === 0) {
+  if (!projects.isLoading && list.length === 0) {
     return (
       <>
-        <PageHeader title="Overview" subtitle="Nothing is connected yet." />
+        <PageHeader
+          title="Overview"
+          subtitle="Nothing is here yet. There are two ways to add your first project."
+        />
         <Onboarding />
       </>
     );
   }
 
+  const showCloud = me.data?.cloudEnabled === true || instances.length > 0;
+  const cap = me.data?.limits.maxCloudMachines ?? null;
+  const states = instances.map((instance) => instance.state);
+
   return (
     <>
-      <PageHeader
-        title="Overview"
-        subtitle={
-          online.length > 0
-            ? `${online.length} of ${machines.length} ${machines.length === 1 ? "machine" : "machines"} online.`
-            : "No machine is connected right now."
-        }
-      />
+      <PageHeader title="Overview" subtitle="What you have, what is running, and what needs you." />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Online"
-          value={`${online.length}`}
-          hint={`of ${machines.length} registered`}
-          loading={devices.isLoading}
-        />
+      <div
+        className={`grid gap-4 sm:grid-cols-2 ${showCloud ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
+      >
         <Stat
           label="Projects"
-          value={`${projects.data?.length ?? 0}`}
+          value={`${list.length}`}
           hint="each with its own MCP URL"
+          to="/projects"
           loading={projects.isLoading}
         />
         <Stat
-          label="Failed"
-          value={
-            recent.length === 0 ? "0" : `${Math.round((failed.length / recent.length) * 100)}%`
-          }
-          hint={`of the last ${recent.length} calls`}
-          loading={calls.isLoading}
+          label="Machines online"
+          value={`${online.length} of ${own.length}`}
+          hint={own.length === 0 ? "none of your own connected" : "of your own"}
+          to="/machines"
+          loading={machines.isLoading}
         />
+        {showCloud && (
+          <Stat
+            label="Cloud instances"
+            value={instanceSummary(states)}
+            hint={[
+              cap === null ? `${instances.length} in all` : `${instances.length} of ${cap}`,
+              instanceExceptions(states),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            to="/machines?view=cloud"
+            loading={machines.isLoading}
+          />
+        )}
         <Stat
-          label="Average"
-          value={recent.length === 0 ? "0ms" : formatDuration(averageMs)}
-          hint="per tool call"
+          label="Failed calls"
+          value={`${failed.length}`}
+          hint={`of the last ${recent.length}`}
+          to="/activity"
           loading={calls.isLoading}
         />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card
-          title="Machines"
-          action={
-            <Link
-              to="/machines"
-              className="text-body-md text-foreground-faint hover:text-foreground"
-            >
-              All
-            </Link>
-          }
-        >
-          {devices.isLoading ? (
-            <SkeletonRows count={2} />
-          ) : (
-            <Divided>
-              {machines.slice(0, 4).map((device) => (
-                <Row key={device.id}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <StatusDot
-                      on={isOnline(device)}
-                      label={isOnline(device) ? "online" : "offline"}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-title-md truncate">{device.name}</p>
-                      <p className="text-body-md text-foreground-faint truncate">
-                        {device.revokedAt
-                          ? "revoked"
-                          : isOnline(device)
-                            ? "online"
-                            : `last seen ${relativeTime(device.lastSeenAt)}`}
-                      </p>
-                    </div>
-                  </div>
-                </Row>
-              ))}
-            </Divided>
-          )}
-        </Card>
+      <div className="mt-6">
+        <NeedsAttention
+          loading={machines.isLoading || projects.isLoading}
+          items={attentionItems({
+            projects: list,
+            machines: machines.data ?? [],
+            accountClients: accountClients.data ?? [],
+            latestCliVersion: me.data?.latestCliVersion,
+          })}
+        />
+      </div>
 
+      <div className="mt-6">
         <Card
           title="Recent activity"
           action={
@@ -149,17 +135,24 @@ export function Overview() {
             </EmptyState>
           ) : (
             <Divided>
-              {recent.slice(0, 4).map((call) => (
-                <Row key={call.id}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
-                    <code className="text-body-md truncate font-mono">{call.tool}</code>
-                  </div>
-                  <p className="text-body-md text-foreground-faint shrink-0">
-                    {relativeTime(call.createdAt)}
-                  </p>
-                </Row>
-              ))}
+              {recent.slice(0, 6).map((call) => {
+                const project = list.find((candidate) => candidate.id === call.projectId);
+                return (
+                  <Row key={call.id}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
+                      <code className="text-body-md truncate font-mono">{call.tool}</code>
+                      <span className="text-body-md text-foreground-faint truncate">
+                        {project?.name ?? "removed project"} /{" "}
+                        {callWorkspaceLabel(call.workspaceSlug, project)}
+                      </span>
+                    </div>
+                    <p className="text-body-md text-foreground-faint shrink-0">
+                      {relativeTime(call.createdAt)}
+                    </p>
+                  </Row>
+                );
+              })}
             </Divided>
           )}
         </Card>

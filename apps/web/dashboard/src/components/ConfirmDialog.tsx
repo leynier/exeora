@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 /**
  * A confirmation that names its consequence.
@@ -12,6 +12,7 @@ export function ConfirmDialog({
   open,
   title,
   body,
+  details,
   confirmLabel,
   confirmText,
   pending = false,
@@ -21,6 +22,12 @@ export function ConfirmDialog({
   open: boolean;
   title: string;
   body: string;
+  /**
+   * What goes, item by item, under the sentence. A removal that takes several
+   * things names each of them, because "and everything in it" is how somebody
+   * loses the one thing they did not know was in it.
+   */
+  details?: ReactNode;
   confirmLabel: string;
   /**
    * When set, the action stays out of reach until this exact string is typed.
@@ -69,6 +76,7 @@ export function ConfirmDialog({
       <p id={bodyId} className="text-body-md text-foreground-muted mt-2">
         {body}
       </p>
+      {open ? details : null}
 
       {confirmText !== undefined && (
         <label className="mt-4 block">

@@ -1,26 +1,29 @@
 import { Link } from "react-router";
-import type { Project, Workspace } from "../api.js";
+import type { Project } from "../api.js";
+import type { WorkspaceOption } from "../projectModel.js";
 import { Select } from "./Select.js";
 
 /**
  * Project, then workspace. The Workspace tab is reachable without walking into
  * a project first, so both choices live here rather than being implied by the
  * URL the visitor arrived from.
+ *
+ * A workspace is named by its branch and the location it is in, because the
+ * same branch can have a working copy in two locations and the slug alone
+ * does not say which is which.
  */
 export function WorkspaceRootSelector({
   projects,
   projectId,
-  workspaces,
+  options,
   selectedSlug,
-  projectRootBranch,
   onSelectProject,
   onSelectWorkspace,
 }: {
   projects: Project[];
   projectId: string;
-  workspaces: Workspace[];
+  options: WorkspaceOption[];
   selectedSlug: string | null;
-  projectRootBranch?: string | null;
   onSelectProject: (id: string) => void;
   onSelectWorkspace: (slug: string | null) => void;
 }) {
@@ -28,18 +31,6 @@ export function WorkspaceRootSelector({
     value: project.id,
     label: project.name,
   }));
-  const workspaceOptions = [
-    {
-      value: "main",
-      label: "project root",
-      hint: projectRootBranch ?? "primary checkout",
-    },
-    ...workspaces.map((workspace) => ({
-      value: workspace.slug,
-      label: workspace.slug,
-      hint: workspace.branch ?? "detached HEAD",
-    })),
-  ];
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -53,8 +44,9 @@ export function WorkspaceRootSelector({
       <Select
         label="Workspace"
         value={selectedSlug ?? "main"}
-        options={workspaceOptions}
+        options={options}
         disabled={!projectId}
+        placeholder="Select a workspace"
         onChange={(value) => onSelectWorkspace(value === "main" ? null : value)}
       />
       {projectId ? (

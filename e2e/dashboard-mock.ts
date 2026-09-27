@@ -1,51 +1,16 @@
 import type { Page, Request } from "@playwright/test";
 
-export const user = {
-  id: "usr_e2e",
-  email: "e2e@example.com",
-  name: "E2E User",
-  avatarUrl: null,
-  plan: "free",
-  isAdmin: false,
-  cloudEnabled: false,
-  accountMcpUrl: "https://exeora.test/mcp",
-  limits: { maxDevices: 2, maxProjects: 3, maxCloudMachines: 2, retentionDays: 90 },
-  usage: { devices: 0, projects: 1, cloudMachines: 0, toolCallsMonth: 0 },
-};
+import {
+  accountClient,
+  githubOff,
+  laptop,
+  otherProject,
+  project,
+  user,
+  workspace,
+} from "./fixtures.js";
 
-export const project = {
-  id: "prj_e2e",
-  slug: "e2e",
-  name: "E2E project",
-  deviceId: "dev_e2e",
-  localPath: "/work/e2e",
-  mcpUrl: "https://exeora.test/p/prj_e2e/mcp",
-  policy: { mode: "allow_all", allow: [], deny: [], shell: true, approve: false, tools: null },
-  createdAt: Date.now(),
-  cloud: null,
-};
-
-export const otherProject = {
-  ...project,
-  id: "prj_other",
-  slug: "other",
-  name: "Other project",
-  localPath: "/work/other",
-  mcpUrl: "https://exeora.test/p/prj_other/mcp",
-};
-
-export const workspace = {
-  id: "wsp_feature",
-  projectId: project.id,
-  slug: "feature-trees",
-  name: "Feature trees",
-  branch: "feature/trees",
-  localPath: "/work/e2e/.worktrees/feature-trees",
-  managed: true,
-  deviceId: null,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-};
+export { otherProject, project, user, workspace };
 
 export function gitStatus(target: "main" | "workspace") {
   const feature = target === "workspace";
@@ -228,7 +193,7 @@ export async function openWorkspace(page: Page, href: string) {
 export async function mockApi(
   page: Page,
   options: {
-    failDevices?: () => boolean;
+    failMachines?: () => boolean;
     onRequest?: (request: Request) => void;
     projects?: Array<typeof project>;
     terminals?: Array<{
@@ -251,23 +216,25 @@ export async function mockApi(
     const url = new URL(request.url());
     const path = url.pathname;
     options.onRequest?.(request);
-    if (path === "/api/devices" && options.failDevices?.()) {
+    if (path === "/api/machines" && options.failMachines?.()) {
       await route.fulfill({ status: 503, json: { error: "unavailable" } });
       return;
     }
 
     const bodies: Record<string, unknown> = {
       "/api/me": user,
-      "/api/devices": [],
+      "/api/machines": { machines: listed.length > 0 ? [laptop] : [] },
       "/api/projects": listed,
       "/api/clients": [],
+      "/api/account-clients": [accountClient({ allProjects: true, projects: [] })],
+      "/api/github": githubOff,
       "/api/tool-calls": { items: [], cursor: null },
       "/api/approvals": { items: [] },
       "/api/terminals": { items: options.terminals ?? [] },
       [`/api/projects/${project.id}/workspaces`]: connectedWorkspaces,
       [`/api/projects/${otherProject.id}/workspaces`]: [],
     };
-    const body = bodies[path];
+    const body = request.method() === "GET" ? bodies[path] : undefined;
     if (body !== undefined) {
       await route.fulfill({ status: 200, json: body });
       return;
@@ -306,40 +273,32 @@ export async function mockApi(
       });
       return;
     }
+    // What the gateway answers a new workspace with. The slug is its own to
+    // choose, so the one it sends back is not the one that was asked for.
+    if (request.method() === "POST" && path === `/api/projects/${project.id}/workspaces`) {
+      const asked = request.postDataJSON() as { branch: string; where?: string };
+      const created = {
+        ...workspace,
+        id: "wsp_created",
+        slug: `${asked.branch}-laptop`,
+        name: asked.branch,
+        branch: asked.branch,
+        localPath: `/work/e2e/.worktrees/${asked.branch}-laptop`,
+      };
+      connectedWorkspaces.push(created);
+      await route.fulfill({
+        status: 201,
+        json: { workspace: created, where: asked.where ?? "laptop", status: "ready" },
+      });
+      return;
+    }
     if (path.endsWith("/workspace/actions")) {
       const action = request.postDataJSON() as {
         action?: string;
         paths?: string[];
         name?: string;
-        branch?: string;
         remoteBranch?: string;
       };
-      if (action.action === "workspace_create" && action.branch) {
-        const created = {
-          id: "wsp_created",
-          projectId: project.id,
-          slug: "from-source-control",
-          name: action.branch,
-          branch: action.branch,
-          localPath: "/work/e2e/.worktrees/from-source-control",
-          managed: true,
-          deviceId: null,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        };
-        connectedWorkspaces.push(created);
-        await route.fulfill({
-          status: 200,
-          json: {
-            kind: "mutation",
-            stdout: "",
-            stderr: "",
-            status: state[target],
-            workspace: created,
-          },
-        });
-        return;
-      }
       state[target] = applyWorkspaceAction(state[target], action);
       await route.fulfill({
         status: 200,

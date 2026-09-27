@@ -12,7 +12,6 @@ import { AdminUser } from "./pages/AdminUser.js";
 import { AdminUsers } from "./pages/AdminUsers.js";
 import { Callback } from "./pages/Callback.js";
 import { Clients } from "./pages/Clients.js";
-import { Cloud } from "./pages/Cloud.js";
 import { Machines } from "./pages/Machines.js";
 import { Overview } from "./pages/Overview.js";
 import { ProjectDetail } from "./pages/ProjectDetail.js";
@@ -40,7 +39,7 @@ const WorkspaceRedirect = lazy(() =>
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A revoked device or a failed call should not be retried into a spinner
+      // A revoked machine or a failed call should not be retried into a spinner
       // that never resolves; surface it and let the polling interval recover.
       retry: false,
       refetchOnWindowFocus: true,
@@ -101,7 +100,9 @@ createRoot(root).render(
             >
               <Route index element={<Overview />} />
               <Route path="machines" element={<Machines />} />
-              <Route path="cloud" element={<Cloud />} />
+              {/* Exeora Cloud was a page of its own once. Links to it still
+                  arrive, and what it showed is a tab of Machines now. */}
+              <Route path="cloud" element={<Navigate to="/machines?view=cloud" replace />} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:projectId" element={<ProjectDetail />} />
               <Route

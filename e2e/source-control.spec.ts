@@ -15,9 +15,9 @@ test("checks out a remote branch by opening its existing local branch", async ({
     `/dashboard/workspace?project=${project.id}&workspace=${workspace.slug}`,
   );
   await page.getByRole("button", { name: "Current branch feature/trees" }).click();
-  // `main` already exists locally, and is checked out at the project root.
+  // `main` already exists locally, and is what the project itself is on.
   // Tracking origin/main again would fail with "a branch named main exists".
-  await page.getByRole("option", { name: "origin/main Checkout" }).click();
+  await page.getByRole("option", { name: "origin/main Check out" }).click();
 
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}`);
   await expect(page.getByRole("button", { name: "Current branch main" })).toBeVisible();
@@ -36,8 +36,8 @@ test("closing a terminal chip ends the session on the machine as well", async ({
     },
   });
   await page.goto("/dashboard/");
-  await page.getByRole("button", { name: "Close terminal project root" }).click();
+  await page.getByRole("button", { name: "Close terminal main · default" }).click();
 
   await expect.poll(() => closed).toEqual([`/api/projects/${project.id}/terminal`]);
-  await expect(page.getByRole("button", { name: "E2E project / project root" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toHaveCount(0);
 });

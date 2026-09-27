@@ -12,7 +12,7 @@ import { type Location, useLocation, useNavigate } from "react-router";
 import { api } from "../api.js";
 import { useOpenTerminals, useProjects } from "../queries.js";
 import { type ListedTerminal, terminalSessionKey } from "../workspacePaths.js";
-import { type OpenTerminalSession, OpenTerminals } from "./OpenTerminals.js";
+import { type OpenTerminalSession, OpenTerminals, sessionLabel } from "./OpenTerminals.js";
 import { WebTerminal } from "./WebTerminal.js";
 
 type TerminalsApi = {
@@ -132,7 +132,7 @@ export function GlobalTerminals() {
             <WebTerminal
               projectId={session.projectId}
               workspace={session.workspaceId}
-              targetLabel={session.label}
+              targetLabel={sessionLabel(session, projects.data ?? [])}
               available
               active={shown}
               autoConnect
@@ -175,7 +175,9 @@ function mergeRemote(
       projectId: item.projectId,
       workspaceId: item.workspaceId,
       workspaceSlug: item.workspaceSlug ?? null,
-      label: item.workspaceSlug ?? "project root",
+      // Empty for the root: its name is the project's branch, which is read
+      // from the project when the session is shown.
+      label: item.workspaceSlug ?? "",
     });
   }
   return next;

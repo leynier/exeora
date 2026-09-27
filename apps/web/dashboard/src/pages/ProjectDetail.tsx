@@ -1,29 +1,48 @@
-import { Link, useParams } from "react-router";
-import { isOnline, relativeTime } from "../api.js";
+import { Link, useNavigate, useParams } from "react-router";
+import { relativeTime } from "../api.js";
 import { ClientList } from "../components/ClientList.js";
 import { CommandPolicyCard } from "../components/CommandPolicyCard.js";
-import { CopyButton } from "../components/CopyButton.js";
+import { McpEndpoint } from "../components/McpEndpoint.js";
+import { Menu } from "../components/Menu.js";
+import { ProjectLocations } from "../components/ProjectLocations.js";
+import { RepositoryLine } from "../components/RepositoryLine.js";
 import {
   Badge,
   Card,
   Divided,
   EmptyState,
+  ErrorBanner,
   PageHeader,
   Row,
   Skeleton,
-  StatusDot,
+  SkeletonRows,
 } from "../components/ui.js";
+import { useWorkspaceControls } from "../components/WorkspaceControls.js";
 import { formatDate, formatDuration } from "../format.js";
-import { useClients, useDevices, useProjects, useToolCalls, useWorkspaces } from "../queries.js";
+import { callWorkspaceLabel, defaultBranchOf, workspaceHref } from "../projectModel.js";
+import {
+  useClients,
+  useMachines,
+  useMe,
+  useProjects,
+  useToolCalls,
+  useWorkspaces,
+} from "../queries.js";
 
 /**
- * One project: where to point a client, which machine serves it, and what has
- * been happening on it.
+ * One project: where it lives, how a client reaches it, who may, what they
+ * may do, and what has been happening.
+ *
+ * This is the home of a project. Its locations, its workspaces and its own
+ * removal are acted on here and nowhere else; every other page that shows
+ * them links here.
  */
 export function ProjectDetail() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
+  const me = useMe();
   const projects = useProjects();
-  const devices = useDevices();
+  const machines = useMachines();
   const clients = useClients();
   // Narrowed by the server, so this is the project's most recent calls rather
   // than whichever of them happen to fall inside the account's most recent.
@@ -31,14 +50,16 @@ export function ProjectDetail() {
   const workspaces = useWorkspaces(projectId);
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
+  const controls = useWorkspaceControls({
+    projects: projects.data ?? [],
+    machines: machines.data ?? [],
+    workspaceCount: workspaces.data?.length,
+    onProjectRemoved: () => navigate("/projects"),
+  });
 
-  if (
-    projects.isError ||
-    devices.isError ||
-    clients.isError ||
-    calls.isError ||
-    workspaces.isError
-  ) {
+  // The shell shows the failure and the way to retry it. What must not happen
+  // here is a list that failed to load being read as a project that is gone.
+  if (projects.isError) {
     return <PageHeader title="Project" subtitle="Project data is temporarily unavailable." />;
   }
 
@@ -61,56 +82,106 @@ export function ProjectDetail() {
     );
   }
 
-  const device = devices.data?.find((candidate) => candidate.id === project.deviceId);
   const authorized = (clients.data ?? []).filter((client) => client.projectId === project.id);
   const history = calls.data ?? [];
-
-  const claudeCode = `claude mcp add --transport http exeora ${project.mcpUrl}`;
+  const branch = defaultBranchOf(project);
 
   return (
     <>
-      <PageHeader
-        title={project.name}
-        subtitle={`Added ${formatDate(project.createdAt)}.`}
-        action={
-          <div className="flex gap-2">
-            <Link to={`/workspace?project=${project.id}`} className="btn btn-primary">
-              Open workspace
-            </Link>
-            <Link to="/projects" className="btn">
-              All projects
-            </Link>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-headline-md">{project.name}</h1>
+            {project.github?.lostAccess && <Badge tone="error">lost access</Badge>}
           </div>
-        }
-      />
-
-      <Card title="MCP endpoint">
-        <div className="p-5">
-          <div className="border-border bg-bg flex items-center gap-3 rounded-lg border px-3 py-2.5">
-            <code className="text-body-md text-foreground min-w-0 flex-1 truncate font-mono">
-              {project.mcpUrl}
-            </code>
-            <CopyButton value={project.mcpUrl} label="Copy" />
-          </div>
-
-          <p className="text-body-md text-foreground-muted mt-5">
-            Paste it into any MCP client that speaks Streamable HTTP, or add it from a terminal:
+          <p className="text-body-md text-foreground-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <RepositoryLine project={project} />
+            {branch ? (
+              <span>
+                default branch <span className="font-mono">{branch}</span>
+              </span>
+            ) : null}
+            <span className="text-foreground-faint">added {formatDate(project.createdAt)}</span>
           </p>
-
-          <div className="border-border bg-bg mt-2.5 flex items-center gap-3 rounded-lg border px-3 py-2.5">
-            <code className="text-body-md text-foreground-muted min-w-0 flex-1 truncate font-mono">
-              {claudeCode}
-            </code>
-            <CopyButton value={claudeCode} label="Copy" />
-          </div>
+          {project.github?.lostAccess ? (
+            <p className="text-body-md text-error mt-2">
+              Exeora can no longer read {project.github.fullName} on GitHub, so Exeora Cloud cannot
+              fetch or push.{" "}
+              <Link to="/settings" className="underline">
+                Give it the repository again in Settings
+              </Link>
+              .
+            </p>
+          ) : null}
         </div>
-      </Card>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link to={workspaceHref(project.id, null)} className="btn btn-primary">
+            Open workspace
+          </Link>
+          <Menu
+            label={`Actions for ${project.name}`}
+            items={[
+              {
+                label: "Remove project",
+                danger: true,
+                onSelect: () => controls.removeProject(project),
+              },
+            ]}
+          />
+        </div>
+      </header>
 
-      {/* Full width, and above the machine: reading down the page, the endpoint
-          is followed by who is allowed to call it, and then by what they may do. */}
+      {workspaces.isError ? (
+        <ErrorBanner
+          error={workspaces.error}
+          title="Could not load the workspaces"
+          onRetry={() => void workspaces.refetch()}
+        />
+      ) : null}
+      {machines.isError ? (
+        <ErrorBanner
+          error={machines.error}
+          title="Could not load the state of the instances"
+          onRetry={() => void machines.refetch()}
+        />
+      ) : null}
+
+      {workspaces.isLoading ? (
+        <Card title="Locations and workspaces">
+          <SkeletonRows />
+        </Card>
+      ) : (
+        <ProjectLocations
+          project={project}
+          workspaces={workspaces.data ?? []}
+          machines={machines.data ?? []}
+          user={me.data}
+          controls={controls}
+        />
+      )}
+
+      <div className="mt-6">
+        <Card
+          title="Connect a client"
+          subtitle="This URL reaches this project and has no way to name another."
+        >
+          <div className="p-5">
+            <McpEndpoint url={project.mcpUrl} />
+          </div>
+        </Card>
+      </div>
+
+      {/* Reading down the page, the endpoint is followed by who is allowed to
+          call it, and then by what they may do. */}
       <div className="mt-6">
         <Card title="Clients with access">
-          <ClientList clients={authorized} />
+          {clients.isError ? (
+            <EmptyState title="Could not load the clients">
+              The list of clients is temporarily unavailable.
+            </EmptyState>
+          ) : (
+            <ClientList clients={authorized} />
+          )}
         </Card>
       </div>
 
@@ -119,117 +190,20 @@ export function ProjectDetail() {
       </div>
 
       <div className="mt-6">
-        <Card title="Connected workspaces">
-          {(workspaces.data ?? []).length === 0 ? (
-            <EmptyState title="No workspaces connected">
-              {project.cloud ? (
-                <>
-                  Add one from{" "}
-                  <Link to="/cloud" className="underline">
-                    Cloud
-                  </Link>
-                  : each branch gets a machine of its own.
-                </>
-              ) : (
-                <>
-                  Create one with <code className="font-mono">exeora workspace create</code> or
-                  attach an existing Git workspace.
-                </>
-              )}
-            </EmptyState>
-          ) : (
-            <Divided>
-              {(workspaces.data ?? []).map((workspace) => (
-                <Row key={workspace.id}>
-                  <div className="min-w-0">
-                    <p className="text-title-md truncate">{workspace.name}</p>
-                    <p className="text-body-md text-foreground-faint truncate font-mono">
-                      {workspace.slug}
-                      {workspace.branch ? ` · ${workspace.branch}` : " · detached HEAD"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={workspace.managed ? "success" : "neutral"}>
-                      {workspace.managed ? "managed" : "attached"}
-                    </Badge>
-                    <Link
-                      className="btn"
-                      to={`/workspace?project=${project.id}&workspace=${encodeURIComponent(workspace.slug)}`}
-                    >
-                      Open workspace
-                    </Link>
-                  </div>
-                </Row>
-              ))}
-            </Divided>
-          )}
-        </Card>
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-[20rem_1fr]">
-        {/* `self-start` so it keeps its own height instead of stretching to
-            match however long the activity list happens to be. */}
-        <Card title={project.cloud ? "Cloud machine" : "Machine"} className="self-start">
-          <div className="space-y-3 p-5">
-            <div className="flex items-center gap-3">
-              <StatusDot
-                on={device ? isOnline(device) : false}
-                label={device && isOnline(device) ? "online" : "offline"}
-              />
-              <div className="min-w-0">
-                <p className="text-title-md truncate">{device?.name ?? "unknown machine"}</p>
-                <p className="text-body-md text-foreground-faint">
-                  {device
-                    ? device.revokedAt
-                      ? "revoked"
-                      : isOnline(device)
-                        ? "online"
-                        : device.kind === "cloud"
-                          ? "sleeping · wakes on the next call"
-                          : `last seen ${relativeTime(device.lastSeenAt)}`
-                    : "no longer registered"}
-                </p>
-              </div>
-            </div>
-
-            {/* Stacked rather than two columns: a local path is long enough
-                that side by side leaves it truncated to nothing useful. */}
-            <dl className="text-body-md border-border-subtle space-y-3 border-t pt-3">
-              {project.cloud ? (
-                <>
-                  <div>
-                    <dt className="text-label-md text-foreground-faint font-mono uppercase">
-                      Repository
-                    </dt>
-                    <dd className="mt-0.5 font-mono break-all">{project.cloud.repoUrl}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-label-md text-foreground-faint font-mono uppercase">
-                      Default branch
-                    </dt>
-                    <dd className="mt-0.5 font-mono">{project.cloud.defaultBranch}</dd>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <dt className="text-label-md text-foreground-faint font-mono uppercase">
-                    Local path
-                  </dt>
-                  <dd className="mt-0.5 font-mono break-all">{project.localPath}</dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-label-md text-foreground-faint font-mono uppercase">Slug</dt>
-                <dd className="mt-0.5 font-mono">{project.slug}</dd>
-              </div>
-            </dl>
-          </div>
-        </Card>
-
-        <Card title="Activity on this project">
+        <Card
+          title="Recent activity"
+          action={
+            <Link
+              to="/activity"
+              className="text-body-md text-foreground-faint hover:text-foreground"
+            >
+              All
+            </Link>
+          }
+        >
           {history.length === 0 ? (
             <EmptyState title="Nothing yet">
-              Calls made against this endpoint appear here.
+              Calls made against this project appear here.
             </EmptyState>
           ) : (
             <Divided>
@@ -239,7 +213,7 @@ export function ProjectDetail() {
                     <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
                     <code className="text-body-md truncate font-mono">{call.tool}</code>
                     <span className="text-body-md text-foreground-faint truncate font-mono">
-                      {call.workspaceSlug ?? "main"}
+                      {callWorkspaceLabel(call.workspaceSlug, project, workspaces.data)}
                     </span>
                     {call.errorCode && (
                       <span className="text-body-md text-error truncate">{call.errorCode}</span>
@@ -254,6 +228,8 @@ export function ProjectDetail() {
           )}
         </Card>
       </div>
+
+      {controls.dialogs}
     </>
   );
 }

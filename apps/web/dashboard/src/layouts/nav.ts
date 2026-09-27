@@ -5,6 +5,11 @@
  * have to agree on what a path belongs to, including the nested ones: a
  * project detail is still Projects, an admin user is still Users. The git
  * client lives at `/workspace`, not under a project.
+ *
+ * The order is the order of the questions: what is there, where the work
+ * happens, what is running it, who may reach it, and what they did. Exeora
+ * Cloud has no entry of its own. It is a location of a project and a kind of
+ * machine, and it is found under both.
  */
 
 export type NavIconName =
@@ -29,12 +34,11 @@ export type ShellLink = {
 export function shellLinks(isAdmin: boolean): ShellLink[] {
   return [
     { to: "/", label: "Overview", icon: "overview", end: true },
-    { to: "/machines", label: "Machines", icon: "machines" },
-    { to: "/cloud", label: "Cloud", icon: "cloud" },
     { to: "/projects", label: "Projects", icon: "projects" },
+    { to: "/workspace", label: "Workspace", icon: "workspace" },
+    { to: "/machines", label: "Machines", icon: "machines" },
     { to: "/clients", label: "Clients", icon: "clients" },
     { to: "/activity", label: "Activity", icon: "activity" },
-    { to: "/workspace", label: "Workspace", icon: "workspace" },
     { to: "/settings", label: "Settings", icon: "settings" },
     ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: "admin" as const }] : []),
   ];

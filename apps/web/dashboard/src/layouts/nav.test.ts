@@ -37,15 +37,21 @@ describe("shellLinks", () => {
     expect(shellLinks(true).map((link) => link.to)).toContain("/admin");
   });
 
-  it("places Cloud right after Machines", () => {
-    const destinations = shellLinks(false).map((link) => link.to);
-    expect(destinations.indexOf("/cloud")).toBe(destinations.indexOf("/machines") + 1);
-    expect(sectionTitle("/cloud", shellLinks(false))).toBe("Cloud");
+  it("lists the destinations in the order of the questions they answer", () => {
+    expect(shellLinks(true).map((link) => link.label)).toEqual([
+      "Overview",
+      "Projects",
+      "Workspace",
+      "Machines",
+      "Clients",
+      "Activity",
+      "Settings",
+      "Admin",
+    ]);
   });
 
-  it("places Workspace after Activity", () => {
-    const destinations = shellLinks(false).map((link) => link.to);
-    expect(destinations.indexOf("/workspace")).toBeGreaterThan(destinations.indexOf("/activity"));
+  it("has no entry for Cloud, which is found under Projects and Machines", () => {
+    expect(shellLinks(true).map((link) => link.to)).not.toContain("/cloud");
   });
 });
 

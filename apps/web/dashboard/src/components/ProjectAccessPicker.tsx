@@ -1,19 +1,6 @@
+import { connectedAccountClients } from "../access.js";
 import type { AccountClient } from "../api.js";
 import { clientLabel } from "../format.js";
-
-/** The clients still connected through the account URL: the only ones a project can be given to. */
-export function connectedAccountClients(clients: AccountClient[]): AccountClient[] {
-  return clients.filter(
-    (client) => client.allProjects || client.projects.some((entry) => entry.revokedAt === null),
-  );
-}
-
-/** What arrives ticked: every client that has to be told, since the others get it regardless. */
-export function defaultAccess(clients: AccountClient[]): string[] {
-  return connectedAccountClients(clients)
-    .filter((client) => !client.allProjects)
-    .map((client) => client.clientId);
-}
 
 /**
  * Which AI clients reach a project that is about to exist.
@@ -27,12 +14,14 @@ export function ProjectAccessPicker({
   clients,
   chosen,
   disabled,
-  onChange,
+  onToggle,
 }: {
   clients: AccountClient[];
+  /** The ids that are ticked, from `resolveAccess`. */
   chosen: string[];
   disabled: boolean;
-  onChange: (clientIds: string[]) => void;
+  /** One box changed by hand. */
+  onToggle: (clientId: string, ticked: boolean) => void;
 }) {
   const connected = connectedAccountClients(clients);
   if (connected.length === 0) return null;
@@ -50,13 +39,7 @@ export function ProjectAccessPicker({
             className="accent-foreground"
             checked={client.allProjects || chosen.includes(client.clientId)}
             disabled={client.allProjects}
-            onChange={(event) =>
-              onChange(
-                event.target.checked
-                  ? [...chosen, client.clientId]
-                  : chosen.filter((id) => id !== client.clientId),
-              )
-            }
+            onChange={(event) => onToggle(client.clientId, event.target.checked)}
           />
           <span className="text-body-md min-w-0 truncate">{clientLabel(client)}</span>
           {client.allProjects && (

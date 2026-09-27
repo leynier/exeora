@@ -13,7 +13,7 @@ import { Badge, Divided } from "./ui.js";
  * A separate list from `ClientList` because it answers a different question.
  * There, a row is one client on one project and the only decision is whether to
  * keep it. Here a row is one connection covering several projects, and the
- * the decision is which projects it reaches, which does not fit a list that
+ * decision is which projects it reaches, which does not fit a list that
  * shows a project per row.
  *
  * Removing the last project is how a connection is shut off, and it says so:
@@ -96,6 +96,10 @@ function AccountClientRow({
   // so the client has to be authorized again from its own settings before it
   // works. Every other tick is reversible from here, which is exactly why this
   // one needs asking about rather than a sentence somebody reads afterwards.
+  //
+  // Taking "all projects" away from a client that reaches none is the same
+  // gesture by another box: what is left is an empty list, and an empty list
+  // is what revokes the token.
   const [confirmingCutOff, setConfirmingCutOff] = useState(false);
 
   const granted = client.projects
@@ -142,7 +146,10 @@ function AccountClientRow({
               type="checkbox"
               className="accent-foreground"
               checked={client.allProjects}
-              onChange={(event) => onSetProjects(granted, event.target.checked)}
+              onChange={(event) => {
+                if (!event.target.checked && granted.length === 0) setConfirmingCutOff(true);
+                else onSetProjects(granted, event.target.checked);
+              }}
             />
             <span className="text-body-md min-w-0">
               All projects, including the ones you add later
@@ -193,7 +200,11 @@ function AccountClientRow({
       <ConfirmDialog
         open={confirmingCutOff}
         title={`Cut ${clientLabel(client)} off?`}
-        body="This was its last project. Its token stops working, and giving it a project back here will not revive it: it has to be authorized again from the client."
+        body={
+          client.allProjects
+            ? "It reaches no project yet, so without the standing answer it is left with none. Its token stops working, and giving it a project back here will not revive it: it has to be authorized again from the client."
+            : "This was its last project. Its token stops working, and giving it a project back here will not revive it: it has to be authorized again from the client."
+        }
         confirmLabel="Cut it off"
         pending={busy}
         onCancel={() => setConfirmingCutOff(false)}

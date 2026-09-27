@@ -1,4 +1,5 @@
 import { DangerZone } from "../components/DangerZone.js";
+import { GitHubCard } from "../components/GitHubCard.js";
 import { SupportCard } from "../components/SupportCard.js";
 import { Card, Divided, PageHeader, Row, SkeletonRows } from "../components/ui.js";
 import { useMe } from "../queries.js";
@@ -7,7 +8,8 @@ import { useMe } from "../queries.js";
  * Account-level preferences and irreversible actions.
  *
  * Settings is the place for things that are about the signed-in person rather
- * than a machine, a project or a client. The danger section lives here so the
+ * than a machine, a project or a client: the plan, the connection to GitHub
+ * that every project can use. The danger section lives here so the
  * overview can stay about the state of the fleet, and so anything else that
  * cannot be undone has a single home.
  */
@@ -46,7 +48,7 @@ export function Settings() {
             </Row>
             {user.cloudEnabled && (
               <Row>
-                <p className="text-body-md text-foreground-muted">Cloud workspaces</p>
+                <p className="text-body-md text-foreground-muted">Cloud instances</p>
                 <p className="text-title-md tabular-nums">
                   {formatCap(user.usage.cloudMachines, user.limits.maxCloudMachines)}
                 </p>
@@ -67,6 +69,8 @@ export function Settings() {
           </Divided>
         )}
       </Card>
+
+      <GitHubCard className="mb-6" />
 
       <SupportCard className="mb-6" />
 

@@ -10,7 +10,7 @@ export interface Device {
   id: string;
   name: string;
   platform: string;
-  /** A `cloud` machine is one Exeora runs; it is managed from the Cloud page. */
+  /** A `cloud` machine is an instance: one Exeora Cloud runs for one workspace. */
   kind: "local" | "cloud";
   cliVersion: string | null;
   online: boolean;
@@ -44,19 +44,73 @@ export const TOOL_NAMES = [
   "list_skills",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
+
+/**
+ * What a location, a machine or an instance is doing.
+ *
+ * One vocabulary for every page, computed by the gateway, so the dashboard
+ * never has to decide from two booleans and a timestamp whether something is
+ * asleep or gone. `not cloned` is only ever a location, and `removing` only
+ * ever an instance.
+ */
+export type State =
+  | "online"
+  | "asleep"
+  | "offline"
+  | "setting up"
+  | "failed"
+  | "not cloned"
+  | "removing"
+  | "removed";
+
+/**
+ * A place a project has a copy: one of the person's machines, or Exeora Cloud.
+ *
+ * Named `ProjectLocation` because `Location` is already the browser's and the
+ * router's word for an address.
+ */
+export interface ProjectLocation {
+  id: string;
+  kind: "local" | "cloud";
+  /** Null for Exeora Cloud while it holds no copy of the project root. */
+  deviceId: string | null;
+  /** The machine's name, or "Exeora Cloud". */
+  name: string;
+  /** What `where` takes when a workspace is made: `laptop`, `cloud`. */
+  slug: string;
+  localPath: string | null;
+  status: "pending" | "cloning" | "ready" | "error";
+  /** Why the copy could not be made, as a sentence to act on. */
+  error: string | null;
+  errorCode: string | null;
+  /** Where a call that names no workspace lands. */
+  default: boolean;
+  online: boolean;
+  state: State;
+  createdAt: number;
+}
+
 export interface Project {
   id: string;
   slug: string;
   name: string;
+  /** The machine of the default location. */
   deviceId: string;
   localPath: string;
+  /** The git remote. Null for a directory that has none, which lives where it is. */
+  repoUrl: string | null;
+  defaultBranch: string | null;
+  locations: ProjectLocation[];
   mcpUrl: string;
   policy: CommandPolicy;
   createdAt: number;
-  /** Set when the project is a repository on Exeora Cloud rather than a local directory. */
-  cloud: { repoUrl: string; defaultBranch: string } | null;
+  /** Set when the project is on Exeora Cloud. */
+  cloud: { repoUrl: string; defaultBranch: string; hasCredential: boolean } | null;
+  /** Set when the repository was picked from a connected GitHub account. */
+  github: { fullName: string; private: boolean; lostAccess: boolean } | null;
 }
 
+/** A branch with a working copy of its own. The project root is not one of these. */
 export interface Workspace {
   id: string;
   projectId: string;
@@ -65,8 +119,12 @@ export interface Workspace {
   branch: string | null;
   localPath: string;
   managed: boolean;
-  /** The machine holding this checkout, when it is not the project's own. */
+  /** The machine that holds the working copy. On Exeora Cloud that is its instance. */
   deviceId: string | null;
+  /** Whether that machine is an instance Exeora Cloud runs for this workspace alone. */
+  cloud: boolean;
+  /** The name of that machine, for a row that has to say where the workspace is. */
+  machine: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -137,15 +195,7 @@ export type WorkspaceAction =
   | { action: "branch_create"; name: string; startPoint?: string }
   | { action: "branch_switch"; name: string }
   | { action: "branch_track"; name: string; remoteBranch: string }
-  | { action: "branch_delete"; name: string }
-  | {
-      action: "workspace_create";
-      branch: string;
-      from?: string;
-      reuseExistingBranch?: boolean;
-      name?: string;
-      slug?: string;
-    };
+  | { action: "branch_delete"; name: string };
 
 export interface WorkspaceMutationResult {
   kind: "mutation";
@@ -218,10 +268,12 @@ export interface User {
   plan: "free" | "pro";
   /** True when this account's email is on the fixed admin allow-list. */
   isAdmin: boolean;
-  /** Whether this account may put repositories on machines Exeora runs. */
+  /** Whether this account may put projects on Exeora Cloud. */
   cloudEnabled: boolean;
   /** The one MCP URL that covers every project a client is given. */
   accountMcpUrl: string;
+  /** The CLI release a machine should be running. Null on a gateway that does not say. */
+  latestCliVersion?: string | null;
   limits: PlanLimits;
   usage: {
     devices: number;

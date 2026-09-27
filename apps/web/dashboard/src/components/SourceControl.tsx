@@ -1,12 +1,18 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { api, type GitStatus, type Workspace, type WorkspaceAction } from "../api.js";
-import { cloudApi } from "../api-cloud.js";
-import { keys } from "../queries.js";
-import { AddCloudWorkspaceDialog } from "./AddCloudWorkspaceDialog.js";
+import {
+  api,
+  type GitStatus,
+  type Project,
+  type ProjectLocation,
+  type Workspace,
+  type WorkspaceAction,
+} from "../api.js";
+import { createdSlug } from "../api-projects.js";
+import { keys, useMe } from "../queries.js";
+import { AddWorkspaceDialog } from "./AddWorkspaceDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog.js";
 import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
 import { useToast } from "./toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "./ui.js";
@@ -24,8 +30,8 @@ export function SourceControl({
   projectId,
   workspace,
   workspaces,
-  projectLocalPath,
-  cloud = null,
+  project,
+  where,
   targetKey,
   targetLabel,
   status,
@@ -36,9 +42,9 @@ export function SourceControl({
   projectId: string;
   workspace?: string;
   workspaces: Workspace[];
-  projectLocalPath: string;
-  /** Set for a repository on Exeora Cloud: a new workspace is a new machine. */
-  cloud?: { defaultBranch: string } | null;
+  project: Project;
+  /** The location of what is on screen, which is where a new workspace starts out. */
+  where: ProjectLocation | undefined;
   targetKey: string;
   targetLabel: string;
   status?: GitStatus;
@@ -48,6 +54,7 @@ export function SourceControl({
 }) {
   const client = useQueryClient();
   const toast = useToast();
+  const me = useMe();
   const [selected, setSelected] = useState<WorkspaceSelection | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -57,7 +64,8 @@ export function SourceControl({
     body: string;
     label: string;
   } | null>(null);
-  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  /** The branch typed into the picker, while the dialog that takes it is open. */
+  const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(null);
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
   const chosenArea = chosen?.area ?? "working";
@@ -91,11 +99,7 @@ export function SourceControl({
       client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
       await client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] });
       if (action.action === "commit") setCommitMessage("");
-      if (action.action === "workspace_create" && result.workspace) {
-        await client.invalidateQueries({ queryKey: keys.workspaces(projectId) });
-        onSelectWorkspace(result.workspace.slug);
-        setCreatingWorkspace(false);
-      } else if (action.action.startsWith("branch_")) setSelected(null);
+      if (action.action.startsWith("branch_")) setSelected(null);
       else setSelected((current) => selectionAfterStatus(current, result.status));
       toast(workspaceActionLabel(action));
     } catch (runError) {
@@ -106,27 +110,6 @@ export function SourceControl({
     } finally {
       setPending(false);
       setConfirm(null);
-    }
-  };
-
-  // A cloud workspace takes a minute to build, so this returns as soon as the
-  // gateway accepts it and points at the Cloud page, where the machine shows
-  // its progress; the workspace picker lists it once its row exists.
-  const createCloudWorkspace = async (input: { branch: string; from?: string }) => {
-    setPending(true);
-    try {
-      await cloudApi.createWorkspace(projectId, input);
-      await client.invalidateQueries({ queryKey: keys.cloudProjects });
-      await client.invalidateQueries({ queryKey: keys.workspaces(projectId) });
-      setCreatingWorkspace(false);
-      toast(`Creating a machine for ${input.branch}. Follow it under Cloud.`);
-    } catch (createError) {
-      toast(
-        createError instanceof Error ? createError.message : "Could not add the workspace.",
-        "error",
-      );
-    } finally {
-      setPending(false);
     }
   };
 
@@ -155,11 +138,11 @@ export function SourceControl({
           <SourceControlBranchPicker
             status={status}
             pending={pending}
-            projectLocalPath={projectLocalPath}
+            projectLocalPath={project.localPath}
             workspaces={workspaces}
             onRun={run}
             onSelectWorkspace={onSelectWorkspace}
-            onCreateWorkspace={() => setCreatingWorkspace(true)}
+            onCreateWorkspace={setCreatingWorkspace}
             onConfirmDelete={(name) =>
               setConfirm({
                 action: { action: "branch_delete", name },
@@ -169,7 +152,7 @@ export function SourceControl({
               })
             }
           />
-          {targetLabel !== "project root" ? (
+          {workspace ? (
             <span className="text-body-md text-foreground-faint truncate">{targetLabel}</span>
           ) : null}
           {status.operation && (
@@ -301,7 +284,7 @@ export function SourceControl({
                       setConfirm({
                         action: { action: "delete_untracked", paths: [chosen.path] },
                         title: "Delete untracked file?",
-                        body: `${chosen.path} will be permanently deleted from the connected machine.`,
+                        body: `${chosen.path} will be permanently deleted from the machine that holds this workspace.`,
                         label: "Delete file",
                       })
                     }
@@ -368,31 +351,26 @@ export function SourceControl({
           </div>
         </main>
       </div>
-      {cloud ? (
-        <AddCloudWorkspaceDialog
-          open={creatingWorkspace}
-          pending={pending}
-          defaultBranch={cloud.defaultBranch}
-          onCancel={() => setCreatingWorkspace(false)}
-          onSubmit={(input) => void createCloudWorkspace(input)}
-        />
-      ) : (
-        <CreateWorkspaceDialog
-          open={creatingWorkspace}
-          pending={pending}
-          defaultBranch=""
-          fromHead={status.head}
-          onCancel={() => setCreatingWorkspace(false)}
-          onSubmit={({ branch, reuseExistingBranch }) =>
-            void run({
-              action: "workspace_create",
-              branch,
-              reuseExistingBranch,
-              from: reuseExistingBranch ? undefined : (status.head ?? undefined),
-            })
-          }
-        />
-      )}
+      <AddWorkspaceDialog
+        open={creatingWorkspace !== null}
+        project={project}
+        user={me.data}
+        initialBranch={creatingWorkspace ?? ""}
+        // On a machine the new branch starts from what is checked out here,
+        // which is what somebody branching from this view means. An instance
+        // clones from the remote, which may not have this branch yet.
+        initialFrom={where?.kind === "local" ? (status.head ?? "") : ""}
+        initialWhere={where?.slug}
+        onCancel={() => setCreatingWorkspace(null)}
+        onCreated={async (result) => {
+          setCreatingWorkspace(null);
+          // An instance takes a minute to set up and is listed with its state
+          // until then. A working copy on a machine is there already.
+          if (result.status !== "ready") return;
+          await client.invalidateQueries({ queryKey: keys.workspaces(projectId) });
+          onSelectWorkspace(createdSlug(result));
+        }}
+      />
       <ConfirmDialog
         open={confirm !== null}
         title={confirm?.title ?? "Confirm action"}

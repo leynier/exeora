@@ -24,7 +24,8 @@ export function SourceControlBranchPicker({
   workspaces: Workspace[];
   onRun: (action: WorkspaceAction) => Promise<void>;
   onSelectWorkspace: (slug: string | null) => void;
-  onCreateWorkspace: () => void;
+  /** Given what was typed into the search box, which is the branch most often meant. */
+  onCreateWorkspace: (branch: string) => void;
   onConfirmDelete: (name: string) => void;
 }) {
   const panelId = useId();
@@ -236,7 +237,7 @@ export function SourceControlBranchPicker({
                 <BranchRow
                   key={branch.name}
                   branch={branch}
-                  hint="Checkout"
+                  hint="Check out"
                   onPick={() => checkoutRemote(branch.name)}
                 />
               ))}
@@ -248,7 +249,7 @@ export function SourceControlBranchPicker({
         <div className="border-border-subtle shrink-0 space-y-2 border-t px-3 py-2">
           {!canCreate ? (
             <p className="text-label-md text-foreground-faint">
-              Type a name to create a branch from {head}, or open a separate Git workspace.
+              Type a name to create a branch from {head}, or give it a workspace of its own.
             </p>
           ) : null}
           <button
@@ -256,8 +257,9 @@ export function SourceControlBranchPicker({
             className="btn w-full"
             disabled={pending}
             onClick={() => {
+              const typed = query.trim();
               panel.current?.hidePopover();
-              onCreateWorkspace();
+              onCreateWorkspace(typed);
             }}
           >
             Create workspace

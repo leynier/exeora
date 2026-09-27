@@ -12,6 +12,7 @@ import {
   SkeletonRows,
 } from "../components/ui.js";
 import { formatDuration } from "../format.js";
+import { callWorkspaceLabel } from "../projectModel.js";
 import { useClients, useProjects, useToolCallPages } from "../queries.js";
 
 /** The only filter whose choices are known ahead of the data. */
@@ -166,8 +167,11 @@ export function Activity() {
                       )}
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
-                      {nameFor(call.projectId)}
-                      {call.workspaceSlug ? ` / ${call.workspaceSlug}` : " / main"}
+                      {nameFor(call.projectId)} /{" "}
+                      {callWorkspaceLabel(
+                        call.workspaceSlug,
+                        projects.data?.find((candidate) => candidate.id === call.projectId),
+                      )}
                       {call.clientName ? ` · ${call.clientName}` : ""}
                     </p>
                   </div>

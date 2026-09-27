@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 /**
- * Replacing, or removing, the token a repository was added with.
+ * Replacing, or removing, the token a project was added with.
  *
  * The way out of a private repository that failed to clone: the token was
  * wrong or has expired, and Retry alone would clone with the same one. The
- * new token reaches machines created or retried from now on; the ones
+ * new token reaches instances created or retried from now on; the ones
  * already running keep what they were set up with.
  */
 export function SetCloudCredentialDialog({
@@ -21,7 +21,7 @@ export function SetCloudCredentialDialog({
   pending: boolean;
   projectName: string;
   hasCredential: boolean;
-  /** How many of its machines are waiting on a token that works. */
+  /** How many of its instances are waiting on a token that works. */
   failed: number;
   onSubmit: (input: { token: string | null; username?: string }) => void;
   onCancel: () => void;
@@ -60,10 +60,10 @@ export function SetCloudCredentialDialog({
         {hasCredential ? "Replace the token" : "Set a token"} for {projectName}
       </h2>
       <p className="text-body-md text-foreground-muted mt-2">
-        Used by machines created or retried from now on. Machines already running keep the token
+        Used by instances created or retried from now on. Instances already running keep the token
         they were set up with.
         {failed > 0
-          ? ` Saving it retries the ${failed === 1 ? "machine" : `${failed} machines`} that failed.`
+          ? ` Saving it retries the ${failed === 1 ? "instance" : `${failed} instances`} that failed.`
           : ""}
       </p>
       <label className="mt-4 block">

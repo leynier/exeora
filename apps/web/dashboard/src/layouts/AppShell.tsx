@@ -9,7 +9,7 @@ import {
   useAdminUsers,
   useApprovals,
   useClients,
-  useDevices,
+  useMachines,
   useMe,
   useProjects,
   useToolCalls,
@@ -50,7 +50,10 @@ export function AppShell() {
   const adminSection = isAdminSection(location.pathname);
   const projects = useProjects();
   const adminUsers = useAdminUsers();
-  const queries = [me, useDevices(), projects, useClients(), useToolCalls(), useApprovals()];
+  // The Machines page asks for the live list; asking for the same one here
+  // keeps it to one request instead of two that differ by a flag.
+  const machines = useMachines(location.pathname === "/machines");
+  const queries = [me, machines, projects, useClients(), useToolCalls(), useApprovals()];
   const unauthorized = queries.some((query) => query.error instanceof Unauthorized);
   const failed = queries.find((query) => query.isError && !(query.error instanceof Unauthorized));
   const [collapsed, setCollapsed] = useState(readCollapsed);

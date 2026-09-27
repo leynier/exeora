@@ -194,8 +194,7 @@ export function AdminUser() {
           <div className="min-w-0">
             <p className="text-title-md">{user.cloudEnabled ? "Enabled" : "Not enabled"}</p>
             <p className="text-body-md text-foreground-faint">
-              Whether this account may put repositories on machines Exeora runs. Administrators
-              always can.
+              Whether this account may put projects on Exeora Cloud. Administrators always can.
             </p>
           </div>
           <button
@@ -242,7 +241,7 @@ export function AdminUser() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-title-md truncate">{device.name}</p>
-                        {device.kind === "cloud" && <Badge tone="brand">cloud</Badge>}
+                        {device.kind === "cloud" && <Badge tone="brand">instance</Badge>}
                         {device.revokedAt && <Badge tone="error">revoked</Badge>}
                       </div>
                       <p className="text-body-md text-foreground-faint truncate">
@@ -383,10 +382,10 @@ export function AdminUser() {
         title={`${pendingDevice?.kind === "cloud" ? "Destroy" : "Revoke"} ${pendingDevice?.name ?? ""}?`}
         body={
           pendingDevice?.kind === "cloud"
-            ? "This is a machine Exeora runs: revoking it destroys it, with whatever was never pushed from it. If it holds the repository's default branch, every other machine of that repository is destroyed with it."
+            ? "This is an instance of Exeora Cloud: revoking it destroys it, with anything that was not pushed from it. If it holds the default branch of a project that lives only on Exeora Cloud, the whole project goes with it, and every other instance of that project."
             : "Its connection is closed immediately and it stops serving tool calls for this account."
         }
-        confirmLabel={pendingDevice?.kind === "cloud" ? "Destroy machine" : "Revoke"}
+        confirmLabel={pendingDevice?.kind === "cloud" ? "Destroy instance" : "Revoke"}
         pending={revokeDevice.isPending}
         onCancel={() => setPendingDevice(null)}
         onConfirm={() => {

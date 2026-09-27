@@ -1,16 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
+import { errorText } from "../api.js";
 import { cloudApi } from "../api-cloud.js";
-import { keys, useCloudProjects } from "../queries.js";
+import { instancesOf } from "../projectModel.js";
+import { refreshPlaces, useMachines } from "../queries.js";
 import { MachineFailure, needsToken } from "./MachineFailure.js";
 import { useToast } from "./toast.js";
 import { EmptyState } from "./ui.js";
 
 /**
- * What the Workspace tab shows instead of "machine offline" for a cloud
- * workspace: the machine is being built, failed, or is on its way out, and
- * each of those is a different thing to tell someone. A ready machine that
- * is merely asleep never reaches here for long, since the capabilities poll
+ * What the Workspace tab shows instead of "machine offline" for a workspace on
+ * Exeora Cloud: the instance is being set up, failed, or is on its way out,
+ * and each of those is a different thing to tell someone. An instance that is
+ * merely asleep never reaches here for long, since the capabilities poll
  * wakes it.
  */
 export function CloudMachineNotice({
@@ -20,59 +22,63 @@ export function CloudMachineNotice({
   projectId: string;
   workspaceId: string | null;
 }) {
-  const projects = useCloudProjects();
+  const machines = useMachines();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const machine = projects.data
-    ?.find((project) => project.projectId === projectId)
-    ?.machines.find((candidate) => candidate.workspaceId === workspaceId);
+  const instance = instancesOf(machines.data ?? [], projectId).find(
+    (candidate) => candidate.workspace.id === workspaceId,
+  );
 
   const retry = useMutation({
     mutationFn: cloudApi.retryMachine,
     onSuccess: () => {
-      toast("Provisioning again.");
-      queryClient.invalidateQueries({ queryKey: keys.cloudProjects });
+      toast("Setting it up again.");
+      void refreshPlaces(queryClient, projectId);
     },
-    onError: (error) => toast(error instanceof Error ? error.message : "Could not retry.", "error"),
+    onError: (error) => toast(errorText(error, "The instance could not be retried."), "error"),
   });
 
-  const cloudLink = (
-    <Link to="/cloud" className="underline">
-      Cloud
+  const machinesLink = (
+    <Link to="/machines?view=cloud" className="underline">
+      Machines
     </Link>
   );
 
-  if (!machine) {
+  if (!instance) {
     return (
-      <EmptyState title="Waking the machine">
-        The first call after a pause takes a moment. This view refreshes on its own; the machine's
-        state is under {cloudLink}.
+      <EmptyState title="Waking the instance">
+        The first call after a pause takes a moment. This view refreshes on its own; the state of
+        the instance is under {machinesLink}.
       </EmptyState>
     );
   }
 
-  if (machine.status === "creating") {
+  if (instance.state === "setting up") {
     return (
       <EmptyState title="Setting up this workspace">
-        {machine.step ?? "Starting"}… This view opens on its own once the CLI connects.
+        {instance.step ?? "Starting"}… This view opens on its own once the instance is ready.
       </EmptyState>
     );
   }
 
-  if (machine.status === "error") {
+  if (instance.state === "failed") {
     return (
-      <EmptyState title="This machine failed to start">
-        <MachineFailure machine={machine} />
-        {needsToken(machine) && (
+      <EmptyState title="This instance failed to start">
+        <MachineFailure machine={instance} />
+        {needsToken(instance) && (
           <p className="text-body-md text-foreground-muted mt-2">
-            Set the token under {cloudLink}; saving it retries this machine.
+            Set the token from the{" "}
+            <Link to={`/projects/${projectId}`} className="underline">
+              project
+            </Link>
+            , under Exeora Cloud. Saving it retries this instance.
           </p>
         )}
         <button
           type="button"
           className="btn mt-4"
           disabled={retry.isPending}
-          onClick={() => retry.mutate(machine.deviceId)}
+          onClick={() => retry.mutate(instance.deviceId)}
         >
           {retry.isPending ? "Working…" : "Retry"}
         </button>
@@ -80,16 +86,16 @@ export function CloudMachineNotice({
     );
   }
 
-  if (machine.status === "destroying") {
+  if (instance.state === "removing") {
     return (
       <EmptyState title="This workspace is being removed">
-        The machine is on its way out. Its row disappears from {cloudLink} when it is gone.
+        Its instance is on its way out. It leaves {machinesLink} when it is gone.
       </EmptyState>
     );
   }
 
   return (
-    <EmptyState title="Waking the machine">
+    <EmptyState title="Waking the instance">
       It sleeps when idle and takes a moment to answer the first call. This view refreshes on its
       own.
     </EmptyState>

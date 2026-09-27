@@ -1,11 +1,24 @@
 import { useEffect, useMemo } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { CloudMachineNotice } from "../components/CloudMachineNotice.js";
 import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
 import { WorkspaceTerminals } from "../components/WorkspaceTerminals.js";
-import { useGitStatus, useProjects, useWorkspaceCapabilities, useWorkspaces } from "../queries.js";
+import {
+  cloudLocation,
+  defaultBranchOf,
+  repositoryLabel,
+  rootLabel,
+  workspaceOptions,
+} from "../projectModel.js";
+import {
+  useGitStatus,
+  useMachines,
+  useProjects,
+  useWorkspaceCapabilities,
+  useWorkspaces,
+} from "../queries.js";
 import { projectRootBranch } from "../workspacePaths.js";
 
 const LAST_KEY = "exeora.last_workspace";
@@ -47,6 +60,7 @@ export function WorkspaceRedirect() {
 export function Workspace() {
   const [search, setSearch] = useSearchParams();
   const projects = useProjects();
+  const machines = useMachines();
   const projectId = search.get("project") ?? "";
   const workspaceSlug = search.get("workspace");
   const workspaces = useWorkspaces(projectId || undefined);
@@ -73,7 +87,27 @@ export function Workspace() {
     ready,
     tab === "source" && capabilities.data?.sourceControl !== false,
   );
-  const targetLabel = selectedWorkspace?.slug ?? "project root";
+  // The branch the root is really on, once the machine has said. Until then,
+  // and for a machine that cannot say, the one the project was added with.
+  const rootBranch =
+    (workspaceSlug === null ? status.data?.head : null) ??
+    projectRootBranch(
+      status.data?.gitWorkspaces,
+      project?.localPath ?? "",
+      workspaces.data ?? [],
+    ) ??
+    defaultBranchOf(project);
+  const targetLabel = selectedWorkspace?.slug ?? rootLabel(rootBranch);
+  // Where the target is, which decides what to say when it does not answer and
+  // where a workspace made from here is put.
+  const home = selectedWorkspace?.cloud
+    ? (project && cloudLocation(project)) || undefined
+    : project?.locations.find((location) =>
+        selectedWorkspace
+          ? location.kind === "local" &&
+            location.deviceId === (selectedWorkspace.deviceId ?? project.deviceId)
+          : location.default,
+      );
 
   const restored = useMemo(() => {
     if (projectId || !projects.data) return null;
@@ -111,23 +145,27 @@ export function Workspace() {
         <div className="min-w-0">
           <h1 className="text-headline-md">Workspace</h1>
           <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
-            {project?.cloud
-              ? `${project.cloud.repoUrl} · ${selectedWorkspace?.branch ?? project.cloud.defaultBranch}`
-              : (selectedWorkspace?.localPath ??
-                project?.localPath ??
-                "Choose a project to open its git client.")}
+            {project
+              ? [
+                  home?.name,
+                  home?.kind === "cloud"
+                    ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
+                    : (selectedWorkspace?.localPath ?? home?.localPath ?? project.localPath),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "Choose a project to open its git client."}
           </p>
         </div>
         <WorkspaceRootSelector
           projects={projects.data ?? []}
           projectId={project?.id ?? ""}
-          workspaces={workspaces.data ?? []}
+          options={
+            project
+              ? workspaceOptions(project, workspaces.data ?? [], machines.data ?? [], rootBranch)
+              : []
+          }
           selectedSlug={workspaceSlug}
-          projectRootBranch={projectRootBranch(
-            status.data?.gitWorkspaces,
-            project?.localPath ?? "",
-            workspaces.data ?? [],
-          )}
           onSelectProject={(id) => select(id, null)}
           onSelectWorkspace={(slug) => select(projectId, slug)}
         />
@@ -136,9 +174,17 @@ export function Workspace() {
       {!project ? (
         <div className="border-border bg-surface flex-1 rounded-xl border">
           <EmptyState title={projects.data?.length ? "Select a project" : "No projects yet"}>
-            {projects.data?.length
-              ? "The dropdowns above switch project and workspace without leaving this tab."
-              : "Add one from the CLI, then it will appear in the project selector."}
+            {projects.data?.length ? (
+              "The dropdowns above switch project and workspace without leaving this tab."
+            ) : (
+              <>
+                This is where a project's changes are reviewed and committed.{" "}
+                <Link to="/projects?add=1" className="underline">
+                  Add project
+                </Link>
+                .
+              </>
+            )}
           </EmptyState>
         </div>
       ) : (
@@ -180,7 +226,7 @@ export function Workspace() {
                   className="underline"
                   onClick={() => select(project.id, null)}
                 >
-                  Open the project root
+                  Open {rootLabel(defaultBranchOf(project))}
                 </button>
                 .
               </EmptyState>
@@ -189,15 +235,25 @@ export function Workspace() {
             <ErrorBanner error={capabilities.error} onRetry={() => capabilities.refetch()} />
           ) : capabilities.data && !capabilities.data.sourceControl ? (
             <div className="border-border bg-surface flex-1 rounded-xl border">
-              {project.cloud && !capabilities.data.online ? (
+              {home?.kind === "cloud" && !capabilities.data.online ? (
                 <CloudMachineNotice projectId={project.id} workspaceId={targetId ?? null} />
               ) : (
                 <EmptyState
-                  title={capabilities.data.online ? "CLI update required" : "Machine offline"}
+                  title={
+                    capabilities.data.online
+                      ? "CLI update required"
+                      : `${home?.name ?? "The machine"} is offline`
+                  }
                 >
-                  {capabilities.data.online
-                    ? "Update the Exeora CLI to enable Source Control."
-                    : "Connect the machine that serves this project."}
+                  {capabilities.data.online ? (
+                    `Update the Exeora CLI on ${home?.name ?? "the machine"} to enable Source Control.`
+                  ) : (
+                    <>
+                      Run <code className="font-mono">exeora connect</code> on{" "}
+                      {home?.name ?? "the machine that holds this workspace"}. This view opens on
+                      its own once it is back.
+                    </>
+                  )}
                 </EmptyState>
               )}
             </div>
@@ -207,8 +263,8 @@ export function Workspace() {
               projectId={projectId}
               workspace={targetId}
               workspaces={workspaces.data ?? []}
-              projectLocalPath={project.localPath}
-              cloud={project.cloud}
+              project={project}
+              where={home}
               targetKey={targetKey}
               targetLabel={targetLabel}
               status={status.data}

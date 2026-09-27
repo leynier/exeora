@@ -24,6 +24,39 @@ export * from "./api-types.js";
 
 export class Unauthorized extends Error {}
 
+/**
+ * A refusal from the gateway, kept whole.
+ *
+ * The message is the sentence a toast shows. The status, the code and the body
+ * are for the places that answer a refusal with something other than a toast: a
+ * dialog that stays open and says why, or a removal that offers to go ahead
+ * anyway.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly body: Record<string, unknown> | null;
+
+  constructor(status: number, body: Record<string, unknown> | null) {
+    super(`${apiError(body)} (${status}).`);
+    this.status = status;
+    this.code = typeof body?.error === "string" ? body.error : null;
+    this.body = body;
+  }
+
+  /** The gateway's own sentence, without the status a toast appends to it. */
+  get sentence(): string {
+    const text = apiError(this.body);
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+  }
+}
+
+/** What to show for a failure: the gateway's sentence when it sent one. */
+export function errorText(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.sentence;
+  return error instanceof Error ? error.message : fallback;
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = storedToken();
   if (!token) throw new Unauthorized("Not signed in.");
@@ -42,7 +75,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       .json()
       .then((value) => value as Record<string, unknown>)
       .catch(() => null);
-    throw new Error(`${apiError(body)} (${response.status}).`);
+    throw new ApiError(response.status, body);
   }
 
   return (await response.json()) as T;
@@ -58,6 +91,12 @@ function apiError(body: Record<string, unknown> | null): string {
   }
   const messages: Record<string, string> = {
     device_revoked: "That machine has been revoked",
+    cloud_disabled: "Exeora Cloud is not enabled for this account. An administrator enables it",
+    no_machine: "That location has no machine to be the default",
+    machine_removed: "That machine was removed, so it cannot be the default",
+    slug_conflict: "That slug is already taken",
+    not_retryable: "That instance is not in a state that can be retried",
+    github_disabled: "GitHub is not set up on this gateway",
     not_found: "That item no longer exists",
     not_revoked: "Revoke this item before deleting it permanently",
     forbidden: "This account is not allowed to do that",
@@ -70,7 +109,6 @@ export class AlreadyAnswered extends Error {}
 
 export const api = {
   me: () => request<User>("/api/me"),
-  devices: () => request<Device[]>("/api/devices"),
   projects: () => request<Project[]>("/api/projects"),
   workspaces: (projectId: string) => request<Workspace[]>(`/api/projects/${projectId}/workspaces`),
   workspaceCapabilities: (id: string, workspace?: string) =>

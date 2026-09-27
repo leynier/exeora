@@ -1,185 +1,105 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link } from "react-router";
-import { api, type Device, isOnline, relativeTime } from "../api.js";
-import { ConfirmDialog } from "../components/ConfirmDialog.js";
-import { useToast } from "../components/toast.js";
-import {
-  Badge,
-  Card,
-  Divided,
-  EmptyState,
-  PageHeader,
-  Row,
-  SkeletonRows,
-  StatusDot,
-} from "../components/ui.js";
-import { formatDate } from "../format.js";
-import { keys, useDevices, useProjects } from "../queries.js";
+import { useSearchParams } from "react-router";
+import { CloudInstances } from "../components/CloudInstances.js";
+import { LocalMachines } from "../components/LocalMachines.js";
+import { PageHeader } from "../components/ui.js";
+import { useWorkspaceControls } from "../components/WorkspaceControls.js";
+import { NavIcon } from "../layouts/Sidebar.js";
+import { instancesOf, localMachines } from "../projectModel.js";
+import { useMachines, useMe, useProjects } from "../queries.js";
+
+const VIEWS = [
+  { value: "own", label: "Your machines", icon: "machines" },
+  { value: "cloud", label: "Exeora Cloud", icon: "cloud" },
+] as const;
 
 /**
- * Machines, and the two ways to get rid of one.
+ * Everything that is running, whichever project it belongs to.
  *
- * Revoking is the urgent action: one click, reversible by registering again.
- * Deleting is only offered afterwards, because it also takes the machine's
- * projects and their audit history, and there is no undo.
+ * The other lens over the same data as Projects: that page answers what there
+ * is and where it lives, this one answers what is running. The rows are the
+ * same rows, so an instance met here is the one met on its project's page.
+ *
+ * This is the one page that asks the provider what each instance is doing,
+ * which is why the list is fetched `live` here and nowhere else.
  */
-type Pending = { device: Device; action: "revoke" | "delete" } | null;
-
 export function Machines() {
-  const devices = useDevices();
+  const [search, setSearch] = useSearchParams();
+  const me = useMe();
+  const machines = useMachines(true);
   const projects = useProjects();
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const [pending, setPending] = useState<Pending>(null);
+  const view = search.get("view") === "cloud" ? "cloud" : "own";
 
-  const machines = devices.data ?? [];
-  const nameOf = (id: string) => machines.find((device) => device.id === id)?.name ?? "The machine";
-  const projectCount = (id: string) =>
-    (projects.data ?? []).filter((project) => project.deviceId === id).length;
-
-  const settle = (message: string, invalidateProjects = false) => {
-    toast(message);
-    setPending(null);
-    queryClient.invalidateQueries({ queryKey: keys.devices });
-    queryClient.invalidateQueries({ queryKey: keys.allCalls });
-    if (invalidateProjects) queryClient.invalidateQueries({ queryKey: keys.projects });
-  };
-
-  const fail = (error: unknown, fallback: string) => {
-    toast(error instanceof Error ? error.message : fallback, "error");
-    setPending(null);
-  };
-
-  const revoke = useMutation({
-    mutationFn: api.revokeDevice,
-    onSuccess: (_result, id) => settle(`${nameOf(id)} was revoked.`),
-    onError: (error) => fail(error, "Could not revoke."),
+  const controls = useWorkspaceControls({
+    projects: projects.data ?? [],
+    machines: machines.data ?? [],
   });
 
-  const remove = useMutation({
-    mutationFn: api.deleteDevice,
-    // Projects too: they cascade from the machine, so the other pages are
-    // stale the moment this succeeds.
-    onSuccess: (_result, id) => settle(`${nameOf(id)} was deleted.`, true),
-    onError: (error) => fail(error, "Could not delete."),
-  });
-
-  const busy = revoke.isPending || remove.isPending;
-
-  if (devices.isError || projects.isError) {
+  if (machines.isError || projects.isError) {
     return <PageHeader title="Machines" subtitle="Machine data is temporarily unavailable." />;
   }
+
+  const own = localMachines(machines.data ?? []);
+  const instances = instancesOf(machines.data ?? []);
 
   return (
     <>
       <PageHeader
         title="Machines"
-        subtitle="Registered from the CLI, and revocable from here the moment you want one to stop."
+        subtitle="What is running: the machines you connected, and the instances Exeora Cloud runs for you."
       />
 
-      <Card>
-        {devices.isLoading ? (
-          <SkeletonRows />
-        ) : machines.length === 0 ? (
-          <EmptyState title="No machines yet">
-            Install the native CLI, then run <code className="font-mono">exeora connect</code>. Or
-            put a repository on a machine Exeora runs, under{" "}
-            <Link to="/cloud" className="underline">
-              Cloud
-            </Link>
-            .
-          </EmptyState>
+      <div role="tablist" aria-label="Machines" className="border-border mb-6 flex gap-1 border-b">
+        {VIEWS.map((entry) => {
+          const selected = view === entry.value;
+          const count = entry.value === "cloud" ? instances.length : own.length;
+          return (
+            <button
+              key={entry.value}
+              type="button"
+              role="tab"
+              id={`machines-tab-${entry.value}`}
+              aria-selected={selected}
+              aria-controls="machines-panel"
+              onClick={() =>
+                // The filters belong to the tab they were set on.
+                setSearch(entry.value === "cloud" ? { view: "cloud" } : {}, { replace: true })
+              }
+              className={`text-title-md flex items-center gap-2 border-b-2 px-4 py-2.5 ${
+                selected
+                  ? "border-brand text-foreground"
+                  : "text-foreground-faint hover:text-foreground border-transparent"
+              }`}
+            >
+              <NavIcon name={entry.icon} />
+              {entry.label}
+              {machines.data && (
+                <span className="text-label-md text-foreground-faint font-mono tabular-nums">
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div id="machines-panel" role="tabpanel" aria-labelledby={`machines-tab-${view}`}>
+        {view === "cloud" ? (
+          <CloudInstances
+            instances={instances}
+            user={me.data}
+            loading={machines.isLoading}
+            controls={controls}
+          />
         ) : (
-          <Divided>
-            {machines.map((device) => (
-              <Row key={device.id}>
-                <div className="flex min-w-0 items-center gap-3">
-                  <StatusDot
-                    on={isOnline(device)}
-                    label={isOnline(device) ? "online" : "offline"}
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-title-md truncate">{device.name}</p>
-                      {device.kind === "cloud" && <Badge tone="brand">cloud</Badge>}
-                      {device.revokedAt && <Badge tone="error">revoked</Badge>}
-                    </div>
-                    <p className="text-body-md text-foreground-faint truncate">
-                      {device.platform}
-                      {device.cliVersion ? ` · CLI ${device.cliVersion}` : ""} ·{" "}
-                      {device.revokedAt
-                        ? `revoked ${relativeTime(device.revokedAt)}`
-                        : isOnline(device)
-                          ? "online"
-                          : device.kind === "cloud"
-                            ? "sleeping"
-                            : `last seen ${relativeTime(device.lastSeenAt)}`}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-4">
-                  <span className="text-body-md text-foreground-faint hidden sm:block">
-                    added {formatDate(device.createdAt)}
-                  </span>
-                  {/* A cloud machine is its workspace: it goes when that
-                      does, from the Cloud page, rather than being revoked
-                      into a machine that can never register again. */}
-                  {device.kind === "cloud" && !device.revokedAt ? (
-                    <Link to="/cloud" className="btn">
-                      Manage
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={busy}
-                      onClick={() =>
-                        setPending({ device, action: device.revokedAt ? "delete" : "revoke" })
-                      }
-                    >
-                      {device.revokedAt ? "Delete" : "Revoke"}
-                    </button>
-                  )}
-                </div>
-              </Row>
-            ))}
-          </Divided>
+          <LocalMachines
+            machines={own}
+            projects={projects.data ?? []}
+            loading={machines.isLoading}
+          />
         )}
-      </Card>
+      </div>
 
-      <ConfirmDialog
-        open={pending !== null}
-        title={
-          pending?.action === "delete"
-            ? `Delete ${pending.device.name}?`
-            : `Revoke ${pending?.device.name ?? ""}?`
-        }
-        body={
-          pending?.action === "delete"
-            ? deleteWarning(projectCount(pending.device.id))
-            : "Its connection is closed immediately and it stops serving tool calls. Projects on that machine become unreachable until you register it again."
-        }
-        confirmLabel={pending?.action === "delete" ? "Delete permanently" : "Revoke"}
-        pending={busy}
-        onCancel={() => setPending(null)}
-        onConfirm={() => {
-          if (!pending) return;
-          if (pending.action === "delete") remove.mutate(pending.device.id);
-          else revoke.mutate(pending.device.id);
-        }}
-      />
+      {controls.dialogs}
     </>
   );
-}
-
-/** Names what goes with the machine, because none of it comes back. */
-function deleteWarning(projects: number): string {
-  const belongings =
-    projects === 0
-      ? "It has no projects left"
-      : `Its ${projects} ${projects === 1 ? "project is" : "projects are"} deleted with it, along with their activity history`;
-
-  return `${belongings}. This cannot be undone. Registering the machine again later creates a new one rather than restoring this.`;
 }
