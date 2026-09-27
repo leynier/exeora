@@ -216,7 +216,9 @@ pub async fn run(api: &ApiClient, command: CloudCommand, json_output: bool) -> R
                     })
                     .ok_or_else(|| anyhow!("No workspace {workspace} in {}.", project.slug))?;
                 let Some(workspace_id) = machine.workspace_id.clone() else {
-                    bail!("The main workspace is the project itself. Use `exeora cloud remove`.");
+                    bail!(
+                        "main is the instance of the project root, not a workspace. Destroy it from Machines in the dashboard, which keeps the project, or remove the project with `exeora project remove`."
+                    );
                 };
                 if !confirm(
                     yes,
@@ -477,7 +479,7 @@ fn slugify(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CloudCommand, repository_name, run, slugify};
+    use super::{CloudCommand, CloudWorkspaceCommand, repository_name, run, slugify};
     use crate::{api::CloudCreated, testing::Gateway};
     use serde_json::json;
 
@@ -555,6 +557,48 @@ mod tests {
             .await
             .expect("ready");
         assert_eq!(gateway.received_as("GET", "/api/cloud/projects").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_instance_of_the_project_root_is_not_removed_as_a_workspace() {
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/cloud/projects") => (
+                200,
+                json!({ "projects": [{
+                    "projectId": "prj_api", "slug": "api", "name": "api",
+                    "repoUrl": "https://github.com/acme/api.git", "defaultBranch": "main",
+                    "machines": [{ "deviceId": "dev_cloud", "workspaceId": null, "workspaceSlug": "main", "status": "ready", "online": true }],
+                }] }),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let error = run(
+            &gateway.api().await,
+            CloudCommand::Workspace {
+                command: CloudWorkspaceCommand::Remove {
+                    project: "api".to_owned(),
+                    workspace: "main".to_owned(),
+                    yes: true,
+                },
+            },
+            true,
+        )
+        .await
+        .expect_err("refused");
+
+        // Destroying that instance keeps the project, and only removing the
+        // project removes it: the message sends nobody the wrong way.
+        assert_eq!(
+            error.to_string(),
+            "main is the instance of the project root, not a workspace. Destroy it from Machines in the dashboard, which keeps the project, or remove the project with `exeora project remove`."
+        );
+        assert!(
+            gateway
+                .received()
+                .iter()
+                .all(|request| request.method == "GET")
+        );
     }
 
     #[test]

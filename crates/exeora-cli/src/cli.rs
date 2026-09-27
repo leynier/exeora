@@ -10,8 +10,7 @@ use crate::{
     git_credential::GitCredentialArgs,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
     projects::{
-        self, Listing, ProjectCommand, ROOT_SELECTOR, can_ask, find_location, location_names,
-        offline_notice,
+        self, Listing, ProjectCommand, ROOT_SELECTOR, can_ask, find_location, offline_notice,
     },
     repo::{
         checkout_root, current_branch_of, default_branch_of, https_repository_url, origin_of,
@@ -713,14 +712,10 @@ async fn another_location(
         }
         Some(location) => location.slug.clone(),
         // Every project with a repository can be put on Exeora Cloud, and
-        // asking for a workspace there is what puts it.
+        // asking for a workspace there is what puts it. One that lives
+        // nowhere is given its place that way too.
         None if on.trim().eq_ignore_ascii_case("cloud") => "cloud".to_owned(),
-        None => bail!(
-            "{} does not live on {on}. Its locations are: {}. Add one with `exeora project locations add {} --on {on}`.",
-            remote.slug,
-            location_names(&remote.locations),
-            remote.slug
-        ),
+        None => return Err(projects::not_a_location(&remote, on)),
     };
     Ok(Some((remote, place)))
 }
@@ -1040,10 +1035,31 @@ async fn remote_workspace_listing(
     let mut rows = Vec::new();
     let mut lines = Vec::new();
     for project in listed_projects(config, &remote, project, all)? {
+        // A project that lives nowhere has no root to list and is said so,
+        // or it would be missing from a listing of every project with no
+        // word of why.
+        if projects::has_no_place(project) {
+            lines.push(format!(
+                "{} lives nowhere at the moment. {}",
+                project.slug,
+                projects::give_it_a_place(&project.slug)
+            ));
+        }
         // The roots first, one for each location that holds a copy: they
         // are where the workspaces below were made from.
         for location in &project.locations {
             let Some(selector) = projects::root_selector(location) else {
+                // Exeora Cloud as the default with no instance holds no copy
+                // and is still where `main` goes: the call makes the instance.
+                if location.is_default && location.has_no_instance() {
+                    lines.push(workspace_line(
+                        ROOT_SELECTOR,
+                        &project.slug,
+                        &format!("{} ({})", location.name, location.state),
+                        None,
+                        None,
+                    ));
+                }
                 continue;
             };
             let here = (this.is_some() && location.device_id == this)
@@ -1688,9 +1704,7 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
         let count = config.data().projects.len();
         config.forget_local_state();
         config.save()?;
-        println!(
-            "This machine was deleted from the dashboard. Forgot it and its {count} projects. Run `exeora connect` to register again."
-        );
+        println!("{}", machine_was_deleted(count));
         return Ok(());
     };
     if device.revoked_at.is_some() {
@@ -1781,6 +1795,16 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
     Ok(())
 }
 
+/// What is said on a machine that was deleted from the dashboard. What is
+/// forgotten is this machine's own record. The projects are the account's:
+/// one with a repository stays, and only a directory with no remote went
+/// with the machine.
+fn machine_was_deleted(projects: usize) -> String {
+    format!(
+        "This machine was deleted from the dashboard. Forgot its registration and the {projects} project(s) it held, on this machine only: no file was deleted. A project with a repository is still in your account, where it lives in its other locations or nowhere. Run `exeora connect` to register this machine again, then `exeora project add .` in a checkout to make it a location of its project."
+    )
+}
+
 /// The projects that belong in this machine's config, as the gateway sees
 /// them.
 ///
@@ -1799,7 +1823,9 @@ fn projects_on_this_machine(
         .iter()
         .filter_map(|project| {
             let known = local.iter().find(|entry| entry.id == project.id);
-            let default_here = project.device_id == device;
+            // Never for a project that lives nowhere: its `deviceId` names
+            // no machine, and so not this one.
+            let default_here = project.default_is(device);
             let root = if project.locations.is_empty() {
                 // A gateway from before locations: the project is on one
                 // machine, and that is the whole of what it says.
@@ -2177,8 +2203,9 @@ fn client_name(call: &ToolCallView) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        describe_machine, listed_projects, machine_item, projects_on_this_machine,
-        projects_root_from, ran_in, sync_command, validate_project_root, workspace_listing,
+        another_location, describe_machine, listed_projects, machine_item, machine_was_deleted,
+        projects_on_this_machine, projects_root_from, ran_in, sync_command, validate_project_root,
+        workspace_listing,
     };
     use crate::{
         api::{MachineView, ProjectView, ToolCallView},
@@ -3028,5 +3055,284 @@ mod tests {
             validate_project_root(project.clone(), Some(temp.path())).expect("valid project"),
             project
         );
+    }
+
+    /// A repository whose last machine was removed, as the gateway lists
+    /// it: `deviceId` names no machine of the account.
+    fn homeless(id: &str, slug: &str) -> Value {
+        listed_project(
+            id,
+            slug,
+            json!({
+                "deviceId": "dev_none_abc",
+                "nowhere": true,
+                "repoUrl": format!("https://github.com/acme/{slug}.git"),
+                "defaultBranch": "main",
+            }),
+        )
+    }
+
+    /// One that is on Exeora Cloud and nowhere else, after the instance of
+    /// its root was destroyed.
+    fn released(id: &str, slug: &str) -> Value {
+        let mut project = homeless(id, slug);
+        project["locations"] = json!([listed_location(
+            None,
+            "cloud",
+            json!({
+                "kind": "cloud", "name": "Exeora Cloud", "default": true,
+                "online": false, "state": "no instance",
+            })
+        )]);
+        project
+    }
+
+    fn this_machine_as_listed() -> Value {
+        json!([{ "id": "dev_here", "name": "laptop", "platform": "linux", "cliVersion": null, "online": true, "lastSeenAt": null, "revokedAt": null }])
+    }
+
+    #[test]
+    fn a_project_that_lives_nowhere_is_not_on_this_machine() {
+        let mut odd = homeless("prj_odd", "odd");
+        // Whatever `deviceId` holds, a project that lives nowhere has no
+        // default machine, and a listing with no locations is not read as
+        // one from a gateway older than locations.
+        odd["deviceId"] = json!("dev_here");
+        let remote = views(json!([
+            homeless("prj_api", "api"),
+            released("prj_web", "web"),
+            odd,
+        ]));
+        let local = [
+            entry("prj_api", "api", "/here/api"),
+            entry("prj_web", "web", "/here/web"),
+            entry("prj_odd", "odd", "/here/odd"),
+        ];
+        assert_eq!(projects_on_this_machine("dev_here", &remote, &local), []);
+    }
+
+    #[tokio::test]
+    async fn sync_forgets_here_a_project_that_lives_nowhere_and_removes_nothing() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.upsert_project(entry("prj_api", "api", "/code/api"));
+        config.upsert_project(entry("prj_notes", "notes", "/code/notes"));
+        config.save().expect("save");
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/devices") => (200, this_machine_as_listed()),
+            ("GET", "/api/projects") => (
+                200,
+                json!([
+                    // Taken off this machine, which was the only place it lived.
+                    homeless("prj_api", "api"),
+                    listed_project("prj_notes", "notes", json!({
+                        "deviceId": "dev_here",
+                        "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/notes" }))],
+                    })),
+                ]),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+
+        sync_command(&mut config, &gateway.api().await)
+            .await
+            .expect("sync");
+
+        let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
+        let slugs: Vec<_> = saved
+            .data()
+            .projects
+            .iter()
+            .map(|entry| entry.slug.as_str())
+            .collect();
+        assert_eq!(slugs, ["notes"]);
+        // It was read and nothing else: the project is the account's, and
+        // this machine no longer holding it removes nothing there.
+        assert!(
+            gateway
+                .received()
+                .iter()
+                .all(|request| request.method == "GET"),
+            "{:?}",
+            gateway.received()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_machine_that_was_deleted_forgets_what_it_held_and_says_what_stays() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.data_mut().device_name = Some("laptop".to_owned());
+        config.upsert_project(entry("prj_api", "api", "/code/api"));
+        config.save().expect("save");
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            // The machine is gone, and the repository it held lives nowhere.
+            ("GET", "/api/devices") => (200, json!([])),
+            ("GET", "/api/projects") => (200, json!([homeless("prj_api", "api")])),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+
+        sync_command(&mut config, &gateway.api().await)
+            .await
+            .expect("sync");
+
+        let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
+        assert_eq!(saved.data().device_id, None);
+        assert!(saved.data().projects.is_empty());
+        assert!(
+            gateway
+                .received()
+                .iter()
+                .all(|request| request.method == "GET")
+        );
+
+        let said = machine_was_deleted(1);
+        assert_eq!(
+            said,
+            "This machine was deleted from the dashboard. Forgot its registration and the 1 project(s) it held, on this machine only: no file was deleted. A project with a repository is still in your account, where it lives in its other locations or nowhere. Run `exeora connect` to register this machine again, then `exeora project add .` in a checkout to make it a location of its project."
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_that_lives_nowhere_is_listed_with_no_root_and_the_way_back() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.data_mut().device_name = Some("laptop".to_owned());
+        config.save().expect("save");
+        let gateway = Gateway::start(|_, path, _| match path {
+            "/api/projects" => (
+                200,
+                json!([homeless("prj_api", "api"), released("prj_web", "web")]),
+            ),
+            // The instance of a workspace outlives the one of the root.
+            "/api/projects/prj_web/workspaces" => (
+                200,
+                json!([{
+                    "id": "wsp_fix", "projectId": "prj_web", "slug": "fix-login",
+                    "name": "fix/login", "branch": "fix/login", "localPath": "/workspace",
+                    "managed": true, "deviceId": "dev_cloud_fix", "cloud": true,
+                    "machine": "web-fix-login", "createdAt": 10, "updatedAt": 20,
+                }]),
+            ),
+            "/api/projects/prj_api/workspaces" => (200, json!([])),
+            _ => (404, json!({ "error": "not_found" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        let listing = workspace_listing(&config, &api, None, true, true)
+            .await
+            .expect("listing");
+        assert_eq!(
+            listing.lines,
+            [
+                "api lives nowhere at the moment. Give it a place: run `exeora project add .` in a checkout of it, or `exeora project locations add api --on <machine|cloud>`.".to_owned(),
+                format!(
+                    "{:<24} {:<18} {:<32} -",
+                    "main", "web", "Exeora Cloud (no instance)"
+                ),
+                format!(
+                    "{:<24} {:<18} {:<32} fix/login",
+                    "fix-login", "web", "Exeora Cloud"
+                ),
+            ]
+        );
+        // No instance holds a root, so `--roots` has none to print.
+        let kinds: Vec<_> = listing
+            .items
+            .iter()
+            .map(|row| (row["kind"].clone(), row["selector"].clone()))
+            .collect();
+        assert_eq!(kinds, [(json!("workspace"), json!("fix-login"))]);
+        for line in &listing.lines {
+            assert!(!line.contains("dev_none"), "{line}");
+            assert!(!line.contains("unknown machine"), "{line}");
+        }
+
+        // Asked for by name, it is found and said to live nowhere.
+        let one = workspace_listing(&config, &api, Some("api"), false, false)
+            .await
+            .expect("listing");
+        assert!(one.items.is_empty());
+        assert_eq!(one.lines.len(), 1);
+        assert!(one.lines[0].starts_with("api lives nowhere at the moment."));
+    }
+
+    #[tokio::test]
+    async fn a_workspace_elsewhere_is_asked_of_a_place_the_project_lives_in() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.data_mut().device_name = Some("laptop".to_owned());
+        config.save().expect("save");
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (200, json!([homeless("prj_api", "api")])),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        let error = another_location(&config, &api, Some("api"), "desktop")
+            .await
+            .expect_err("it lives nowhere");
+        assert_eq!(
+            error.to_string(),
+            "api lives nowhere at the moment. Give it a place with `exeora project locations add api --on desktop`: the first machine a project is given becomes its default location."
+        );
+
+        // Exeora Cloud takes any repository, and asking for a workspace
+        // there is what gives the project a place again.
+        let (project, place) = another_location(&config, &api, Some("api"), "cloud")
+            .await
+            .expect("asked")
+            .expect("somewhere else");
+        assert_eq!(project.id, "prj_api");
+        assert_eq!(place, "cloud");
+
+        // This machine is handled here, where the project is looked for.
+        assert!(
+            another_location(&config, &api, Some("api"), "here")
+                .await
+                .expect("asked")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_calls_of_a_project_that_lives_nowhere_are_still_its_own() {
+        // No location at all: a call to the root is recorded as `main`.
+        let projects = views(json!([homeless("prj_api", "api")]));
+        let project = projects.first();
+        assert!(ran_in(&call_in(None, None), "main", project));
+        assert!(ran_in(&call_in(None, Some("main")), "main", project));
+        assert!(ran_in(
+            &call_in(Some("ws_1"), Some("fix-login")),
+            "fix-login",
+            project
+        ));
+        // The root of a machine that is gone is named in full to be found.
+        assert!(!ran_in(
+            &call_in(None, Some("main@laptop")),
+            "main",
+            project
+        ));
+        assert!(ran_in(
+            &call_in(None, Some("main@laptop")),
+            "main@laptop",
+            project
+        ));
+
+        // Exeora Cloud with no instance is the default all the same.
+        let projects = views(json!([released("prj_api", "api")]));
+        assert!(ran_in(
+            &call_in(None, Some("main@cloud")),
+            "main",
+            projects.first()
+        ));
     }
 }
