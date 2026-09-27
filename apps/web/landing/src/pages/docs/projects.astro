@@ -21,6 +21,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>One location of a project is the default. A call that names no workspace lands there, in the project root of that location. A call that names a workspace goes to the machine that holds that workspace, wherever it is.</p>
 
+  <p>The root of any other location is named <code>main@&lt;location&gt;</code>: <code>main@desktop</code>, <code>main@cloud</code>. It is a working copy like any other, on the machine that holds it, and <code>list_workspaces</code> and <code>exeora workspace list</code> show one for every location that has a copy. <code>main</code> alone stays the root of the default location.</p>
+
   <p>The location a project was first added in starts as the default. Change it from the project's page in the dashboard, with <strong>Make default</strong> on a location, or from the CLI:</p>
 
   <pre>exeora project default api --on desktop

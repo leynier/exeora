@@ -2,9 +2,10 @@ import {
   keepPreviousData,
   type QueryClient,
   useInfiniteQuery,
+  useQueries,
   useQuery,
 } from "@tanstack/react-query";
-import { api, type ToolCallFilters } from "./api.js";
+import { api, type ToolCallFilters, type Workspace } from "./api.js";
 import { type Machine, projectsApi } from "./api-projects.js";
 
 /**
@@ -179,6 +180,28 @@ export const useWorkspaces = (projectId: string | undefined) =>
     queryFn: () => api.workspaces(projectId ?? ""),
     enabled: Boolean(projectId),
     refetchInterval: LIVE,
+  });
+
+/**
+ * The workspaces of several projects at once, by project.
+ *
+ * For a list that spans projects and has to say where each row ran. Each
+ * project is the same query `useWorkspaces` makes, under the same key, so a
+ * project already looked at costs nothing and one request serves every row of
+ * that project. Not polled: the rows are history, and what a workspace was
+ * called an hour ago is not worth asking again every fifteen seconds.
+ */
+export const useWorkspacesOf = (projectIds: readonly string[]) =>
+  useQueries({
+    queries: projectIds.map((projectId) => ({
+      queryKey: keys.workspaces(projectId),
+      queryFn: () => api.workspaces(projectId),
+      staleTime: LIVE,
+    })),
+    combine: (results) =>
+      new Map<string, Workspace[]>(
+        projectIds.map((projectId, index) => [projectId, results[index]?.data ?? []]),
+      ),
   });
 
 export const useWorkspaceCapabilities = (

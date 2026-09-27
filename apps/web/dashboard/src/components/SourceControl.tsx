@@ -11,6 +11,7 @@ import {
 } from "../api.js";
 import { createdSlug } from "../api-projects.js";
 import { keys, useMe } from "../queries.js";
+import type { LocationRoot } from "../workspacePaths.js";
 import { AddWorkspaceDialog } from "./AddWorkspaceDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { SourceControlBranchPicker } from "./SourceControlBranchPicker.js";
@@ -30,6 +31,7 @@ export function SourceControl({
   projectId,
   workspace,
   workspaces,
+  root,
   project,
   where,
   targetKey,
@@ -41,7 +43,10 @@ export function SourceControl({
 }: {
   projectId: string;
   workspace?: string;
+  /** The workspaces on the machine whose git status this is, and no others. */
   workspaces: Workspace[];
+  /** The root of the location on screen, which is what its git status lists. */
+  root: LocationRoot;
   project: Project;
   /** The location of what is on screen, which is where a new workspace starts out. */
   where: ProjectLocation | undefined;
@@ -138,7 +143,7 @@ export function SourceControl({
           <SourceControlBranchPicker
             status={status}
             pending={pending}
-            projectLocalPath={project.localPath}
+            root={root}
             workspaces={workspaces}
             onRun={run}
             onSelectWorkspace={onSelectWorkspace}

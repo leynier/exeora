@@ -5,6 +5,7 @@ import { cloudApi } from "../api-cloud.js";
 import type { CloudInstance, Machine } from "../api-projects.js";
 import { cloudLocation, instanceLabel, instancesOf } from "../projectModel.js";
 import { refreshPlaces, useMe } from "../queries.js";
+import { rootSelectorOf } from "../selectors.js";
 import { livesOnlyOnCloud } from "../survival.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import type { MenuItem } from "./Menu.js";
@@ -18,8 +19,13 @@ export interface InstanceControls {
   busy: boolean;
   /** Whether the account may start instances. Removing one needs no permission. */
   canProvision: boolean;
-  /** The root opens only where a call that names no workspace lands. */
-  canOpen: (instance: CloudInstance) => boolean;
+  /**
+   * What the Workspace page takes to open it: the slug of its workspace, or
+   * the selector of the root on Exeora Cloud, which is null when Cloud is the
+   * default location. Undefined while the project is not known, and the root
+   * cannot be told from the default one.
+   */
+  selectorOf: (instance: CloudInstance) => string | null | undefined;
   /** Null for a project connected to GitHub, which clones without a token of its own. */
   credentialLabel: (instance: CloudInstance) => string | null;
   setCredential: (instance: CloudInstance) => void;
@@ -127,10 +133,11 @@ export function useWorkspaceControls(input: {
   return {
     busy: retry.isPending || destroy.isPending || credential.isPending,
     canProvision: me.data?.cloudEnabled === true,
-    canOpen: (instance) => {
-      if (instance.workspace.id !== null) return true;
+    selectorOf: (instance) => {
+      if (instance.workspace.id !== null) return instance.workspace.slug;
       const project = projectOf(instance);
-      return project ? cloudLocation(project)?.default === true : false;
+      const location = project ? cloudLocation(project) : null;
+      return location ? rootSelectorOf(location) : undefined;
     },
     credentialLabel: (instance) => credentialLabel(projectOf(instance)),
     setCredential: (instance) => setCredentialFor(projectOf(instance) ?? null),

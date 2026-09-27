@@ -19,6 +19,13 @@ import {
   useWorkspaceCapabilities,
   useWorkspaces,
 } from "../queries.js";
+import {
+  canonicalSelector,
+  otherRootLabel,
+  parseSelector,
+  rootIsOpen,
+  workspacesAt,
+} from "../selectors.js";
 import { projectRootBranch } from "../workspacePaths.js";
 
 const LAST_KEY = "exeora.last_workspace";
@@ -62,7 +69,7 @@ export function Workspace() {
   const projects = useProjects();
   const machines = useMachines();
   const projectId = search.get("project") ?? "";
-  const workspaceSlug = search.get("workspace");
+  const asked = search.get("workspace");
   const workspaces = useWorkspaces(projectId || undefined);
   const tab = search.get("view") === "terminal" ? "terminal" : "source";
   const setTab = (value: "source" | "terminal") => {
@@ -73,11 +80,43 @@ export function Workspace() {
   };
 
   const project = projects.data?.find((item) => item.id === projectId);
-  const selectedWorkspace = workspaces.data?.find((item) => item.slug === workspaceSlug);
-  const targetReady = workspaceSlug === null || selectedWorkspace !== undefined;
-  const targetId = selectedWorkspace?.id;
+  // One selector per working copy: the root of the default location is null
+  // however the address names it, so its terminal and its cache are one.
+  const workspaceSlug = canonicalSelector(asked, project);
+  const parsed = parseSelector(workspaceSlug);
+  const selectedWorkspace = parsed.root
+    ? undefined
+    : workspaces.data?.find((item) => item.slug === parsed.slug);
+  // Where the target is, which decides what to say when it does not answer and
+  // where a workspace made from here is put.
+  const home = parsed.root
+    ? project?.locations.find((location) =>
+        parsed.location === null ? location.default : location.slug === parsed.location,
+      )
+    : selectedWorkspace?.cloud
+      ? (project && cloudLocation(project)) || undefined
+      : selectedWorkspace
+        ? project?.locations.find(
+            (location) =>
+              location.kind === "local" &&
+              location.deviceId === (selectedWorkspace.deviceId ?? project.deviceId),
+          )
+        : undefined;
+  const otherRoot = parsed.root && parsed.location !== null;
+  const targetReady = parsed.root
+    ? !otherRoot || (home !== undefined && rootIsOpen(home))
+    : selectedWorkspace !== undefined;
+  // What the requests name: a workspace by its id, the root of another
+  // location by its selector, and the root of the default one by nothing.
+  const targetId = selectedWorkspace?.id ?? (otherRoot ? (workspaceSlug ?? undefined) : undefined);
   const targetKey = targetId ?? "main";
   const ready = Boolean(project) && targetReady;
+  // A git status speaks for the machine it ran on, so what is compared with
+  // it is that location's root and the workspaces on that machine.
+  const siblings = project
+    ? workspacesAt(project, home, workspaces.data ?? [], selectedWorkspace)
+    : [];
+  const rootPath = home?.localPath ?? (home?.default ? (project?.localPath ?? "") : "");
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
   // Every poll runs a status on the machine: only while the list is on screen
   // and the CLI can answer it.
@@ -87,27 +126,29 @@ export function Workspace() {
     ready,
     tab === "source" && capabilities.data?.sourceControl !== false,
   );
-  // The branch the root is really on, once the machine has said. Until then,
-  // and for a machine that cannot say, the one the project was added with.
+  // The branch the default location's root is really on, once its machine
+  // has said. What another location's status says is about another root, so
+  // until then, and from there, it is the one the project was added with.
   const rootBranch =
-    (workspaceSlug === null ? status.data?.head : null) ??
-    projectRootBranch(
-      status.data?.gitWorkspaces,
-      project?.localPath ?? "",
-      workspaces.data ?? [],
-    ) ??
-    defaultBranchOf(project);
-  const targetLabel = selectedWorkspace?.slug ?? rootLabel(rootBranch);
-  // Where the target is, which decides what to say when it does not answer and
-  // where a workspace made from here is put.
-  const home = selectedWorkspace?.cloud
-    ? (project && cloudLocation(project)) || undefined
-    : project?.locations.find((location) =>
-        selectedWorkspace
-          ? location.kind === "local" &&
-            location.deviceId === (selectedWorkspace.deviceId ?? project.deviceId)
-          : location.default,
-      );
+    (home?.default
+      ? ((parsed.root ? status.data?.head : null) ??
+        projectRootBranch(status.data?.gitWorkspaces, rootPath, siblings))
+      : null) ?? defaultBranchOf(project);
+  const targetLabel =
+    selectedWorkspace?.slug ??
+    (otherRoot
+      ? otherRootLabel(home ?? { name: parsed.root ? (parsed.location ?? "") : "" })
+      : rootLabel(rootBranch));
+
+  // An address that names the default root the long way is put right, so the
+  // terminal chips and the selector agree on what is on screen.
+  useEffect(() => {
+    if (!project || asked === workspaceSlug) return;
+    const params = new URLSearchParams(search);
+    if (workspaceSlug) params.set("workspace", workspaceSlug);
+    else params.delete("workspace");
+    setSearch(params, { replace: true });
+  }, [project, asked, workspaceSlug, search, setSearch]);
 
   const restored = useMemo(() => {
     if (projectId || !projects.data) return null;
@@ -220,7 +261,13 @@ export function Workspace() {
           ) : !targetReady ? (
             <div className="border-border bg-surface flex-1 rounded-xl border">
               <EmptyState title="That workspace is unavailable">
-                Workspace {workspaceSlug} is no longer connected.{" "}
+                {otherRoot
+                  ? home
+                    ? home.state === "removed"
+                      ? `${home.name} was removed, so its copy of the project cannot be opened.`
+                      : `${home.name} holds no copy of the project yet. The first workspace made there clones it.`
+                    : `This project does not live on ${parsed.root ? parsed.location : ""}.`
+                  : `Workspace ${workspaceSlug} is no longer connected.`}{" "}
                 <button
                   type="button"
                   className="underline"
@@ -262,7 +309,11 @@ export function Workspace() {
               key={targetKey}
               projectId={projectId}
               workspace={targetId}
-              workspaces={workspaces.data ?? []}
+              workspaces={siblings}
+              root={{
+                path: rootPath,
+                selector: home?.default === false ? `main@${home.slug}` : null,
+              }}
               project={project}
               where={home}
               targetKey={targetKey}

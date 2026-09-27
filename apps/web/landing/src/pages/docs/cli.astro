@@ -443,9 +443,16 @@ exeora config unset workspace-root</pre>
     <li>
       <code>workspace list</code> prints every workspace of the listed projects wherever it is,
       with <code>machine</code>, <code>deviceId</code>, <code>cloud</code>,{" "}
-      <code>projectSlug</code>, <code>thisMachine</code> and <code>syncState</code>.
+      <code>projectSlug</code>, <code>thisMachine</code> and <code>syncState</code>. The project
+      roots, which the table always shows, are added with <code>--roots</code>.
     </li>
   </ul>
+
+  <p>
+    Every key that 0.17.0 printed is still printed, with the value it had, beside the fields above.
+    A path on another machine is <code>null</code> in those keys, so a script does not open a
+    directory of the same name on this one.
+  </p>
 
   <p>
     <code>project add</code> answers with <code>project</code> and <code>location</code>, which is{" "}

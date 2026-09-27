@@ -1,10 +1,16 @@
 import type { Project } from "../api.js";
 import { defaultBranchOf, rootLabel } from "../projectModel.js";
+import { otherRootLabel, parseSelector } from "../selectors.js";
 
 export type OpenTerminalSession = {
   key: string;
   projectId: string;
+  /**
+   * What the requests name: a workspace's id, or the selector of the root of
+   * a location other than the default. Absent for the default one's root.
+   */
   workspaceId?: string;
+  /** What the address of the Workspace page takes to show this session. */
   workspaceSlug: string | null;
   label: string;
 };
@@ -12,11 +18,17 @@ export type OpenTerminalSession = {
 /**
  * What a session is called. One the Workspace page opened carries the name it
  * had there. One that outlived a reload comes back from the gateway with a
- * slug or nothing, and nothing is the project root, named by its branch.
+ * selector or nothing: nothing is the root of the default location, named by
+ * its branch, and `main@desktop` is the desktop's root, named by its location.
  */
 export function sessionLabel(session: OpenTerminalSession, projects: readonly Project[]): string {
   if (session.label) return session.label;
   const project = projects.find((item) => item.id === session.projectId);
+  const parsed = parseSelector(session.workspaceSlug);
+  if (parsed.root && parsed.location !== null) {
+    const location = project?.locations.find((entry) => entry.slug === parsed.location);
+    return otherRootLabel(location ?? { name: parsed.location });
+  }
   return rootLabel(defaultBranchOf(project));
 }
 

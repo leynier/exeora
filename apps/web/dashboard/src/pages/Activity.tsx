@@ -12,8 +12,8 @@ import {
   SkeletonRows,
 } from "../components/ui.js";
 import { formatDuration } from "../format.js";
-import { callWorkspaceLabel } from "../projectModel.js";
-import { useClients, useProjects, useToolCallPages } from "../queries.js";
+import { useClients, useProjects, useToolCallPages, useWorkspacesOf } from "../queries.js";
+import { callPlaceLabel, projectsToAsk } from "../selectors.js";
 
 /** The only filter whose choices are known ahead of the data. */
 const statusOptions = [
@@ -53,6 +53,11 @@ export function Activity() {
 
   const calls = useToolCallPages(filters);
   const rows = useMemo(() => (calls.data?.pages ?? []).flatMap((page) => page.items), [calls.data]);
+  // The machine a workspace is on comes from the workspace, so the ones of
+  // the projects in the rows on screen are asked for: one request a project,
+  // however many of its rows there are, and none for a project not shown.
+  const asked = useMemo(() => projectsToAsk(rows, projects.data ?? []), [rows, projects.data]);
+  const workspaces = useWorkspacesOf(asked);
 
   const projectOptions = useMemo(
     () => [
@@ -168,9 +173,10 @@ export function Activity() {
                     </div>
                     <p className="text-body-md text-foreground-faint truncate">
                       {nameFor(call.projectId)} /{" "}
-                      {callWorkspaceLabel(
+                      {callPlaceLabel(
                         call.workspaceSlug,
                         projects.data?.find((candidate) => candidate.id === call.projectId),
+                        workspaces.get(call.projectId),
                       )}
                       {call.clientName ? ` · ${call.clientName}` : ""}
                     </p>

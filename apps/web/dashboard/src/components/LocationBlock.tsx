@@ -113,10 +113,6 @@ export function LocationBlock({
   );
 }
 
-/** Why the root of a location that is not the default has nothing to open. */
-const NOT_DEFAULT =
-  "Calls that name no workspace land in the default location. Make this location the default to open this copy.";
-
 function EntryRow({
   project,
   location,
@@ -129,14 +125,7 @@ function EntryRow({
   controls: InstanceControls;
 }) {
   if (entry.instance) {
-    return (
-      <InstanceRow
-        instance={entry.instance}
-        lens="project"
-        controls={controls}
-        note={entry.root && !location.default ? NOT_DEFAULT : undefined}
-      />
-    );
+    return <InstanceRow instance={entry.instance} lens="project" controls={controls} />;
   }
 
   const workspaceId = entry.workspaceId;
@@ -146,7 +135,6 @@ function EntryRow({
       title={<span className="font-mono">{entry.branch ?? entry.label}</span>}
       badges={entry.root ? <Badge>default branch</Badge> : null}
       meta={entry.root ? null : entry.slug}
-      note={entry.root && !entry.openable ? NOT_DEFAULT : undefined}
       menuLabel={`Actions for ${entry.label}`}
       busy={controls.busy}
       actions={

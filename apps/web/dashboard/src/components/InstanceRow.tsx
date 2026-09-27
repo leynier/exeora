@@ -20,18 +20,17 @@ export function InstanceRow({
   instance,
   lens,
   controls,
-  note,
 }: {
   instance: CloudInstance;
   /** Which page is showing it. Decides only what the page already says around it. */
   lens: "project" | "machines";
   controls: InstanceControls;
-  note?: string;
 }) {
   const root = instance.workspace.id === null;
   const label = instanceLabel(instance);
   const failed = instance.state === "failed";
   const credential = controls.credentialLabel(instance);
+  const selector = controls.selectorOf(instance);
 
   return (
     <MachineRow
@@ -67,7 +66,6 @@ export function InstanceRow({
         </>
       }
       failure={failed ? <MachineFailure machine={instance} /> : null}
-      note={note}
       menuLabel={`Actions for ${label}`}
       busy={controls.busy}
       actions={
@@ -92,11 +90,8 @@ export function InstanceRow({
               Retry
             </button>
           ) : null}
-          {isReachable(instance.state) && controls.canOpen(instance) ? (
-            <Link
-              to={workspaceHref(instance.project.id, root ? null : instance.workspace.slug)}
-              className="btn"
-            >
+          {isReachable(instance.state) && selector !== undefined ? (
+            <Link to={workspaceHref(instance.project.id, selector)} className="btn">
               Open workspace
             </Link>
           ) : null}

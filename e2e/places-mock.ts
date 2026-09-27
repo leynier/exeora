@@ -20,6 +20,8 @@ export interface PlacesOptions {
   github?: unknown;
   repositories?: unknown[];
   accountClients?: unknown[];
+  /** The rows of the activity log, newest first. */
+  calls?: unknown[];
   /** Answers a request itself and returns true, or leaves it to the defaults. */
   handle?: (route: Route, request: Request, path: string) => Promise<boolean> | boolean;
 }
@@ -59,7 +61,7 @@ export async function mockPlaces(page: Page, options: PlacesOptions = {}): Promi
         "/api/machines": { machines: options.machines ?? machines },
         "/api/clients": [],
         "/api/account-clients": options.accountClients ?? [accountClient()],
-        "/api/tool-calls": { items: [], cursor: null },
+        "/api/tool-calls": { items: options.calls ?? [], cursor: null },
         "/api/approvals": { items: [] },
         "/api/terminals": { items: [] },
         "/api/github": options.github ?? github,

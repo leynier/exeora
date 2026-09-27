@@ -65,8 +65,12 @@ test("groups workspaces under their locations, the root named by its branch", as
   await expect(cloud.getByText("failed", { exact: true })).toBeVisible();
   await expect(cloud.getByText("The instance could not be set up.")).toBeVisible();
   await expect(cloud.getByRole("button", { name: "Retry" })).toBeVisible();
-  // The root of a location that is not the default is a copy nothing reaches.
-  await expect(cloud.getByText("Make this location the default to open this copy.")).toBeVisible();
+  // The root of a location that is not the default opens like any other row.
+  await expect(cloud.getByRole("link", { name: "Open workspace" }).first()).toHaveAttribute(
+    "href",
+    `/dashboard/workspace?project=${widgets.id}&workspace=main%40cloud`,
+  );
+  await expect(page.getByText("Make this location the default")).toHaveCount(0);
 
   await expect(page.getByText(/project root|primary checkout/i)).toHaveCount(0);
 });

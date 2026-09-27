@@ -67,9 +67,15 @@ test("shows every instance with its state, and how much room is left", async ({ 
   await panel.getByText("Details", { exact: true }).click();
   await expect(panel.getByText("The service wrote no log.")).toBeVisible();
 
-  // Running or a call away from it opens. What failed is retried instead.
-  await expect(panel.getByRole("link", { name: "Open workspace" })).toHaveCount(1);
-  await expect(panel.getByRole("link", { name: "Open workspace" })).toHaveAttribute(
+  // Running or a call away from it opens: the root by the selector of its
+  // location, a workspace by its slug. What failed is retried instead.
+  const open = panel.getByRole("link", { name: "Open workspace" });
+  await expect(open).toHaveCount(2);
+  await expect(open.nth(0)).toHaveAttribute(
+    "href",
+    `/dashboard/workspace?project=${widgets.id}&workspace=main%40cloud`,
+  );
+  await expect(open.nth(1)).toHaveAttribute(
     "href",
     `/dashboard/workspace?project=${widgets.id}&workspace=feature-search`,
   );

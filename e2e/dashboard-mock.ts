@@ -208,6 +208,26 @@ export async function mockApi(
   const state = {
     main: gitStatus("main"),
     workspace: gitStatus("workspace"),
+    // The root of another location: a different machine, with a different
+    // folder and whatever branch happens to be checked out there.
+    elsewhere: {
+      ...gitStatus("main"),
+      head: "release",
+      upstream: "origin/release",
+      files: [
+        { path: "desktop.txt", index: ".", worktree: "M", kind: "tracked", submodule: false },
+      ],
+      branches: [
+        {
+          name: "release",
+          shortOid: "rel123",
+          upstream: "origin/release",
+          remote: false,
+          current: true,
+        },
+      ],
+      gitWorkspaces: [{ path: "/srv/e2e", branch: "release" }],
+    },
   };
   const listed = options.projects ?? [project];
   const connectedWorkspaces = [workspace];
@@ -244,7 +264,9 @@ export async function mockApi(
       await new Promise(() => {});
       return;
     }
-    const target = url.searchParams.get("workspace") === workspace.id ? "workspace" : "main";
+    const asked = url.searchParams.get("workspace");
+    const target =
+      asked === workspace.id ? "workspace" : asked?.startsWith("main@") ? "elsewhere" : "main";
     if (path.endsWith("/workspace/capabilities")) {
       await route.fulfill({
         status: 200,

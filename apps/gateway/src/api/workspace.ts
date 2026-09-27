@@ -1,6 +1,6 @@
 import { ExeoraError, WorkspaceAction, type WorkspaceValue } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -12,7 +12,9 @@ import {
   ROOT_SELECTOR,
   resolveLocationRoot,
   rootLocation,
+  rootSelector,
 } from "../location-roots.js";
+import { locationsOf } from "../locations.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -123,13 +125,59 @@ workspace.get("/api/terminals", async (c) => {
       c.env.DEVICE_RELAY.getByName(relayName(userId, device.id)).listTerminals(),
     ),
   );
-  const items = results.flatMap((result) => {
-    if (result.status === "fulfilled") return result.value;
+  const listed = results.flatMap((result, index) => {
+    if (result.status === "fulfilled") {
+      return result.value.map((terminal) => ({ terminal, deviceId: devices[index]?.id }));
+    }
     console.error("listing terminals failed", result.reason);
     return [];
   });
-  return c.json({ items });
+
+  // A terminal in a project root names no workspace, and a root is in one
+  // location or another. The machine that holds the terminal says which, so
+  // the root of the desktop is not listed as the default's.
+  const roots = listed.filter(({ terminal }) => !terminal.workspaceId);
+  const places =
+    roots.length === 0
+      ? new Map<string, string>()
+      : await rootSelectors(c.env, userId, [
+          ...new Set(roots.map(({ terminal }) => terminal.projectId)),
+        ]);
+
+  return c.json({
+    items: listed.map(({ terminal, deviceId }) => {
+      if (terminal.workspaceId) return terminal;
+      const selector = places.get(`${terminal.projectId}:${deviceId}`);
+      return selector ? { ...terminal, workspaceSlug: selector } : terminal;
+    }),
+  });
 });
+
+/** The selector of each location's root other than the default, by project and machine. */
+async function rootSelectors(
+  env: Pick<Env, "DB">,
+  userId: string,
+  projectIds: string[],
+): Promise<Map<string, string>> {
+  const projects = await db(env)
+    .select({
+      id: schema.projects.id,
+      deviceId: schema.projects.deviceId,
+      localPath: schema.projects.localPath,
+    })
+    .from(schema.projects)
+    .where(and(eq(schema.projects.userId, userId), inArray(schema.projects.id, projectIds)))
+    .all();
+  const locations = await locationsOf(env, userId, projects);
+  const selectors = new Map<string, string>();
+  for (const project of projects) {
+    for (const location of locations.get(project.id) ?? []) {
+      if (location.default || location.deviceId === null) continue;
+      selectors.set(`${project.id}:${location.deviceId}`, rootSelector(location.slug));
+    }
+  }
+  return selectors;
+}
 
 workspace.delete("/api/projects/:id/terminal", zValidator("query", targetQuery), async (c) => {
   const userId = c.get("userId");

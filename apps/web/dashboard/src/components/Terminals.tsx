@@ -9,9 +9,15 @@ import {
   useState,
 } from "react";
 import { type Location, useLocation, useNavigate } from "react-router";
+import type { Project } from "../api.js";
 import { api } from "../api.js";
 import { useOpenTerminals, useProjects } from "../queries.js";
-import { type ListedTerminal, terminalSessionKey } from "../workspacePaths.js";
+import { canonicalSelector } from "../selectors.js";
+import {
+  type ListedTerminal,
+  listedTerminalTarget,
+  terminalSessionKey,
+} from "../workspacePaths.js";
 import { type OpenTerminalSession, OpenTerminals, sessionLabel } from "./OpenTerminals.js";
 import { WebTerminal } from "./WebTerminal.js";
 
@@ -40,11 +46,15 @@ export function TerminalsProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const remote = useOpenTerminals();
+  const projects = useProjects();
 
+  // Not before the projects are known: which root a listed terminal is in
+  // can only be told apart from the default one by the project's locations.
   useEffect(() => {
-    if (!remote.data) return;
-    setSessions((current) => mergeRemote(current, remote.data.items, closed.current));
-  }, [remote.data]);
+    if (!remote.data || !projects.data) return;
+    const known = projects.data;
+    setSessions((current) => mergeRemote(current, remote.data.items, closed.current, known));
+  }, [remote.data, projects.data]);
 
   const openSession = useCallback((session: OpenTerminalSession) => {
     closed.current.delete(session.key);
@@ -165,19 +175,28 @@ function mergeRemote(
   local: OpenTerminalSession[],
   items: ListedTerminal[],
   closed: Set<string>,
+  projects: readonly Project[],
 ): OpenTerminalSession[] {
   const next = [...local];
   for (const item of items) {
-    const key = terminalSessionKey(item.projectId, item.workspaceId);
+    const project = projects.find((candidate) => candidate.id === item.projectId);
+    // A terminal with no workspace id is in a root, and not for that reason
+    // in the default location's: the slug says which, when it says anything.
+    const listed = listedTerminalTarget(item);
+    const selector = item.workspaceId
+      ? (item.workspaceSlug ?? null)
+      : canonicalSelector(listed, project);
+    const target = item.workspaceId ?? selector ?? undefined;
+    const key = terminalSessionKey(item.projectId, target);
     if (closed.has(key) || next.some((session) => session.key === key)) continue;
     next.push({
       key,
       projectId: item.projectId,
-      workspaceId: item.workspaceId,
-      workspaceSlug: item.workspaceSlug ?? null,
-      // Empty for the root: its name is the project's branch, which is read
-      // from the project when the session is shown.
-      label: item.workspaceSlug ?? "",
+      workspaceId: target,
+      workspaceSlug: selector,
+      // Empty for a root: its name is read from the project when the session
+      // is shown, which is where its branch and its locations are known.
+      label: item.workspaceId ? (item.workspaceSlug ?? "") : "",
     });
   }
   return next;

@@ -19,7 +19,7 @@ import {
 } from "../components/ui.js";
 import { useWorkspaceControls } from "../components/WorkspaceControls.js";
 import { formatDate, formatDuration } from "../format.js";
-import { callWorkspaceLabel, defaultBranchOf, workspaceHref } from "../projectModel.js";
+import { defaultBranchOf, workspaceHref } from "../projectModel.js";
 import {
   useClients,
   useMachines,
@@ -28,6 +28,7 @@ import {
   useToolCalls,
   useWorkspaces,
 } from "../queries.js";
+import { callPlaceLabel } from "../selectors.js";
 
 /**
  * One project: where it lives, how a client reaches it, who may, what they
@@ -217,7 +218,7 @@ export function ProjectDetail() {
                     <Badge tone={call.status === "ok" ? "success" : "error"}>{call.status}</Badge>
                     <code className="text-body-md truncate font-mono">{call.tool}</code>
                     <span className="text-body-md text-foreground-faint truncate font-mono">
-                      {callWorkspaceLabel(call.workspaceSlug, project, workspaces.data)}
+                      {callPlaceLabel(call.workspaceSlug, project, workspaces.data)}
                     </span>
                     {call.errorCode && (
                       <span className="text-body-md text-error truncate">{call.errorCode}</span>

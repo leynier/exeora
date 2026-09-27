@@ -13,8 +13,16 @@ import {
   SkeletonRows,
   Stat,
 } from "../components/ui.js";
-import { callWorkspaceLabel, instancesOf, localMachines } from "../projectModel.js";
-import { useAccountClients, useMachines, useMe, useProjects, useToolCalls } from "../queries.js";
+import { instancesOf, localMachines } from "../projectModel.js";
+import {
+  useAccountClients,
+  useMachines,
+  useMe,
+  useProjects,
+  useToolCalls,
+  useWorkspacesOf,
+} from "../queries.js";
+import { callPlaceLabel, projectsToAsk } from "../selectors.js";
 import { instanceExceptions, instanceSummary } from "../states.js";
 
 /**
@@ -38,6 +46,10 @@ export function Overview() {
   const recent = calls.data ?? [];
   const failed = recent.filter((call) => call.status === "error");
   const list = projects.data ?? [];
+  // Where a call in a workspace ran is said by the workspace, so the ones of
+  // the projects on screen are asked for, and of no others.
+  const shown = recent.slice(0, 6);
+  const workspaces = useWorkspacesOf(projectsToAsk(shown, list));
 
   // The activity log failing is not a reason to hide what is running: it is
   // kept in a warehouse of its own, and that can be down while every machine
@@ -142,7 +154,7 @@ export function Overview() {
             </EmptyState>
           ) : (
             <Divided>
-              {recent.slice(0, 6).map((call) => {
+              {shown.map((call) => {
                 const project = list.find((candidate) => candidate.id === call.projectId);
                 return (
                   <Row key={call.id}>
@@ -151,7 +163,11 @@ export function Overview() {
                       <code className="text-body-md truncate font-mono">{call.tool}</code>
                       <span className="text-body-md text-foreground-faint truncate">
                         {project?.name ?? "removed project"} /{" "}
-                        {callWorkspaceLabel(call.workspaceSlug, project)}
+                        {callPlaceLabel(
+                          call.workspaceSlug,
+                          project,
+                          workspaces.get(call.projectId),
+                        )}
                       </span>
                     </div>
                     <p className="text-body-md text-foreground-faint shrink-0">

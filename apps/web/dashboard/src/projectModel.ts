@@ -46,20 +46,9 @@ export function instanceLabel(instance: Pick<CloudInstance, "workspace">): strin
 }
 
 /**
- * The workspace a tool call ran in, as the activity lists name it. The log
- * keeps the slug, and no slug is the project root.
+ * Where the Workspace page opens a working copy. No selector is the root of
+ * the default location, and `main@desktop` is the root of another.
  */
-export function callWorkspaceLabel(
-  slug: string | null,
-  project: Pick<Project, "defaultBranch" | "cloud"> | undefined,
-  workspaces: readonly Pick<Workspace, "slug" | "branch">[] = [],
-): string {
-  if (slug === null || slug === "main") return rootLabel(defaultBranchOf(project));
-  const workspace = workspaces.find((candidate) => candidate.slug === slug);
-  return workspace ? workspaceLabel(workspace) : slug;
-}
-
-/** Where the Workspace page opens a workspace. No slug is the project root. */
 export function workspaceHref(projectId: string, slug: string | null): string {
   const params = new URLSearchParams({ project: projectId });
   if (slug) params.set("workspace", slug);
@@ -179,7 +168,10 @@ export interface WorkspaceEntry {
   key: string;
   root: boolean;
   workspaceId: string | null;
-  /** What the Workspace page takes. Null is the project root. */
+  /**
+   * What the Workspace page takes. For a root it is the selector of its
+   * location: null in the default one, `main@desktop` in any other.
+   */
   slug: string | null;
   branch: string | null;
   /** The name the row shows: the branch, with `default` for the root. */
@@ -191,9 +183,8 @@ export interface WorkspaceEntry {
   /** Null on a machine, where the workspace is as reachable as the machine is. */
   state: State | null;
   /**
-   * Whether the Workspace page can open it. A call that names no workspace
-   * lands in the default location, so the root of any other is a copy that
-   * nothing reaches until that location is made the default.
+   * Whether the Workspace page can open it: an instance that is running or a
+   * call away from it, and anything on a machine that still stands.
    */
   openable: boolean;
 }
@@ -296,13 +287,14 @@ export function groupByLocation(
         key: `root:${location.id}`,
         root: true,
         workspaceId: null,
-        slug: null,
+        slug: location.default ? null : `main@${location.slug}`,
         branch: instance?.workspace.branch ?? branch,
         label: rootLabel(instance?.workspace.branch ?? branch),
         localPath: location.localPath,
         instance,
         state: instance?.state ?? (location.kind === "cloud" ? location.state : null),
-        openable: location.default && (instance ? OPENABLE_INSTANCE.has(instance.state) : true),
+        openable:
+          location.state !== "removed" && (instance ? OPENABLE_INSTANCE.has(instance.state) : true),
       };
       return { location, entries: [root, ...entries] };
     }),
@@ -312,7 +304,7 @@ export function groupByLocation(
 
 /** A choice in the workspace selector of the Workspace page. */
 export interface WorkspaceOption {
-  /** The selector the URL takes. `main` is the project root. */
+  /** The selector the URL takes. `main` is the root of the default location. */
   value: string;
   label: string;
   hint?: string;
@@ -320,12 +312,15 @@ export interface WorkspaceOption {
 }
 
 /**
- * The workspaces of a project as the selector lists them: each by its branch
- * and the location it is in, the root marked as the default.
+ * The working copies of a project as the selector lists them: each workspace
+ * by its branch and the location it is in, and one root for every location
+ * that holds a copy.
  *
- * The root is listed once, for the default location, because that is the only
- * one a call that names no workspace can reach. An instance that is still
- * being set up is listed with its state and cannot be chosen yet.
+ * The root of the default location is named by its branch. The branch checked
+ * out in the root of any other is only known once its git status has loaded,
+ * so those are named by their location, and the toolbar says the branch. An
+ * instance that is still being set up is listed with its state and cannot be
+ * chosen yet.
  */
 export function workspaceOptions(
   project: Project,
@@ -334,40 +329,49 @@ export function workspaceOptions(
   rootBranch?: string | null,
 ): WorkspaceOption[] {
   const tree = groupByLocation(project, workspaces, machines);
-  const options: WorkspaceOption[] = [];
-  const home = project.locations.find((location) => location.default);
-  const root = tree.groups
-    .find((group) => group.location.id === home?.id)
-    ?.entries.find((entry) => entry.root);
+  const roots: WorkspaceOption[] = [];
+  const others: WorkspaceOption[] = [];
+  const waiting = (entry: WorkspaceEntry) =>
+    entry.state !== null && !OPENABLE_INSTANCE.has(entry.state)
+      ? {
+          hint: entry.state,
+          disabled: entry.state === "setting up" || entry.state === "removing",
+        }
+      : {};
 
-  options.push({
-    value: "main",
-    label: [rootLabel(rootBranch ?? root?.branch ?? defaultBranchOf(project)), home?.name]
-      .filter(Boolean)
-      .join(" · "),
-    ...(root?.state && !OPENABLE_INSTANCE.has(root.state)
-      ? { hint: root.state, disabled: root.state === "setting up" || root.state === "removing" }
-      : {}),
-  });
-
-  for (const group of tree.groups) {
-    for (const entry of group.entries) {
-      if (entry.root || entry.slug === null) continue;
-      const waiting = entry.state !== null && !OPENABLE_INSTANCE.has(entry.state);
-      options.push({
-        value: entry.slug,
-        label: `${entry.label} · ${group.location.name}`,
-        ...(waiting && entry.state
-          ? {
-              hint: entry.state,
-              disabled: entry.state === "setting up" || entry.state === "removing",
-            }
-          : {}),
-      });
+  for (const { location, entries } of tree.groups) {
+    for (const entry of entries) {
+      if (!entry.root) {
+        if (entry.slug === null) continue;
+        others.push({
+          value: entry.slug,
+          label: `${entry.label} · ${location.name}`,
+          ...waiting(entry),
+        });
+      } else if (location.default) {
+        roots.unshift({
+          value: "main",
+          label: `${rootLabel(rootBranch ?? entry.branch)} · ${location.name}`,
+          ...waiting(entry),
+        });
+      } else if (location.state !== "removed" && entry.slug !== null) {
+        roots.push({ value: entry.slug, label: `root · ${location.name}`, ...waiting(entry) });
+      }
     }
   }
-  for (const entry of tree.unplaced) {
-    if (entry.slug !== null) options.push({ value: entry.slug, label: entry.label });
+  // `main` is always there to choose, as it is always there to call: for a
+  // default location that holds no copy yet, the page says what is missing.
+  if (roots[0]?.value !== "main") {
+    const home = project.locations.find((location) => location.default);
+    roots.unshift({
+      value: "main",
+      label: [rootLabel(rootBranch ?? defaultBranchOf(project)), home?.name]
+        .filter(Boolean)
+        .join(" · "),
+    });
   }
-  return options;
+  for (const entry of tree.unplaced) {
+    if (entry.slug !== null) others.push({ value: entry.slug, label: entry.label });
+  }
+  return [...roots, ...others];
 }

@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GitBranch, GitStatus, Workspace, WorkspaceAction } from "../api.js";
-import { workspaceSlugForBranch } from "../workspacePaths.js";
+import { type LocationRoot, workspaceSlugForBranch } from "../workspacePaths.js";
 
 /**
  * Branch switching belongs in the toolbar, the way GitHub Desktop and Fork
@@ -11,7 +11,7 @@ import { workspaceSlugForBranch } from "../workspacePaths.js";
 export function SourceControlBranchPicker({
   status,
   pending,
-  projectLocalPath,
+  root,
   workspaces,
   onRun,
   onSelectWorkspace,
@@ -20,7 +20,7 @@ export function SourceControlBranchPicker({
 }: {
   status: GitStatus;
   pending: boolean;
-  projectLocalPath: string;
+  root: LocationRoot;
   workspaces: Workspace[];
   onRun: (action: WorkspaceAction) => Promise<void>;
   onSelectWorkspace: (slug: string | null) => void;
@@ -113,7 +113,7 @@ export function SourceControlBranchPicker({
 
   const close = () => panel.current?.hidePopover();
   const openBranch = (name: string) => {
-    const slug = workspaceSlugForBranch(name, status.gitWorkspaces, projectLocalPath, workspaces);
+    const slug = workspaceSlugForBranch(name, status.gitWorkspaces, root, workspaces);
     if (slug !== undefined) {
       onSelectWorkspace(slug);
       close();

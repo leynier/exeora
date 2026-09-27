@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { CloudInstance, Machine } from "./api-projects.js";
 import type { Project, ProjectLocation, Workspace } from "./api-types.js";
 import {
-  callWorkspaceLabel,
   defaultBranchOf,
   groupByLocation,
   holdsRoot,
@@ -142,14 +141,6 @@ describe("workspace labels", () => {
     expect(workspaceLabel({ branch: null, slug: "fix-login" })).toBe("fix-login");
   });
 
-  it("turns the `main` of the log into the default branch", () => {
-    const workspaces = [workspace({})];
-    expect(callWorkspaceLabel(null, project(), workspaces)).toBe("master · default branch");
-    expect(callWorkspaceLabel("main", project(), workspaces)).toBe("master · default branch");
-    expect(callWorkspaceLabel("fix-login", project(), workspaces)).toBe("fix/login");
-    expect(callWorkspaceLabel("gone", project(), workspaces)).toBe("gone");
-  });
-
   it("links the root without a selector and a workspace by its slug", () => {
     expect(workspaceHref("prj_1", null)).toBe("/workspace?project=prj_1");
     expect(workspaceHref("prj_1", "fix-login")).toBe(
@@ -256,14 +247,36 @@ describe("groupByLocation", () => {
     expect(search?.instance?.deviceId).toBe("dev_cloud_search");
   });
 
-  it("opens the root only in the default location", () => {
-    const tree = groupByLocation(project(), [], machines);
+  it("opens the root of every location that holds a copy, each by its own selector", () => {
+    const ready = { ...desktop, localPath: "/srv/widgets", status: "ready", state: "online" };
+    const tree = groupByLocation(
+      project({ locations: [laptop, ready as typeof desktop, cloud] }),
+      [],
+      machines,
+    );
     expect(tree.groups[0]?.entries[0]).toMatchObject({ root: true, slug: null, openable: true });
+    expect(tree.groups[1]?.entries[0]).toMatchObject({
+      root: true,
+      slug: "main@desktop",
+      openable: true,
+    });
     expect(tree.groups[2]?.entries[0]).toMatchObject({
       root: true,
+      slug: "main@cloud",
       state: "asleep",
-      openable: false,
+      openable: true,
     });
+  });
+
+  it("does not open the root of a machine that was removed, nor of an instance not ready", () => {
+    const gone = { ...desktop, status: "ready", state: "removed" } as typeof desktop;
+    const tree = groupByLocation(
+      project({ locations: [laptop, gone, cloud] }),
+      [],
+      [instance({ state: "setting up", status: "creating" })],
+    );
+    expect(tree.groups[1]?.entries[0]).toMatchObject({ root: true, openable: false });
+    expect(tree.groups[2]?.entries[0]).toMatchObject({ root: true, openable: false });
   });
 
   it("lists an instance that is being set up before its workspace is", () => {
@@ -323,9 +336,53 @@ describe("workspaceOptions", () => {
     );
     expect(options).toEqual([
       { value: "main", label: "master · default branch · laptop" },
+      // Its branch is only known once its git status loads, so it is named
+      // by where it is. The desktop holds no copy, and has no root to list.
+      { value: "main@cloud", label: "root · Exeora Cloud" },
       { value: "fix-login", label: "fix/login · laptop" },
       { value: "feature-search", label: "feature/search · Exeora Cloud" },
     ]);
+  });
+
+  it("lists one root for every location that holds a copy, the default first", () => {
+    const ready = { ...desktop, status: "ready", state: "online" } as typeof desktop;
+    const gone = {
+      ...desktop,
+      id: "loc_gone",
+      slug: "old-box",
+      name: "old box",
+      status: "ready",
+      state: "removed",
+    } as typeof desktop;
+    const options = workspaceOptions(
+      project({ locations: [ready, gone, { ...cloud, deviceId: null }, laptop] }),
+      [],
+      [],
+      "release",
+    );
+    expect(options).toEqual([
+      { value: "main", label: "release · default branch · laptop" },
+      { value: "main@desktop", label: "root · desktop" },
+    ]);
+  });
+
+  it("lists the root of an instance that is being set up with its state, out of reach", () => {
+    const options = workspaceOptions(
+      project(),
+      [],
+      [instance({ state: "setting up", status: "creating" })],
+    );
+    expect(options).toEqual([
+      { value: "main", label: "master · default branch · laptop" },
+      { value: "main@cloud", label: "root · Exeora Cloud", hint: "setting up", disabled: true },
+    ]);
+  });
+
+  it("keeps `main` to choose when the default location holds no copy yet", () => {
+    const pending = { ...laptop, status: "pending", state: "not cloned" } as typeof laptop;
+    const [root, ...rest] = workspaceOptions(project({ locations: [pending] }), [], []);
+    expect(root).toEqual({ value: "main", label: "master · default branch · laptop" });
+    expect(rest).toEqual([]);
   });
 
   it("prefers the branch the root is really on", () => {
