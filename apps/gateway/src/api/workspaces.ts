@@ -38,7 +38,7 @@ async function ownedProject(env: Pick<Env, "DB">, userId: string, projectId: str
 function view(
   row: typeof schema.workspaces.$inferSelect,
   project: { deviceId: string },
-  machine: { kind: "local" | "cloud" | null; machine: string | null },
+  machine: { kind: "local" | "cloud" | "none" | null; machine: string | null },
 ) {
   return {
     id: row.id,

@@ -7,8 +7,10 @@ import { Select } from "./Select.js";
 import { Card, Divided, EmptyState, SkeletonRows } from "./ui.js";
 import type { InstanceControls } from "./WorkspaceControls.js";
 
-/** The states an instance can be in, which is the vocabulary without `not cloned`. */
-const INSTANCE_STATES = STATES.filter((state) => state !== "not cloned" && state !== "removed");
+/** The states an instance can be in: the vocabulary without the ones only a location has. */
+const INSTANCE_STATES = STATES.filter(
+  (state) => state !== "not cloned" && state !== "no instance" && state !== "removed",
+);
 
 /**
  * Every instance Exeora Cloud runs for the account, whichever project it

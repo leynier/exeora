@@ -122,7 +122,7 @@ describe("projects and their locations over the API", () => {
     expect(await added.json()).toMatchObject({ error: "no_repository" });
   });
 
-  it("moves the default, and will not remove it or the last location", async () => {
+  it("moves the default, and will not remove it while the project lives elsewhere", async () => {
     const { body: project } = await add(LAPTOP, "api", "https://github.com/acme/api.git");
     await add(DESKTOP, "api", "https://github.com/acme/api.git");
     const [laptop, desktop] = await locationsOf(project.id);
@@ -145,10 +145,6 @@ describe("projects and their locations over the API", () => {
     expect(removed.status).toBe(200);
     const left = await locationsOf(project.id);
     expect(left.map((location) => location.slug)).toEqual(["desktop"]);
-
-    const last = await call(`/api/projects/${project.id}/locations/${left[0]?.id}`, "DELETE");
-    expect(last.status).toBe(409);
-    expect(await last.json()).toMatchObject({ error: "last_location" });
   });
 
   it("records a workspace on the machine that reported it", async () => {
@@ -295,8 +291,27 @@ describe("what the review of locations found", () => {
 
     expect(deleted.status).toBe(200);
     const left = await locationsOf(project.id);
-    // Cloud was given a machine for the project root, and became the default.
+    // Cloud is the default, and nothing was made for it: the instance for
+    // the project root comes with the first call that needs it, so the room
+    // left on the plan never decides whether a machine can be deleted.
     expect(left).toEqual([
+      expect.objectContaining({
+        slug: "cloud",
+        default: true,
+        deviceId: null,
+        state: "no instance",
+      }),
+    ]);
+
+    const started = await request(`/api/projects/${project.id}/default-location`, {
+      method: "PUT",
+      userId: USER,
+      bindings,
+      body: { locationId: left[0]?.id },
+    });
+    expect(started.status).toBe(200);
+    const after = ((await started.json()) as { locations: Location[] }).locations;
+    expect(after).toEqual([
       expect.objectContaining({ slug: "cloud", default: true, deviceId: expect.any(String) }),
     ]);
   });

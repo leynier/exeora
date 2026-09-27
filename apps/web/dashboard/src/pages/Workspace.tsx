@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { CloudMachineNotice } from "../components/CloudMachineNotice.js";
+import { NoRoot } from "../components/NoRoot.js";
 import { SourceControl } from "../components/SourceControl.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
@@ -21,6 +22,7 @@ import {
 } from "../queries.js";
 import {
   canonicalSelector,
+  defaultRootIsOpen,
   otherRootLabel,
   parseSelector,
   rootIsOpen,
@@ -103,8 +105,13 @@ export function Workspace() {
           )
         : undefined;
   const otherRoot = parsed.root && parsed.location !== null;
+  // The root of the default location, in a project that has none to ask: it
+  // lives nowhere, or Exeora Cloud holds no instance for it.
+  const noRoot = parsed.root && !otherRoot && project !== undefined && !defaultRootIsOpen(project);
   const targetReady = parsed.root
-    ? !otherRoot || (home !== undefined && rootIsOpen(home))
+    ? otherRoot
+      ? home !== undefined && rootIsOpen(home)
+      : !noRoot
     : selectedWorkspace !== undefined;
   // What the requests name: a workspace by its id, the root of another
   // location by its selector, and the root of the default one by nothing.
@@ -191,7 +198,11 @@ export function Workspace() {
                   home?.name,
                   home?.kind === "cloud"
                     ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
-                    : (selectedWorkspace?.localPath ?? home?.localPath ?? project.localPath),
+                    : (selectedWorkspace?.localPath ??
+                      home?.localPath ??
+                      // The path a project that lives nowhere still carries is
+                      // of a machine that is gone.
+                      (project.nowhere ? repositoryLabel(project.repoUrl) : project.localPath)),
                 ]
                   .filter(Boolean)
                   .join(" · ")
@@ -252,9 +263,15 @@ export function Workspace() {
             workspaceSlug={workspaceSlug}
             targetLabel={targetLabel}
             available={capabilities.data?.terminal === true}
-            visible={tab === "terminal"}
+            visible={tab === "terminal" && !noRoot}
           />
-          {tab === "terminal" ? null : workspaces.isLoading ? (
+          {/* Under both tabs: with no root there is no git client to show
+              and no machine to open a shell on. */}
+          {noRoot ? (
+            <div className="border-border bg-surface flex-1 rounded-xl border">
+              <NoRoot project={project} />
+            </div>
+          ) : tab === "terminal" ? null : workspaces.isLoading ? (
             <Skeleton className="h-full w-full rounded-xl" />
           ) : workspaces.isError ? (
             <ErrorBanner error={workspaces.error} onRetry={() => workspaces.refetch()} />

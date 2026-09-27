@@ -8,6 +8,7 @@ import { planOf } from "../api/plan.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
+import { nowhereId } from "../nowhere.js";
 import { limitsFor } from "../plans.js";
 import { type CloudEnv, cloudAccess, spriteNameFor } from "./access.js";
 import { encryptSecret } from "./credentials.js";
@@ -155,6 +156,15 @@ export async function createCloudRoot(
         WHERE project_id = ?2 AND user_id = ?3 AND kind = 'cloud' AND device_id IS NULL
           AND EXISTS (SELECT 1 FROM cloud_machines WHERE device_id = ?1)`,
     ).bind(deviceId, projectId, userId, CLOUD_WORKSPACE_ROOT),
+    // A project that lives nowhere has Cloud for its default already, with no
+    // instance. This is the instance, so the project's machine is this one.
+    env.DB.prepare(
+      `UPDATE projects SET device_id = ?1, local_path = ?4
+        WHERE id = ?2 AND user_id = ?3 AND device_id = ?5
+          AND EXISTS (
+            SELECT 1 FROM project_locations WHERE project_id = ?2 AND device_id = ?1
+          )`,
+    ).bind(deviceId, projectId, userId, CLOUD_WORKSPACE_ROOT, nowhereId(userId)),
   ]);
 
   if ((results[0]?.meta.changes ?? 0) === 0) {

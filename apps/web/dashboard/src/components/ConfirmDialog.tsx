@@ -13,7 +13,6 @@ export function ConfirmDialog({
   title,
   body,
   details,
-  error,
   confirmLabel,
   confirmText,
   pending = false,
@@ -29,12 +28,6 @@ export function ConfirmDialog({
    * loses the one thing they did not know was in it.
    */
   details?: ReactNode;
-  /**
-   * Why the action was refused, in the gateway's words. Shown here, with the
-   * dialog still open, when the refusal says what to do next: a sentence that
-   * long does not fit the four seconds a toast is given.
-   */
-  error?: string | null;
   confirmLabel: string;
   /**
    * When set, the action stays out of reach until this exact string is typed.
@@ -84,14 +77,6 @@ export function ConfirmDialog({
         {body}
       </p>
       {open ? details : null}
-      {open && error ? (
-        <p
-          role="alert"
-          className="border-error/30 bg-error/8 text-body-md text-error mt-4 rounded-lg border px-3 py-2"
-        >
-          {error}
-        </p>
-      ) : null}
 
       {confirmText !== undefined && (
         <label className="mt-4 block">

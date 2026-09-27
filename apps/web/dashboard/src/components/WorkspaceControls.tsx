@@ -6,7 +6,7 @@ import type { CloudInstance, Machine } from "../api-projects.js";
 import { cloudLocation, instanceLabel, instancesOf } from "../projectModel.js";
 import { refreshPlaces, useMe } from "../queries.js";
 import { rootSelectorOf } from "../selectors.js";
-import { livesOnlyOnCloud } from "../survival.js";
+import { destroySentence } from "../survival.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import type { MenuItem } from "./Menu.js";
 import { RemoveProjectDialog } from "./RemoveProjectDialog.js";
@@ -164,20 +164,9 @@ export function useWorkspaceControls(input: {
       // Under its project the root goes with the location or with the
       // project, and both of those have a removal of their own there.
       if (lens === "project") return [];
-      return [
-        {
-          label: "Destroy",
-          danger: true,
-          onSelect: () => {
-            const project = projectOf(instance);
-            // The instance that carries a project living only on Cloud takes
-            // the project with it, so it is asked for as what it is. A
-            // machine that was removed is not somewhere else it lives.
-            if (project && livesOnlyOnCloud(project)) setRemovingProject(project);
-            else setDestroying(instance);
-          },
-        },
-      ];
+      // Destroying the root takes the instance and nothing else, wherever the
+      // project lives. A project is removed from its own page only.
+      return [{ label: "Destroy", danger: true, onSelect: () => setDestroying(instance) }];
     },
     removeWorkspace: setRemoval,
     removeProject: setRemovingProject,
@@ -194,7 +183,7 @@ export function useWorkspaceControls(input: {
         <ConfirmDialog
           open={destroying !== null}
           title={`Destroy the instance for ${destroying ? instanceLabel(destroying) : ""}?`}
-          body={`This is the copy of ${destroying?.project.name ?? "the project"} that Exeora Cloud runs. Anything on it that was not pushed is lost, because the instance is the only copy of that. The project keeps its other locations, and the repository is untouched.`}
+          body={destroying ? destroySentence(destroying, projectOf(destroying)) : ""}
           confirmLabel="Destroy instance"
           pending={destroy.isPending}
           onCancel={() => setDestroying(null)}

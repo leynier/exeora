@@ -1,17 +1,20 @@
 import "./env.js";
+import { nowhereId, nowhereStatement } from "./nowhere.js";
 
 /**
  * Moving a project's default location off a machine that is going away.
  *
- * `projects.device_id` cascades on delete, which is right for a project that
- * lives on one machine and wrong for one that lives on several: losing the
- * laptop must not take a project that is also on the desktop. These run in the
- * same batch as the deletion, ahead of it.
+ * `projects.device_id` cascades on delete, which is right for a directory
+ * that was only ever on that machine and wrong for a repository: losing the
+ * laptop must not take a project that is also on the desktop, nor one that
+ * could be cloned again anywhere. These run in the same batch as the
+ * deletion, ahead of it.
  *
  * The next default is a location whose machine still stands, a copy that is
  * ready before one that is not, the user's own machine before Exeora Cloud,
- * the oldest first. A project marked for removal is skipped, so the cascade
- * still takes what was meant to go.
+ * the oldest first. A repository with no such location is kept all the same,
+ * with no default, until it is given somewhere to live. A project marked for
+ * removal is skipped, so the cascade still takes what was meant to go.
  */
 export function moveDefaultLocationStatements(
   env: Pick<Env, "DB">,
@@ -44,6 +47,7 @@ export function moveDefaultLocationStatements(
                AND c.deleting_scope = 'project'
           )`,
     ).bind(userId, deviceId),
+    ...keepRepositoriesStatements(env, userId, deviceId),
     // Exeora Cloud outlives the machine that held its root: the location row
     // would otherwise go with the device, and the workspaces there with it.
     env.DB.prepare(
@@ -52,6 +56,55 @@ export function moveDefaultLocationStatements(
         WHERE user_id = ?1 AND device_id = ?2 AND kind = 'cloud'
           AND EXISTS (SELECT 1 FROM projects p WHERE p.id = project_locations.project_id AND p.device_id != ?2)`,
     ).bind(userId, deviceId),
+  ];
+}
+
+/**
+ * Keeps the repositories whose last machine this was, with no default
+ * location. A directory with no remote is left for the cascade: nothing could
+ * bring it back on another machine, so it goes with the one it was on.
+ *
+ * `projectId` narrows it to one project, for a location that is taken away
+ * while its machine stays.
+ *
+ * Workspaces older than locations name no machine and read as the default's.
+ * They were working copies on the machine being left, so they go first: kept,
+ * they would read as being nowhere, and then as being on whichever machine
+ * the project is given next, which never held them.
+ */
+export function keepRepositoriesStatements(
+  env: Pick<Env, "DB">,
+  userId: string,
+  deviceId: string,
+  projectId: string | null = null,
+): D1PreparedStatement[] {
+  const kept = `
+        WHERE user_id = ?1
+          AND device_id = ?2
+          AND (?3 IS NULL OR id = ?3)
+          AND (
+            repo_key IS NOT NULL
+            OR EXISTS (SELECT 1 FROM cloud_projects c WHERE c.project_id = projects.id)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM cloud_projects c
+             WHERE c.project_id = projects.id
+               AND c.deleting_at IS NOT NULL
+               AND c.deleting_scope = 'project'
+          )`;
+  return [
+    nowhereStatement(env, userId),
+    env.DB.prepare(
+      `DELETE FROM workspaces
+        WHERE device_id IS NULL
+          AND project_id IN (SELECT id FROM projects ${kept})`,
+    ).bind(userId, deviceId, projectId),
+    env.DB.prepare(`UPDATE projects SET device_id = ?4 ${kept}`).bind(
+      userId,
+      deviceId,
+      projectId,
+      nowhereId(userId),
+    ),
   ];
 }
 

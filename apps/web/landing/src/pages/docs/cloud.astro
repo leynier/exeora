@@ -63,6 +63,10 @@ import Doc from "../../layouts/Doc.astro";
     A cold start, after a longer sleep, restarts the CLI rather than resuming it. Background processes and terminal sessions are gone then, the way they are after a laptop reboots; files are not. A call that arrives while an instance is still coming up is answered with <code>EXECUTOR_WAKING</code>, and is worth sending again.
   </p>
 
+  <p>
+    An instance that is asleep runs nothing and still takes one place of the <a href="/docs/plans/">plan</a>, because its disk is kept. Destroying the instance frees that place.
+  </p>
+
   <h2 id="private-repositories">Private repositories</h2>
 
   <p>
@@ -106,11 +110,15 @@ exeora machine list</pre>
   <h2>Removing</h2>
 
   <p>
-    Removing a workspace destroys its instance. From the dashboard and from <code>remove_workspace</code> it is refused while the instance holds work the remote does not have, unless you force it, because the instance is the only copy. From the CLI it asks first and says so. Taking a project off Cloud destroys every instance of it there and leaves the project in its other locations; it is refused while Cloud is the default or the only location. Removing a project destroys every instance of it, the one of the project root last, and the stored token with them.
+    Removing a workspace destroys its instance. From the dashboard and from <code>remove_workspace</code> it is refused while the instance holds work the remote does not have, unless you force it, because the instance is the only copy. From the CLI it asks first and says so. Taking a project off Cloud destroys every instance of it there and leaves the project in its other locations. While the project lives somewhere else as well, it is refused until another location is the default. When Cloud is the only location, the project stays and <a href="/docs/projects/#nowhere">lives nowhere</a>. Removing a project destroys every instance of it, the one of the project root last, and the stored token with them.
   </p>
 
   <p>
-    <strong>Destroy</strong> on an instance under Machines does the same as removing its workspace. On the instance of the project root it destroys that copy and the project keeps its other locations. When the project lives only on Cloud there is nothing left to hold it, so destroying that instance removes the whole project, and the dashboard asks for it as such. The repository on its host is never touched: Exeora only ever clones, fetches and pushes to it as you ask.
+    <strong>Destroy</strong> on an instance under Machines does the same as removing its workspace. On the instance of the project root it destroys that instance and nothing else: the project stays, with its MCP URL, its policy, its clients and its workspaces. What is lost is only what was never pushed from the instance. The repository on its host is never touched: Exeora only ever clones, fetches and pushes to it as you ask.
+  </p>
+
+  <p>
+    When the project lives on a machine of yours as well, the default location moves there. Otherwise the project <a href="/docs/projects/#nowhere">lives nowhere</a>, and Cloud stays its default location in state <code>no instance</code>. The instance is made again by the next call to the project root, or by <strong>Start instance</strong> on the project's page. The call that makes it is answered with <code>EXECUTOR_WAKING</code>: send it again in about a minute.
   </p>
 
   <h2>Where it runs</h2>

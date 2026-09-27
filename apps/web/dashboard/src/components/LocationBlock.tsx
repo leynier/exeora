@@ -18,6 +18,9 @@ export function locationNotice(location: ProjectLocation, entries: number): Reac
   if (location.state === "removed") {
     return "This machine was revoked, so nothing here answers calls. Remove this location.";
   }
+  if (location.state === "no instance") {
+    return "Exeora Cloud holds no instance for the project root. The next call to it makes one, which takes about a minute, and so does Start instance.";
+  }
   if (location.kind === "cloud") {
     return location.deviceId === null && entries === 0
       ? "Nothing is running here. Add a workspace to start an instance."
@@ -45,6 +48,14 @@ export function locationNotice(location: ProjectLocation, entries: number): Reac
   return null;
 }
 
+/** What starts the instance for the project root, where Exeora Cloud holds none. */
+export interface StartInstance {
+  pending: boolean;
+  /** Why it cannot be asked for right now, as the cause and what to do. */
+  blocked: string | null;
+  onStart: () => void;
+}
+
 /**
  * One location of a project, with the workspaces it holds.
  *
@@ -59,12 +70,15 @@ export function LocationBlock({
   menu,
   busy,
   controls,
+  start,
 }: {
   project: Project;
   group: LocationGroup;
   menu: readonly MenuItem[];
   busy: boolean;
   controls: InstanceControls;
+  /** Set while the location is in `no instance`, and only then. */
+  start?: StartInstance | undefined;
 }) {
   const { location, entries } = group;
   const notice = locationNotice(location, entries.length);
@@ -91,8 +105,21 @@ export function LocationBlock({
       </header>
 
       {notice ? (
-        <div className="text-body-md text-foreground-muted border-border-subtle border-b px-5 py-3 last:border-b-0">
-          {notice}
+        <div className="text-body-md text-foreground-muted border-border-subtle flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3 last:border-b-0">
+          <div className="min-w-0 flex-1">
+            {notice}
+            {start?.blocked ? <p className="mt-1">{start.blocked}</p> : null}
+          </div>
+          {start ? (
+            <button
+              type="button"
+              className="btn btn-primary shrink-0"
+              disabled={busy || start.blocked !== null}
+              onClick={start.onStart}
+            >
+              {start.pending ? "Working…" : "Start instance"}
+            </button>
+          ) : null}
         </div>
       ) : null}
 

@@ -91,7 +91,7 @@ export async function placeWorkspaceTool(
     throw new ExeoraError(
       "INVALID_ARGUMENTS",
       where === undefined
-        ? "This project has no default location to work in."
+        ? "This project has no default location to work in. Pass where: set it to cloud to put the project on Exeora Cloud, or to one of its locations."
         : `This project does not live on "${where}". Its locations are: ${locationNames(locations)}.`,
     );
   }

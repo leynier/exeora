@@ -21,10 +21,9 @@ import {
   ROOT_SELECTOR,
   resolveLocationRoot,
   rootLocation,
-  rootSelector,
 } from "./location-roots.js";
-import { locationNames, locationsOf } from "./locations.js";
 import type { DispatchResult } from "./mcp.js";
+import { defaultRemoved, noDefault } from "./no-default.js";
 import { callRelayTool, requestRelayApproval } from "./relay-client.js";
 
 /**
@@ -169,8 +168,11 @@ export async function dispatchToDevice(
           workspace,
         })
       : undefined;
-    if (!placement && !workspace && project.defaultRemoved) {
-      throw await defaultRemoved(env, userId, projectId, project.deviceId);
+    if (!placement && !workspace) {
+      if (project.nowhere) throw await noDefault(env, userId, projectId, project.deviceId);
+      if (project.defaultRemoved) {
+        throw await defaultRemoved(env, userId, projectId, project.deviceId);
+      }
     }
   } catch (error) {
     await record(env, {
@@ -292,34 +294,6 @@ export async function dispatchToDevice(
     });
     throw error;
   }
-}
-
-/** What a call to the project root is told when the default location's machine is gone. */
-async function defaultRemoved(
-  env: Pick<Env, "DB">,
-  userId: string,
-  projectId: string,
-  deviceId: string,
-): Promise<ExeoraError> {
-  const all =
-    (await locationsOf(env, userId, [{ id: projectId, deviceId, localPath: "" }])).get(projectId) ??
-    [];
-  const others = all.filter((location) => !location.default && location.state !== "removed");
-  // A copy that is ready has a root of its own, which is somewhere to work
-  // even when the project has no workspace at all.
-  const roots = others
-    .filter((location) => location.deviceId !== null && location.status === "ready")
-    .map((location) => `\`${rootSelector(location.slug)}\``);
-  const reach =
-    roots.length > 0
-      ? `Pass ${roots.join(" or ")} as the workspace to work in the project root there, work in a workspace there`
-      : "Work in a workspace there";
-  return new ExeoraError(
-    "LOCAL_EXECUTOR_OFFLINE",
-    others.length > 0
-      ? `The machine of this project's default location was removed. It still lives on: ${locationNames(others)}. ${reach}, or choose a new default location in the Exeora dashboard.`
-      : "The machine this project lives on was removed. Register it again with `exeora connect --reset` and `exeora project add`.",
-  );
 }
 
 /**

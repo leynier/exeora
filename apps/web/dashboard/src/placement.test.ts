@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Project, ProjectLocation, User } from "./api.js";
+import { ApiError, type Project, type ProjectLocation, type User } from "./api.js";
 import type { Machine } from "./api-projects.js";
-import { cloudBlocker, locationCandidates, placement } from "./placement.js";
+import {
+  cloudBlocker,
+  instanceRefusal,
+  locationCandidates,
+  noPlacement,
+  placement,
+} from "./placement.js";
 
 const user = (patch: { cloudEnabled?: boolean; used?: number; max?: number | null } = {}) =>
   ({
@@ -72,6 +78,46 @@ describe("placement", () => {
   it("says the project is put on Cloud first when it is not there yet", () => {
     expect(placement(null, user()).sentence).toContain("put on Exeora Cloud first");
     expect(placement(cloud, user()).sentence).not.toContain("put on Exeora Cloud first");
+  });
+});
+
+describe("noPlacement", () => {
+  it("refuses a project with no location to choose, and says what to do first", () => {
+    expect(noPlacement({ nowhere: true })).toEqual({
+      sentence:
+        "This project lives nowhere, so there is no place to make a workspace. Add a location first.",
+      progress: "",
+      blocked: true,
+    });
+    expect(noPlacement({ nowhere: false })).toMatchObject({
+      blocked: true,
+      sentence: "This project has no location that can take a workspace. Add a location first.",
+    });
+  });
+});
+
+describe("instanceRefusal", () => {
+  it("says there is no room, and where room is made, when the plan is full", () => {
+    expect(instanceRefusal(new ApiError(403, { error: "plan_limit", max: 2 }), "fallback")).toBe(
+      "Exeora Cloud has no room for another instance: all 2 of the plan are in use. Destroy one under Machines to make room.",
+    );
+    expect(instanceRefusal(new ApiError(403, { error: "plan_limit" }), "fallback")).toBe(
+      "Exeora Cloud has no room for another instance. Destroy one under Machines to make room.",
+    );
+  });
+
+  it("says who enables Exeora Cloud for an account that has it switched off", () => {
+    expect(instanceRefusal(new ApiError(403, { error: "cloud_disabled" }), "fallback")).toBe(
+      "Exeora Cloud is not enabled for this account. An administrator enables it.",
+    );
+  });
+
+  it("keeps the gateway's own sentence for any other refusal", () => {
+    const refusal = new ApiError(409, { error: "no_machine", message: "Nothing to start." });
+    expect(instanceRefusal(refusal, "fallback")).toBe("Nothing to start.");
+    expect(instanceRefusal("not an error", "The instance could not be started.")).toBe(
+      "The instance could not be started.",
+    );
   });
 });
 

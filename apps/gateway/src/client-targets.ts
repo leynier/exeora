@@ -4,6 +4,7 @@ import { parsePolicy } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { type LocationView, locationsOf } from "./locations.js";
+import { isNowhere } from "./nowhere.js";
 
 /**
  * Where a call lands: which machine serves a project and whether the caller may
@@ -40,6 +41,8 @@ export async function resolveTarget(
    * needs the default is refused, where the call is resolved.
    */
   defaultRemoved: boolean;
+  /** Whether the project has no default location at all: see `nowhere.ts`. */
+  nowhere: boolean;
   clientRevokedAt: Date | null;
   policy: CommandPolicy;
 } | null> {
@@ -64,12 +67,20 @@ export async function resolveTarget(
     .get();
 
   if (!row) return null;
-  if (row.deviceRevokedAt !== null && !(await livesElsewhere(env, entry.projectId, row.deviceId))) {
+  const nowhere = isNowhere(row.deviceId);
+  // A repository that lives nowhere is still a project of the account. One
+  // whose machine was removed is, only while it lives somewhere else.
+  if (
+    !nowhere &&
+    row.deviceRevokedAt !== null &&
+    !(await livesElsewhere(env, entry.projectId, row.deviceId))
+  ) {
     return null;
   }
   return {
     deviceId: row.deviceId,
-    defaultRemoved: row.deviceRevokedAt !== null,
+    defaultRemoved: !nowhere && row.deviceRevokedAt !== null,
+    nowhere,
     clientRevokedAt: entry.clientId ? row.clientRevokedAt : null,
     policy: parsePolicy(row.commandPolicy),
   };
@@ -95,6 +106,7 @@ export async function resolveAccountTarget(
 ): Promise<{
   deviceId: string;
   defaultRemoved: boolean;
+  nowhere: boolean;
   policy: CommandPolicy;
 } | null> {
   const row = await db(env)
@@ -118,12 +130,20 @@ export async function resolveAccountTarget(
     .get();
 
   if (!row) return null;
-  if (row.deviceRevokedAt !== null && !(await livesElsewhere(env, entry.projectId, row.deviceId))) {
+  const nowhere = isNowhere(row.deviceId);
+  // A repository that lives nowhere is still a project of the account. One
+  // whose machine was removed is, only while it lives somewhere else.
+  if (
+    !nowhere &&
+    row.deviceRevokedAt !== null &&
+    !(await livesElsewhere(env, entry.projectId, row.deviceId))
+  ) {
     return null;
   }
   return {
     deviceId: row.deviceId,
-    defaultRemoved: row.deviceRevokedAt !== null,
+    defaultRemoved: !nowhere && row.deviceRevokedAt !== null,
+    nowhere,
     policy: parsePolicy(row.commandPolicy),
   };
 }
@@ -229,7 +249,8 @@ export function answers(location: Pick<LocationView, "state">): boolean {
  *
  * A project is listed for as long as it lives somewhere. Losing the machine of
  * its default location does not hide it, because its workspaces elsewhere are
- * still reachable; a project whose every machine was removed is gone.
+ * still reachable. A repository is listed when it lives nowhere too; only a
+ * directory whose every machine was removed is gone.
  */
 export async function accountProjects(
   env: Pick<Env, "DB">,
@@ -261,7 +282,10 @@ export async function accountProjects(
 
   return rows.flatMap((row) => {
     const all = (locations.get(row.id) ?? []).filter((location) => location.state !== "removed");
-    if (all.length === 0) return [];
+    const nowhere = isNowhere(row.deviceId);
+    // A directory whose machine was removed is gone. A repository is listed
+    // even with nowhere to live, since it can be given a place again.
+    if (all.length === 0 && !nowhere) return [];
     const chosen = all.find((location) => location.default);
     return [
       {
@@ -269,7 +293,7 @@ export async function accountProjects(
         slug: row.slug,
         name: row.name,
         repository: row.repoKey,
-        machine: chosen?.name ?? "removed",
+        machine: chosen?.name ?? (nowhere ? "nowhere" : "removed"),
         online: chosen ? answers(chosen) : false,
         locations: all.map((location) => ({
           name: location.slug,

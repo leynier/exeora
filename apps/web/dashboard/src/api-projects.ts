@@ -17,7 +17,7 @@ interface MachineBase {
   platform: string;
   cliVersion: string | null;
   online: boolean;
-  state: Exclude<State, "not cloned">;
+  state: Exclude<State, "not cloned" | "no instance">;
   lastSeenAt: number | null;
   createdAt: number;
   revokedAt: number | null;

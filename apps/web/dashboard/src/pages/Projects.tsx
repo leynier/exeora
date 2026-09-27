@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { AddLocationDialog } from "../components/AddLocationDialog.js";
 import { AddProjectDialog } from "../components/AddProjectDialog.js";
 import { McpEndpoint } from "../components/McpEndpoint.js";
 import { MachineSteps } from "../components/Onboarding.js";
@@ -13,9 +14,10 @@ import { isLeaving } from "../survival.js";
  * What the account has, and where each of those things lives.
  *
  * One of the two lenses over the same data: this one is by project, the
- * Machines page is by what is running. A row here is a way into the project
- * and carries no action of its own, so there is one place a project is
- * changed or removed and it is the project's page.
+ * Machines page is by what is running. A row here is a way into the project,
+ * so there is one place a project is changed or removed and it is the
+ * project's page. The one thing a row offers is a location, to a project that
+ * lives nowhere.
  */
 export function Projects() {
   const projects = useProjects();
@@ -25,6 +27,8 @@ export function Projects() {
   const [search, setSearch] = useSearchParams();
   const [adding, setAdding] = useState(false);
   const [showingMachine, setShowingMachine] = useState(false);
+  // Kept by id, so the dialog reads the project as the list has it now.
+  const [placing, setPlacing] = useState<string | null>(null);
 
   // Other pages send people here to add a project. The mark is taken out of
   // the address once it has been acted on, so a reload does not reopen it.
@@ -102,12 +106,20 @@ export function Projects() {
               project={project}
               workspaces={machines.data ? workspaceCount(machines.data, project.id) : null}
               leaving={isLeaving(project, machines.data ?? [])}
+              onAddLocation={() => setPlacing(project.id)}
             />
           ))}
         </div>
       )}
 
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
+      <AddLocationDialog
+        open={placing !== null}
+        project={rows.find((project) => project.id === placing)}
+        machines={machines.data ?? []}
+        user={me.data}
+        onClose={() => setPlacing(null)}
+      />
     </>
   );
 }

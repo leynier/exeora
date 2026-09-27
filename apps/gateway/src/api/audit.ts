@@ -1,9 +1,10 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db, schema } from "../db/client.js";
 import "../env.js";
+import { NOWHERE_KIND } from "../nowhere.js";
 import { deviceOnline } from "../presence.js";
 import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { relayName } from "./ops.js";
@@ -78,7 +79,15 @@ audit.get("/api/approvals", async (c) => {
   const devices = await db(c.env)
     .select({ id: schema.devices.id, name: schema.devices.name })
     .from(schema.devices)
-    .where(and(eq(schema.devices.userId, userId), deviceOnline()))
+    // A project that lives nowhere has no machine to hold what it is waiting
+    // on, so its approvals are held where the project is kept, and that is
+    // asked as well as the machines that are up.
+    .where(
+      and(
+        eq(schema.devices.userId, userId),
+        or(deviceOnline(), eq(schema.devices.kind, NOWHERE_KIND)),
+      ),
+    )
     .all();
 
   const perDevice = await Promise.all(

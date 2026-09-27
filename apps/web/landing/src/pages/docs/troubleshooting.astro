@@ -46,6 +46,24 @@ import Doc from "../../layouts/Doc.astro";
     tab. One that failed says why and what to do, and <strong>Retry</strong> sets it up again.
   </p>
 
+  <p>
+    With the message <em>"The instance for this project's root on Exeora Cloud had been destroyed, and another is being made"</em>, the cause is another one. Exeora Cloud is the project's default location in state <code>no instance</code>, because the instance of the project root was destroyed or the last machine that held the project was deleted. The call asked for the project root, which is what makes the instance. Send the same call again in about a minute. <strong>Start instance</strong> on the project's page and <code>exeora project default &lt;slug&gt; --on cloud</code> ask for the instance ahead of the call.
+  </p>
+
+  <p>
+    When the instance cannot be made, the answer is <code>LOCAL_EXECUTOR_OFFLINE</code> with the reason. The usual one is that every instance of the <a href="/docs/plans/">plan</a> is in use: destroy one under <strong>Machines</strong> to make room, then send the call again.
+  </p>
+
+  <h2 id="nowhere">"This project lives nowhere at the moment"</h2>
+
+  <p>
+    The project has no location. The last machine that held it was deleted, or its only location was removed, and it is not on Exeora Cloud. It is still a project, with its MCP URL, its policy and its clients, and nothing can serve a call to it. The answer carries the code <code>LOCAL_EXECUTOR_OFFLINE</code>.
+  </p>
+
+  <p>
+    Give it a place again. Run <code>exeora project add .</code> in a checkout of it, or <code>exeora project add owner/repo</code> on a machine. Or add a location with <code>exeora project locations add &lt;slug&gt; --on &lt;machine|cloud&gt;</code> or <strong>Add location</strong> on the project's page. An agent can call <code>create_workspace</code> with <code>where</code> set to <code>cloud</code>, which puts the project on Exeora Cloud. See <a href="/docs/projects/#nowhere">a project that lives nowhere</a>.
+  </p>
+
   <h2>A clone failed on a machine</h2>
 
   <p>

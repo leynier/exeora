@@ -149,8 +149,9 @@ export const devices = sqliteTable(
      * `local` is a machine the user runs; `cloud` is one Exeora provisioned for
      * them, which sleeps when idle and has to be woken before a call. Cloud
      * machines are counted against their own plan limit, never the device cap.
+     * `none` is no machine at all: see `nowhere.ts`.
      */
-    kind: text("kind", { enum: ["local", "cloud"] })
+    kind: text("kind", { enum: ["local", "cloud", "none"] })
       .notNull()
       .default("local"),
     /** Updated on connect, heartbeat and disconnect. Drives the online badge. */

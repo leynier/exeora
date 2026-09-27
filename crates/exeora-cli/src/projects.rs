@@ -9,7 +9,7 @@
 use crate::{
     api::{
         ApiClient, GithubRepositoryView, LocationView, MachineView, ProjectRegistration,
-        ProjectView,
+        ProjectView, error_code,
     },
     cli::{emit, file_name, project_mcp_url, project_root, slugify},
     cloud::commands::{confirm, created_project, token_from_stdin},
@@ -339,6 +339,44 @@ pub fn location_names(locations: &[LocationView]) -> String {
         .map(|location| location.slug.as_str())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// How a project that lives nowhere is given a place again.
+pub fn give_it_a_place(slug: &str) -> String {
+    format!(
+        "Give it a place: run `exeora project add .` in a checkout of it, or `exeora project locations add {slug} --on <machine|cloud>`."
+    )
+}
+
+/// How Exeora Cloud comes to hold the project root again, said under a
+/// location that holds no instance for it.
+fn make_the_instance(slug: &str) -> String {
+    format!(
+        "Exeora Cloud holds no instance for the project root. The next call to it makes one, and so does `exeora project default {slug} --on {CLOUD}`."
+    )
+}
+
+/// Whether a project has nowhere left to name: it lives nowhere, and not
+/// even Exeora Cloud is waiting to make an instance for it.
+pub fn has_no_place(project: &ProjectView) -> bool {
+    project.nowhere && project.standing().next().is_none()
+}
+
+/// What is said when a command names a place the project does not live in.
+pub fn not_a_location(project: &ProjectView, on: &str) -> anyhow::Error {
+    if has_no_place(project) {
+        return anyhow!(
+            "{} lives nowhere at the moment. Give it a place with `exeora project locations add {} --on {on}`: the first machine a project is given becomes its default location.",
+            project.slug,
+            project.slug
+        );
+    }
+    anyhow!(
+        "{} does not live on {on}. Its locations are: {}. Add one with `exeora project locations add {} --on {on}`.",
+        project.slug,
+        location_names(&project.locations),
+        project.slug
+    )
 }
 
 /// The project the account has by that slug or id, or None when the gateway
@@ -847,7 +885,8 @@ pub fn named_root(location_slug: &str) -> String {
 /// one, `main@<slug>` in any other. None for a location that holds no copy
 /// of the root, which is one that was only chosen, one whose clone has not
 /// finished or has failed, one whose machine was removed, and Exeora Cloud
-/// while it holds workspaces and no root.
+/// while it holds no instance for the root, whether it holds workspaces or
+/// is the default location waiting for the call that makes one.
 pub fn root_selector(location: &LocationView) -> Option<String> {
     let holds_a_copy = location.device_id.is_some()
         && location.state != "removed"
@@ -861,7 +900,7 @@ pub fn root_selector(location: &LocationView) -> Option<String> {
     })
 }
 
-fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
+fn describe_location(config: &ConfigStore, project: &str, location: &LocationView) -> String {
     let here = location.device_id.is_some() && location.device_id == config.data().device_id;
     let name = if here {
         format!("{} (this machine)", location.name)
@@ -884,7 +923,35 @@ fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
     if let Some(error) = location.error.as_deref().filter(|error| !error.is_empty()) {
         line.push_str(&format!("\n      {error}"));
     }
+    if location.has_no_instance() {
+        line.push_str(&format!("\n      {}", make_the_instance(project)));
+    }
     line
+}
+
+/// The lines under a project: one for each place it lives, or that it lives
+/// nowhere and how to change that.
+///
+/// `nowhere` is the gateway's word for it and not something read off the
+/// locations: a project whose only machine was revoked has no location that
+/// stands, and still has that machine for its default until it is deleted.
+fn location_lines(
+    config: &ConfigStore,
+    project: &str,
+    nowhere: bool,
+    locations: &[LocationView],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    if nowhere && locations.iter().all(|location| location.state == "removed") {
+        lines.push("    nowhere".to_owned());
+        lines.push(format!("      {}", give_it_a_place(project)));
+    }
+    lines.extend(
+        locations
+            .iter()
+            .map(|location| describe_location(config, project, location)),
+    );
+    lines
 }
 
 /// What a listing has to say: the items for `--json`, the lines for a
@@ -959,12 +1026,12 @@ pub async fn project_listing(config: &ConfigStore, api: &ApiClient) -> Result<Li
             project.repo_url.as_deref(),
             project.default_branch.as_deref(),
         ));
-        lines.extend(
-            project
-                .locations
-                .iter()
-                .map(|location| describe_location(config, location)),
-        );
+        lines.extend(location_lines(
+            config,
+            &project.slug,
+            project.nowhere,
+            &project.locations,
+        ));
         lines.push(format!("  {}", project.mcp_url));
     }
     if items.is_empty() {
@@ -986,6 +1053,9 @@ pub async fn project_listing(config: &ConfigStore, api: &ApiClient) -> Result<Li
 /// config holds, or the one the gateway has for this machine's location, and
 /// null for a project that is not here, which 0.17.0 would not have listed.
 /// Each location also says what its root is called, when it has one.
+///
+/// `nowhere` is always there, false from a gateway that does not say it: a
+/// script asks one key whether a project has a place, whatever answered.
 fn project_item(config: &ConfigStore, project: &ProjectView, mut item: Value) -> Value {
     let here = config.data().device_id.as_deref();
     let root = config
@@ -998,6 +1068,7 @@ fn project_item(config: &ConfigStore, project: &ProjectView, mut item: Value) ->
         })
         .unwrap_or(Value::Null);
     item["root"] = root;
+    item["nowhere"] = json!(project.nowhere);
     if let Some(locations) = item.get_mut("locations").and_then(Value::as_array_mut) {
         for (location, view) in locations.iter_mut().zip(&project.locations) {
             if location.get("selector").is_none() {
@@ -1043,6 +1114,9 @@ fn local_project_listing(config: &ConfigStore, notice: String) -> Result<Listing
                 "selector": named_root(&location_slug(&machine)),
             }],
             "mcpUrl": mcp_url,
+            // It is in this machine's config, so as far as this machine
+            // knows it lives here.
+            "nowhere": false,
             "offline": true,
         }));
         lines.push(repository_line(
@@ -1165,6 +1239,9 @@ async fn remove(
     Ok(())
 }
 
+/// The locations of a project after a command changed them. The project is
+/// the one that was read before the change, so it names the project and
+/// says nothing of where it lives now: the locations do.
 fn report_locations(
     config: &ConfigStore,
     project: &ProjectView,
@@ -1174,10 +1251,35 @@ fn report_locations(
     if json_output {
         return emit(json!({ "project": project.slug, "locations": locations }));
     }
-    for location in locations {
-        println!("{}", describe_location(config, location));
+    for line in location_lines(config, &project.slug, false, locations) {
+        println!("{line}");
     }
     Ok(())
+}
+
+/// What `exeora project locations <slug>` has to say, as the document of
+/// `--json` and as the lines for a person: the places a project lives, or
+/// that it lives nowhere.
+fn locations_listing(
+    config: &ConfigStore,
+    project: &ProjectView,
+    locations: &[LocationView],
+) -> (Value, Vec<String>) {
+    let mut lines = vec![project.slug.clone()];
+    lines.extend(location_lines(
+        config,
+        &project.slug,
+        project.nowhere,
+        locations,
+    ));
+    (
+        json!({
+            "project": project.slug,
+            "nowhere": project.nowhere,
+            "locations": locations,
+        }),
+        lines,
+    )
 }
 
 async fn locations(
@@ -1188,10 +1290,14 @@ async fn locations(
 ) -> Result<()> {
     let project = find_project(api, selector).await?;
     let locations = api.list_locations(&project.id).await?;
-    if !json_output {
-        println!("{}", project.slug);
+    let (document, lines) = locations_listing(config, &project, &locations);
+    if json_output {
+        return emit(document);
     }
-    report_locations(config, &project, &locations, json_output)
+    for line in lines {
+        println!("{line}");
+    }
+    Ok(())
 }
 
 async fn add_location(
@@ -1239,6 +1345,13 @@ async fn remove_location(
     json_output: bool,
 ) -> Result<()> {
     let project = find_project(api, selector).await?;
+    if project.nowhere && project.locations.is_empty() {
+        bail!(
+            "{} lives nowhere at the moment, so there is no location to take it off. {}",
+            project.slug,
+            give_it_a_place(&project.slug)
+        );
+    }
     let location = find_location(config, &project.locations, on)
         .cloned()
         .ok_or_else(|| {
@@ -1248,7 +1361,11 @@ async fn remove_location(
                 location_names(&project.locations)
             )
         })?;
-    let question = if location.is_cloud() {
+    // The only place the project lives. A repository outlives it: the
+    // project stays and lives nowhere. The gateway is the one that refuses
+    // a directory with no remote, which nothing could clone anywhere else.
+    let last = location.state != "removed" && project.standing().count() == 1;
+    let mut question = if location.is_cloud() {
         format!(
             "Take {} off {CLOUD_NAME}? Its machines there are taken down, and anything not pushed from them is lost.",
             project.slug
@@ -1259,21 +1376,70 @@ async fn remove_location(
             project.slug, location.name
         )
     };
+    if last && project.repo_url.is_some() {
+        question.push_str(
+            " It is the only place the project lives: the project stays, and lives nowhere until it is given a place again.",
+        );
+    }
     if !confirm(yes, json_output, &question)? {
         return Ok(());
     }
-    let _ = api.remove_location(&project.id, &location.id).await?;
+    if let Err(error) = api.remove_location(&project.id, &location.id).await {
+        return Err(removal_refused(&project, &location, error));
+    }
     if location.device_id.is_some() && location.device_id == config.data().device_id {
         config.remove_project(&project.id);
         config.save()?;
     }
     if json_output {
-        return emit(
-            json!({ "removed": "location", "project": project.slug, "location": location.slug }),
-        );
+        return emit(json!({
+            "removed": "location",
+            "project": project.slug,
+            "location": location.slug,
+            "nowhere": last,
+        }));
     }
-    println!("{} no longer lives on {}.", project.slug, location.name);
+    println!("{}", removed_location(&project, &location, last));
     Ok(())
+}
+
+/// What is said once a location is gone.
+fn removed_location(project: &ProjectView, location: &LocationView, last: bool) -> String {
+    let gone = format!("{} no longer lives on {}.", project.slug, location.name);
+    if !last {
+        return gone;
+    }
+    format!(
+        "{gone} It is still a project of your account, with its MCP URL, its policy and its clients, and it lives nowhere until it is given a place again. {}",
+        give_it_a_place(&project.slug)
+    )
+}
+
+/// A refusal to take a location away, in words that say what to do next.
+/// Anything else the gateway said is returned as it said it.
+fn removal_refused(
+    project: &ProjectView,
+    location: &LocationView,
+    error: anyhow::Error,
+) -> anyhow::Error {
+    match error_code(&error) {
+        // Only a directory with no remote is refused its last location by a
+        // gateway that keeps repositories. One that has a repository was
+        // refused by an older gateway, whose own words are the right ones.
+        Some("last_location") if project.repo_url.is_none() => anyhow!(
+            "{} is a directory with no remote, and {} is the only place it lives: nothing could bring it back anywhere else. Remove the project instead with `exeora project remove {}`, or give its checkout a remote and run `exeora sync`.",
+            project.slug,
+            location.name,
+            project.slug
+        ),
+        Some("default_location") => anyhow!(
+            "{} is the default location of {}. Choose another one first with `exeora project default {} --on <machine|cloud>`, then remove this one.",
+            location.name,
+            project.slug,
+            project.slug
+        ),
+        _ => error,
+    }
 }
 
 async fn set_default(
@@ -1284,22 +1450,35 @@ async fn set_default(
     json_output: bool,
 ) -> Result<()> {
     let project = find_project(api, selector).await?;
-    let location = find_location(config, &project.locations, on).ok_or_else(|| {
-        anyhow!(
-            "{} does not live on {on}. Its locations are: {}. Add one with `exeora project locations add {} --on {on}`.",
-            project.slug,
-            location_names(&project.locations),
-            project.slug
-        )
-    })?;
+    let location = find_location(config, &project.locations, on)
+        .ok_or_else(|| not_a_location(&project, on))?;
     let locations = api.set_default_location(&project.id, &location.id).await?;
     if !json_output {
-        println!(
-            "Calls to {} that name no workspace now go to {}.",
-            project.slug, location.name
-        );
+        println!("{}", made_default(&project, location, &locations));
     }
     report_locations(config, &project, &locations, json_output)
+}
+
+/// What is said once a location is the default. Exeora Cloud that held no
+/// instance for the project root was asked for one by this, and that takes
+/// a moment, so the first call is not a surprise.
+fn made_default(project: &ProjectView, chosen: &LocationView, now: &[LocationView]) -> String {
+    let said = format!(
+        "Calls to {} that name no workspace now go to {}.",
+        project.slug, chosen.name
+    );
+    let being_made = chosen.is_cloud()
+        && chosen.device_id.is_none()
+        && now
+            .iter()
+            .any(|location| location.id == chosen.id && location.state == "setting up");
+    if being_made {
+        format!(
+            "{said} The instance for the project root is being made, which takes about a minute."
+        )
+    } else {
+        said
+    }
 }
 
 async fn credential(
@@ -1365,6 +1544,13 @@ pub async fn local_project(
     let Some(project) = lookup_project(api, selector).await? else {
         return Err(unknown);
     };
+    if has_no_place(&project) {
+        bail!(
+            "{} lives nowhere at the moment. Add this machine with `exeora project locations add {} --on {HERE}` and create the workspace again, or pass `--on {CLOUD}` to put it on Exeora Cloud.",
+            project.slug,
+            project.slug
+        );
+    }
     if project.location_on(&device).is_none() {
         bail!(
             "{} does not live on this machine. Its locations are: {}. Pass --on with one of them, or add this machine with `exeora project locations add {} --on {HERE}`.",
@@ -1417,11 +1603,13 @@ pub async fn local_project(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProjectAddArgs, ProjectCommand, Target, classify, find_location, local_project,
-        location_slug, names_this_machine, project_listing, root_selector, run, said,
+        LocationsCommand, ProjectAddArgs, ProjectCommand, Target, classify, find_location,
+        has_no_place, local_project, location_slug, locations_listing, made_default,
+        names_this_machine, not_a_location, project_listing, removal_refused, removed_location,
+        root_selector, run, said,
     };
     use crate::{
-        api::LocationView,
+        api::{LocationView, ProjectView},
         cloud::commands::joined_project,
         config::{ConfigStore, ProjectEntry},
         testing::{Gateway, listed_location, listed_project},
@@ -1898,7 +2086,7 @@ mod tests {
                         "kind": "local", "deviceId": "dev_here", "name": "laptop",
                         "slug": "laptop", "localPath": "/code/api", "selector": "main@laptop",
                     }],
-                    "mcpUrl": null, "offline": true,
+                    "mcpUrl": null, "nowhere": false, "offline": true,
                 })
             );
             for item in &listing.items {
@@ -2261,5 +2449,601 @@ mod tests {
             said(Some("joined"), "alera"),
             "alera already exists; this machine is now one of its locations."
         );
+    }
+
+    /// The id the gateway gives a project that has no machine: one that
+    /// names no machine of the account.
+    const NO_MACHINE: &str = "dev_none_abc";
+
+    /// A repository whose last machine was removed.
+    fn homeless(id: &str, slug: &str) -> serde_json::Value {
+        listed_project(
+            id,
+            slug,
+            json!({
+                "deviceId": NO_MACHINE,
+                "nowhere": true,
+                "repoUrl": "https://github.com/acme/api.git",
+                "defaultBranch": "trunk",
+            }),
+        )
+    }
+
+    /// Exeora Cloud as the default location, after the instance of the
+    /// project root was destroyed.
+    fn cloud_with_no_instance() -> serde_json::Value {
+        listed_location(
+            None,
+            "cloud",
+            json!({
+                "kind": "cloud", "name": "Exeora Cloud", "default": true,
+                "online": false, "state": "no instance",
+            }),
+        )
+    }
+
+    /// A repository that is on Exeora Cloud and nowhere else, with no
+    /// instance for its root.
+    fn released(id: &str, slug: &str) -> serde_json::Value {
+        let mut project = homeless(id, slug);
+        project["locations"] = json!([cloud_with_no_instance()]);
+        project
+    }
+
+    fn view(project: serde_json::Value) -> ProjectView {
+        serde_json::from_value(project).expect("project")
+    }
+
+    fn places(locations: serde_json::Value) -> Vec<LocationView> {
+        serde_json::from_value(locations).expect("locations")
+    }
+
+    fn remove_location(slug: &str, on: &str) -> ProjectCommand {
+        ProjectCommand::Locations {
+            slug: None,
+            command: Some(LocationsCommand::Remove {
+                slug: slug.to_owned(),
+                on: on.to_owned(),
+                yes: true,
+            }),
+        }
+    }
+
+    fn make_default(slug: &str, on: &str) -> ProjectCommand {
+        ProjectCommand::Default {
+            slug: slug.to_owned(),
+            on: on.to_owned(),
+        }
+    }
+
+    const WAY_BACK: &str = "Give it a place: run `exeora project add .` in a checkout of it, or `exeora project locations add api --on <machine|cloud>`.";
+
+    #[tokio::test]
+    async fn a_project_that_lives_nowhere_is_listed_as_such_with_the_way_back() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine(temp.path());
+        let listed = json!([
+            homeless("prj_api", "api"),
+            released("prj_web", "web"),
+            // From a gateway that does not say `nowhere`.
+            listed_project(
+                "prj_old",
+                "old",
+                json!({
+                    "deviceId": "dev_here",
+                    "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/old" }))],
+                })
+            ),
+        ]);
+        let answer = listed.clone();
+        let gateway = Gateway::start(move |_, _, _| (200, answer.clone())).await;
+
+        let listing = project_listing(&config, &gateway.api().await)
+            .await
+            .expect("listing");
+
+        assert_eq!(
+            listing.lines,
+            [
+                format!("{:<20} github.com/acme/api (trunk)", "api"),
+                "    nowhere".to_owned(),
+                format!("      {WAY_BACK}"),
+                "  https://exeora.test/p/prj_api/mcp".to_owned(),
+                format!("{:<20} github.com/acme/api (trunk)", "web"),
+                format!(
+                    "  * {:<32} no instance\n      Exeora Cloud holds no instance for the project root. The next call to it makes one, and so does `exeora project default web --on cloud`.",
+                    "Exeora Cloud"
+                ),
+                "  https://exeora.test/p/prj_web/mcp".to_owned(),
+                format!("{:<20} no repository", "old"),
+                format!(
+                    "  * {:<32} {:<12} {:<20} /code/old",
+                    "laptop (this machine)", "online", "main"
+                ),
+                "  https://exeora.test/p/prj_old/mcp".to_owned(),
+            ]
+        );
+
+        let nowhere: Vec<_> = listing
+            .items
+            .iter()
+            .map(|item| item["nowhere"].clone())
+            .collect();
+        assert_eq!(nowhere, [json!(true), json!(true), json!(false)]);
+        for (item, said) in listing.items.iter().zip(listed.as_array().expect("array")) {
+            // Every key 0.18.0 printed: the ones of 0.17.0, and what the
+            // gateway said, as it said it.
+            for key in PROJECT_KEYS_0_17 {
+                assert!(item.get(key).is_some(), "{key} is missing from {item}");
+            }
+            for (key, value) in said.as_object().expect("an object") {
+                if key != "locations" {
+                    assert_eq!(&item[key], value, "{key}");
+                }
+            }
+        }
+        // It is not on this machine, nor on any other.
+        assert_eq!(listing.items[0]["root"], json!(null));
+        assert_eq!(listing.items[0]["locations"], json!([]));
+        assert_eq!(listing.items[0]["deviceId"], NO_MACHINE);
+        // No instance holds the root, so there is no root to name.
+        assert_eq!(listing.items[1]["locations"][0]["selector"], json!(null));
+        assert_eq!(listing.items[1]["locations"][0]["state"], "no instance");
+        assert_eq!(listing.items[2]["root"], "/code/old");
+    }
+
+    #[tokio::test]
+    async fn a_listing_from_this_machine_says_its_projects_live_here() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_projects(temp.path());
+        let listing = project_listing(&config, &Gateway::gone().api().await)
+            .await
+            .expect("what this machine knows");
+        assert_eq!(listing.items.len(), 2);
+        for item in &listing.items {
+            assert_eq!(item["nowhere"], false, "{item}");
+        }
+    }
+
+    #[test]
+    fn a_machine_that_was_removed_is_shown_under_a_project_that_lives_nowhere() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine(temp.path());
+        let mut project = homeless("prj_api", "api");
+        project["locations"] = json!([listed_location(
+            Some("dev_old"),
+            "desktop",
+            json!({ "online": false, "state": "removed" })
+        )]);
+        let project = view(project);
+        assert!(has_no_place(&project));
+
+        let (document, lines) = locations_listing(&config, &project, &project.locations);
+        assert_eq!(lines.len(), 4);
+        assert_eq!(lines[0], "api");
+        assert_eq!(lines[1], "    nowhere");
+        assert_eq!(lines[2], format!("      {WAY_BACK}"));
+        assert!(lines[3].contains("desktop"), "{}", lines[3]);
+        assert!(lines[3].contains("removed"), "{}", lines[3]);
+        assert_eq!(document["nowhere"], true);
+
+        // A machine that was revoked and not deleted is still the default of
+        // its project, which the gateway does not call nowhere.
+        let mut revoked = listed_project("prj_web", "web", json!({ "deviceId": "dev_old" }));
+        revoked["locations"] = json!([listed_location(
+            Some("dev_old"),
+            "desktop",
+            json!({ "default": true, "online": false, "state": "removed" })
+        )]);
+        let revoked = view(revoked);
+        assert!(!has_no_place(&revoked));
+        let (document, lines) = locations_listing(&config, &revoked, &revoked.locations);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].starts_with("  * desktop"), "{}", lines[1]);
+        assert_eq!(document["nowhere"], false);
+    }
+
+    #[test]
+    fn the_locations_of_a_project_that_has_none_are_printed_without_a_machine() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine(temp.path());
+
+        let project = view(homeless("prj_api", "api"));
+        let (document, lines) = locations_listing(&config, &project, &[]);
+        assert_eq!(
+            lines,
+            ["api", "    nowhere", &format!("      {WAY_BACK}") as &str]
+        );
+        assert_eq!(
+            document,
+            json!({ "project": "api", "nowhere": true, "locations": [] })
+        );
+        for line in &lines {
+            assert!(!line.contains(NO_MACHINE), "{line}");
+            assert!(!line.contains("unknown"), "{line}");
+        }
+
+        let project = view(released("prj_web", "web"));
+        let (document, lines) = locations_listing(&config, &project, &project.locations);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].starts_with("  * Exeora Cloud"), "{}", lines[1]);
+        assert!(lines[1].contains(" no instance\n"), "{}", lines[1]);
+        assert!(
+            lines[1].ends_with("`exeora project default web --on cloud`."),
+            "{}",
+            lines[1]
+        );
+        // What 0.18.0 printed, and whether the project has a place.
+        assert_eq!(document["project"], "web");
+        assert_eq!(document["nowhere"], true);
+        assert_eq!(document["locations"][0]["state"], "no instance");
+        assert_eq!(document["locations"][0]["deviceId"], json!(null));
+        assert_eq!(document["locations"][0]["default"], true);
+    }
+
+    #[tokio::test]
+    async fn the_locations_command_reads_a_project_with_none() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (200, json!([homeless("prj_api", "api")])),
+            ("GET", "/api/projects/prj_api/locations") => (200, json!({ "locations": [] })),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+        let listed = || ProjectCommand::Locations {
+            slug: Some("api".to_owned()),
+            command: None,
+        };
+
+        run(&mut config, &api, listed(), false)
+            .await
+            .expect("listed");
+        run(&mut config, &api, listed(), true)
+            .await
+            .expect("listed");
+        assert_eq!(
+            gateway
+                .received_as("GET", "/api/projects/prj_api/locations")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn no_root_is_named_where_no_instance_holds_it() {
+        let location: LocationView =
+            serde_json::from_value(cloud_with_no_instance()).expect("location");
+        assert!(location.has_no_instance());
+        assert!(location.is_default);
+        assert_eq!(root_selector(&location), None);
+    }
+
+    #[tokio::test]
+    async fn the_last_location_of_a_repository_is_removed_and_the_project_stays() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine_with_projects(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (
+                200,
+                json!([listed_project("prj_api", "api", json!({
+                    "deviceId": "dev_here",
+                    "repoUrl": "https://github.com/Acme/API.git",
+                    "locations": [
+                        listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/api" })),
+                        // Gone already, so it is not a place the project lives.
+                        listed_location(Some("dev_old"), "desktop", json!({ "online": false, "state": "removed" })),
+                    ],
+                }))]),
+            ),
+            ("DELETE", "/api/projects/prj_api/locations/loc_laptop") => (200, json!({ "ok": true })),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+
+        run(
+            &mut config,
+            &gateway.api().await,
+            remove_location("api", "here"),
+            true,
+        )
+        .await
+        .expect("removed");
+
+        assert_eq!(
+            gateway
+                .received_as("DELETE", "/api/projects/prj_api/locations/loc_laptop")
+                .len(),
+            1
+        );
+        // The project itself was not asked to go.
+        assert!(
+            gateway
+                .received_as("DELETE", "/api/projects/prj_api")
+                .is_empty()
+        );
+        // This machine no longer holds it. What is in the account is the
+        // gateway's to keep.
+        assert_eq!(saved_slugs(&config), ["notes"]);
+    }
+
+    #[test]
+    fn says_that_a_project_with_no_location_left_stays_and_lives_nowhere() {
+        let project = view(listed_project(
+            "prj_api",
+            "api",
+            json!({ "repoUrl": "https://github.com/Acme/API.git" }),
+        ));
+        let laptop: LocationView =
+            serde_json::from_value(listed_location(Some("dev_here"), "laptop", json!({})))
+                .expect("location");
+
+        assert_eq!(
+            removed_location(&project, &laptop, false),
+            "api no longer lives on laptop."
+        );
+        assert_eq!(
+            removed_location(&project, &laptop, true),
+            format!(
+                "api no longer lives on laptop. It is still a project of your account, with its MCP URL, its policy and its clients, and it lives nowhere until it is given a place again. {WAY_BACK}"
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_directory_with_no_remote_keeps_the_only_place_it_lives() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine_with_projects(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (
+                200,
+                json!([listed_project("prj_notes", "notes", json!({
+                    "deviceId": "dev_here",
+                    "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/notes" }))],
+                }))]),
+            ),
+            ("DELETE", _) => (
+                409,
+                json!({
+                    "error": "last_location",
+                    "message": "This project is a directory on this machine and lives nowhere else. Remove the project instead.",
+                }),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+
+        let error = run(
+            &mut config,
+            &gateway.api().await,
+            remove_location("notes", "laptop"),
+            true,
+        )
+        .await
+        .expect_err("refused");
+
+        assert_eq!(
+            error.to_string(),
+            "notes is a directory with no remote, and laptop is the only place it lives: nothing could bring it back anywhere else. Remove the project instead with `exeora project remove notes`, or give its checkout a remote and run `exeora sync`."
+        );
+        // Nothing was forgotten on the strength of a refusal.
+        assert_eq!(saved_slugs(&config), ["api", "notes"]);
+    }
+
+    #[tokio::test]
+    async fn a_refusal_to_remove_a_location_says_what_to_do_next() {
+        let refusal = |code: &'static str, message: &'static str| async move {
+            let gateway =
+                Gateway::start(move |_, _, _| (409, json!({ "error": code, "message": message })))
+                    .await;
+            gateway
+                .api()
+                .await
+                .remove_location("prj_api", "loc_laptop")
+                .await
+                .expect_err("refused")
+        };
+        let repository = view(listed_project(
+            "prj_api",
+            "api",
+            json!({ "repoUrl": "https://github.com/Acme/API.git" }),
+        ));
+        let laptop: LocationView =
+            serde_json::from_value(listed_location(Some("dev_here"), "laptop", json!({})))
+                .expect("location");
+
+        // The default, while the project lives somewhere else as well.
+        let default = removal_refused(
+            &repository,
+            &laptop,
+            refusal(
+                "default_location",
+                "Choose another default location before removing this one.",
+            )
+            .await,
+        );
+        assert_eq!(
+            default.to_string(),
+            "laptop is the default location of api. Choose another one first with `exeora project default api --on <machine|cloud>`, then remove this one."
+        );
+
+        // A gateway older than the rule refuses a repository its last
+        // location, and its own words are what is said.
+        let older = removal_refused(
+            &repository,
+            &laptop,
+            refusal(
+                "last_location",
+                "This is the only place the project lives. Remove the project instead.",
+            )
+            .await,
+        );
+        assert_eq!(
+            older.to_string(),
+            "This is the only place the project lives. Remove the project instead."
+        );
+
+        // Anything else is returned as it came.
+        let other = removal_refused(
+            &repository,
+            &laptop,
+            refusal("not_found", "No such location.").await,
+        );
+        assert_eq!(other.to_string(), "No such location.");
+    }
+
+    #[tokio::test]
+    async fn a_project_that_lives_nowhere_has_no_location_to_lose_or_to_choose() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (200, json!([homeless("prj_api", "api")])),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        let removed = run(&mut config, &api, remove_location("api", "laptop"), true)
+            .await
+            .expect_err("nothing to remove");
+        assert_eq!(
+            removed.to_string(),
+            format!(
+                "api lives nowhere at the moment, so there is no location to take it off. {WAY_BACK}"
+            )
+        );
+
+        let chosen = run(&mut config, &api, make_default("api", "desktop"), true)
+            .await
+            .expect_err("nothing to choose");
+        assert_eq!(
+            chosen.to_string(),
+            "api lives nowhere at the moment. Give it a place with `exeora project locations add api --on desktop`: the first machine a project is given becomes its default location."
+        );
+
+        // Nothing but the listing was asked of the gateway.
+        assert!(
+            gateway
+                .received()
+                .iter()
+                .all(|request| request.method == "GET" && request.path == "/api/projects")
+        );
+
+        // A project that lives somewhere is told where, as before.
+        let elsewhere = view(listed_project(
+            "prj_web",
+            "web",
+            json!({ "locations": [listed_location(Some("dev_elsewhere"), "desktop", json!({ "default": true }))] }),
+        ));
+        assert_eq!(
+            not_a_location(&elsewhere, "laptop").to_string(),
+            "web does not live on laptop. Its locations are: desktop. Add one with `exeora project locations add web --on laptop`."
+        );
+    }
+
+    #[tokio::test]
+    async fn making_exeora_cloud_the_default_asks_for_the_instance_of_the_root() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (200, json!([released("prj_web", "web")])),
+            ("PUT", "/api/projects/prj_web/default-location") => (
+                200,
+                json!({ "locations": [listed_location(
+                    Some("dev_cloud"),
+                    "cloud",
+                    json!({
+                        "kind": "cloud", "name": "Exeora Cloud", "default": true,
+                        "online": false, "status": "cloning", "state": "setting up",
+                    })
+                )] }),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+
+        run(
+            &mut config,
+            &gateway.api().await,
+            make_default("web", "cloud"),
+            false,
+        )
+        .await
+        .expect("asked for");
+
+        let sent = gateway.received_as("PUT", "/api/projects/prj_web/default-location");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].body, json!({ "locationId": "loc_cloud" }));
+    }
+
+    #[test]
+    fn says_when_the_instance_of_the_root_is_being_made() {
+        let project = view(released("prj_web", "web"));
+        let cloud = &project.locations[0];
+        let being_made = places(json!([listed_location(
+            Some("dev_cloud"),
+            "cloud",
+            json!({ "kind": "cloud", "name": "Exeora Cloud", "default": true, "state": "setting up" })
+        )]));
+        assert_eq!(
+            made_default(&project, cloud, &being_made),
+            "Calls to web that name no workspace now go to Exeora Cloud. The instance for the project root is being made, which takes about a minute."
+        );
+
+        // One that held the root already has nothing to wait for.
+        let held = places(json!([listed_location(
+            Some("dev_cloud"),
+            "cloud",
+            json!({ "kind": "cloud", "name": "Exeora Cloud", "state": "asleep" })
+        )]));
+        assert_eq!(
+            made_default(&project, &held[0], &held),
+            "Calls to web that name no workspace now go to Exeora Cloud."
+        );
+        let desktop = places(json!([listed_location(
+            Some("dev_desktop"),
+            "desktop",
+            json!({ "default": true })
+        )]));
+        assert_eq!(
+            made_default(&project, &desktop[0], &desktop),
+            "Calls to web that name no workspace now go to desktop."
+        );
+    }
+
+    #[tokio::test]
+    async fn a_workspace_here_is_not_made_of_a_project_that_lives_nowhere() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (
+                200,
+                json!([homeless("prj_api", "api"), released("prj_web", "web")]),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        let error = local_project(&mut config, &api, Some("api"), true)
+            .await
+            .expect_err("it is not here");
+        assert_eq!(
+            error.to_string(),
+            "api lives nowhere at the moment. Add this machine with `exeora project locations add api --on here` and create the workspace again, or pass `--on cloud` to put it on Exeora Cloud."
+        );
+
+        // One that is on Exeora Cloud is told so, as any project that is
+        // somewhere else.
+        let error = local_project(&mut config, &api, Some("web"), true)
+            .await
+            .expect_err("it is not here");
+        assert_eq!(
+            error.to_string(),
+            "web does not live on this machine. Its locations are: cloud. Pass --on with one of them, or add this machine with `exeora project locations add web --on here`."
+        );
+        assert!(!temp.path().join("projects").exists());
+        assert!(config.data().projects.is_empty());
     }
 }

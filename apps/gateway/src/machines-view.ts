@@ -1,9 +1,10 @@
 import { CLOUD_MAIN_WORKSPACE_SLUG } from "@exeora/protocol";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { isSpriteNameOfThisGateway } from "./cloud/access.js";
 import { listSprites, type Sprite } from "./cloud/sprites.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
+import { NOWHERE_KIND } from "./nowhere.js";
 import { isDeviceOnline, presenceCutoff } from "./presence.js";
 
 /**
@@ -81,7 +82,8 @@ export async function listMachines(
     database
       .select()
       .from(schema.devices)
-      .where(eq(schema.devices.userId, userId))
+      // The machine that stands for no machine is not one that is running.
+      .where(and(eq(schema.devices.userId, userId), ne(schema.devices.kind, NOWHERE_KIND)))
       .orderBy(schema.devices.createdAt)
       .all(),
     database

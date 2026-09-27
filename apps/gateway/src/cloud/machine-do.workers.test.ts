@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { relayName } from "../api/ops.js";
 import { db, schema } from "../db/client.js";
+import { nowhereId } from "../nowhere.js";
 import type { CloudRelayConfig } from "../relay-do-cloud.js";
 import { cliConfigFor } from "./bootstrap.js";
 import { type CloudMachine, provisionInput } from "./machine-do.js";
@@ -315,13 +316,8 @@ describe("provisioning a cloud machine", () => {
     expect(await relayConfig()).toBeUndefined();
   });
 
-  it("takes the main machine down only once every child has its own teardown under way", async () => {
-    const sprites = fakeSprites();
-    await useFetcher(sprites.fetcher);
-    await machine().provision(input());
-    await step();
-
-    // A workspace machine of the same project whose object was never told.
+  /** A workspace machine of the same project, whose object was never told anything. */
+  async function standingChild(sprites: ReturnType<typeof fakeSprites>) {
     const child = `dev_${crypto.randomUUID().replaceAll("-", "").slice(0, 22)}`;
     const database = db(env);
     await database
@@ -333,7 +329,7 @@ describe("provisioning a cloud machine", () => {
       .values({
         id: `wsp_${child.slice(4)}`,
         projectId: PROJECT,
-        slug: "feature",
+        slug: `feature-${child.slice(4, 10)}`,
         name: "feature",
         branch: "feature",
         localPath: "/home/sprite/workspace",
@@ -357,6 +353,40 @@ describe("provisioning a cloud machine", () => {
       inside.fetcher = sprites.fetcher;
       inside.alarmFloorMs = 3_600_000;
     });
+    return child;
+  }
+
+  /** Puts the project on Exeora Cloud, and marks it for removal when told to. */
+  async function onCloud(removal: "project" | null) {
+    const database = db(env);
+    await database
+      .insert(schema.cloudProjects)
+      .values({
+        projectId: PROJECT,
+        userId: USER,
+        repoUrl: "https://github.com/leynier/exeora.git",
+        defaultBranch: "main",
+      })
+      .onConflictDoNothing()
+      .run();
+    if (removal === null) return;
+    await database
+      .update(schema.cloudProjects)
+      .set({ deletingAt: new Date(), deletingScope: removal })
+      .where(eq(schema.cloudProjects.projectId, PROJECT))
+      .run();
+  }
+
+  it("takes the main machine down only once every child has its own teardown under way", async () => {
+    const sprites = fakeSprites();
+    await useFetcher(sprites.fetcher);
+    await machine().provision(input());
+    await step();
+
+    const child = await standingChild(sprites);
+    const database = db(env);
+    // The removal of the project was asked for, which is what takes them all.
+    await onCloud("project");
 
     await machine().destroy(seed());
     expect(await step()).toBe(true);
@@ -373,6 +403,36 @@ describe("provisioning a cloud machine", () => {
     expect(await step()).toBe(true);
     expect(sprites.calls).toContain(`DELETE /v1/sprites/${SPRITE}`);
     expect(await row()).toBeUndefined();
+  });
+
+  it("leaves the project and its other machines standing when the main one goes on its own", async () => {
+    const sprites = fakeSprites();
+    await useFetcher(sprites.fetcher);
+    await machine().provision(input());
+    await step();
+
+    const child = await standingChild(sprites);
+    const database = db(env);
+    await onCloud(null);
+
+    await machine().destroy(seed());
+    expect(await step()).toBe(true);
+
+    // Gone at once, waiting for nobody, and taking nothing with it.
+    expect(sprites.calls).toContain(`DELETE /v1/sprites/${SPRITE}`);
+    expect(await row()).toBeUndefined();
+    const childRow = await database
+      .select({ status: schema.cloudMachines.status })
+      .from(schema.cloudMachines)
+      .where(eq(schema.cloudMachines.deviceId, child))
+      .get();
+    expect(childRow).toEqual({ status: "ready" });
+    const project = await database
+      .select({ deviceId: schema.projects.deviceId })
+      .from(schema.projects)
+      .where(eq(schema.projects.id, PROJECT))
+      .get();
+    expect(project).toEqual({ deviceId: nowhereId(USER) });
   });
 
   it("refuses a provision that arrives after the destroy, before and after it ran", async () => {

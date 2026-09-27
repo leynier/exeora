@@ -1,7 +1,6 @@
 import type { CloudCliConfig, CloudMachineStatus } from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { permanentlyDeleteDevice, relayName, revokeDevice } from "../api/ops.js";
-import { livesOnAnotherMachine } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import { explainFailure } from "./machine-errors.js";
 import { finishCloudRemoval } from "./teardown.js";
@@ -236,8 +235,8 @@ async function destroy(context: StepContext, record: MachineRecord): Promise<Ste
   // goes last: deleting its device can cascade the project's rows away, and
   // with them the record of every other machine. So it waits until each of
   // those has a destruction of its own under way; one whose object was never
-  // told is told here. A root machine that goes on its own, from a project
-  // that lives elsewhere too, takes nothing with it and waits for nobody.
+  // told is told here. A root machine that goes on its own takes nothing
+  // with it and waits for nobody.
   if (record.workspaceId === null && (await removingProject(context.env, record))) {
     const children = await db(context.env)
       .select({
@@ -287,10 +286,10 @@ async function removingProject(env: Pick<Env, "DB">, record: MachineRecord): Pro
     .from(schema.cloudProjects)
     .where(eq(schema.cloudProjects.projectId, record.projectId))
     .get();
-  if (cloud?.deletingAt) return cloud.scope === "project";
-  // Nobody marked anything, and the project lives nowhere else: this machine
-  // going takes the project with it all the same, so it goes the same way.
-  return !(await livesOnAnotherMachine(env, record.projectId, record.deviceId));
+  // Only a removal that was asked for takes the project. A root machine that
+  // goes on its own leaves it where else it lives, or nowhere, with the rest
+  // of its machines standing.
+  return cloud?.deletingAt ? cloud.scope === "project" : false;
 }
 
 /** Whether the record is still in the phase this step started in. */

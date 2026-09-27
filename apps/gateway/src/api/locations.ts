@@ -13,6 +13,7 @@ import {
   putLocalLocation,
   setDefaultLocation,
 } from "../locations.js";
+import { keepRepositoriesStatements } from "../locations-default.js";
 import type { ApiEnv } from "./router.js";
 
 /**
@@ -190,6 +191,10 @@ locations.put(
  * on the user's own machine is touched: the checkout and its worktrees stay
  * where they are, no longer served. On Exeora Cloud the machines are what the
  * location is, so they are taken down.
+ *
+ * A repository may lose the only place it lives: it is kept, with nowhere to
+ * live, until it is given a place again. A directory with no remote may not,
+ * because it is the copy on that machine and nothing else.
  */
 locations.delete("/api/projects/:id/locations/:locationId", async (c) => {
   const userId = c.get("userId");
@@ -202,16 +207,18 @@ locations.delete("/api/projects/:id/locations/:locationId", async (c) => {
   // A machine that was removed is not somewhere the project lives, so it does
   // not make another location safe to take away.
   const standing = all.filter((entry) => entry.state !== "removed");
-  if (location.state !== "removed" && standing.length === 1) {
+  const last = location.state !== "removed" && standing.length === 1;
+  if (last && !project.repoUrl) {
     return c.json(
       {
         error: "last_location",
-        message: "This is the only place the project lives. Remove the project instead.",
+        message:
+          "This project is a directory on this machine and lives nowhere else. Remove the project instead.",
       },
       409,
     );
   }
-  if (location.default) {
+  if (location.default && !last) {
     return c.json(
       {
         error: "default_location",
@@ -221,17 +228,29 @@ locations.delete("/api/projects/:id/locations/:locationId", async (c) => {
     );
   }
 
+  // With its last place gone the project lives nowhere, whatever machine it
+  // was on. That is not always the one being removed: the default may be a
+  // machine that was revoked and is still listed, and a project left on it
+  // would be one nobody can reach or give a place to.
+  const leaves = last
+    ? keepRepositoriesStatements(c.env, userId, project.deviceId, project.id)
+    : [];
+
   if (location.kind === "cloud") {
+    if (leaves.length > 0) await c.env.DB.batch(leaves);
     await destroyCloudLocation(c.env, userId, project.id);
     return c.json({ ok: true }, 202);
   }
 
   await c.env.DB.batch([
+    // Workspaces older than locations name no machine and are the default's,
+    // so they go when the default does: removed here, or left behind above.
     c.env.DB.prepare(
       `DELETE FROM workspaces
-        WHERE project_id = ?1 AND device_id = ?2
+        WHERE project_id = ?1 AND (device_id = ?2 OR (device_id IS NULL AND ?4))
           AND project_id IN (SELECT id FROM projects WHERE user_id = ?3)`,
-    ).bind(project.id, location.deviceId, userId),
+    ).bind(project.id, location.deviceId, userId, location.default || last ? 1 : 0),
+    ...leaves,
     c.env.DB.prepare("DELETE FROM project_locations WHERE id = ?1 AND user_id = ?2").bind(
       location.id,
       userId,

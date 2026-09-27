@@ -1,19 +1,17 @@
 import { and, eq } from "drizzle-orm";
 import { revokeDevice } from "../api/ops.js";
-import { livesOnAnotherMachine } from "../client-targets.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
-import { destroyCloudProject } from "./provisioning.js";
+import { moveDefaultLocationStatements } from "../locations-default.js";
 
 /**
  * Revoking a device, from the owner's dashboard or from the admin panel.
  *
  * For a laptop that is the soft delete `revokeDevice` does. A cloud machine
  * is different: revoked, it is a Sprite nobody can reach that still costs
- * money, so revoking it is a request to take it down. And the machine that
- * holds the project root of a project that lives only on Exeora Cloud carries
- * the project, whose other machines would be orphaned by its deletion: that
- * one takes the whole project with it.
+ * money, so revoking it is a request to take it down. It takes nothing else
+ * with it: the project stays, with its other instances, and the one for its
+ * root is made again by the next call that needs it.
  */
 export async function revokeOwnedDevice(
   env: Env,
@@ -32,19 +30,16 @@ export async function revokeOwnedDevice(
     )
     .get();
   if (!machine) return revokeDevice(env, userId, deviceId);
+  // The project leaves the machine that holds its root before the machine is
+  // taken down, not after: taking it down lasts a while, and through all of
+  // it the project would have a default that nothing answers at.
+  if (machine.workspaceId === null) {
+    await env.DB.batch(moveDefaultLocationStatements(env, userId, deviceId));
+  }
   // The destruction is asked for before anything else: it records its own
   // intent and revokes the device itself, so a relay that cannot be reached
   // at this moment leaves a machine on its way out, not one that is merely
   // unreachable and still running.
-  // The machine that holds the project root takes the project with it only
-  // when the project lives nowhere else. One that is also on somebody's own
-  // machine loses this copy and keeps the others.
-  if (
-    machine.workspaceId === null &&
-    !(await livesOnAnotherMachine(env, machine.projectId, deviceId))
-  ) {
-    if (await destroyCloudProject(env, userId, machine.projectId)) return true;
-  }
   await env.CLOUD_MACHINE.getByName(deviceId).destroy({ userId, deviceId, ...machine });
   return true;
 }

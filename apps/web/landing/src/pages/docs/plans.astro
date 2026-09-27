@@ -59,14 +59,15 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
-    <strong>Cloud instances</strong> have a cap of their own. It counts every instance Exeora runs for the account, in whatever state it is in: one per workspace on Exeora Cloud, and one for the project root of a project that was created there or has Cloud as its default location. They do not count as live machines, so an instance never takes a slot from a laptop. Removing a workspace frees its slot once the instance is gone. Cloud itself is enabled per account by an administrator while there is no billing.
+    <strong>Cloud instances</strong> have a cap of their own. It counts every instance Exeora runs for the account, in whatever state it is in: one per workspace on Exeora Cloud, and one for the project root of a project that was created there or has Cloud as its default location. They do not count as live machines, so an instance never takes a slot from a laptop. Removing a workspace frees its slot once the instance is gone. An instance that is asleep runs nothing and still takes one slot. Destroying it frees that slot, and a project root in state <code>no instance</code> takes none until the next call to it makes the instance. Cloud itself is enabled per account by an administrator while there is no billing.
   </p>
 
   <p>
     <strong>Projects</strong> count once, however many <a href="/docs/projects/">locations</a> they
     live in. A project is a repository, so a second machine that joins it, or Exeora Cloud added as
     a location, consumes no new slot. Neither does registering again a project that machine
-    already holds.
+    already holds. A project that <a href="/docs/projects/#nowhere">lives nowhere</a> is still a
+    project and still counts, until it is removed.
   </p>
 
   <h2>When a limit is hit</h2>

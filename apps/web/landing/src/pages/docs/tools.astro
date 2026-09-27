@@ -156,6 +156,10 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
+    A repository that <a href="/docs/projects/#nowhere">lives nowhere</a> is listed too, with no locations and <code>machine</code> set to <code>nowhere</code>. Nothing can serve a call to it until it has a location again. <code>create_workspace</code> with <code>where</code> set to <code>cloud</code> gives it one. Exeora Cloud in state <code>no instance</code> is the default location with no instance for the project root: the next call to the project root makes it and is answered with <code>EXECUTOR_WAKING</code>, to be sent again in about a minute.
+  </p>
+
+  <p>
     With one project granted, there is nothing to choose and calls may omit <code>project</code>. With
     more, every executor tool call must carry a project slug or id. The target belongs to that call,
     so two conversations in the same client can work in different projects without moving each

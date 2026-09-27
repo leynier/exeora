@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import type { Project } from "../api.js";
+import { livesNowhere } from "../survival.js";
 import { CopyButton } from "./CopyButton.js";
 import { RepositoryLine } from "./RepositoryLine.js";
 import { StateDot } from "./StateBadge.js";
@@ -8,20 +9,24 @@ import { Badge } from "./ui.js";
 /**
  * A project in the list: what it is and where it lives, at a glance.
  *
- * It has no actions of its own. The project's page is where a project is
- * changed or removed, and this is the way there; the only thing offered here
- * is the URL a client needs, behind a disclosure because most visits are not
- * about connecting one.
+ * The project's page is where a project is changed or removed, and this is
+ * the way there. What is offered here is the URL a client needs, behind a
+ * disclosure because most visits are not about connecting one, and a location
+ * for a project that has none, because until it has one nothing else on its
+ * page can be used.
  */
 export function ProjectCard({
   project,
   workspaces,
   leaving,
+  onAddLocation,
 }: {
   project: Project;
   /** Null while the machines that know the count are still loading. */
   workspaces: number | null;
   leaving: boolean;
+  /** Opens the dialog that gives the project a place to live. */
+  onAddLocation: () => void;
 }) {
   return (
     <article className="border-border bg-surface rounded-xl border p-5">
@@ -48,20 +53,35 @@ export function ProjectCard({
         )}
       </div>
 
-      <ul className="mt-4 flex flex-wrap gap-2" aria-label={`Locations of ${project.name}`}>
-        {project.locations.map((location) => (
-          <li
-            key={location.id}
-            className="border-border text-body-md text-foreground-muted inline-flex items-center gap-2 rounded-lg border px-2.5 py-1"
-          >
-            <StateDot state={location.state} />
-            <span className="max-w-48 truncate">{location.name}</span>
-            {location.default && (
-              <span className="text-label-md text-brand font-mono uppercase">default location</span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {livesNowhere(project) && !leaving ? (
+        <div className="border-border mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2">
+          <p className="text-body-md text-foreground-muted">
+            Lives nowhere. It keeps its address, policy and clients until it is given a location.
+          </p>
+          <button type="button" className="btn shrink-0" onClick={onAddLocation}>
+            Add location
+          </button>
+        </div>
+      ) : null}
+
+      {project.locations.length > 0 ? (
+        <ul className="mt-4 flex flex-wrap gap-2" aria-label={`Locations of ${project.name}`}>
+          {project.locations.map((location) => (
+            <li
+              key={location.id}
+              className="border-border text-body-md text-foreground-muted inline-flex items-center gap-2 rounded-lg border px-2.5 py-1"
+            >
+              <StateDot state={location.state} />
+              <span className="max-w-48 truncate">{location.name}</span>
+              {location.default && (
+                <span className="text-label-md text-brand font-mono uppercase">
+                  default location
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <details className="mt-4">
         <summary className="text-body-md text-foreground-muted hover:text-foreground">

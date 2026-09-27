@@ -1,4 +1,4 @@
-import type { Project, ProjectLocation, User } from "./api.js";
+import { ApiError, errorText, type Project, type ProjectLocation, type User } from "./api.js";
 import type { Machine } from "./api-projects.js";
 import { cloudLocation, isOlderCli, localMachines, MIN_CLI_FOR_LOCATIONS } from "./projectModel.js";
 
@@ -63,6 +63,40 @@ export function placement(
     progress: `Creating the workspace on ${location.name}…`,
     blocked: false,
   };
+}
+
+/**
+ * What to say in place of a plan when a project has no location that can take
+ * a workspace. One that lives nowhere says so, because that is the cause, and
+ * both say what to do first.
+ */
+export function noPlacement(project: Pick<Project, "nowhere">): {
+  sentence: string;
+  progress: string;
+  blocked: boolean;
+} {
+  return {
+    sentence: project.nowhere
+      ? "This project lives nowhere, so there is no place to make a workspace. Add a location first."
+      : "This project has no location that can take a workspace. Add a location first.",
+    progress: "",
+    blocked: true,
+  };
+}
+
+/**
+ * Why Exeora Cloud would not start an instance, as a sentence to act on. The
+ * gateway names the limit of the plan with a code and a number. The sentence
+ * is the one the dialogs say before asking, so a refusal reads the same
+ * whether it was seen coming or not.
+ */
+export function instanceRefusal(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.code === "plan_limit") {
+    const max = typeof error.body?.max === "number" ? error.body.max : null;
+    const usage = max === null ? "" : `: all ${max} of the plan are in use`;
+    return `Exeora Cloud has no room for another instance${usage}. Destroy one under Machines to make room.`;
+  }
+  return errorText(error, fallback);
 }
 
 /** Why Exeora Cloud cannot take a new project right now, or null when it can. */

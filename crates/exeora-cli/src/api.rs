@@ -72,8 +72,16 @@ pub struct ProjectView {
     pub id: String,
     pub slug: String,
     pub name: String,
-    /// The machine of the default location.
+    /// The machine of the default location. For a project that lives
+    /// nowhere it is an id that names no machine of the account.
     pub device_id: String,
+    /// Whether the project has no default machine: the last machine that
+    /// held a copy was removed, or the instance of its root on Exeora Cloud
+    /// was destroyed. It is still a project, with its address, its policy
+    /// and its clients. Absent from a gateway older than that rule, where a
+    /// project that lost its last location was deleted.
+    #[serde(default)]
+    pub nowhere: bool,
     pub local_path: String,
     #[serde(default)]
     pub repo_url: Option<String>,
@@ -96,6 +104,20 @@ impl ProjectView {
         self.locations
             .iter()
             .find(|location| location.device_id.as_deref() == Some(device_id))
+    }
+
+    /// Whether that machine is the default location. Never for a project
+    /// that lives nowhere, whatever `device_id` holds in the meantime.
+    pub fn default_is(&self, device_id: &str) -> bool {
+        !self.nowhere && self.device_id == device_id
+    }
+
+    /// The locations where the project still lives: every one but those
+    /// whose machine was removed.
+    pub fn standing(&self) -> impl Iterator<Item = &LocationView> {
+        self.locations
+            .iter()
+            .filter(|location| location.state != "removed")
     }
 }
 
@@ -124,9 +146,19 @@ pub struct LocationView {
     pub state: String,
 }
 
+/// The state of Exeora Cloud as the default location while it holds no
+/// instance for the project root.
+pub const NO_INSTANCE: &str = "no instance";
+
 impl LocationView {
     pub fn is_cloud(&self) -> bool {
         self.kind == "cloud"
+    }
+
+    /// Whether this is Exeora Cloud with nothing made for the project root.
+    /// The next call to the root makes the instance.
+    pub fn has_no_instance(&self) -> bool {
+        self.is_cloud() && self.state == NO_INSTANCE
     }
 }
 
@@ -759,5 +791,67 @@ impl ApiClient {
         }
         calls.truncate(limit);
         Ok(calls)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LocationView, ProjectView};
+    use crate::testing::{listed_location, listed_project};
+    use serde_json::json;
+
+    fn project(fields: serde_json::Value) -> ProjectView {
+        serde_json::from_value(listed_project("prj_api", "api", fields)).expect("project")
+    }
+
+    #[test]
+    fn a_project_lives_somewhere_unless_the_gateway_says_nowhere() {
+        // A gateway older than the rule says nothing, and deleted a project
+        // that lost its last location: the ones it lists live somewhere.
+        let older = project(json!({ "deviceId": "dev_here" }));
+        assert!(!older.nowhere);
+        assert!(older.default_is("dev_here"));
+        assert!(!older.default_is("dev_elsewhere"));
+
+        let nowhere = project(json!({ "deviceId": "dev_none_abc", "nowhere": true }));
+        assert!(nowhere.nowhere);
+        assert!(nowhere.locations.is_empty());
+        // The id names no machine, and is never taken for one.
+        assert!(!nowhere.default_is("dev_none_abc"));
+        assert_eq!(
+            nowhere.location_on("dev_none_abc").map(|found| &found.id),
+            None
+        );
+
+        // It is printed again as it was read.
+        let printed = serde_json::to_value(&nowhere).expect("json");
+        assert_eq!(printed["nowhere"], true);
+        assert_eq!(printed["deviceId"], "dev_none_abc");
+    }
+
+    #[test]
+    fn tells_the_places_a_project_still_lives_from_the_ones_that_are_gone() {
+        let project = project(json!({
+            "nowhere": true,
+            "locations": [
+                listed_location(None, "cloud", json!({ "kind": "cloud", "default": true, "state": "no instance" })),
+                listed_location(Some("dev_old"), "desktop", json!({ "state": "removed" })),
+            ],
+        }));
+        let standing: Vec<_> = project
+            .standing()
+            .map(|location| location.slug.as_str())
+            .collect();
+        assert_eq!(standing, ["cloud"]);
+        assert!(project.locations[0].has_no_instance());
+        assert!(!project.locations[1].has_no_instance());
+
+        // Exeora Cloud that holds workspaces and no root is asleep, which is
+        // another state, and a machine is never without an instance.
+        let location = |fields: serde_json::Value| -> LocationView {
+            serde_json::from_value(listed_location(None, "cloud", fields)).expect("location")
+        };
+        assert!(!location(json!({ "kind": "cloud", "state": "asleep" })).has_no_instance());
+        assert!(!location(json!({ "kind": "local", "state": "no instance" })).has_no_instance());
     }
 }

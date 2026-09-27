@@ -226,6 +226,10 @@ exeora project remove api</pre>
   </p>
 
   <p>
+    Only <code>project remove</code> removes a project. <code>locations remove</code> on the only location of a project that has a repository leaves the project, which <a href="/docs/projects/#nowhere">lives nowhere</a> until it is given a place again, and the command says how. <code>project list</code> prints such a project with <code>nowhere</code> in place of its locations, and Exeora Cloud that holds no instance for the project root with the state <code>no instance</code>. A directory with no remote cannot lose its only location: the command is refused and names <code>project remove</code>.
+  </p>
+
+  <p>
     <code>project credential</code> is for a repository that is not connected to GitHub. The token
     arrives on standard input, never as an argument, so it stays out of shell history and process
     lists. Instances created or retried from then on use it; one already running keeps the token
@@ -325,6 +329,10 @@ exeora config unset workspace-root</pre>
     outage left pending. It also tells Exeora the repository of projects the gateway knows only as
     a directory, which is every project added by a CLI older than 0.18.0. Run it once on such a
     machine: until the gateway knows the repository, the project cannot live anywhere else.
+  </p>
+
+  <p>
+    What a deleted machine forgets is its own configuration. A project with a repository stays in the account, in its other locations or <a href="/docs/projects/#nowhere">nowhere</a>. Run <code>exeora connect</code> to register the machine again, then <code>exeora project add .</code> in a checkout to make it a location of its project.
   </p>
 
   <h2 id="git-credential">git-credential</h2>
@@ -432,7 +440,11 @@ exeora config unset workspace-root</pre>
       the ones on this machine. Each carries <code>repoUrl</code>, <code>defaultBranch</code>,{" "}
       <code>mcpUrl</code> and <code>locations</code>, and each location its <code>slug</code>,{" "}
       <code>name</code>, <code>kind</code>, <code>state</code>, <code>localPath</code> and whether
-      it is the <code>default</code>.
+      it is the <code>default</code>. Since 0.18.1 each project also carries{" "}
+      <code>nowhere</code>, true for one that has no default machine: its{" "}
+      <code>locations</code> are then empty, or hold Exeora Cloud in state{" "}
+      <code>no instance</code>. <code>project locations</code> carries the same key, and{" "}
+      <code>project locations remove</code> answers with it.
     </li>
     <li>
       <code>device list</code> prints every machine with its <code>kind</code>,{" "}
