@@ -52,6 +52,24 @@ struct Discovered {
     failures: HashMap<ServerKey, (String, Instant)>,
 }
 
+/// What changed when the projects of a running connection were read again.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ProjectChanges {
+    /// Projects that are served now and were not: their catalog is to be
+    /// discovered and published.
+    pub added: Vec<String>,
+    /// Projects that are no longer served: whatever was published for them
+    /// is to be taken back.
+    pub removed: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl ProjectChanges {
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.removed.is_empty() && self.warnings.is_empty()
+    }
+}
+
 /// Upstream MCP clients owned by `exeora connect`.
 ///
 /// Discovery runs in the background and never holds up the connection: native
@@ -59,12 +77,36 @@ struct Discovered {
 /// answered. A server that failed is retried on a later reconnect. No lock is
 /// held while an upstream server is being called, so one slow tool does not
 /// queue the others behind it.
+///
+/// The projects are not fixed at start. One that is cloned, or added from
+/// another terminal, while the connection is up is taken in by `reconcile`,
+/// and one that is removed is let go, without the connection being made again.
 pub struct McpManager {
-    projects: Vec<ProjectServers>,
+    user: McpUserConfig,
+    projects: SyncMutex<Vec<Arc<ProjectServers>>>,
     discovered: SyncMutex<Discovered>,
     discovery: Mutex<()>,
     clients: Mutex<HashMap<ClientKey, Arc<McpClient>>>,
     warnings: Vec<String>,
+}
+
+/// The servers of one project, and what had to be left out of them.
+fn project_servers(user: &McpUserConfig, project: &ProjectEntry) -> (ProjectServers, Vec<String>) {
+    let (mut servers, mut warnings) = effective_servers(user, &project.root);
+    servers.retain(|name, server| match validate_server(name, &server.config) {
+        Ok(()) => true,
+        Err(error) => {
+            warnings.push(format!("{}: {error}", project.slug));
+            false
+        }
+    });
+    (
+        ProjectServers {
+            project: project.clone(),
+            servers,
+        },
+        warnings,
+    )
 }
 
 impl McpManager {
@@ -85,23 +127,14 @@ impl McpManager {
         let projects = projects
             .iter()
             .map(|project| {
-                let (mut servers, problems) = effective_servers(user, &project.root);
+                let (entry, problems) = project_servers(user, project);
                 warnings.extend(problems);
-                servers.retain(|name, server| match validate_server(name, &server.config) {
-                    Ok(()) => true,
-                    Err(error) => {
-                        warnings.push(format!("{}: {error}", project.slug));
-                        false
-                    }
-                });
-                ProjectServers {
-                    project: project.clone(),
-                    servers,
-                }
+                Arc::new(entry)
             })
             .collect();
         Self {
-            projects,
+            user: user.clone(),
+            projects: SyncMutex::new(projects),
             discovered: SyncMutex::new(Discovered::default()),
             discovery: Mutex::new(()),
             clients: Mutex::new(HashMap::new()),
@@ -110,7 +143,90 @@ impl McpManager {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.projects.iter().all(|entry| entry.servers.is_empty())
+        self.projects().iter().all(|entry| entry.servers.is_empty())
+    }
+
+    /// Whether this project has a server to list tools from.
+    pub fn serves(&self, project_id: &str) -> bool {
+        self.projects()
+            .iter()
+            .any(|entry| entry.project.id == project_id && !entry.servers.is_empty())
+    }
+
+    /// Brings the projects in line with what the config says now.
+    ///
+    /// A project is the same one while its id and its directory are: its
+    /// servers come from the `exeora.toml` of that directory and run in it,
+    /// so one that moved is let go and taken in again. What was discovered
+    /// for a project that left is forgotten and its sessions are ended, so
+    /// it costs nothing once nobody can call it.
+    pub async fn reconcile(&self, current: &[ProjectEntry]) -> ProjectChanges {
+        let mut changes = ProjectChanges::default();
+        {
+            let mut projects = self
+                .projects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let same = |entry: &ProjectServers, project: &ProjectEntry| {
+                entry.project.id == project.id && entry.project.root == project.root
+            };
+            projects.retain(|entry| {
+                let stays = current.iter().any(|project| same(entry, project));
+                if !stays {
+                    changes.removed.push(entry.project.id.clone());
+                }
+                stays
+            });
+            for project in current {
+                if projects.iter().any(|entry| same(entry, project)) {
+                    continue;
+                }
+                let (entry, warnings) = project_servers(&self.user, project);
+                changes.warnings.extend(warnings);
+                changes.added.push(project.id.clone());
+                projects.push(Arc::new(entry));
+            }
+        }
+        if changes.removed.is_empty() {
+            return changes;
+        }
+        {
+            let mut discovered = self.discovered();
+            discovered
+                .tools
+                .retain(|(project_id, _), _| !changes.removed.contains(project_id));
+            discovered
+                .failures
+                .retain(|(project_id, _), _| !changes.removed.contains(project_id));
+        }
+        // A project that moved keeps its id. Only the sessions of the
+        // directory it left are ended, which `kill_root` did when the root
+        // went; the ones that have no directory go here.
+        let ended = {
+            let mut clients = self.clients.lock().await;
+            let keys = clients
+                .keys()
+                .filter(|key| {
+                    changes.removed.contains(&key.project_id)
+                        && (key.root.is_none() || !changes.added.contains(&key.project_id))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            keys.into_iter()
+                .filter_map(|key| clients.remove(&key))
+                .collect::<Vec<_>>()
+        };
+        for client in ended {
+            client.cancellation_token().cancel();
+        }
+        changes
+    }
+
+    fn projects(&self) -> Vec<Arc<ProjectServers>> {
+        self.projects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     pub fn warnings(&self) -> &[String] {
@@ -121,9 +237,10 @@ impl McpManager {
     /// tools. Returns a message for each failure that is new or changed.
     pub async fn discover(&self) -> Vec<String> {
         let _running = self.discovery.lock().await;
+        let projects = self.projects();
         let pending = {
             let discovered = self.discovered();
-            self.projects
+            projects
                 .iter()
                 .flat_map(|entry| {
                     entry
@@ -148,9 +265,15 @@ impl McpManager {
         }))
         .await;
 
+        // What was asked of a project that left while its servers were
+        // answering is dropped: there is nobody to publish it for.
+        let served = self.projects();
         let mut messages = Vec::new();
         let mut discovered = self.discovered();
         for (key, entry, result) in outcomes {
+            if !served.iter().any(|current| Arc::ptr_eq(current, entry)) {
+                continue;
+            }
             match result {
                 Ok(tools) => {
                     discovered.failures.remove(&key);
@@ -178,10 +301,10 @@ impl McpManager {
     /// Every project's publishable catalog, and a warning for each one that
     /// had to leave tools out to fit the relay's budgets.
     pub fn catalogs(&self) -> (Vec<(String, Vec<McpToolDescriptor>)>, Vec<String>) {
+        let projects = self.projects();
         let discovered = self.discovered();
         let mut warnings = Vec::new();
-        let catalogs = self
-            .projects
+        let catalogs = projects
             .iter()
             .map(|entry| {
                 let tools = entry
@@ -228,8 +351,8 @@ impl McpManager {
         tool_name: &str,
         arguments: Value,
     ) -> Result<Value> {
-        let (project, server) = self
-            .projects
+        let projects = self.projects();
+        let (project, server) = projects
             .iter()
             .find(|entry| entry.project.id == project_id)
             .and_then(|entry| {
@@ -413,6 +536,87 @@ mod tests {
         .await;
 
         assert!(result.unwrap_err().to_string().contains("timed out"));
+    }
+
+    fn project(id: &str, root: &Path) -> ProjectEntry {
+        ProjectEntry::directory(
+            id.to_owned(),
+            id.trim_start_matches("prj_").to_owned(),
+            id.to_owned(),
+            root.to_path_buf(),
+        )
+    }
+
+    fn one_server() -> McpUserConfig {
+        let mut servers = BTreeMap::new();
+        servers.insert(
+            "missing".to_owned(),
+            McpServerConfig {
+                command: Some("exeora-test-no-such-mcp-server".to_owned()),
+                ..Default::default()
+            },
+        );
+        McpUserConfig {
+            mcp_servers: servers,
+            trust_project_servers: false,
+        }
+    }
+
+    fn published(manager: &McpManager) -> Vec<String> {
+        manager
+            .catalogs()
+            .0
+            .into_iter()
+            .map(|(project_id, _)| project_id)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn takes_in_a_project_that_appeared_and_lets_go_of_one_that_left() {
+        let dir = tempdir().expect("tempdir");
+        let moved = tempdir().expect("tempdir");
+        let a = project("prj_a", dir.path());
+        let b = project("prj_b", dir.path());
+        let manager = McpManager::new(&one_server(), std::slice::from_ref(&a));
+        assert_eq!(manager.discover().await.len(), 1);
+
+        // Nothing changed, which is what nearly every look finds.
+        let same = manager.reconcile(std::slice::from_ref(&a)).await;
+        assert!(same.is_empty());
+
+        let grown = manager.reconcile(&[a.clone(), b.clone()]).await;
+        assert_eq!(grown.added, ["prj_b"]);
+        assert!(grown.removed.is_empty());
+        assert!(manager.serves("prj_b"));
+        assert_eq!(published(&manager), ["prj_a", "prj_b"]);
+        // Only the one that is new is asked: the other was, a moment ago.
+        let messages = manager.discover().await;
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("for b "), "{messages:?}");
+
+        let shrunk = manager.reconcile(std::slice::from_ref(&b)).await;
+        assert!(shrunk.added.is_empty());
+        assert_eq!(shrunk.removed, ["prj_a"]);
+        assert!(!manager.serves("prj_a"));
+        assert_eq!(published(&manager), ["prj_b"]);
+        assert!(
+            manager
+                .call("prj_a", dir.path(), "missing", "tool", Value::Null)
+                .await
+                .is_err()
+        );
+
+        // The same project in another directory is one that left and one
+        // that came: its servers are those of the directory it is in.
+        let elsewhere = manager.reconcile(&[project("prj_b", moved.path())]).await;
+        assert_eq!(elsewhere.added, ["prj_b"]);
+        assert_eq!(elsewhere.removed, ["prj_b"]);
+        assert_eq!(published(&manager), ["prj_b"]);
+
+        let emptied = manager.reconcile(&[]).await;
+        assert_eq!(emptied.removed, ["prj_b"]);
+        assert!(manager.is_empty());
+        assert!(published(&manager).is_empty());
     }
 
     #[tokio::test]

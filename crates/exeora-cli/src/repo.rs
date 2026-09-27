@@ -205,6 +205,12 @@ pub fn default_branch_of(path: &Path) -> Option<String> {
     (!branch.is_empty()).then(|| branch.to_owned())
 }
 
+/// The branch checked out at `path`, or nothing for a detached HEAD and for
+/// a directory that is no checkout.
+pub fn current_branch_of(path: &Path) -> Option<String> {
+    git_line(path, &["branch", "--show-current"])
+}
+
 /// The top of the checkout `path` is in, when it is in one.
 pub fn checkout_root(path: &Path) -> Option<std::path::PathBuf> {
     git_line(path, &["rev-parse", "--show-toplevel"]).map(std::path::PathBuf::from)

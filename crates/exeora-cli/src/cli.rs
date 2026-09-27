@@ -10,9 +10,13 @@ use crate::{
     git_credential::GitCredentialArgs,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
     projects::{
-        self, Listing, ProjectCommand, can_ask, find_location, location_names, offline_notice,
+        self, Listing, ProjectCommand, ROOT_SELECTOR, can_ask, find_location, location_names,
+        offline_notice,
     },
-    repo::{checkout_root, default_branch_of, https_repository_url, origin_of, repository_key},
+    repo::{
+        checkout_root, current_branch_of, default_branch_of, https_repository_url, origin_of,
+        repository_key,
+    },
     workspaces,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -208,6 +212,11 @@ pub enum WorkspaceCommand {
             help = "Every project, not only the one of the current directory"
         )]
         all: bool,
+        #[arg(
+            long,
+            help = "With --json, also print the project root of each location that holds a copy"
+        )]
+        roots: bool,
     },
     #[command(about = "Disconnect a workspace from Exeora without deleting it")]
     Detach { selector: String },
@@ -531,9 +540,11 @@ async fn workspace_command(
             let entry = workspaces::attach(config, &project, &path, name, slug)?;
             persist_workspace(config, api, entry, json_output).await
         }
-        WorkspaceCommand::List { project, all } => {
-            list_workspaces(config, api, project.as_deref(), all, json_output).await
-        }
+        WorkspaceCommand::List {
+            project,
+            all,
+            roots,
+        } => list_workspaces(config, api, project.as_deref(), all, roots, json_output).await,
         WorkspaceCommand::Detach { selector } => {
             let outcome =
                 workspaces::detach(config, api, find_workspace(config, &selector, None)?).await?;
@@ -800,9 +811,93 @@ fn sync_mark(state: Option<WorkspaceSyncState>) -> String {
     }
 }
 
+/// One line of a workspace listing, whether it is a workspace or a root.
+fn workspace_line(
+    selector: &str,
+    project: &str,
+    place: &str,
+    branch: Option<&str>,
+    state: Option<WorkspaceSyncState>,
+) -> String {
+    format!(
+        "{selector:<24} {project:<18} {place:<32} {}{}",
+        branch.unwrap_or("-"),
+        sync_mark(state)
+    )
+}
+
+/// The project root in one location, as a row of the workspace listing.
+///
+/// A root is not a workspace the gateway keeps a record of, so it has no id
+/// and nothing to synchronize. It is what `selector` names: `main` in the
+/// default location and `main@<location>` anywhere else. The keys 0.17.0
+/// printed for a workspace are all there, so a script that reads every row
+/// finds them; `gitRoot` and `root` are the directory when it is on this
+/// machine and null when it is not, since a path on another machine is
+/// nothing a script here could open.
+fn root_row(
+    project_id: &str,
+    project_slug: &str,
+    selector: &str,
+    location: &Value,
+    here: Option<&Path>,
+    branch: Option<&str>,
+) -> Value {
+    json!({
+        "kind": "root",
+        "selector": selector,
+        "id": null,
+        "projectId": project_id,
+        "slug": selector,
+        "name": ROOT_SELECTOR,
+        "branch": branch,
+        "gitRoot": here,
+        "root": here,
+        "localPath": location["localPath"],
+        "managed": false,
+        "syncState": null,
+        "deviceId": location["deviceId"],
+        "machine": location["name"],
+        "location": location["slug"],
+        "cloud": location["kind"] == "cloud",
+        "default": selector == ROOT_SELECTOR,
+        "projectSlug": project_slug,
+        "thisMachine": here.is_some(),
+    })
+}
+
+/// A workspace this machine holds, with the keys 0.17.0 printed for it and
+/// the ones the gateway lists it by.
+fn local_workspace_row(config: &ConfigStore, entry: &WorkspaceEntry, project_slug: &str) -> Value {
+    let data = config.data();
+    json!({
+        "kind": "workspace",
+        "selector": entry.slug,
+        "id": entry.id,
+        "projectId": entry.project_id,
+        "slug": entry.slug,
+        "name": entry.name,
+        "branch": entry.branch,
+        "gitRoot": entry.git_root,
+        "root": entry.root,
+        "localPath": entry.root,
+        "managed": entry.managed,
+        "syncState": entry.sync_state,
+        "deviceId": data.device_id,
+        "machine": data.device_name,
+        "location": data.device_name.as_deref().map(projects::location_slug),
+        "cloud": false,
+        "projectSlug": project_slug,
+        "thisMachine": true,
+    })
+}
+
 /// The workspaces in the local config, in the shape the gateway lists them
 /// as far as this machine can fill it in: they are all here, and when the
-/// gateway first heard of them is not something this machine was told.
+/// gateway first heard of them is not something this machine was told. Each
+/// project's root comes first, named in full: whether this machine is the
+/// default location is the gateway's to say, and `main@<location>` is right
+/// either way.
 fn local_workspace_listing(
     config: &ConfigStore,
     project: Option<&str>,
@@ -817,43 +912,70 @@ fn local_workspace_listing(
             .ok()
             .map(|project| project.id),
     };
+    let listed = |project_id: &str| only.as_ref().is_none_or(|id| id == project_id);
     let machine = data
         .device_name
         .clone()
         .unwrap_or_else(|| "this machine".to_owned());
+    let place = format!("{machine} (this machine)");
+    let location = projects::location_slug(&machine);
+    let offline = |mut row: Value| {
+        row["offline"] = json!(true);
+        row
+    };
     let mut items = Vec::new();
     let mut lines = Vec::new();
-    for entry in data
-        .workspaces
-        .iter()
-        .filter(|entry| only.as_ref().is_none_or(|id| &entry.project_id == id))
-    {
-        let project_slug = config
-            .find_project(&entry.project_id)
-            .map_or("removed", |project| project.slug.as_str());
-        items.push(json!({
-            "id": entry.id,
-            "projectId": entry.project_id,
-            "slug": entry.slug,
-            "name": entry.name,
-            "branch": entry.branch,
-            "localPath": entry.root,
-            "managed": entry.managed,
-            "deviceId": data.device_id,
-            "cloud": false,
-            "machine": machine,
-            "projectSlug": project_slug,
-            "thisMachine": true,
-            "syncState": entry.sync_state,
-            "offline": true,
-        }));
-        lines.push(format!(
-            "{:<24} {:<18} {:<32} {}{}",
-            entry.slug,
-            project_slug,
-            format!("{machine} (this machine)"),
-            entry.branch.as_deref().unwrap_or("-"),
-            sync_mark(Some(entry.sync_state))
+    for project in data.projects.iter().filter(|entry| listed(&entry.id)) {
+        let selector = projects::named_root(&location);
+        let branch = current_branch_of(&project.root);
+        items.push(offline(root_row(
+            &project.id,
+            &project.slug,
+            &selector,
+            &json!({
+                "kind": "local",
+                "deviceId": data.device_id,
+                "name": machine,
+                "slug": location,
+                "localPath": project.root,
+            }),
+            Some(&project.root),
+            branch.as_deref(),
+        )));
+        lines.push(workspace_line(
+            &selector,
+            &project.slug,
+            &place,
+            branch.as_deref(),
+            None,
+        ));
+        for entry in data
+            .workspaces
+            .iter()
+            .filter(|entry| entry.project_id == project.id)
+        {
+            items.push(offline(local_workspace_row(config, entry, &project.slug)));
+            lines.push(workspace_line(
+                &entry.slug,
+                &project.slug,
+                &place,
+                entry.branch.as_deref(),
+                Some(entry.sync_state),
+            ));
+        }
+    }
+    // What is left of a project that was removed while its workspaces were
+    // not: still on disk, still in the config, and worth seeing for that.
+    for entry in data.workspaces.iter().filter(|entry| {
+        listed(&entry.project_id) && config.find_project(&entry.project_id).is_none()
+    }) {
+        items.push(offline(local_workspace_row(config, entry, "removed")));
+        lines.push(workspace_line(
+            &entry.slug,
+            "removed",
+            &place,
+            entry.branch.as_deref(),
+            Some(entry.sync_state),
         ));
     }
     if items.is_empty() {
@@ -871,9 +993,10 @@ async fn list_workspaces(
     api: &ApiClient,
     project: Option<&str>,
     all: bool,
+    roots: bool,
     json_output: bool,
 ) -> Result<()> {
-    workspace_listing(config, api, project, all)
+    workspace_listing(config, api, project, all, roots)
         .await?
         .print(json_output)
 }
@@ -882,18 +1005,28 @@ async fn list_workspaces(
 /// when the gateway cannot be reached. A refusal is returned as the error it
 /// is, and so is a gateway that answers for the projects and then fails for
 /// one of them with anything but silence.
+///
+/// The table always shows the root of each location before the workspaces.
+/// The items of `--json` hold them only when `roots` asks: every row 0.17.0
+/// printed was a workspace with an id, and a script written for it reads
+/// every row as one.
 async fn workspace_listing(
     config: &ConfigStore,
     api: &ApiClient,
     project: Option<&str>,
     all: bool,
+    roots: bool,
 ) -> Result<Listing> {
-    match remote_workspace_listing(config, api, project, all).await {
+    let mut listing = match remote_workspace_listing(config, api, project, all).await {
         Err(error) if crate::api::is_unreachable(&error) => {
             local_workspace_listing(config, project, all, offline_notice(&error))
         }
         listing => listing,
+    }?;
+    if !roots {
+        listing.items.retain(|row| row["kind"] != "root");
     }
+    Ok(listing)
 }
 
 async fn remote_workspace_listing(
@@ -903,53 +1036,104 @@ async fn remote_workspace_listing(
     all: bool,
 ) -> Result<Listing> {
     let remote = api.list_projects().await?;
+    let this = config.data().device_id.clone();
     let mut rows = Vec::new();
     let mut lines = Vec::new();
     for project in listed_projects(config, &remote, project, all)? {
+        // The roots first, one for each location that holds a copy: they
+        // are where the workspaces below were made from.
+        for location in &project.locations {
+            let Some(selector) = projects::root_selector(location) else {
+                continue;
+            };
+            let here = (this.is_some() && location.device_id == this)
+                .then(|| {
+                    config
+                        .find_project(&project.id)
+                        .map(|entry| entry.root.clone())
+                        .or_else(|| location.local_path.as_ref().map(PathBuf::from))
+                })
+                .flatten();
+            let branch = here.as_deref().and_then(current_branch_of);
+            rows.push(root_row(
+                &project.id,
+                &project.slug,
+                &selector,
+                &serde_json::to_value(location)?,
+                here.as_deref(),
+                branch.as_deref(),
+            ));
+            let place = if here.is_some() {
+                format!("{} (this machine)", location.name)
+            } else {
+                location.name.clone()
+            };
+            lines.push(workspace_line(
+                &selector,
+                &project.slug,
+                &place,
+                branch.as_deref(),
+                None,
+            ));
+        }
+
         let known = api.list_workspaces(&project.id).await?;
+        for workspace in &known {
+            let entry = config
+                .data()
+                .workspaces
+                .iter()
+                .find(|entry| entry.id == workspace.id);
+            let here = workspace.device_id.is_some() && workspace.device_id == this;
+            let mut row = serde_json::to_value(workspace)?;
+            row["kind"] = json!("workspace");
+            row["selector"] = json!(workspace.slug);
+            row["location"] = json!(
+                project
+                    .locations
+                    .iter()
+                    .find(|location| location.device_id.is_some()
+                        && location.device_id == workspace.device_id)
+                    .map(|location| &location.slug)
+            );
+            row["projectSlug"] = json!(project.slug);
+            row["thisMachine"] = json!(here);
+            // What 0.17.0 printed from the config, for the ones that are in
+            // it. One on another machine has no directory here to name.
+            row["gitRoot"] = json!(entry.map(|entry| &entry.git_root));
+            row["root"] = json!(entry.map(|entry| &entry.root));
+            row["syncState"] = json!(entry.map(|entry| entry.sync_state));
+            rows.push(row);
+            lines.push(workspace_line(
+                &workspace.slug,
+                &project.slug,
+                &workspace_place(config, workspace),
+                workspace.branch.as_deref(),
+                entry.map(|entry| entry.sync_state),
+            ));
+        }
         // What this machine made and the gateway has not heard of yet.
-        let unsent: Vec<_> = config
+        for entry in config
             .data()
             .workspaces
             .iter()
             .filter(|entry| entry.project_id == project.id)
             .filter(|entry| known.iter().all(|workspace| workspace.id != entry.id))
-            .map(|entry| WorkspaceView {
-                id: entry.id.clone(),
-                project_id: entry.project_id.clone(),
-                slug: entry.slug.clone(),
-                name: entry.name.clone(),
-                branch: entry.branch.clone(),
-                local_path: entry.root.to_string_lossy().into_owned(),
-                managed: entry.managed,
-                device_id: config.data().device_id.clone(),
-                machine: config.data().device_name.clone(),
-                cloud: false,
-                created_at: 0,
-                updated_at: 0,
-            })
-            .collect();
-        for workspace in known.into_iter().chain(unsent) {
-            let here =
-                workspace.device_id.is_some() && workspace.device_id == config.data().device_id;
-            let state = config
-                .data()
-                .workspaces
-                .iter()
-                .find(|entry| entry.id == workspace.id)
-                .map(|entry| entry.sync_state);
-            let mut row = serde_json::to_value(&workspace)?;
-            row["projectSlug"] = json!(project.slug);
-            row["thisMachine"] = json!(here);
-            row["syncState"] = json!(state);
-            rows.push(row);
-            lines.push(format!(
-                "{:<24} {:<18} {:<32} {}{}",
-                workspace.slug,
-                project.slug,
-                workspace_place(config, &workspace),
-                workspace.branch.as_deref().unwrap_or("-"),
-                sync_mark(state)
+        {
+            rows.push(local_workspace_row(config, entry, &project.slug));
+            lines.push(workspace_line(
+                &entry.slug,
+                &project.slug,
+                &format!(
+                    "{} (this machine)",
+                    config
+                        .data()
+                        .device_name
+                        .as_deref()
+                        .unwrap_or("this machine")
+                ),
+                entry.branch.as_deref(),
+                Some(entry.sync_state),
             ));
         }
     }
@@ -1092,12 +1276,7 @@ async fn device_command(
                 return emit(Value::Array(
                     machines
                         .into_iter()
-                        .map(|mut machine| {
-                            let here = this.is_some()
-                                && machine.get("deviceId").and_then(Value::as_str) == this;
-                            machine["thisMachine"] = json!(here);
-                            machine
-                        })
+                        .map(|machine| machine_item(machine, this))
                         .collect(),
                 ));
             }
@@ -1111,6 +1290,32 @@ async fn device_command(
         }
     }
     Ok(())
+}
+
+/// A machine as `--json` prints it: what the gateway said, and beside it
+/// what 0.17.0 printed under the names it printed it.
+///
+/// 0.17.0 listed devices as `id`, `name`, `platform`, `cliVersion`, `online`,
+/// `lastSeenAt`, `revokedAt` and `thisMachine`. The gateway still says all of
+/// them but the first, which it now calls `deviceId`. `online` is what it
+/// was: never true for a machine that was revoked, whatever was last heard.
+fn machine_item(mut machine: Value, this: Option<&str>) -> Value {
+    let id = machine.get("deviceId").cloned().unwrap_or(Value::Null);
+    let revoked = machine.get("revokedAt").is_some_and(|at| !at.is_null());
+    let online = !revoked
+        && machine
+            .get("online")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+    machine["thisMachine"] = json!(this.is_some() && id.as_str() == this);
+    machine["id"] = id;
+    machine["online"] = json!(online);
+    for key in ["name", "platform", "cliVersion", "lastSeenAt", "revokedAt"] {
+        if machine.get(key).is_none() {
+            machine[key] = Value::Null;
+        }
+    }
+    machine
 }
 
 /// One line for a machine: whose it is, what it is doing, what it holds.
@@ -1948,8 +2153,8 @@ fn client_name(call: &ToolCallView) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        describe_machine, listed_projects, projects_on_this_machine, projects_root_from,
-        sync_command, validate_project_root, workspace_listing,
+        describe_machine, listed_projects, machine_item, projects_on_this_machine,
+        projects_root_from, sync_command, validate_project_root, workspace_listing,
     };
     use crate::{
         api::{MachineView, ProjectView},
@@ -2278,6 +2483,26 @@ mod tests {
         config
     }
 
+    /// The keys `exeora workspace list --json` printed in 0.17.0, which
+    /// was the `WorkspaceEntry` of the config as it was written.
+    const WORKSPACE_KEYS_0_17: [&str; 9] = [
+        "id",
+        "projectId",
+        "slug",
+        "name",
+        "branch",
+        "gitRoot",
+        "root",
+        "managed",
+        "syncState",
+    ];
+
+    fn has_every_key(row: &Value, keys: &[&str]) {
+        for key in keys {
+            assert!(row.get(key).is_some(), "{key} is missing from {row}");
+        }
+    }
+
     #[tokio::test]
     async fn lists_the_workspaces_of_this_machine_when_the_gateway_is_out_of_reach() {
         let temp = tempdir().expect("temp directory");
@@ -2286,7 +2511,7 @@ mod tests {
         let unwell = Gateway::start(|_, _, _| (503, json!({ "error": "unavailable" }))).await;
 
         for api in [gone.api().await, unwell.api().await] {
-            let listing = workspace_listing(&config, &api, None, true)
+            let listing = workspace_listing(&config, &api, None, true, true)
                 .await
                 .expect("what this machine knows");
             assert!(
@@ -2296,41 +2521,285 @@ mod tests {
                     .is_some_and(|notice| notice.contains("could not be reached")
                         && notice.contains("what this machine knows"))
             );
+            // Each project's root, named in full, and then its workspaces.
             assert_eq!(
                 listing.items,
                 [
                     json!({
-                        "id": "wsp_fix", "projectId": "prj_api", "slug": "fix-login",
-                        "name": "fix-login", "branch": "fix-login", "localPath": "/work/fix-login",
-                        "managed": true, "deviceId": "dev_here", "cloud": false,
-                        "machine": "laptop", "projectSlug": "api", "thisMachine": true,
-                        "syncState": "active", "offline": true,
+                        "kind": "root", "selector": "main@laptop", "id": null,
+                        "projectId": "prj_api", "slug": "main@laptop", "name": "main",
+                        "branch": null, "gitRoot": "/code/api", "root": "/code/api",
+                        "localPath": "/code/api", "managed": false, "syncState": null,
+                        "deviceId": "dev_here", "machine": "laptop", "location": "laptop",
+                        "cloud": false, "default": false, "projectSlug": "api",
+                        "thisMachine": true, "offline": true,
                     }),
                     json!({
-                        "id": "wsp_new", "projectId": "prj_web", "slug": "new-page",
-                        "name": "new-page", "branch": "new-page", "localPath": "/work/new-page",
-                        "managed": true, "deviceId": "dev_here", "cloud": false,
-                        "machine": "laptop", "projectSlug": "web", "thisMachine": true,
-                        "syncState": "pendingUpsert", "offline": true,
+                        "kind": "workspace", "selector": "fix-login", "id": "wsp_fix",
+                        "projectId": "prj_api", "slug": "fix-login", "name": "fix-login",
+                        "branch": "fix-login", "gitRoot": "/work/fix-login",
+                        "root": "/work/fix-login", "localPath": "/work/fix-login",
+                        "managed": true, "syncState": "active", "deviceId": "dev_here",
+                        "machine": "laptop", "location": "laptop", "cloud": false,
+                        "projectSlug": "api", "thisMachine": true, "offline": true,
+                    }),
+                    json!({
+                        "kind": "root", "selector": "main@laptop", "id": null,
+                        "projectId": "prj_web", "slug": "main@laptop", "name": "main",
+                        "branch": null, "gitRoot": "/code/web", "root": "/code/web",
+                        "localPath": "/code/web", "managed": false, "syncState": null,
+                        "deviceId": "dev_here", "machine": "laptop", "location": "laptop",
+                        "cloud": false, "default": false, "projectSlug": "web",
+                        "thisMachine": true, "offline": true,
+                    }),
+                    json!({
+                        "kind": "workspace", "selector": "new-page", "id": "wsp_new",
+                        "projectId": "prj_web", "slug": "new-page", "name": "new-page",
+                        "branch": "new-page", "gitRoot": "/work/new-page",
+                        "root": "/work/new-page", "localPath": "/work/new-page",
+                        "managed": true, "syncState": "pendingUpsert", "deviceId": "dev_here",
+                        "machine": "laptop", "location": "laptop", "cloud": false,
+                        "projectSlug": "web", "thisMachine": true, "offline": true,
                     }),
                 ]
             );
-            assert_eq!(listing.lines.len(), 2);
-            assert!(listing.lines[0].contains("laptop (this machine)"));
-            assert!(listing.lines[1].ends_with("[pendingupsert]"));
+            for row in &listing.items {
+                has_every_key(row, &WORKSPACE_KEYS_0_17);
+            }
+            assert_eq!(listing.lines.len(), 4);
+            assert!(listing.lines[0].starts_with("main@laptop "));
+            assert!(listing.lines[1].contains("laptop (this machine)"));
+            assert!(listing.lines[3].ends_with("[pendingupsert]"));
         }
 
-        let one = workspace_listing(&config, &gone.api().await, Some("web"), false)
+        let one = workspace_listing(&config, &gone.api().await, Some("web"), false, true)
             .await
             .expect("what this machine knows");
-        assert_eq!(one.items.len(), 1);
-        assert_eq!(one.items[0]["slug"], "new-page");
+        assert_eq!(one.items.len(), 2);
+        assert_eq!(one.items[0]["slug"], "main@laptop");
+        assert_eq!(one.items[1]["slug"], "new-page");
         // A project this machine does not have cannot be listed from here.
         assert!(
-            workspace_listing(&config, &gone.api().await, Some("other"), false)
+            workspace_listing(&config, &gone.api().await, Some("other"), false, true)
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn lists_a_root_for_each_location_that_holds_a_copy_and_then_the_workspaces() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_a_workspace(temp.path());
+        let gateway = Gateway::start(|_, path, _| match path {
+            "/api/projects" => (
+                200,
+                json!([listed_project("prj_api", "api", json!({
+                    "deviceId": "dev_desktop",
+                    "locations": [
+                        listed_location(Some("dev_desktop"), "desktop", json!({ "default": true, "localPath": "/home/me/exeora/api" })),
+                        listed_location(Some("dev_here"), "laptop", json!({ "localPath": "/code/api" })),
+                        // Chosen and not cloned, being cloned, failed, removed:
+                        // none of them has a root to name.
+                        listed_location(Some("dev_a"), "chosen", json!({ "status": "pending", "state": "not cloned" })),
+                        listed_location(Some("dev_b"), "cloning", json!({ "status": "cloning", "state": "setting up" })),
+                        listed_location(Some("dev_c"), "broken", json!({ "status": "error", "state": "failed" })),
+                        listed_location(Some("dev_d"), "sold", json!({ "state": "removed" })),
+                        // Exeora Cloud holding workspaces and no root.
+                        listed_location(None, "cloud", json!({ "kind": "cloud", "name": "Exeora Cloud", "state": "asleep" })),
+                    ],
+                }))]),
+            ),
+            "/api/projects/prj_api/workspaces" => (
+                200,
+                json!([
+                    {
+                        "id": "wsp_fix", "projectId": "prj_api", "slug": "fix-login",
+                        "name": "fix/login", "branch": "fix/login", "localPath": "/work/fix-login",
+                        "managed": true, "deviceId": "dev_here", "cloud": false,
+                        "machine": "laptop", "createdAt": 10, "updatedAt": 20,
+                    },
+                    {
+                        "id": "wsp_away", "projectId": "prj_api", "slug": "fix-login-desktop",
+                        "name": "fix/login", "branch": "fix/login",
+                        "localPath": "/home/me/work/fix-login", "managed": true,
+                        "deviceId": "dev_desktop", "cloud": false, "machine": "desktop",
+                        "createdAt": 11, "updatedAt": 21,
+                    },
+                ]),
+            ),
+            _ => (404, json!({ "error": "not_found" })),
+        })
+        .await;
+
+        let listing = workspace_listing(&config, &gateway.api().await, Some("api"), false, true)
+            .await
+            .expect("listing");
+        assert!(listing.notice.is_none());
+        let selectors: Vec<_> = listing
+            .items
+            .iter()
+            .map(|row| {
+                (
+                    row["kind"].as_str().unwrap_or_default(),
+                    row["selector"].as_str().unwrap_or_default(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            selectors,
+            [
+                ("root", "main"),
+                ("root", "main@laptop"),
+                ("workspace", "fix-login"),
+                ("workspace", "fix-login-desktop"),
+            ]
+        );
+        for row in &listing.items {
+            has_every_key(row, &WORKSPACE_KEYS_0_17);
+        }
+
+        // The root of the default location, which is another machine.
+        assert_eq!(
+            listing.items[0],
+            json!({
+                "kind": "root", "selector": "main", "id": null, "projectId": "prj_api",
+                "slug": "main", "name": "main", "branch": null, "gitRoot": null, "root": null,
+                "localPath": "/home/me/exeora/api", "managed": false, "syncState": null,
+                "deviceId": "dev_desktop", "machine": "desktop", "location": "desktop",
+                "cloud": false, "default": true, "projectSlug": "api", "thisMachine": false,
+            })
+        );
+        // The root here, where the config says it is.
+        assert_eq!(listing.items[1]["root"], "/code/api");
+        assert_eq!(listing.items[1]["gitRoot"], "/code/api");
+        assert_eq!(listing.items[1]["thisMachine"], true);
+        assert_eq!(listing.items[1]["default"], false);
+
+        // A workspace of this machine: every key of 0.17.0 with the value
+        // the config holds, beside what the gateway says.
+        assert_eq!(
+            listing.items[2],
+            json!({
+                "kind": "workspace", "selector": "fix-login", "id": "wsp_fix",
+                "projectId": "prj_api", "slug": "fix-login", "name": "fix/login",
+                "branch": "fix/login", "gitRoot": "/work/fix-login", "root": "/work/fix-login",
+                "localPath": "/work/fix-login", "managed": true, "syncState": "active",
+                "deviceId": "dev_here", "machine": "laptop", "location": "laptop",
+                "cloud": false, "projectSlug": "api", "thisMachine": true,
+                "createdAt": 10, "updatedAt": 20,
+            })
+        );
+        // One on another machine has no directory here.
+        assert_eq!(listing.items[3]["root"], json!(null));
+        assert_eq!(listing.items[3]["gitRoot"], json!(null));
+        assert_eq!(listing.items[3]["syncState"], json!(null));
+        assert_eq!(listing.items[3]["localPath"], "/home/me/work/fix-login");
+        assert_eq!(listing.items[3]["location"], "desktop");
+
+        assert_eq!(listing.lines.len(), 4);
+        assert!(listing.lines[0].starts_with("main "));
+        assert!(listing.lines[0].contains(" desktop "));
+        assert!(listing.lines[1].starts_with("main@laptop "));
+        assert!(listing.lines[1].contains("laptop (this machine)"));
+        assert!(listing.lines[3].starts_with("fix-login-desktop "));
+    }
+
+    #[tokio::test]
+    async fn json_holds_only_workspaces_unless_the_roots_are_asked_for() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_a_workspace(temp.path());
+        let online = Gateway::start(|_, path, _| match path {
+            "/api/projects" => (
+                200,
+                json!([listed_project("prj_api", "api", json!({
+                    "deviceId": "dev_here",
+                    "locations": [
+                        listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/api" })),
+                        listed_location(Some("dev_desktop"), "desktop", json!({ "localPath": "/home/me/exeora/api" })),
+                    ],
+                }))]),
+            ),
+            _ => (200, json!([])),
+        })
+        .await;
+        let offline = Gateway::gone();
+
+        for api in [online.api().await, offline.api().await] {
+            let plain = workspace_listing(&config, &api, Some("api"), false, false)
+                .await
+                .expect("listing");
+            // What a script written for 0.17.0 reads: workspaces, each with
+            // an id that is a string and every key it knew.
+            assert_eq!(plain.items.len(), 1);
+            for row in &plain.items {
+                assert_eq!(row["kind"], "workspace");
+                assert!(row["id"].is_string(), "{row}");
+                has_every_key(row, &WORKSPACE_KEYS_0_17);
+            }
+            assert_eq!(plain.items[0]["id"], "wsp_fix");
+
+            let with_roots = workspace_listing(&config, &api, Some("api"), false, true)
+                .await
+                .expect("listing");
+            let roots: Vec<_> = with_roots
+                .items
+                .iter()
+                .filter(|row| row["kind"] == "root")
+                .collect();
+            assert!(!roots.is_empty());
+            for root in roots {
+                assert_eq!(root["id"], json!(null));
+                assert!(
+                    root["selector"]
+                        .as_str()
+                        .is_some_and(|selector| selector.starts_with("main"))
+                );
+            }
+            assert_eq!(
+                with_roots.items.len(),
+                plain.items.len() + with_roots.lines.len() - 1
+            );
+            // The table shows the roots whether or not they were asked for.
+            assert_eq!(plain.lines, with_roots.lines);
+            assert!(plain.lines[0].starts_with("main"));
+        }
+    }
+
+    #[test]
+    fn a_machine_is_printed_with_the_keys_of_0_17_beside_the_gateways() {
+        let listed = json!({
+            "deviceId": "dev_here", "kind": "local", "name": "laptop", "platform": "linux",
+            "cliVersion": "0.18.0", "online": true, "state": "online", "lastSeenAt": 123,
+            "createdAt": 100, "revokedAt": null,
+            "projects": [{ "projectId": "prj_a", "slug": "alpha", "name": "Alpha", "localPath": "/code/alpha", "status": "ready", "default": true, "workspaces": 2 }],
+        });
+        let item = machine_item(listed.clone(), Some("dev_here"));
+        // What 0.17.0 printed, key by key.
+        assert_eq!(item["id"], "dev_here");
+        assert_eq!(item["name"], "laptop");
+        assert_eq!(item["platform"], "linux");
+        assert_eq!(item["cliVersion"], "0.18.0");
+        assert_eq!(item["online"], true);
+        assert_eq!(item["lastSeenAt"], 123);
+        assert_eq!(item["revokedAt"], json!(null));
+        assert_eq!(item["thisMachine"], true);
+        // And everything the gateway said is still there.
+        for (key, value) in listed.as_object().expect("an object") {
+            assert_eq!(&item[key], value, "{key}");
+        }
+
+        // A machine that was revoked was never online in 0.17.0.
+        let revoked = machine_item(
+            json!({ "deviceId": "dev_old", "kind": "local", "name": "old", "online": true, "revokedAt": 5 }),
+            Some("dev_here"),
+        );
+        assert_eq!(revoked["id"], "dev_old");
+        assert_eq!(revoked["online"], false);
+        assert_eq!(revoked["thisMachine"], false);
+        assert_eq!(revoked["revokedAt"], 5);
+        for key in ["platform", "cliVersion", "lastSeenAt"] {
+            assert!(revoked.get(key).is_some(), "{key}");
+        }
     }
 
     #[tokio::test]
@@ -2341,7 +2810,7 @@ mod tests {
             let gateway =
                 Gateway::start(move |_, _, _| (status, json!({ "error": "refused" }))).await;
             assert!(
-                workspace_listing(&config, &gateway.api().await, None, true)
+                workspace_listing(&config, &gateway.api().await, None, true, true)
                     .await
                     .is_err(),
                 "{status}"
@@ -2353,7 +2822,7 @@ mod tests {
             _ => (200, json!([])),
         })
         .await;
-        let listing = workspace_listing(&config, &gateway.api().await, None, true)
+        let listing = workspace_listing(&config, &gateway.api().await, None, true, true)
             .await
             .expect("listing");
         assert!(listing.notice.is_none());

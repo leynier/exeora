@@ -317,21 +317,92 @@ fn publish_mcp_catalogs(
     if mcp.is_empty() {
         return;
     }
-    tokio::spawn(async move {
-        for message in mcp.discover().await {
-            mcp_notice(json_output, &message);
+    tokio::spawn(publish_catalogs(mcp, outgoing, json_output, None));
+}
+
+/// Discovers what is not discovered yet and sends the catalogs: every
+/// project's, or only those of the projects named.
+async fn publish_catalogs(
+    mcp: Arc<McpManager>,
+    outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
+    only: Option<Vec<String>>,
+) {
+    for message in mcp.discover().await {
+        mcp_notice(json_output, &message);
+    }
+    let (catalogs, warnings) = mcp.catalogs();
+    for warning in warnings {
+        mcp_notice(json_output, &warning);
+    }
+    for (project_id, tools) in catalogs {
+        if only.as_ref().is_some_and(|ids| !ids.contains(&project_id)) {
+            continue;
         }
-        let (catalogs, warnings) = mcp.catalogs();
-        for warning in warnings {
-            mcp_notice(json_output, &warning);
+        if outgoing
+            .send(catalog_frame(&project_id, json!(tools)))
+            .is_err()
+        {
+            return;
         }
-        for (project_id, tools) in catalogs {
-            let frame = json!({ "type": "mcp.catalog", "projectId": project_id, "tools": tools });
-            if outgoing.send(frame).is_err() {
-                return;
-            }
+    }
+}
+
+fn catalog_frame(project_id: &str, tools: Value) -> Value {
+    json!({ "type": "mcp.catalog", "projectId": project_id, "tools": tools })
+}
+
+/// Follows the projects of the config while the connection is up.
+///
+/// A project appears when the gateway asks this machine to clone it, and
+/// when somebody runs `exeora project add` in another terminal; it goes when
+/// it is removed. Either way the relay has to hear about its proxied tools
+/// now, not at the next reconnect, which on a healthy connection is days
+/// away. The catalog of a project that came is discovered and published the
+/// way every catalog is at `hello.ack`. For one that went, an empty catalog
+/// replaces what the relay holds, so nothing is offered that nobody serves.
+///
+/// A config that cannot be read changes nothing: not having been able to
+/// look is not the same as having seen the projects gone.
+async fn reconcile_projects(
+    config_path: &Path,
+    mcp: &Arc<McpManager>,
+    outgoing: &mpsc::UnboundedSender<Value>,
+    json_output: bool,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let config = ConfigStore::load_from(config_path.to_path_buf()).ok()?;
+    let changes = mcp.reconcile(&config.data().projects).await;
+    if changes.is_empty() {
+        return None;
+    }
+    for warning in &changes.warnings {
+        mcp_notice(json_output, warning);
+    }
+    for project_id in &changes.removed {
+        // One that only moved is published again below, with what its new
+        // directory offers.
+        if !changes.added.contains(project_id) {
+            let _ = outgoing.send(catalog_frame(project_id, json!([])));
         }
-    });
+    }
+    // A project with no server has no catalog, as at connect time. One that
+    // moved is the exception: what was published from its old directory has
+    // to be replaced even when the new one offers nothing.
+    let publish: Vec<String> = changes
+        .added
+        .iter()
+        .filter(|id| mcp.serves(id) || changes.removed.contains(id))
+        .cloned()
+        .collect();
+    if publish.is_empty() {
+        return None;
+    }
+    Some(tokio::spawn(publish_catalogs(
+        mcp.clone(),
+        outgoing.clone(),
+        json_output,
+        Some(publish),
+    )))
 }
 
 fn acquire_keep_awake(json_output: bool) -> Option<keepawake::KeepAwake> {
@@ -462,6 +533,7 @@ async fn connect_once(
         && std::io::IsTerminal::is_terminal(&std::io::stdin())
         && std::io::IsTerminal::is_terminal(&std::io::stdout());
     let features = announced_features(mode.is_local());
+    let projects = announced_projects(&config_path, projects);
     socket.send(Message::Text(serde_json::to_string(&json!({
         "type": "hello", "protocolVersion": PROTOCOL_VERSION, "deviceId": device_id,
         "cliVersion": CLI_VERSION, "platform": platform(),
@@ -632,6 +704,9 @@ async fn connect_once(
             // never removed, so there is nothing to reconcile there.
             _ = roots_tick.tick(), if mode.is_local() => {
                 reconcile_roots(&config_path, &engine, &workspace, &mcp, &in_flight, &mut known_roots).await;
+                // Not waited for: discovery starts servers, and the loop has
+                // a socket to keep alive.
+                let _ = reconcile_projects(&config_path, &mcp, &out_tx, json_output).await;
             }
         }
     }
@@ -1252,6 +1327,16 @@ impl ActiveCall {
             .as_ref()
             .map(|root| std::fs::canonicalize(root).unwrap_or_else(|_| root.clone()))
     }
+}
+
+/// The projects a hello names: the ones the config holds when the hello is
+/// said, not the ones it held when `connect` started. A connection that is
+/// made again after a project was cloned or removed says what is true now.
+/// What `connect` started with stands in when the config cannot be read.
+fn announced_projects(config_path: &Path, at_start: &[ProjectEntry]) -> Vec<ProjectEntry> {
+    ConfigStore::load_from(config_path.to_path_buf())
+        .map(|config| config.data().projects.clone())
+        .unwrap_or_else(|_| at_start.to_vec())
 }
 
 /// What this CLI tells the gateway it can do beyond the tools. A machine of
@@ -1919,12 +2004,14 @@ fn platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        announced_features, awake_event, execute_workspace_tool, handshake_rejection,
-        resolve_target, result_frame, spawn_workspace_call,
+        announced_features, announced_projects, awake_event, execute_workspace_tool,
+        handshake_rejection, reconcile_projects, resolve_target, result_frame,
+        spawn_workspace_call,
     };
     use crate::{
         config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         error::ErrorCode,
+        mcp::McpManager,
         protocol::{MAX_RESULT_BYTES, ToolName},
         testing::Gateway,
         tools::ToolEngine,
@@ -1982,6 +2069,206 @@ mod tests {
             .await
             .expect("an answer in time")
             .expect("an answer")
+    }
+
+    /// An MCP server that offers one tool, `echo`, written for the shell
+    /// every unix has, so the test needs nothing installed.
+    #[cfg(unix)]
+    const MCP_SERVER: &str = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+  version=$(printf '%s' "$line" | sed -n 's/.*"protocolVersion":"\([^"]*\)".*/\1/p')
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"%s","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1"}}}\n' "$id" "$version" ;;
+    *'"method":"tools/list"'*)
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo","description":"Says it back","inputSchema":{"type":"object"}}]}}\n' "$id" ;;
+    *'"method":"notifications/'*) ;;
+    *) if [ -n "$id" ]; then printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32601,"message":"Method not found"}}\n' "$id"; fi ;;
+  esac
+done
+"#;
+
+    #[cfg(unix)]
+    fn frames(results: &mut mpsc::UnboundedReceiver<Value>) -> Vec<Value> {
+        let mut frames = Vec::new();
+        while let Ok(frame) = results.try_recv() {
+            frames.push(frame);
+        }
+        frames
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_project_that_appears_while_connected_gets_its_catalog_published() {
+        let directory = tempdir().unwrap();
+        let script = directory.path().join("server.sh");
+        fs::write(&script, MCP_SERVER).unwrap();
+        fs::write(
+            directory.path().join("mcp.json"),
+            json!({ "mcpServers": { "fixture": { "command": "sh", "args": [script] } } })
+                .to_string(),
+        )
+        .unwrap();
+        let root = |name: &str| {
+            let path = directory.path().join(name);
+            fs::create_dir_all(&path).unwrap();
+            path
+        };
+        let project = |id: &str, slug: &str| {
+            ProjectEntry::directory(id.to_owned(), slug.to_owned(), slug.to_owned(), root(slug))
+        };
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.upsert_project(project("prj_a", "a"));
+        config.save().unwrap();
+
+        // What `connect` does at start, with the projects it started with.
+        let mcp = Arc::new(McpManager::load(&config_path, &config.data().projects));
+        assert_eq!(mcp.discover().await, Vec::<String>::new());
+        let (outgoing, mut results) = mpsc::unbounded_channel();
+
+        // A look that finds nothing new says nothing.
+        assert!(
+            reconcile_projects(&config_path, &mcp, &outgoing, true)
+                .await
+                .is_none()
+        );
+        assert!(frames(&mut results).is_empty());
+
+        // The gateway had this machine clone a project, or somebody ran
+        // `exeora project add` in another terminal.
+        config.upsert_project(project("prj_b", "b"));
+        config.save().unwrap();
+        let publishing = reconcile_projects(&config_path, &mcp, &outgoing, true)
+            .await
+            .expect("a catalog to publish");
+        publishing.await.unwrap();
+        let sent = frames(&mut results);
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert_eq!(sent[0]["type"], "mcp.catalog");
+        assert_eq!(sent[0]["projectId"], "prj_b");
+        assert_eq!(sent[0]["tools"].as_array().map(Vec::len), Some(1));
+        assert_eq!(sent[0]["tools"][0]["server"], "fixture");
+        assert_eq!(sent[0]["tools"][0]["name"], "echo");
+        // And it can be called, which is what the catalog promises.
+        assert!(mcp.tool("prj_b", "fixture", "echo").is_some());
+
+        // The project is removed: what the relay holds for it is replaced
+        // with nothing, and nothing of it can be called.
+        config.remove_project("prj_a");
+        config.save().unwrap();
+        assert!(
+            reconcile_projects(&config_path, &mcp, &outgoing, true)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            frames(&mut results),
+            [json!({ "type": "mcp.catalog", "projectId": "prj_a", "tools": [] })]
+        );
+        assert!(mcp.tool("prj_a", "fixture", "echo").is_none());
+        assert!(mcp.tool("prj_b", "fixture", "echo").is_some());
+
+        // A config that cannot be read is not a config without projects.
+        let saved = fs::read(&config_path).unwrap();
+        fs::write(&config_path, "{ not json").unwrap();
+        assert!(
+            reconcile_projects(&config_path, &mcp, &outgoing, true)
+                .await
+                .is_none()
+        );
+        assert!(frames(&mut results).is_empty());
+        assert!(mcp.tool("prj_b", "fixture", "echo").is_some());
+        fs::write(&config_path, saved).unwrap();
+
+        // A project that moved is published once, from where it is now.
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.upsert_project(ProjectEntry {
+            root: root("b-moved"),
+            ..project("prj_b", "b")
+        });
+        config.save().unwrap();
+        let publishing = reconcile_projects(&config_path, &mcp, &outgoing, true)
+            .await
+            .expect("a catalog to publish");
+        publishing.await.unwrap();
+        let sent = frames(&mut results);
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert_eq!(sent[0]["projectId"], "prj_b");
+        assert_eq!(sent[0]["tools"][0]["name"], "echo");
+        mcp.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_project_without_servers_has_no_catalog_to_publish() {
+        let directory = tempdir().unwrap();
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.save().unwrap();
+        let mcp = Arc::new(McpManager::load(&config_path, &[]));
+        let (outgoing, mut results) = mpsc::unbounded_channel();
+
+        config.upsert_project(ProjectEntry::directory(
+            "prj_a".to_owned(),
+            "a".to_owned(),
+            "A".to_owned(),
+            directory.path().to_path_buf(),
+        ));
+        config.save().unwrap();
+        assert!(
+            reconcile_projects(&config_path, &mcp, &outgoing, true)
+                .await
+                .is_none()
+        );
+        assert!(results.try_recv().is_err());
+
+        // Gone again, the relay is told so: an empty catalog costs nothing
+        // and leaves nothing behind whatever was there.
+        config.remove_project("prj_a");
+        config.save().unwrap();
+        assert!(
+            reconcile_projects(&config_path, &mcp, &outgoing, true)
+                .await
+                .is_none()
+        );
+        assert_eq!(
+            results.try_recv().ok(),
+            Some(json!({ "type": "mcp.catalog", "projectId": "prj_a", "tools": [] }))
+        );
+    }
+
+    #[test]
+    fn a_hello_names_the_projects_the_config_holds_now() {
+        let directory = tempdir().unwrap();
+        let config_path = directory.path().join("config.json");
+        let at_start = [ProjectEntry::directory(
+            "prj_a".to_owned(),
+            "a".to_owned(),
+            "A".to_owned(),
+            directory.path().to_path_buf(),
+        )];
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.upsert_project(at_start[0].clone());
+        config.upsert_project(ProjectEntry::directory(
+            "prj_b".to_owned(),
+            "b".to_owned(),
+            "B".to_owned(),
+            directory.path().to_path_buf(),
+        ));
+        config.save().unwrap();
+        let ids = |projects: Vec<ProjectEntry>| {
+            projects
+                .into_iter()
+                .map(|project| project.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(announced_projects(&config_path, &at_start)),
+            ["prj_a", "prj_b"]
+        );
+        fs::write(&config_path, "{ not json").unwrap();
+        assert_eq!(ids(announced_projects(&config_path, &at_start)), ["prj_a"]);
     }
 
     #[test]

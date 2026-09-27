@@ -832,6 +832,35 @@ async fn add_on_machine(
     .await
 }
 
+/// What the project root is called: `main` where calls that name no
+/// workspace land, which is the default location.
+pub const ROOT_SELECTOR: &str = "main";
+
+/// What the root of a location is called when the location is named:
+/// `main@desktop`. The gateway takes it for every location that holds a
+/// copy, the default one included.
+pub fn named_root(location_slug: &str) -> String {
+    format!("{ROOT_SELECTOR}@{location_slug}")
+}
+
+/// The selector of the project root in a location: `main` in the default
+/// one, `main@<slug>` in any other. None for a location that holds no copy
+/// of the root, which is one that was only chosen, one whose clone has not
+/// finished or has failed, one whose machine was removed, and Exeora Cloud
+/// while it holds workspaces and no root.
+pub fn root_selector(location: &LocationView) -> Option<String> {
+    let holds_a_copy = location.device_id.is_some()
+        && location.state != "removed"
+        && (location.is_cloud() || location.status == "ready");
+    holds_a_copy.then(|| {
+        if location.is_default {
+            ROOT_SELECTOR.to_owned()
+        } else {
+            named_root(&location.slug)
+        }
+    })
+}
+
 fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
     let here = location.device_id.is_some() && location.device_id == config.data().device_id;
     let name = if here {
@@ -840,7 +869,7 @@ fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
         location.name.clone()
     };
     let mut line = format!(
-        "  {} {:<32} {:<12} {}",
+        "  {} {:<32} {:<12} {:<20} {}",
         if location.is_default { "*" } else { " " },
         name,
         if location.state.is_empty() {
@@ -848,6 +877,7 @@ fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
         } else {
             &location.state
         },
+        root_selector(location).unwrap_or_default(),
         location.local_path.as_deref().unwrap_or("")
     );
     line.truncate(line.trim_end().len());
@@ -912,16 +942,18 @@ const NO_PROJECTS: &str =
 /// the projects of this machine, which is less and still what somebody on a
 /// train wants to see. A refusal is returned as the error it is.
 pub async fn project_listing(config: &ConfigStore, api: &ApiClient) -> Result<Listing> {
-    let items = match api.list_projects_raw().await {
+    let listed = match api.list_projects_raw().await {
         Ok(items) => items,
         Err(error) if crate::api::is_unreachable(&error) => {
             return local_project_listing(config, offline_notice(&error));
         }
         Err(error) => return Err(error),
     };
+    let mut items = Vec::new();
     let mut lines = Vec::new();
-    for item in &items {
+    for item in listed {
         let project: ProjectView = serde_json::from_value(item.clone())?;
+        items.push(project_item(config, &project, item));
         lines.push(repository_line(
             &project.slug,
             project.repo_url.as_deref(),
@@ -945,6 +977,37 @@ pub async fn project_listing(config: &ConfigStore, api: &ApiClient) -> Result<Li
     })
 }
 
+/// A project as `--json` prints it: what the gateway said, and beside it
+/// what 0.17.0 printed under the names it printed it.
+///
+/// 0.17.0 listed the projects of this machine from its config, as `id`,
+/// `slug`, `name`, `root` and `mcpUrl`. The gateway says all of those but
+/// `root`, which is where the project is on this machine: the directory the
+/// config holds, or the one the gateway has for this machine's location, and
+/// null for a project that is not here, which 0.17.0 would not have listed.
+/// Each location also says what its root is called, when it has one.
+fn project_item(config: &ConfigStore, project: &ProjectView, mut item: Value) -> Value {
+    let here = config.data().device_id.as_deref();
+    let root = config
+        .find_project(&project.id)
+        .map(|entry| json!(entry.root))
+        .or_else(|| {
+            here.and_then(|device| project.location_on(device))
+                .and_then(|location| location.local_path.as_ref())
+                .map(|path| json!(path))
+        })
+        .unwrap_or(Value::Null);
+    item["root"] = root;
+    if let Some(locations) = item.get_mut("locations").and_then(Value::as_array_mut) {
+        for (location, view) in locations.iter_mut().zip(&project.locations) {
+            if location.get("selector").is_none() {
+                location["selector"] = json!(root_selector(view));
+            }
+        }
+    }
+    item
+}
+
 /// The projects in the local config, in the shape the gateway lists them as
 /// far as this machine can fill it in. What only the gateway knows, such as
 /// whether a location is online or which one is the default, is left out
@@ -966,14 +1029,18 @@ fn local_project_listing(config: &ConfigStore, notice: String) -> Result<Listing
             "name": entry.name,
             "deviceId": data.device_id,
             "localPath": entry.root,
+            "root": entry.root,
             "repoUrl": entry.repo_url,
             "defaultBranch": entry.default_branch,
+            // Named in full: whether this machine is the default location
+            // is the gateway's to say, and the full name is right either way.
             "locations": [{
                 "kind": "local",
                 "deviceId": data.device_id,
                 "name": machine,
                 "slug": location_slug(&machine),
                 "localPath": entry.root,
+                "selector": named_root(&location_slug(&machine)),
             }],
             "mcpUrl": mcp_url,
             "offline": true,
@@ -984,9 +1051,10 @@ fn local_project_listing(config: &ConfigStore, notice: String) -> Result<Listing
             entry.default_branch.as_deref(),
         ));
         lines.push(format!(
-            "    {:<32} {:<12} {}",
+            "    {:<32} {:<12} {:<20} {}",
             format!("{machine} (this machine)"),
             "unknown",
+            named_root(&location_slug(&machine)),
             entry.root.display()
         ));
         lines.push(format!("  {mcp_url}"));
@@ -1350,7 +1418,7 @@ pub async fn local_project(
 mod tests {
     use super::{
         ProjectAddArgs, ProjectCommand, Target, classify, find_location, local_project,
-        location_slug, names_this_machine, project_listing, run, said,
+        location_slug, names_this_machine, project_listing, root_selector, run, said,
     };
     use crate::{
         api::LocationView,
@@ -1824,15 +1892,22 @@ mod tests {
                 api_project,
                 json!({
                     "id": "prj_api", "slug": "api", "name": "API", "deviceId": "dev_here",
-                    "localPath": "/code/api", "repoUrl": "https://github.com/Acme/API.git",
-                    "defaultBranch": "trunk",
+                    "localPath": "/code/api", "root": "/code/api",
+                    "repoUrl": "https://github.com/Acme/API.git", "defaultBranch": "trunk",
                     "locations": [{
                         "kind": "local", "deviceId": "dev_here", "name": "laptop",
-                        "slug": "laptop", "localPath": "/code/api",
+                        "slug": "laptop", "localPath": "/code/api", "selector": "main@laptop",
                     }],
                     "mcpUrl": null, "offline": true,
                 })
             );
+            for item in &listing.items {
+                for key in PROJECT_KEYS_0_17 {
+                    assert!(item.get(key).is_some(), "{key} is missing from {item}");
+                }
+            }
+            assert_eq!(listing.items[1]["root"], "/code/notes");
+            assert!(listing.lines[1].contains(" main@laptop "));
             assert_eq!(listing.items[1]["offline"], true);
             assert_eq!(listing.items[1]["repoUrl"], json!(null));
             assert_eq!(
@@ -1842,6 +1917,146 @@ mod tests {
             assert!(listing.lines[1].contains("laptop (this machine)"));
             assert!(listing.lines[1].ends_with("/code/api"));
             assert_eq!(listing.lines[3], format!("{:<20} no repository", "notes"));
+        }
+    }
+
+    /// The keys `exeora project list --json` printed in 0.17.0, from the
+    /// config of the machine it ran on.
+    const PROJECT_KEYS_0_17: [&str; 5] = ["id", "slug", "name", "root", "mcpUrl"];
+
+    #[tokio::test]
+    async fn a_project_is_printed_with_the_keys_of_0_17_beside_the_gateways() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_projects(temp.path());
+        let listed = json!([
+            // On this machine, and in its config.
+            listed_project(
+                "prj_api",
+                "api",
+                json!({
+                    "name": "API",
+                    "deviceId": "dev_desktop",
+                    "locations": [
+                        listed_location(Some("dev_desktop"), "desktop", json!({ "default": true, "localPath": "/home/me/exeora/api" })),
+                        listed_location(Some("dev_here"), "laptop", json!({ "localPath": "/gateway/says/api" })),
+                        listed_location(Some("dev_a"), "chosen", json!({ "status": "pending" })),
+                        listed_location(None, "cloud", json!({ "kind": "cloud" })),
+                    ],
+                })
+            ),
+            // On this machine as far as the gateway knows, and not in the config.
+            listed_project(
+                "prj_new",
+                "new",
+                json!({
+                    "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/gateway/says/new" }))],
+                })
+            ),
+            // Somewhere else, which 0.17.0 would not have listed at all.
+            listed_project(
+                "prj_away",
+                "away",
+                json!({
+                    "locations": [listed_location(Some("dev_desktop"), "desktop", json!({ "default": true, "localPath": "/home/me/exeora/away" }))],
+                })
+            ),
+        ]);
+        let answer = listed.clone();
+        let gateway = Gateway::start(move |_, _, _| (200, answer.clone())).await;
+
+        let listing = project_listing(&config, &gateway.api().await)
+            .await
+            .expect("listing");
+        assert_eq!(listing.items.len(), 3);
+        for (item, said) in listing.items.iter().zip(listed.as_array().expect("array")) {
+            for key in PROJECT_KEYS_0_17 {
+                assert!(item.get(key).is_some(), "{key} is missing from {item}");
+            }
+            // What the gateway said is all still there, as it said it.
+            for (key, value) in said.as_object().expect("an object") {
+                if key != "locations" {
+                    assert_eq!(&item[key], value, "{key}");
+                }
+            }
+        }
+        let api_project = &listing.items[0];
+        assert_eq!(api_project["id"], "prj_api");
+        assert_eq!(api_project["slug"], "api");
+        assert_eq!(api_project["name"], "API");
+        assert_eq!(api_project["mcpUrl"], "https://exeora.test/p/prj_api/mcp");
+        // Where the config says the project is, which is what 0.17.0 printed.
+        assert_eq!(api_project["root"], "/code/api");
+        assert_eq!(listing.items[1]["root"], "/gateway/says/new");
+        assert_eq!(listing.items[2]["root"], json!(null));
+
+        let selectors: Vec<_> = api_project["locations"]
+            .as_array()
+            .expect("locations")
+            .iter()
+            .map(|location| location["selector"].clone())
+            .collect();
+        assert_eq!(
+            selectors,
+            [
+                json!("main"),
+                json!("main@laptop"),
+                json!(null),
+                json!(null)
+            ]
+        );
+        assert_eq!(
+            api_project["locations"][1]["localPath"],
+            "/gateway/says/api"
+        );
+        assert!(listing.lines[1].contains(" main "));
+        assert!(listing.lines[2].contains(" main@laptop "));
+        assert!(!listing.lines[3].contains("main"));
+    }
+
+    #[test]
+    fn names_the_root_of_a_location_that_holds_a_copy() {
+        let location = |value: serde_json::Value| -> LocationView {
+            serde_json::from_value(value).expect("location")
+        };
+        let named = |value: serde_json::Value| root_selector(&location(value));
+        assert_eq!(
+            named(listed_location(
+                Some("dev_a"),
+                "laptop",
+                json!({ "default": true })
+            ))
+            .as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            named(listed_location(Some("dev_b"), "desktop", json!({}))).as_deref(),
+            Some("main@desktop")
+        );
+        // Exeora Cloud with a machine for the root, and without one.
+        assert_eq!(
+            named(listed_location(
+                Some("dev_c"),
+                "cloud",
+                json!({ "kind": "cloud", "state": "asleep" })
+            ))
+            .as_deref(),
+            Some("main@cloud")
+        );
+        assert_eq!(
+            named(listed_location(None, "cloud", json!({ "kind": "cloud" }))),
+            None
+        );
+        for fields in [
+            json!({ "status": "pending" }),
+            json!({ "status": "cloning" }),
+            json!({ "status": "error" }),
+            json!({ "state": "removed" }),
+        ] {
+            assert_eq!(
+                named(listed_location(Some("dev_d"), "other", fields.clone())),
+                None,
+                "{fields}"
+            );
         }
     }
 
@@ -1877,8 +2092,10 @@ mod tests {
             .await
             .expect("listing");
         assert!(listing.notice.is_none());
-        // The items are the gateway's own, untouched.
-        assert_eq!(listing.items, [remote]);
+        assert_eq!(listing.items.len(), 1);
+        assert_eq!(listing.items[0]["id"], remote["id"]);
+        assert_eq!(listing.items[0]["repoUrl"], remote["repoUrl"]);
+        assert!(listing.items[0].get("offline").is_none());
         assert_eq!(listing.lines.len(), 4);
         assert!(listing.lines[1].starts_with("  * laptop (this machine)"));
         assert!(listing.lines[2].contains("Exeora Cloud"));
