@@ -657,7 +657,7 @@ async fn clone(
 /// What keeps git from stopping to ask somebody. `run_git` already turns the
 /// terminal prompt off; a clone can also reach for a window to ask in, which
 /// on a machine that serves calls in the background nobody is looking at.
-async fn quiet_environment(root: &Path) -> Vec<(&'static str, String)> {
+pub(crate) async fn quiet_environment(root: &Path) -> Vec<(&'static str, String)> {
     let mut environment = vec![
         // Set and empty is how git is told there is no program to ask with.
         ("GIT_ASKPASS", String::new()),

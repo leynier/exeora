@@ -115,6 +115,23 @@ pub enum Commands {
         about = "Answer git with a short-lived credential for a project's repository"
     )]
     GitCredential(GitCredentialArgs),
+    // Run by the `gh` of an instance, not by a person: see `gh.rs`.
+    #[command(
+        name = "gh-shim",
+        hide = true,
+        about = "Run the GitHub CLI signed in as the person this instance belongs to"
+    )]
+    GhShim(crate::gh::GhShimArgs),
+    // For a shell on an instance: see `cloud/hooks/command.rs`.
+    #[command(
+        name = "cloud-hook",
+        hide = true,
+        about = "Show or run the scripts of the project on this instance"
+    )]
+    CloudHook {
+        #[command(subcommand)]
+        command: crate::cloud::hooks::command::HookCommand,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -314,6 +331,16 @@ pub async fn run(cli: Cli) -> Result<()> {
         crate::git_credential::run(args).await;
         return Ok(());
     }
+    // Before the config is read: `gh` has to run whatever state this
+    // machine is in, and exits with what the real one exits with.
+    if let Commands::GhShim(args) = cli.command {
+        let code = crate::gh::run(args).await;
+        std::process::exit(code);
+    }
+    // Needs no session: it reads and writes files of this machine.
+    if let Commands::CloudHook { command } = cli.command {
+        return crate::cloud::hooks::command::run(command).await;
+    }
     let mut config = ConfigStore::load()?;
     // A cloud machine has no session, no browser and no registration to do:
     // it reads what the bootstrap wrote and dials the relay.
@@ -384,6 +411,8 @@ pub async fn run(cli: Cli) -> Result<()> {
         | Commands::Prompt { .. }
         | Commands::Init(_)
         | Commands::GitCredential(_)
+        | Commands::GhShim(_)
+        | Commands::CloudHook { .. }
         | Commands::Upgrade => unreachable!(),
     }
 }

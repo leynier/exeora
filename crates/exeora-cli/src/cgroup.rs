@@ -145,7 +145,10 @@ impl CommandLimits {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with("cmd-") || name.starts_with("term-") || name.starts_with("probe-") {
+            if ["cmd-", "term-", "probe-", "hook-"]
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+            {
                 Leaf {
                     path: entry.path(),
                     limit: self.memory_max,
@@ -238,6 +241,26 @@ impl Leaf {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
+    }
+
+    /// Removes the leaf if nothing runs in it, and kills nothing. For a leaf
+    /// whose tree may have left something running on purpose: the kernel
+    /// refuses to remove a leaf that still holds a process, so this cannot
+    /// take one away from under it. Waits a moment, since the kernel lets go
+    /// of a process that just exited a little after its parent hears of it.
+    pub fn remove_if_empty(&self) -> bool {
+        for _ in 0..5 {
+            if fs::remove_dir(&self.path).is_ok() || !self.path.exists() {
+                return true;
+            }
+            let occupied = fs::read_to_string(self.path.join("cgroup.procs"))
+                .is_ok_and(|procs| !procs.trim().is_empty());
+            if occupied {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        false
     }
 
     pub fn path(&self) -> &Path {

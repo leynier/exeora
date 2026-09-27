@@ -292,6 +292,23 @@ pub struct GitCredential {
     pub expires_at: Option<u64>,
 }
 
+/// What `gh` speaks to GitHub with on an instance. Like `GitCredential` it
+/// has no `Debug`, so nothing that prints a value can print the token.
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhToken {
+    pub host: String,
+    pub token: String,
+    /// Milliseconds since the epoch. None for a token that names no end.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    #[serde(default)]
+    pub login: Option<String>,
+    /// `user` for the person's own, `stored` for the one kept for clones.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceView {
@@ -710,6 +727,16 @@ impl ApiClient {
         self.request(
             reqwest::Method::POST,
             &format!("/api/projects/{project_id}/git-credential"),
+            Some(body),
+        )
+        .await
+    }
+    /// A token for `gh`, for the machine that was made for the project.
+    pub async fn gh_token(&self, project_id: &str, device_id: Option<&str>) -> Result<GhToken> {
+        let body = device_id.map_or_else(|| json!({}), |id| json!({ "deviceId": id }));
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/projects/{project_id}/gh-token"),
             Some(body),
         )
         .await

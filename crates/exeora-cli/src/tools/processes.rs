@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::Stdio,
     sync::Arc,
@@ -182,48 +183,42 @@ impl ProcessRegistry {
         let args: RunArgs = parse(value)?;
         let cwd = resolve_path(root, args.cwd.as_deref().unwrap_or("."), Access::Cwd)?;
         let timeout_ms = args.timeout_ms.unwrap_or(DEFAULT_COMMAND_TIMEOUT_MS);
-        let leaf = self.leaf("cmd")?;
-        let mut child = spawn_wrapped(&args.command, &cwd.absolute(), false, leaf.as_deref())?;
-        let stdout = child.stdout().take();
-        let stderr = child.stderr().take();
-        let captured = Arc::new(Mutex::new(CapturedOutput::default()));
-        let stdout_task = tokio::spawn(capture(stdout, OutputStream::Stdout, captured.clone()));
-        let stderr_task = tokio::spawn(capture(stderr, OutputStream::Stderr, captured.clone()));
-
-        let mut timed_out = false;
-        let mut cancelled = false;
-        let status = {
-            let wait = child.wait();
-            tokio::pin!(wait);
-            tokio::select! {
-                status = &mut wait => Some(status.map_err(|error| ExeoraError::tool(error.to_string()))?),
-                _ = tokio::time::sleep(Duration::from_millis(timeout_ms)) => { timed_out = true; None },
-                _ = cancel.cancelled() => { cancelled = true; None },
-            }
-        };
-        if status.is_none() {
-            let _ = kill_child(child.as_mut()).await;
-        }
-        stdout_task.await.map_err(join_error)??;
-        stderr_task.await.map_err(join_error)??;
-        let captured = std::mem::take(&mut *captured.lock().await);
-        let truncated = captured.truncated;
-        let (stdout, stderr) = captured.into_strings();
-        let stderr = oom_suffix(leaf.as_deref(), stderr);
-        release(leaf);
-        if cancelled {
+        let (program, shell_args) = shell(&args.command);
+        let outcome = run_script(
+            self.limits.as_deref(),
+            ScriptSpec {
+                program: OsStr::new(program),
+                args: shell_args.into_iter().map(OsString::from).collect(),
+                cwd: &cwd.absolute(),
+                env: Vec::new(),
+                timeout: Duration::from_millis(timeout_ms),
+                output_bytes: MAX_COMMAND_OUTPUT_BYTES,
+                merged: false,
+                settle: None,
+                leaf_prefix: "cmd",
+            },
+            cancel,
+        )
+        .await?;
+        if outcome.cancelled {
             return Err(ExeoraError::new(
                 ErrorCode::Cancelled,
                 "The call was cancelled while the command was running.",
             ));
         }
+        let truncated = outcome.output.truncated;
+        let (stdout, stderr) = outcome.output.into_strings();
+        let stderr = match outcome.oom_limit {
+            Some(limit) => stderr + &oom_notice(limit),
+            None => stderr,
+        };
         Ok(json!({
             "command": args.command,
-            "exitCode": status.and_then(|status| status.code()),
+            "exitCode": outcome.exit_code,
             "stdout": stdout,
             "stderr": stderr,
             "truncated": truncated,
-            "timedOut": timed_out,
+            "timedOut": outcome.timed_out,
         }))
     }
 
@@ -473,14 +468,6 @@ impl ProcessRegistry {
     }
 }
 
-/// What a command's stderr says when its tree was killed for memory.
-fn oom_suffix(leaf: Option<&Leaf>, stderr: String) -> String {
-    match leaf {
-        Some(leaf) if leaf.oom_killed() => stderr + &oom_notice(leaf.limit()),
-        _ => stderr,
-    }
-}
-
 /// Removes a leaf off the runtime thread: removal waits for the kernel.
 fn release(leaf: Option<Arc<Leaf>>) {
     if let Some(leaf) = leaf {
@@ -526,13 +513,39 @@ fn spawn_wrapped(
     leaf: Option<&Leaf>,
 ) -> Result<Box<dyn ChildWrapper>, ExeoraError> {
     let (program, shell_args) = shell(command);
+    let shell_args: Vec<OsString> = shell_args.into_iter().map(OsString::from).collect();
+    spawn_program(
+        OsStr::new(program),
+        &shell_args,
+        cwd,
+        &[],
+        if input { Stdio::piped() } else { Stdio::null() },
+        None,
+        leaf,
+    )
+}
+
+/// Starts a program as the leader of a group of its own, in the leaf when
+/// there is one. `output` replaces the two pipes the child would otherwise
+/// write to, for a caller that reads both streams from one.
+fn spawn_program(
+    program: &OsStr,
+    args: &[OsString],
+    cwd: &Path,
+    env: &[(String, String)],
+    stdin: Stdio,
+    output: Option<(Stdio, Stdio)>,
+    leaf: Option<&Leaf>,
+) -> Result<Box<dyn ChildWrapper>, ExeoraError> {
+    let (stdout, stderr) = output.unwrap_or_else(|| (Stdio::piped(), Stdio::piped()));
     let mut attach_error = None;
     let mut wrapped = CommandWrap::with_new(program, |cmd| {
-        cmd.args(shell_args)
+        cmd.args(args)
             .current_dir(cwd)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .stdin(if input { Stdio::piped() } else { Stdio::null() });
+            .envs(env.iter().map(|(name, value)| (name, value)))
+            .stdout(stdout)
+            .stderr(stderr)
+            .stdin(stdin);
         if let Some(leaf) = leaf
             && let Err(error) = leaf.attach_pre_exec(cmd)
         {
@@ -552,6 +565,202 @@ fn spawn_wrapped(
     wrapped
         .spawn()
         .map_err(|error| ExeoraError::tool(error.to_string()))
+}
+
+/// One program run to its end, with its output kept: a command an agent
+/// asked for, or a script of the project on a cloud machine.
+pub(crate) struct ScriptSpec<'a> {
+    pub program: &'a OsStr,
+    pub args: Vec<OsString>,
+    pub cwd: &'a Path,
+    /// Added to the environment the CLI itself runs with.
+    pub env: Vec<(String, String)>,
+    /// Past this the whole process group is killed.
+    pub timeout: Duration,
+    /// How much output is kept, from its end, both streams together.
+    pub output_bytes: usize,
+    /// Both streams through one pipe, so what is kept is in the order it was
+    /// written. Two pipes read by two tasks only come close to that, and
+    /// are what there is where a pipe cannot be shared, which is Windows.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub merged: bool,
+    /// None reads until every holder of the pipes has closed them, and then
+    /// kills whatever the program left behind, which is what a command does.
+    /// Some stops keeping output this long after the program itself is over
+    /// and leaves alone what it started: see `run_script`.
+    pub settle: Option<Duration>,
+    pub leaf_prefix: &'static str,
+}
+
+pub(crate) struct ScriptOutcome {
+    /// None when the program was killed, by this or by anything else.
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub cancelled: bool,
+    pub output: CapturedOutput,
+    /// The memory limit, when the kernel killed something in the tree for it.
+    pub oom_limit: Option<u64>,
+    /// The leaf, when the program left something running in it. Whoever
+    /// holds it removes it once it is empty.
+    pub lingering: Option<Arc<Leaf>>,
+}
+
+/// Runs a program until it exits, the timeout passes or the call is
+/// cancelled, and answers with what it wrote.
+///
+/// With `settle`, a program that leaves something running is not waited for
+/// and not killed. A script that starts a daemon hands it its own stdout, so
+/// the pipe never reaches its end while the daemon lives: waiting for that
+/// would hang the caller for as long as the daemon runs. So the output stops
+/// being kept a moment after the program itself is over. The pipe goes on
+/// being read and thrown away after that, because closing it would end the
+/// daemon with a broken pipe the first time it printed anything.
+///
+/// The leaf is a second thing that could kill the daemon: releasing it writes
+/// `cgroup.kill`. With `settle` a leaf is removed only once it is empty, and
+/// is handed back while it is not. What stays in it keeps its memory limit,
+/// which a daemon moved out of the leaf would lose, and that is why the
+/// daemon is left where it is rather than moved.
+pub(crate) async fn run_script(
+    limits: Option<&CommandLimits>,
+    spec: ScriptSpec<'_>,
+    cancel: CancellationToken,
+) -> Result<ScriptOutcome, ExeoraError> {
+    let leaf = match limits {
+        Some(limits) => Some(Arc::new(limits.leaf(spec.leaf_prefix).map_err(
+            |error| ExeoraError::tool(format!("Could not apply the memory limit: {error}")),
+        )?)),
+        None => None,
+    };
+    let captured = Arc::new(Mutex::new(CapturedOutput::with_limit(spec.output_bytes)));
+    let (mut child, readers) = match spawn_captured(&spec, leaf.as_deref(), &captured) {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            release(leaf);
+            return Err(error);
+        }
+    };
+
+    let mut timed_out = false;
+    let mut cancelled = false;
+    let status = {
+        let wait = child.wait();
+        tokio::pin!(wait);
+        tokio::select! {
+            status = &mut wait => Some(status.map_err(|error| ExeoraError::tool(error.to_string()))?),
+            _ = tokio::time::sleep(spec.timeout) => { timed_out = true; None },
+            _ = cancel.cancelled() => { cancelled = true; None },
+        }
+    };
+    if status.is_none() {
+        let _ = kill_child(child.as_mut()).await;
+    }
+    let mut lingering = None;
+    match spec.settle {
+        None => {
+            for reader in readers {
+                reader.await.map_err(join_error)??;
+            }
+        }
+        Some(settle) => {
+            // A tree that was killed is killed whole, including what left
+            // the process group, so nothing is left holding the pipe.
+            if status.is_none()
+                && let Some(leaf) = &leaf
+            {
+                leaf.kill();
+            }
+            let finished = async {
+                for reader in readers {
+                    let _ = reader.await;
+                }
+            };
+            let _ = tokio::time::timeout(settle, finished).await;
+        }
+    }
+    // Closed as it is taken, so a reader that is still draining the pipe of
+    // something left running keeps nothing of what it reads.
+    let output = std::mem::replace(&mut *captured.lock().await, CapturedOutput::closed());
+    let oom_limit = leaf
+        .as_deref()
+        .filter(|leaf| leaf.oom_killed())
+        .map(Leaf::limit);
+    match (spec.settle, status) {
+        (Some(_), Some(_)) => {
+            if let Some(leaf) = leaf {
+                let kept = leaf.clone();
+                let empty = tokio::task::spawn_blocking(move || kept.remove_if_empty())
+                    .await
+                    .unwrap_or(false);
+                if !empty {
+                    lingering = Some(leaf);
+                }
+            }
+        }
+        _ => release(leaf),
+    }
+    Ok(ScriptOutcome {
+        exit_code: status.and_then(|status| status.code()),
+        timed_out,
+        cancelled,
+        output,
+        oom_limit,
+        lingering,
+    })
+}
+
+type Reader = tokio::task::JoinHandle<Result<(), ExeoraError>>;
+
+/// Starts the program with its output going where `captured` collects it.
+fn spawn_captured(
+    spec: &ScriptSpec<'_>,
+    leaf: Option<&Leaf>,
+    captured: &Arc<Mutex<CapturedOutput>>,
+) -> Result<(Box<dyn ChildWrapper>, Vec<Reader>), ExeoraError> {
+    #[cfg(unix)]
+    if spec.merged {
+        let io_error = |error: std::io::Error| ExeoraError::tool(error.to_string());
+        let (sender, receiver) = tokio::net::unix::pipe::pipe().map_err(io_error)?;
+        // The end the program writes to is an ordinary blocking pipe, as any
+        // program expects of its stdout. The two handles are closed here
+        // when the command that holds them is dropped, on the way out of
+        // `spawn_program`: the pipe ends when its last writer does.
+        let stdout = sender.into_blocking_fd().map_err(io_error)?;
+        let stderr = stdout.try_clone().map_err(io_error)?;
+        let child = spawn_program(
+            spec.program,
+            &spec.args,
+            spec.cwd,
+            &spec.env,
+            Stdio::null(),
+            Some((Stdio::from(stdout), Stdio::from(stderr))),
+            leaf,
+        )?;
+        let reader = tokio::spawn(capture(
+            Some(receiver),
+            OutputStream::Stdout,
+            captured.clone(),
+        ));
+        return Ok((child, vec![reader]));
+    }
+    let mut child = spawn_program(
+        spec.program,
+        &spec.args,
+        spec.cwd,
+        &spec.env,
+        Stdio::null(),
+        None,
+        leaf,
+    )?;
+    let stdout = child.stdout().take();
+    let stderr = child.stderr().take();
+    Ok((
+        child,
+        vec![
+            tokio::spawn(capture(stdout, OutputStream::Stdout, captured.clone())),
+            tokio::spawn(capture(stderr, OutputStream::Stderr, captured.clone())),
+        ],
+    ))
 }
 
 #[cfg(unix)]
@@ -590,24 +799,52 @@ struct OutputChunk {
     bytes: Vec<u8>,
 }
 
-#[derive(Default)]
-struct CapturedOutput {
+pub(crate) struct CapturedOutput {
     chunks: VecDeque<OutputChunk>,
     bytes: usize,
-    truncated: bool,
+    pub(crate) truncated: bool,
+    limit: usize,
+    /// Nothing more is kept: whoever wanted the output has taken it.
+    closed: bool,
+}
+
+impl Default for CapturedOutput {
+    fn default() -> Self {
+        Self::with_limit(MAX_COMMAND_OUTPUT_BYTES)
+    }
 }
 
 impl CapturedOutput {
+    pub(crate) fn with_limit(limit: usize) -> Self {
+        Self {
+            chunks: VecDeque::new(),
+            bytes: 0,
+            truncated: false,
+            limit,
+            closed: false,
+        }
+    }
+
+    fn closed() -> Self {
+        Self {
+            closed: true,
+            ..Self::with_limit(0)
+        }
+    }
+
     fn append(&mut self, stream: OutputStream, mut bytes: Vec<u8>) {
-        if bytes.len() > MAX_COMMAND_OUTPUT_BYTES {
+        if self.closed {
+            return;
+        }
+        if bytes.len() > self.limit {
             self.truncated = true;
-            bytes.drain(..bytes.len() - MAX_COMMAND_OUTPUT_BYTES);
+            bytes.drain(..bytes.len() - self.limit);
         }
         self.bytes += bytes.len();
         self.chunks.push_back(OutputChunk { stream, bytes });
-        while self.bytes > MAX_COMMAND_OUTPUT_BYTES {
+        while self.bytes > self.limit {
             self.truncated = true;
-            let overflow = self.bytes - MAX_COMMAND_OUTPUT_BYTES;
+            let overflow = self.bytes - self.limit;
             let Some(oldest) = self.chunks.front_mut() else {
                 break;
             };
@@ -621,7 +858,7 @@ impl CapturedOutput {
         }
     }
 
-    fn into_strings(self) -> (String, String) {
+    pub(crate) fn into_strings(self) -> (String, String) {
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
         for chunk in self.chunks {
@@ -634,6 +871,23 @@ impl CapturedOutput {
             String::from_utf8_lossy(&stdout).into_owned(),
             String::from_utf8_lossy(&stderr).into_owned(),
         )
+    }
+
+    /// Everything that was kept, in the order it arrived, whichever stream
+    /// it came from. What was cut is cut from the start, and never through
+    /// the middle of a character.
+    pub(crate) fn into_merged(self) -> String {
+        let mut merged = Vec::with_capacity(self.bytes);
+        for chunk in self.chunks {
+            merged.extend(chunk.bytes);
+        }
+        let mut start = 0;
+        if self.truncated {
+            while start < merged.len().min(3) && merged[start] & 0b1100_0000 == 0b1000_0000 {
+                start += 1;
+            }
+        }
+        String::from_utf8_lossy(&merged[start..]).into_owned()
     }
 }
 
