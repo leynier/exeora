@@ -115,7 +115,10 @@ test("destroys the instance of a workspace, saying what is lost", async ({ page 
   await openWorkspace(page, cloud);
 
   await page.getByRole("button", { name: "Actions for feature/search" }).click();
-  await page.getByRole("menuitem", { name: "Destroy" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for feature/search" })
+    .getByRole("menuitem", { name: "Destroy" })
+    .click();
   // The same confirmation the project's page opens for this workspace.
   const dialog = page.getByRole("dialog", { name: "Remove workspace feature/search?" });
   await expect(dialog).toContainText("The instance on Exeora Cloud that runs feature/search.");
@@ -138,7 +141,10 @@ test("destroys the root instance and leaves the project where else it lives", as
   await openWorkspace(page, cloud);
 
   await page.getByRole("button", { name: "Actions for master · default branch" }).click();
-  await page.getByRole("menuitem", { name: "Destroy" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for master · default branch" })
+    .getByRole("menuitem", { name: "Destroy" })
+    .click();
   const dialog = page.getByRole("dialog", {
     name: "Destroy the instance for master · default branch?",
   });
@@ -165,7 +171,10 @@ test("says the whole project goes with the root of one that lives only on Cloud"
   await openWorkspace(page, cloud);
 
   await page.getByRole("button", { name: "Actions for master · default branch" }).click();
-  await page.getByRole("menuitem", { name: "Destroy" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for master · default branch" })
+    .getByRole("menuitem", { name: "Destroy" })
+    .click();
   // Asked for as what it is, behind the one confirmation a project has.
   const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
   await expect(dialog).toContainText("Its MCP URL.");
@@ -198,7 +207,10 @@ test("takes the project with the root when the only other location is a removed 
   await openWorkspace(page, cloud);
 
   await page.getByRole("button", { name: "Actions for master · default branch" }).click();
-  await page.getByRole("menuitem", { name: "Destroy" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for master · default branch" })
+    .getByRole("menuitem", { name: "Destroy" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
   await expect(dialog).toContainText("Its MCP URL.");
   await expect(page.getByText("The project keeps its other locations")).toBeHidden();

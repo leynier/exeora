@@ -184,7 +184,10 @@ test("offers to remove a workspace anyway only after it was refused", async ({ p
   await openWorkspace(page, detail);
 
   await page.getByRole("button", { name: "Actions for fix/login" }).click();
-  await page.getByRole("menuitem", { name: "Remove workspace" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for fix/login" })
+    .getByRole("menuitem", { name: "Remove workspace" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Remove workspace fix/login?" });
   await expect(dialog.getByText("The working copy of fix/login on Laptop")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Remove anyway" })).toHaveCount(0);
@@ -234,13 +237,19 @@ test("removes a location after listing what goes with it", async ({ page }) => {
 
   // The gateway would refuse the default. It is said before it is asked.
   await page.getByRole("button", { name: "Actions for Laptop" }).click();
-  await page.getByRole("menuitem", { name: "Remove location" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for Laptop" })
+    .getByRole("menuitem", { name: "Remove location" })
+    .click();
   await expect(page.getByRole("alert")).toContainText(
     "Choose another default location before removing this one.",
   );
 
   await page.getByRole("button", { name: "Actions for Exeora Cloud" }).click();
-  await page.getByRole("menuitem", { name: "Remove location" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for Exeora Cloud" })
+    .getByRole("menuitem", { name: "Remove location" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Remove Exeora Cloud from Widgets?" });
   await expect(dialog).toContainText(
     "The 3 instances for master · default branch, feature/billing, feature/search.",
@@ -310,7 +319,10 @@ test("removes a project from its own page, naming what is destroyed", async ({ p
   await openWorkspace(page, detail);
 
   await page.getByRole("button", { name: "Actions for Widgets" }).click();
-  await page.getByRole("menuitem", { name: "Remove project" }).click();
+  await page
+    .getByRole("menu", { name: "Actions for Widgets" })
+    .getByRole("menuitem", { name: "Remove project" })
+    .click();
   const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
   await expect(dialog).toContainText("The 3 instances on Exeora Cloud");
   await expect(dialog).toContainText("Nothing on Laptop");
