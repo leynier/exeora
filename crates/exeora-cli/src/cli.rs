@@ -9,7 +9,9 @@ use crate::{
     connection::connect_forever,
     git_credential::GitCredentialArgs,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
-    projects::{self, ProjectCommand, can_ask, find_location, location_names},
+    projects::{
+        self, Listing, ProjectCommand, can_ask, find_location, location_names, offline_notice,
+    },
     repo::{checkout_root, default_branch_of, https_repository_url, origin_of, repository_key},
     workspaces,
 };
@@ -791,6 +793,79 @@ fn workspace_place(config: &ConfigStore, workspace: &WorkspaceView) -> String {
     }
 }
 
+fn sync_mark(state: Option<WorkspaceSyncState>) -> String {
+    match state {
+        None | Some(WorkspaceSyncState::Active) => String::new(),
+        Some(state) => format!("  [{}]", format!("{state:?}").to_lowercase()),
+    }
+}
+
+/// The workspaces in the local config, in the shape the gateway lists them
+/// as far as this machine can fill it in: they are all here, and when the
+/// gateway first heard of them is not something this machine was told.
+fn local_workspace_listing(
+    config: &ConfigStore,
+    project: Option<&str>,
+    all: bool,
+    notice: String,
+) -> Result<Listing> {
+    let data = config.data();
+    let only = match project {
+        Some(selector) => Some(workspaces::resolve_project(config, Some(selector))?.id),
+        None if all => None,
+        None => workspaces::resolve_project(config, None)
+            .ok()
+            .map(|project| project.id),
+    };
+    let machine = data
+        .device_name
+        .clone()
+        .unwrap_or_else(|| "this machine".to_owned());
+    let mut items = Vec::new();
+    let mut lines = Vec::new();
+    for entry in data
+        .workspaces
+        .iter()
+        .filter(|entry| only.as_ref().is_none_or(|id| &entry.project_id == id))
+    {
+        let project_slug = config
+            .find_project(&entry.project_id)
+            .map_or("removed", |project| project.slug.as_str());
+        items.push(json!({
+            "id": entry.id,
+            "projectId": entry.project_id,
+            "slug": entry.slug,
+            "name": entry.name,
+            "branch": entry.branch,
+            "localPath": entry.root,
+            "managed": entry.managed,
+            "deviceId": data.device_id,
+            "cloud": false,
+            "machine": machine,
+            "projectSlug": project_slug,
+            "thisMachine": true,
+            "syncState": entry.sync_state,
+            "offline": true,
+        }));
+        lines.push(format!(
+            "{:<24} {:<18} {:<32} {}{}",
+            entry.slug,
+            project_slug,
+            format!("{machine} (this machine)"),
+            entry.branch.as_deref().unwrap_or("-"),
+            sync_mark(Some(entry.sync_state))
+        ));
+    }
+    if items.is_empty() {
+        lines.push("No workspaces on this machine.".to_owned());
+    }
+    Ok(Listing {
+        items,
+        lines,
+        notice: Some(notice),
+    })
+}
+
 async fn list_workspaces(
     config: &ConfigStore,
     api: &ApiClient,
@@ -798,6 +873,35 @@ async fn list_workspaces(
     all: bool,
     json_output: bool,
 ) -> Result<()> {
+    workspace_listing(config, api, project, all)
+        .await?
+        .print(json_output)
+}
+
+/// The workspaces of the account, from the gateway, or those of this machine
+/// when the gateway cannot be reached. A refusal is returned as the error it
+/// is, and so is a gateway that answers for the projects and then fails for
+/// one of them with anything but silence.
+async fn workspace_listing(
+    config: &ConfigStore,
+    api: &ApiClient,
+    project: Option<&str>,
+    all: bool,
+) -> Result<Listing> {
+    match remote_workspace_listing(config, api, project, all).await {
+        Err(error) if crate::api::is_unreachable(&error) => {
+            local_workspace_listing(config, project, all, offline_notice(&error))
+        }
+        listing => listing,
+    }
+}
+
+async fn remote_workspace_listing(
+    config: &ConfigStore,
+    api: &ApiClient,
+    project: Option<&str>,
+    all: bool,
+) -> Result<Listing> {
     let remote = api.list_projects().await?;
     let mut rows = Vec::new();
     let mut lines = Vec::new();
@@ -845,23 +949,18 @@ async fn list_workspaces(
                 project.slug,
                 workspace_place(config, &workspace),
                 workspace.branch.as_deref().unwrap_or("-"),
-                match state {
-                    None | Some(WorkspaceSyncState::Active) => String::new(),
-                    Some(state) => format!("  [{}]", format!("{state:?}").to_lowercase()),
-                }
+                sync_mark(state)
             ));
         }
     }
-    if json_output {
-        return emit(Value::Array(rows));
-    }
     if lines.is_empty() {
-        println!("No workspaces. Create one with `exeora workspace create <branch>`.");
+        lines.push("No workspaces. Create one with `exeora workspace create <branch>`.".to_owned());
     }
-    for line in lines {
-        println!("{line}");
-    }
-    Ok(())
+    Ok(Listing {
+        items: rows,
+        lines,
+        notice: None,
+    })
 }
 
 /// Removes a workspace this machine does not hold. One that is a machine on
@@ -875,11 +974,12 @@ async fn remove_workspace_elsewhere(
     json_output: bool,
     missing: anyhow::Error,
 ) -> Result<()> {
-    // Without the gateway there is nothing more to look at, and what was
-    // asked is still a workspace this machine does not have.
-    let Ok(remote) = api.list_projects().await else {
-        return Err(missing);
-    };
+    // The workspace is not on this machine, and only the gateway knows
+    // where else it could be. When it cannot be asked, that is what is said:
+    // a request that failed is not an answer that there is no such workspace.
+    let remote = api.list_projects().await.map_err(|error| {
+        anyhow!("{missing} Whether it lives somewhere else could not be looked up: {error}")
+    })?;
     let mut found = Vec::new();
     for entry in remote.iter().filter(|entry| {
         project
@@ -1849,7 +1949,7 @@ fn client_name(call: &ToolCallView) -> String {
 mod tests {
     use super::{
         describe_machine, listed_projects, projects_on_this_machine, projects_root_from,
-        sync_command, validate_project_root,
+        sync_command, validate_project_root, workspace_listing,
     };
     use crate::{
         api::{MachineView, ProjectView},
@@ -2140,6 +2240,129 @@ mod tests {
         );
         // The project stayed, though its default location is another machine.
         assert!(saved.find_project("prj_api").is_some());
+    }
+
+    fn machine_with_a_workspace(temp: &Path) -> ConfigStore {
+        let mut config = ConfigStore::load_from(temp.join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.data_mut().device_name = Some("laptop".to_owned());
+        config.upsert_project(entry("prj_api", "api", "/code/api"));
+        config.upsert_project(entry("prj_web", "web", "/code/web"));
+        for (id, project, slug, state) in [
+            (
+                "wsp_fix",
+                "prj_api",
+                "fix-login",
+                WorkspaceSyncState::Active,
+            ),
+            (
+                "wsp_new",
+                "prj_web",
+                "new-page",
+                WorkspaceSyncState::PendingUpsert,
+            ),
+        ] {
+            config.upsert_workspace(WorkspaceEntry {
+                id: id.to_owned(),
+                project_id: project.to_owned(),
+                slug: slug.to_owned(),
+                name: slug.to_owned(),
+                branch: Some(slug.to_owned()),
+                git_root: PathBuf::from("/work").join(slug),
+                root: PathBuf::from("/work").join(slug),
+                managed: true,
+                sync_state: state,
+            });
+        }
+        config.save().expect("save");
+        config
+    }
+
+    #[tokio::test]
+    async fn lists_the_workspaces_of_this_machine_when_the_gateway_is_out_of_reach() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_a_workspace(temp.path());
+        let gone = Gateway::gone();
+        let unwell = Gateway::start(|_, _, _| (503, json!({ "error": "unavailable" }))).await;
+
+        for api in [gone.api().await, unwell.api().await] {
+            let listing = workspace_listing(&config, &api, None, true)
+                .await
+                .expect("what this machine knows");
+            assert!(
+                listing
+                    .notice
+                    .as_deref()
+                    .is_some_and(|notice| notice.contains("could not be reached")
+                        && notice.contains("what this machine knows"))
+            );
+            assert_eq!(
+                listing.items,
+                [
+                    json!({
+                        "id": "wsp_fix", "projectId": "prj_api", "slug": "fix-login",
+                        "name": "fix-login", "branch": "fix-login", "localPath": "/work/fix-login",
+                        "managed": true, "deviceId": "dev_here", "cloud": false,
+                        "machine": "laptop", "projectSlug": "api", "thisMachine": true,
+                        "syncState": "active", "offline": true,
+                    }),
+                    json!({
+                        "id": "wsp_new", "projectId": "prj_web", "slug": "new-page",
+                        "name": "new-page", "branch": "new-page", "localPath": "/work/new-page",
+                        "managed": true, "deviceId": "dev_here", "cloud": false,
+                        "machine": "laptop", "projectSlug": "web", "thisMachine": true,
+                        "syncState": "pendingUpsert", "offline": true,
+                    }),
+                ]
+            );
+            assert_eq!(listing.lines.len(), 2);
+            assert!(listing.lines[0].contains("laptop (this machine)"));
+            assert!(listing.lines[1].ends_with("[pendingupsert]"));
+        }
+
+        let one = workspace_listing(&config, &gone.api().await, Some("web"), false)
+            .await
+            .expect("what this machine knows");
+        assert_eq!(one.items.len(), 1);
+        assert_eq!(one.items[0]["slug"], "new-page");
+        // A project this machine does not have cannot be listed from here.
+        assert!(
+            workspace_listing(&config, &gone.api().await, Some("other"), false)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refusal_is_not_answered_with_what_this_machine_knows() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_a_workspace(temp.path());
+        for status in [401, 403, 404] {
+            let gateway =
+                Gateway::start(move |_, _, _| (status, json!({ "error": "refused" }))).await;
+            assert!(
+                workspace_listing(&config, &gateway.api().await, None, true)
+                    .await
+                    .is_err(),
+                "{status}"
+            );
+        }
+        // The gateway answers, and its workspaces are listed without a notice.
+        let gateway = Gateway::start(|_, path, _| match path {
+            "/api/projects" => (200, json!([listed_project("prj_api", "api", json!({}))])),
+            _ => (200, json!([])),
+        })
+        .await;
+        let listing = workspace_listing(&config, &gateway.api().await, None, true)
+            .await
+            .expect("listing");
+        assert!(listing.notice.is_none());
+        assert_eq!(
+            listing.items.len(),
+            1,
+            "the one the gateway has not heard of"
+        );
+        assert!(listing.items[0].get("offline").is_none());
     }
 
     #[test]

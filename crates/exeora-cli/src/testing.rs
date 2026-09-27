@@ -117,6 +117,18 @@ impl Gateway {
         Self { url, received }
     }
 
+    /// A gateway that is not there: an address nothing listens on, which is
+    /// what a machine without a network sees.
+    pub fn gone() -> Self {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
+        let url = format!("http://{}", listener.local_addr().expect("address"));
+        drop(listener);
+        Self {
+            url,
+            received: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
     /// A client of this gateway that is already signed in.
     pub async fn api(&self) -> ApiClient {
         let http = reqwest::Client::builder()

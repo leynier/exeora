@@ -32,6 +32,21 @@ pub fn error_code(error: &anyhow::Error) -> Option<&str> {
         .and_then(|error| error.code.as_deref())
 }
 
+/// Whether the request failed for want of a gateway to talk to: the network
+/// is down, the gateway did not answer in time, or what answered was a server
+/// that could not serve. A refusal is not that. Somebody who is signed out,
+/// or not allowed, has to be told so and not shown something else instead.
+pub fn is_unreachable(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        if let Some(refusal) = cause.downcast_ref::<ApiError>() {
+            return refusal.status >= 500;
+        }
+        cause.downcast_ref::<reqwest::Error>().is_some_and(|error| {
+            error.is_connect() || error.is_timeout() || error.is_request() || error.is_body()
+        })
+    })
+}
+
 /// Whether the gateway answered that it has no such route or no such thing.
 pub fn is_not_found(error: &anyhow::Error) -> bool {
     error
@@ -347,6 +362,11 @@ struct CloudProjects {
 }
 
 /// What a create answers: the rows exist, the machine is on its way.
+///
+/// Or there is no machine at all. A repository that is already a project of
+/// the account is put on Exeora Cloud as one more of its locations, and that
+/// starts nothing: the answer names the project, says `joined`, and carries
+/// no device.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudCreated {
@@ -354,9 +374,14 @@ pub struct CloudCreated {
     pub project_id: Option<String>,
     #[serde(default)]
     pub workspace_id: Option<String>,
-    pub device_id: String,
+    #[serde(default)]
+    pub device_id: Option<String>,
     #[serde(default)]
     pub slug: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
 }
 
 #[derive(Clone)]

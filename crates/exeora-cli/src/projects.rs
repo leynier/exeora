@@ -12,7 +12,7 @@ use crate::{
         ProjectView,
     },
     cli::{emit, file_name, project_mcp_url, project_root, slugify},
-    cloud::commands::{confirm, finish, token_from_stdin, wait_ready},
+    cloud::commands::{confirm, created_project, token_from_stdin},
     config::{ConfigStore, ProjectEntry},
     repo::{
         checkout_root, default_branch_of, https_repository_url, origin_of, repository_key,
@@ -341,11 +341,20 @@ pub fn location_names(locations: &[LocationView]) -> String {
         .join(", ")
 }
 
-pub async fn find_project(api: &ApiClient, selector: &str) -> Result<ProjectView> {
-    api.list_projects()
+/// The project the account has by that slug or id, or None when the gateway
+/// answered and it is not among them. A request that failed is an error and
+/// never a None: not having heard is not the same as having heard no.
+pub async fn lookup_project(api: &ApiClient, selector: &str) -> Result<Option<ProjectView>> {
+    Ok(api
+        .list_projects()
         .await?
         .into_iter()
-        .find(|project| project.id == selector || project.slug.eq_ignore_ascii_case(selector))
+        .find(|project| project.id == selector || project.slug.eq_ignore_ascii_case(selector)))
+}
+
+pub async fn find_project(api: &ApiClient, selector: &str) -> Result<ProjectView> {
+    lookup_project(api, selector)
+        .await?
         .ok_or_else(|| anyhow!("No project called {selector}. See `exeora project list`."))
 }
 
@@ -784,11 +793,7 @@ async fn add_to_cloud(
         body["username"] = json!(args.username);
     }
     let created = api.cloud_add_project(body).await?;
-    if !json_output {
-        println!("Creating {slug} on a new machine…");
-    }
-    let machine = wait_ready(api, &created.device_id, json_output).await?;
-    finish(json_output, "project", &slug, &machine)
+    created_project(api, created, &slug, json_output).await
 }
 
 async fn add_on_machine(
@@ -852,34 +857,152 @@ fn describe_location(config: &ConfigStore, location: &LocationView) -> String {
     line
 }
 
-async fn list(config: &ConfigStore, api: &ApiClient, json_output: bool) -> Result<()> {
-    if json_output {
-        return emit(Value::Array(api.list_projects_raw().await?));
+/// What a listing has to say: the items for `--json`, the lines for a
+/// person, and what goes to stderr beside either.
+#[derive(Debug)]
+pub struct Listing {
+    pub items: Vec<Value>,
+    pub lines: Vec<String>,
+    /// Said when the gateway could not be asked and the listing is only what
+    /// this machine knows.
+    pub notice: Option<String>,
+}
+
+impl Listing {
+    pub fn print(self, json_output: bool) -> Result<()> {
+        if let Some(notice) = &self.notice {
+            if json_output {
+                eprintln!("{}", json!({ "warning": notice }));
+            } else {
+                eprintln!("warning: {notice}");
+            }
+        }
+        if json_output {
+            return emit(Value::Array(self.items));
+        }
+        for line in self.lines {
+            println!("{line}");
+        }
+        Ok(())
     }
-    let projects = api.list_projects().await?;
-    if projects.is_empty() {
-        println!(
-            "No projects yet. Run `exeora project add` in a directory, or `exeora project add owner/repo`."
+}
+
+/// What is said beside a listing that the gateway had no part in.
+pub fn offline_notice(error: &anyhow::Error) -> String {
+    format!(
+        "The gateway could not be reached ({error}), so this is what this machine knows. Other machines and Exeora Cloud are not shown."
+    )
+}
+
+fn repository_line(slug: &str, repo_url: Option<&str>, default_branch: Option<&str>) -> String {
+    let repository = repo_url
+        .and_then(repository_key)
+        .or_else(|| repo_url.map(str::to_owned))
+        .unwrap_or_else(|| "no repository".to_owned());
+    match default_branch {
+        Some(branch) => format!("{slug:<20} {repository} ({branch})"),
+        None => format!("{slug:<20} {repository}"),
+    }
+}
+
+const NO_PROJECTS: &str =
+    "No projects yet. Run `exeora project add` in a directory, or `exeora project add owner/repo`.";
+
+/// The projects of the account, from the gateway. When it cannot be reached,
+/// the projects of this machine, which is less and still what somebody on a
+/// train wants to see. A refusal is returned as the error it is.
+pub async fn project_listing(config: &ConfigStore, api: &ApiClient) -> Result<Listing> {
+    let items = match api.list_projects_raw().await {
+        Ok(items) => items,
+        Err(error) if crate::api::is_unreachable(&error) => {
+            return local_project_listing(config, offline_notice(&error));
+        }
+        Err(error) => return Err(error),
+    };
+    let mut lines = Vec::new();
+    for item in &items {
+        let project: ProjectView = serde_json::from_value(item.clone())?;
+        lines.push(repository_line(
+            &project.slug,
+            project.repo_url.as_deref(),
+            project.default_branch.as_deref(),
+        ));
+        lines.extend(
+            project
+                .locations
+                .iter()
+                .map(|location| describe_location(config, location)),
         );
-        return Ok(());
+        lines.push(format!("  {}", project.mcp_url));
     }
-    for project in projects {
-        let repository = project
-            .repo_url
-            .as_deref()
-            .and_then(repository_key)
-            .or_else(|| project.repo_url.clone())
-            .unwrap_or_else(|| "no repository".to_owned());
-        match &project.default_branch {
-            Some(branch) => println!("{:<20} {repository} ({branch})", project.slug),
-            None => println!("{:<20} {repository}", project.slug),
-        }
-        for location in &project.locations {
-            println!("{}", describe_location(config, location));
-        }
-        println!("  {}", project.mcp_url);
+    if items.is_empty() {
+        lines.push(NO_PROJECTS.to_owned());
     }
-    Ok(())
+    Ok(Listing {
+        items,
+        lines,
+        notice: None,
+    })
+}
+
+/// The projects in the local config, in the shape the gateway lists them as
+/// far as this machine can fill it in. What only the gateway knows, such as
+/// whether a location is online or which one is the default, is left out
+/// instead of guessed.
+fn local_project_listing(config: &ConfigStore, notice: String) -> Result<Listing> {
+    let gateway = config.gateway_url();
+    let data = config.data();
+    let machine = data
+        .device_name
+        .clone()
+        .unwrap_or_else(|| "this machine".to_owned());
+    let mut items = Vec::new();
+    let mut lines = Vec::new();
+    for entry in &data.projects {
+        let mcp_url = project_mcp_url(&gateway, &entry.id)?;
+        items.push(json!({
+            "id": entry.id,
+            "slug": entry.slug,
+            "name": entry.name,
+            "deviceId": data.device_id,
+            "localPath": entry.root,
+            "repoUrl": entry.repo_url,
+            "defaultBranch": entry.default_branch,
+            "locations": [{
+                "kind": "local",
+                "deviceId": data.device_id,
+                "name": machine,
+                "slug": location_slug(&machine),
+                "localPath": entry.root,
+            }],
+            "mcpUrl": mcp_url,
+            "offline": true,
+        }));
+        lines.push(repository_line(
+            &entry.slug,
+            entry.repo_url.as_deref(),
+            entry.default_branch.as_deref(),
+        ));
+        lines.push(format!(
+            "    {:<32} {:<12} {}",
+            format!("{machine} (this machine)"),
+            "unknown",
+            entry.root.display()
+        ));
+        lines.push(format!("  {mcp_url}"));
+    }
+    if items.is_empty() {
+        lines.push("No projects on this machine.".to_owned());
+    }
+    Ok(Listing {
+        items,
+        lines,
+        notice: Some(notice),
+    })
+}
+
+async fn list(config: &ConfigStore, api: &ApiClient, json_output: bool) -> Result<()> {
+    project_listing(config, api).await?.print(json_output)
 }
 
 async fn remove(
@@ -889,9 +1012,12 @@ async fn remove(
     yes: bool,
     json_output: bool,
 ) -> Result<()> {
-    let project = match find_project(api, selector).await {
-        Ok(project) => project,
-        Err(error) => {
+    // Asked first, and an answer is waited for: a gateway that could not be
+    // reached has not said the project is gone, and nothing is forgotten on
+    // the strength of a request that failed.
+    let project = match lookup_project(api, selector).await? {
+        Some(project) => project,
+        None => {
             // Known here and not to the gateway: all that is left of it is
             // the local entry, which nothing can serve.
             let Some(entry) = config
@@ -901,8 +1027,19 @@ async fn remove(
                 .find(|entry| entry.id == selector || entry.slug.eq_ignore_ascii_case(selector))
                 .cloned()
             else {
-                return Err(error);
+                bail!("No project called {selector}. See `exeora project list`.");
             };
+            if !confirm(
+                yes,
+                json_output,
+                &format!(
+                    "Exeora no longer knows {}. Forget it on this machine too? The files at {} are not deleted.",
+                    entry.slug,
+                    entry.root.display()
+                ),
+            )? {
+                return Ok(());
+            }
             config.remove_project(&entry.id);
             config.save()?;
             if json_output {
@@ -1155,7 +1292,9 @@ pub async fn local_project(
         return Err(unknown);
     };
     let device = this_device(config)?;
-    let Ok(project) = find_project(api, selector).await else {
+    // Only an answer that does not hold the project says it is unknown. A
+    // request that failed says why it failed.
+    let Some(project) = lookup_project(api, selector).await? else {
         return Err(unknown);
     };
     if project.location_on(&device).is_none() {
@@ -1211,10 +1350,11 @@ pub async fn local_project(
 mod tests {
     use super::{
         ProjectAddArgs, ProjectCommand, Target, classify, find_location, local_project,
-        location_slug, names_this_machine, run, said,
+        location_slug, names_this_machine, project_listing, run, said,
     };
     use crate::{
         api::LocationView,
+        cloud::commands::joined_project,
         config::{ConfigStore, ProjectEntry},
         testing::{Gateway, listed_location, listed_project},
     };
@@ -1445,6 +1585,304 @@ mod tests {
         assert!(occupied.join("thesis.txt").is_file());
         let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
         assert!(saved.data().projects.is_empty());
+    }
+
+    fn remove(slug: &str) -> ProjectCommand {
+        ProjectCommand::Remove {
+            slug: slug.to_owned(),
+            yes: true,
+        }
+    }
+
+    fn machine_with_projects(temp: &Path) -> ConfigStore {
+        let mut config = machine(temp);
+        config.upsert_project(ProjectEntry {
+            repo_url: Some("https://github.com/Acme/API.git".to_owned()),
+            default_branch: Some("trunk".to_owned()),
+            ..ProjectEntry::directory(
+                "prj_api".to_owned(),
+                "api".to_owned(),
+                "API".to_owned(),
+                PathBuf::from("/code/api"),
+            )
+        });
+        config.upsert_project(ProjectEntry::directory(
+            "prj_notes".to_owned(),
+            "notes".to_owned(),
+            "Notes".to_owned(),
+            PathBuf::from("/code/notes"),
+        ));
+        config.save().expect("save");
+        config
+    }
+
+    fn saved_slugs(config: &ConfigStore) -> Vec<String> {
+        ConfigStore::load_from(config.path().to_path_buf())
+            .expect("config")
+            .data()
+            .projects
+            .iter()
+            .map(|entry| entry.slug.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_request_that_failed_never_forgets_a_project() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine_with_projects(temp.path());
+
+        // Not there at all, unwell, and refusing: none of them said the
+        // project is gone.
+        let gone = Gateway::gone();
+        let error = run(&mut config, &gone.api().await, remove("api"), true)
+            .await
+            .expect_err("the request failed");
+        assert!(!error.to_string().contains("No project called"), "{error}");
+        assert_eq!(saved_slugs(&config), ["api", "notes"]);
+
+        for status in [500, 503, 401, 403, 429] {
+            let gateway =
+                Gateway::start(move |_, _, _| (status, json!({ "error": "refused" }))).await;
+            run(&mut config, &gateway.api().await, remove("api"), true)
+                .await
+                .expect_err("the request failed");
+            assert_eq!(saved_slugs(&config), ["api", "notes"], "{status}");
+            assert!(
+                gateway
+                    .received()
+                    .iter()
+                    .all(|request| request.method == "GET"),
+                "{status}"
+            );
+        }
+
+        // A project the config has never held is looked up the same way.
+        let error = local_project(&mut config, &gone.api().await, Some("elsewhere"), true)
+            .await
+            .expect_err("the request failed");
+        assert!(!error.to_string().contains("No project called"), "{error}");
+        assert_eq!(saved_slugs(&config), ["api", "notes"]);
+    }
+
+    #[tokio::test]
+    async fn forgets_a_project_only_when_the_gateway_answered_without_it() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine_with_projects(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("GET", "/api/projects") => (
+                200,
+                json!([listed_project("prj_notes", "notes", json!({}))]),
+            ),
+            _ => (200, json!({ "ok": true })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        // Asked for, and in --json there is nobody to ask: nothing happens.
+        let unconfirmed = run(
+            &mut config,
+            &api,
+            ProjectCommand::Remove {
+                slug: "api".to_owned(),
+                yes: false,
+            },
+            true,
+        )
+        .await
+        .expect_err("not confirmed");
+        assert!(unconfirmed.to_string().contains("-y"), "{unconfirmed}");
+        assert_eq!(saved_slugs(&config), ["api", "notes"]);
+
+        run(&mut config, &api, remove("api"), true)
+            .await
+            .expect("forgotten");
+        assert_eq!(saved_slugs(&config), ["notes"]);
+        assert!(
+            gateway
+                .received_as("DELETE", "/api/projects/prj_api")
+                .is_empty()
+        );
+
+        // One the gateway knows is removed there, and then here.
+        run(&mut config, &api, remove("notes"), true)
+            .await
+            .expect("removed");
+        assert_eq!(
+            gateway
+                .received_as("DELETE", "/api/projects/prj_notes")
+                .len(),
+            1
+        );
+        assert!(saved_slugs(&config).is_empty());
+
+        let unknown = run(&mut config, &api, remove("nothing"), true)
+            .await
+            .expect_err("unknown");
+        assert!(unknown.to_string().contains("No project called nothing"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_removal_leaves_the_project_where_it_was() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine_with_projects(temp.path());
+        let gateway = Gateway::start(|method, _, _| match method {
+            "GET" => (200, json!([listed_project("prj_api", "api", json!({}))])),
+            _ => (503, json!({ "error": "unavailable" })),
+        })
+        .await;
+        run(&mut config, &gateway.api().await, remove("api"), true)
+            .await
+            .expect_err("the removal failed");
+        assert_eq!(saved_slugs(&config), ["api", "notes"]);
+    }
+
+    #[tokio::test]
+    async fn a_repository_that_is_already_a_project_joins_exeora_cloud_without_a_machine() {
+        let temp = tempdir().expect("temp directory");
+        let mut config = machine(temp.path());
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("POST", "/api/cloud/projects") => (
+                200,
+                json!({ "projectId": "prj_alera", "deviceId": null, "status": "ready", "location": "joined" }),
+            ),
+            ("GET", "/api/projects") => (
+                200,
+                json!([listed_project("prj_alera", "alera", json!({ "name": "Alera" }))]),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        let added = ProjectCommand::Add(ProjectAddArgs {
+            target: Some("Acme/API".to_owned()),
+            name: None,
+            slug: None,
+            on: Some("cloud".to_owned()),
+            branch: None,
+            token_stdin: false,
+            username: "x-access-token".to_owned(),
+            yes: true,
+        });
+        run(&mut config, &api, added, true).await.expect("joined");
+
+        let sent = gateway.received_as("POST", "/api/cloud/projects");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(
+            sent[0].body,
+            json!({ "name": "API", "slug": "api", "repoUrl": "https://github.com/Acme/API.git" })
+        );
+        // There is no machine, so none was waited for.
+        assert!(gateway.received_as("GET", "/api/cloud/projects").is_empty());
+
+        let created = serde_json::from_value(json!({
+            "projectId": "prj_alera", "deviceId": null, "status": "ready", "location": "joined",
+        }))
+        .expect("the joined answer");
+        let (line, value) = joined_project(&api, &created, "api").await;
+        assert_eq!(
+            line,
+            "alera already exists; it is now on Exeora Cloud too. No machine was started: one is made for each workspace you create there."
+        );
+        assert_eq!(
+            value,
+            json!({
+                "joined": "project", "slug": "alera", "projectId": "prj_alera",
+                "location": "joined", "status": "ready", "machine": null,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn lists_the_projects_of_this_machine_when_the_gateway_is_out_of_reach() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_projects(temp.path());
+        let gone = Gateway::gone();
+        let unwell = Gateway::start(|_, _, _| (502, json!({ "error": "bad_gateway" }))).await;
+
+        for api in [gone.api().await, unwell.api().await] {
+            let listing = project_listing(&config, &api)
+                .await
+                .expect("what this machine knows");
+            assert!(
+                listing
+                    .notice
+                    .as_deref()
+                    .is_some_and(|notice| notice.contains("could not be reached")
+                        && notice.contains("what this machine knows"))
+            );
+            assert_eq!(listing.items.len(), 2);
+            let mut api_project = listing.items[0].clone();
+            // The address of the gateway is whatever the environment says.
+            assert!(
+                api_project["mcpUrl"]
+                    .as_str()
+                    .is_some_and(|url| url.ends_with("/p/prj_api/mcp"))
+            );
+            api_project["mcpUrl"] = json!(null);
+            assert_eq!(
+                api_project,
+                json!({
+                    "id": "prj_api", "slug": "api", "name": "API", "deviceId": "dev_here",
+                    "localPath": "/code/api", "repoUrl": "https://github.com/Acme/API.git",
+                    "defaultBranch": "trunk",
+                    "locations": [{
+                        "kind": "local", "deviceId": "dev_here", "name": "laptop",
+                        "slug": "laptop", "localPath": "/code/api",
+                    }],
+                    "mcpUrl": null, "offline": true,
+                })
+            );
+            assert_eq!(listing.items[1]["offline"], true);
+            assert_eq!(listing.items[1]["repoUrl"], json!(null));
+            assert_eq!(
+                listing.lines[0],
+                format!("{:<20} github.com/acme/api (trunk)", "api")
+            );
+            assert!(listing.lines[1].contains("laptop (this machine)"));
+            assert!(listing.lines[1].ends_with("/code/api"));
+            assert_eq!(listing.lines[3], format!("{:<20} no repository", "notes"));
+        }
+    }
+
+    #[tokio::test]
+    async fn lists_what_the_gateway_says_and_returns_what_it_refuses() {
+        let temp = tempdir().expect("temp directory");
+        let config = machine_with_projects(temp.path());
+        for status in [401, 403, 404] {
+            let gateway =
+                Gateway::start(move |_, _, _| (status, json!({ "error": "refused" }))).await;
+            assert!(
+                project_listing(&config, &gateway.api().await)
+                    .await
+                    .is_err(),
+                "{status}"
+            );
+        }
+
+        let remote = listed_project(
+            "prj_api",
+            "api",
+            json!({
+                "repoUrl": "https://github.com/Acme/API.git",
+                "locations": [
+                    listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": "/code/api" })),
+                    listed_location(None, "cloud", json!({ "kind": "cloud", "name": "Exeora Cloud", "online": false, "state": "asleep" })),
+                ],
+            }),
+        );
+        let answer = remote.clone();
+        let gateway = Gateway::start(move |_, _, _| (200, json!([answer]))).await;
+        let listing = project_listing(&config, &gateway.api().await)
+            .await
+            .expect("listing");
+        assert!(listing.notice.is_none());
+        // The items are the gateway's own, untouched.
+        assert_eq!(listing.items, [remote]);
+        assert_eq!(listing.lines.len(), 4);
+        assert!(listing.lines[1].starts_with("  * laptop (this machine)"));
+        assert!(listing.lines[2].contains("Exeora Cloud"));
+        assert!(listing.lines[2].contains("asleep"));
     }
 
     #[tokio::test]

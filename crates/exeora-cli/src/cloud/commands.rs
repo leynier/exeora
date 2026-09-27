@@ -3,7 +3,7 @@
 //! uses, plus the waiting a terminal can do for you: a create polls until the
 //! machine is ready or has failed, and says which.
 
-use crate::api::{ApiClient, CloudMachineView, CloudProjectView};
+use crate::api::{ApiClient, CloudCreated, CloudMachineView, CloudProjectView};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Subcommand;
 use serde_json::json;
@@ -124,11 +124,7 @@ pub async fn run(api: &ApiClient, command: CloudCommand, json_output: bool) -> R
                 body["username"] = json!(username);
             }
             let created = api.cloud_add_project(body).await?;
-            if !json_output {
-                println!("Creating {slug} on a new machine…");
-            }
-            let machine = wait_ready(api, &created.device_id, json_output).await?;
-            finish(json_output, "project", &slug, &machine)
+            created_project(api, created, &slug, json_output).await
         }
         CloudCommand::Credential {
             project,
@@ -196,10 +192,13 @@ pub async fn run(api: &ApiClient, command: CloudCommand, json_output: bool) -> R
                 }
                 let created = api.cloud_add_workspace(&project.project_id, body).await?;
                 let slug = created.slug.clone().unwrap_or_else(|| branch.clone());
+                let device_id = created.device_id.as_deref().context(
+                    "The gateway made the workspace without saying which machine holds it. See `exeora workspace list`.",
+                )?;
                 if !json_output {
                     println!("Creating {}/{slug} on a new machine…", project.slug);
                 }
-                let machine = wait_ready(api, &created.device_id, json_output).await?;
+                let machine = wait_ready(api, device_id, json_output).await?;
                 finish(json_output, "workspace", &slug, &machine)
             }
             CloudWorkspaceCommand::Remove {
@@ -238,6 +237,65 @@ pub async fn run(api: &ApiClient, command: CloudCommand, json_output: bool) -> R
             }
         },
     }
+}
+
+/// Says what putting a repository on Exeora Cloud came to.
+///
+/// A project that is new gets a machine, which is waited for. A repository
+/// that was already a project of the account only gained a location: nothing
+/// was started, so there is nothing to wait for, and that is a success.
+pub(crate) async fn created_project(
+    api: &ApiClient,
+    created: CloudCreated,
+    slug: &str,
+    json_output: bool,
+) -> Result<()> {
+    let Some(device_id) = created.device_id.as_deref() else {
+        let (line, value) = joined_project(api, &created, slug).await;
+        if json_output {
+            println!("{value}");
+        } else {
+            println!("{line}");
+        }
+        return Ok(());
+    };
+    if !json_output {
+        println!("Creating {slug} on a new machine…");
+    }
+    let machine = wait_ready(api, device_id, json_output).await?;
+    finish(json_output, "project", slug, &machine)
+}
+
+/// The sentence and the JSON for a project that was already there. It is
+/// called what the account calls it, which may not be what was typed; when
+/// the gateway cannot be asked, what was typed is close enough.
+pub(crate) async fn joined_project(
+    api: &ApiClient,
+    created: &CloudCreated,
+    slug: &str,
+) -> (String, serde_json::Value) {
+    let known = match &created.project_id {
+        Some(id) => api
+            .list_projects()
+            .await
+            .ok()
+            .and_then(|projects| projects.into_iter().find(|project| &project.id == id)),
+        None => None,
+    };
+    let slug = known.map_or_else(|| slug.to_owned(), |project| project.slug);
+    (
+        format!(
+            "{slug} already exists; it is now on Exeora Cloud too. No machine was started: one is made for each workspace you create there."
+        ),
+        json!({
+            "joined": "project",
+            "slug": slug,
+            "projectId": created.project_id,
+            "location": created.location.as_deref().unwrap_or("joined"),
+            "status": created.status.as_deref().unwrap_or("ready"),
+            "machine": null,
+        }),
+    )
 }
 
 async fn list(api: &ApiClient, json_output: bool) -> Result<()> {
@@ -419,7 +477,85 @@ fn slugify(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{repository_name, slugify};
+    use super::{CloudCommand, repository_name, run, slugify};
+    use crate::{api::CloudCreated, testing::Gateway};
+    use serde_json::json;
+
+    fn add(branch: Option<&str>) -> CloudCommand {
+        CloudCommand::Add {
+            git_url: "https://github.com/acme/api.git".to_owned(),
+            name: None,
+            slug: None,
+            branch: branch.map(str::to_owned),
+            token_stdin: false,
+            username: "x-access-token".to_owned(),
+        }
+    }
+
+    #[test]
+    fn reads_an_answer_that_names_no_machine() {
+        let joined: CloudCreated = serde_json::from_value(json!({
+            "projectId": "prj_api", "deviceId": null, "status": "ready", "location": "joined",
+        }))
+        .expect("the joined answer");
+        assert_eq!(joined.device_id, None);
+        assert_eq!(joined.location.as_deref(), Some("joined"));
+        assert_eq!(joined.status.as_deref(), Some("ready"));
+
+        let created: CloudCreated = serde_json::from_value(json!({
+            "projectId": "prj_api", "deviceId": "dev_cloud",
+        }))
+        .expect("the answer of a new project");
+        assert_eq!(created.device_id.as_deref(), Some("dev_cloud"));
+    }
+
+    #[tokio::test]
+    async fn cloud_add_of_a_project_that_exists_waits_for_no_machine() {
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("POST", "/api/cloud/projects") => (
+                200,
+                json!({ "projectId": "prj_api", "deviceId": null, "status": "ready", "location": "joined" }),
+            ),
+            ("GET", "/api/projects") => (200, json!([])),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        let api = gateway.api().await;
+
+        run(&api, add(None), true).await.expect("joined");
+        // Asked again, it is the same answer and the same success.
+        run(&api, add(Some("trunk")), false).await.expect("joined");
+
+        let sent = gateway.received_as("POST", "/api/cloud/projects");
+        assert_eq!(sent.len(), 2);
+        // The branch is the repository's to say unless somebody names one.
+        assert!(sent[0].body.get("defaultBranch").is_none());
+        assert_eq!(sent[1].body["defaultBranch"], "trunk");
+        assert!(gateway.received_as("GET", "/api/cloud/projects").is_empty());
+    }
+
+    #[tokio::test]
+    async fn cloud_add_of_a_new_project_waits_for_its_machine() {
+        let gateway = Gateway::start(|method, path, _| match (method, path) {
+            ("POST", "/api/cloud/projects") => {
+                (201, json!({ "projectId": "prj_api", "deviceId": "dev_cloud" }))
+            }
+            ("GET", "/api/cloud/projects") => (
+                200,
+                json!({ "projects": [{
+                    "projectId": "prj_api", "slug": "api", "name": "api",
+                    "repoUrl": "https://github.com/acme/api.git", "defaultBranch": "main",
+                    "machines": [{ "deviceId": "dev_cloud", "workspaceSlug": "main", "status": "ready", "online": true }],
+                }] }),
+            ),
+            _ => (500, json!({ "error": "unexpected" })),
+        })
+        .await;
+        run(&gateway.api().await, add(None), true)
+            .await
+            .expect("ready");
+        assert_eq!(gateway.received_as("GET", "/api/cloud/projects").len(), 1);
+    }
 
     #[test]
     fn names_a_project_after_its_repository() {
