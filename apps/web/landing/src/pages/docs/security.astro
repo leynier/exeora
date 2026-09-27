@@ -150,7 +150,7 @@ import Doc from "../../layouts/Doc.astro";
       <tr>
         <td>Machine token</td>
         <td>On the disk of one instance, in a file only the CLI's user can read. The gateway keeps only its SHA-256.</td>
-        <td>That instance's relay socket, and the git credential of the one project it was made for. Nothing else on the API, and nothing once the instance is destroyed.</td>
+        <td>That instance's relay socket, and the git credential and the <code>gh</code> token of the one project it was made for. Nothing else on the API, and nothing once the instance is destroyed.</td>
       </tr>
       <tr>
         <td>GitHub installation token</td>
@@ -159,8 +159,8 @@ import Doc from "../../layouts/Doc.astro";
       </tr>
       <tr>
         <td>GitHub user token</td>
-        <td>In the gateway's database, encrypted with AES-256-GCM under a key held as a secret of the gateway, together with the token that renews it. It is never sent to a machine.</td>
-        <td>Asking GitHub, as you, which repositories you can reach</td>
+        <td>In the gateway's database, encrypted with AES-256-GCM under a key held as a secret of the gateway, together with the token that renews it. An instance of a project connected to GitHub is handed the token when <code>gh</code> runs there, and never the token that renews it. On the instance it is kept in memory, under <code>/dev/shm</code>, for 30 minutes at most, and in the environment of the <code>gh</code> process. It is not written to the instance's disk. A machine of yours is never handed it.</td>
+        <td>Asking GitHub, as you, which repositories you can reach. On an instance, what <code>gh</code> does as you: every repository the Exeora GitHub App is installed on that you can access, not only the project's, until the token expires, eight hours after GitHub issued it.</td>
       </tr>
       <tr>
         <td>Repository token for another Git server</td>
@@ -175,6 +175,10 @@ import Doc from "../../layouts/Doc.astro";
     any machine. That does not put the repository out of an agent's reach: a command an agent runs
     can run git, and git can ask for a token, on an instance or on a machine of yours alike. What
     it removes is a secret that sits on a disk for months.
+  </p>
+
+  <p>
+    The token <code>gh</code> runs with on an instance is a different matter, because it is yours and not the repository's. It has one caller: the instance, with its machine token, for the one project it was made for. Your own CLI and the dashboard are not answered. See <a href="/docs/cloud/#gh">gh on Exeora Cloud</a>.
   </p>
 
   <h2>Where the boundaries end</h2>
@@ -198,6 +202,12 @@ import Doc from "../../layouts/Doc.astro";
     </li>
     <li>
       <strong>An instance is a machine Exeora runs.</strong> With <a href="/docs/cloud/">Exeora Cloud</a> the repository is cloned onto a microVM operated by Exeora on Fly.io, so the code is on infrastructure that is not yours. A repository token you give is stored encrypted at the gateway and, inside the instance, is readable by the user the agent's commands run as. Commands there are capped in memory, not in what they may reach on the network.
+    </li>
+    <li id="gh">
+      <strong><code>gh</code> on an instance acts as you, beyond the project.</strong> The token it is handed reaches every repository the Exeora GitHub App is installed on that you can access, not only the project's. Anything that runs in the instance as its user can use <code>gh</code> with it, and that includes the commands an agent runs and the project's scripts. The token is kept in memory and expires on its own, which limits how long a copy of it is worth, not what it reaches while it lasts. To narrow it, give the app fewer repositories on GitHub, and use the project's <a href="/docs/policy/">policy</a> to decide which commands an agent may run.
+    </li>
+    <li id="scripts">
+      <strong>Scripts run in an instance, outside the policy.</strong> The <a href="/docs/cloud/#scripts">install and resume scripts</a> of a project are not tool calls. The policy and its approvals do not apply to them, and the audit log does not record them. A script kept in the repository is written by whoever can push to the branch, so they run code in the instance as its user, with <code>gh</code> signed in as you, even in a project set to read only. The switch <strong>Run the scripts found in the repository</strong>, in the card Cloud scripts on the project's page, turns those files off. Turn it off for a repository where people you would not hand that to can push.
     </li>
     <li>
       <strong>A grant does not stop at a machine.</strong> Authorizing a client for a project that lives on your laptop and on Exeora Cloud authorizes it in both, and in any location you add later.
