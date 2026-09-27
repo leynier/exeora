@@ -405,9 +405,9 @@ export interface Approval {
 
 /** Exeora for Chrome on this account. */
 export interface ExtensionStatus {
-  /** False on a gateway that names no extension id. */
+  /** Whether the gateway lets an extension sign in now. */
   enabled: boolean;
-  /** When the account approved it; null when it has not, or it was revoked. */
+  /** When the account first approved it; null when it has not, or it was revoked. */
   since: number | null;
   /** Side panels holding a session right now, one per signed-in Chrome. */
   sessions: number;

@@ -99,11 +99,12 @@
     "EXEORA_BASE_URL": "https://exeora.dev",
 
     // Chrome extension ids allowed to sign in to the side panel, comma
-    // separated. The first is the one the key in apps/extension/manifest.json
-    // pins, which is what an unpacked build gets; a Chrome Web Store listing
-    // is given an id of its own and is added here. Empty turns the extension
-    // off, which is how a self-hosted gateway runs until it names one.
-    "EXEORA_EXTENSION_IDS": "helnfgncjgikiojakjdfppmmflbdjamo",
+    // separated: the Chrome Web Store listing's, once it has one. Empty turns
+    // the extension off. The id the key in apps/extension/wxt.config.ts pins
+    // for unpacked builds is named in .dev.vars only: its key is public, so
+    // anyone could build an extension with that id, and production must not
+    // treat it as Exeora's own.
+    "EXEORA_EXTENSION_IDS": "",
 
     // The newest published CLI, told to every executor in the `hello.ack` so
     // `connect` can say a newer one exists. A var rather than a constant in the

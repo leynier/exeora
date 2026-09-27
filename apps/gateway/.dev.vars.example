@@ -48,3 +48,8 @@ GITHUB_APP_CLIENT_ID=
 GITHUB_APP_CLIENT_SECRET=
 # Any long random string, the same one typed into the app: openssl rand -hex 32
 GITHUB_APP_WEBHOOK_SECRET=
+
+# Exeora for Chrome, optional. The id the committed key in
+# apps/extension/wxt.config.ts pins, so `bun run ext:dev` can sign in here.
+# Never in production: that key is public.
+EXEORA_EXTENSION_IDS=helnfgncjgikiojakjdfppmmflbdjamo

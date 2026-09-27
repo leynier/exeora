@@ -18,6 +18,7 @@ import {
   locationNames,
   locationsOf,
 } from "../locations.js";
+import { uiClientName } from "../props.js";
 import { callRelayTool, callRelayWorkspace } from "../relay-client.js";
 import { prepareLocation } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -122,7 +123,7 @@ async function createOnMachine(
     projectId,
     tool: "source_control.workspace_create",
     endpoint: "dashboard",
-    caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+    caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
   });
   try {
     await prepareLocation(c.env, { userId, projectId, location, signal: c.req.raw.signal });
@@ -235,7 +236,7 @@ workspaceCreate.post(
       workspaceSlug: row.slug,
       tool: "source_control.workspace_remove",
       endpoint: "dashboard",
-      caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+      caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
     });
 
     // The person who owns the account is asking, from their own dashboard:
@@ -248,7 +249,7 @@ workspaceCreate.post(
       workspaceSlug: row.slug,
       tool: "remove_workspace" as const,
       args: { force: body.force, deleteBranch: body.deleteBranch },
-      client: { name: "Exeora Dashboard" },
+      client: { name: uiClientName(c.executionCtx) },
       policy: DEFAULT_POLICY,
       signal: c.req.raw.signal,
     };

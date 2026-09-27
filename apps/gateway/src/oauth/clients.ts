@@ -151,6 +151,15 @@ export async function isExtensionClient(
 }
 
 /**
+ * The extension's client id as registered, whatever the ids list says now.
+ * What revoking reads: grants made while an id was allowed stay revocable
+ * after it is taken off the list, including the last one.
+ */
+export async function storedExtensionClientId(env: Pick<Env, "OAUTH_KV">): Promise<string | null> {
+  return env.OAUTH_KV.get(EXTENSION_KV_KEY);
+}
+
+/**
  * Exeora's own browser UIs: the dashboard and the extension's side panel. Both
  * manage the account, because a code sent to either redirect can only land in
  * Exeora's own code. Whether one is asked for consent is `skipsConsent`'s call.

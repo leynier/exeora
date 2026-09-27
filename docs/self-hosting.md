@@ -211,17 +211,19 @@ One gateway is active at a time. Switching forgets the machine registration, the
 
 ## 9. Exeora for Chrome (optional)
 
-The Chrome extension signs in against one gateway, fixed when it is built, and the gateway only sends a sign-in to the extension ids it names. Build it for yours, then name its id in `apps/gateway/wrangler.jsonc`:
+The Chrome extension signs in against one gateway, fixed when it is built, and the gateway only lets the extension ids it names sign in. Build it for yours:
 
 ```bash
 EXEORA_GATEWAY_URL=https://your.example.com bun run ext:build
 ```
 
+Then name its id in `apps/gateway/wrangler.jsonc`, comma separated if there are several. A build published to the Chrome Web Store has the id the store assigned. A build loaded unpacked has `helnfgncjgikiojakjdfppmmflbdjamo`, from the key committed in `apps/extension/wxt.config.ts`; that key is public, so anyone can make an extension with that id, and it belongs on a gateway only you use.
+
 ```jsonc
-"EXEORA_EXTENSION_IDS": "helnfgncjgikiojakjdfppmmflbdjamo"
+"EXEORA_EXTENSION_IDS": "<your extension id>"
 ```
 
-That is the id the committed key gives an unpacked build. A build published to the Chrome Web Store gets its own id; list both, comma separated. An empty value turns the extension off, and its sign-in page answers 404.
+An empty value turns the extension off: its sign-in page answers 404, and a sign-in from an id that is no longer listed is refused. Sessions it already had keep working until they are revoked from Settings in the dashboard, which still lists them.
 
 ## Local development
 

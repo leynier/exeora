@@ -15,8 +15,9 @@ const fonts = fileURLToPath(new URL("../web/landing/public/fonts", import.meta.u
 
 /**
  * The public half of the key that pins the extension id to
- * `helnfgncjgikiojakjdfppmmflbdjamo`, which the gateway's
- * `EXEORA_EXTENSION_IDS` names. Without it an unpacked build gets an id
+ * `helnfgncjgikiojakjdfppmmflbdjamo`, which a development gateway's
+ * `EXEORA_EXTENSION_IDS` names in `.dev.vars`; never production's, since the
+ * key is public. Without it an unpacked build gets an id
  * derived from its folder, and its sign-in redirect would be refused. The
  * Chrome Web Store assigns its own id and refuses this field, so a store
  * build is made with `EXEORA_EXTENSION_KEY=omit`.

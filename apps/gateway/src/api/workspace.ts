@@ -16,6 +16,7 @@ import {
 } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
 import { firstPartyOrigin } from "../oauth/clients.js";
+import { uiClientName } from "../props.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -99,7 +100,7 @@ workspace.post(
       workspaceSlug: target.recordedAs,
       tool: `source_control.${action.action}`,
       endpoint: "dashboard",
-      caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+      caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
     });
     try {
       const value = await dispatch(c.env, userId, projectId, target, action, c.req.raw.signal);
@@ -221,7 +222,7 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
     workspaceSlug: target.recordedAs,
     tool: "terminal.open",
     endpoint: "dashboard",
-    caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+    caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
   });
   await finishAudit(c.env, audit, { status: "ok" });
   const url = new URL("/terminal/connect", c.env.EXEORA_BASE_URL);

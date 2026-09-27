@@ -63,6 +63,10 @@ function provider(grants: Array<{ id: string; clientId: string; userId: string }
             ? DASHBOARD_CLIENT
             : null,
       put: async () => undefined,
+      list: async ({ prefix }: { prefix: string }) => ({
+        keys: [{ name: `${prefix}helnfgncjgikiojakjdfppmmflbdjamo` }],
+        list_complete: true,
+      }),
       delete: async (key: string) => {
         recorded.forgotten.push(key);
       },
@@ -205,7 +209,9 @@ describe("deleting an account", () => {
     // Both of this account's, and neither of the neighbour's.
     expect(recorded.revoked.toSorted()).toEqual(["grant_a", "grant_b"]);
     // And the extension asks again should the address sign up anew.
-    expect(recorded.forgotten).toEqual([`extension_consent:${USER}`]);
+    expect(recorded.forgotten).toEqual([
+      `extension_consent:${USER}:helnfgncjgikiojakjdfppmmflbdjamo`,
+    ]);
   });
 
   it("unregisters a client nobody else authorized", async () => {

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import "../env.js";
-import { getExtensionClientId } from "../oauth/clients.js";
+import { extensionIds, storedExtensionClientId } from "../oauth/clients.js";
 import { extensionConsentSince, forgetExtensionConsent } from "../oauth/extension.js";
 import { revokeGrants } from "./ops.js";
 import type { ApiEnv } from "./router.js";
@@ -11,14 +11,20 @@ import type { ApiEnv } from "./router.js";
  *
  * Not in the Clients list, which is about AI clients and the projects they
  * reach. The extension reaches the whole account, the way the dashboard does.
+ *
+ * Read from the registered client rather than from `EXEORA_EXTENSION_IDS`:
+ * taking an id off that list stops new sign-ins, and the sessions it already
+ * had must still be visible here and revocable.
  */
 
 export const extension = new Hono<ApiEnv>();
 
 extension.get("/api/extension", async (c) => {
   const userId = c.get("userId");
-  const clientId = await getExtensionClientId(c.env);
-  if (!clientId) return c.json({ enabled: false, since: null, sessions: 0 });
+  const enabled = extensionIds(c.env).length > 0;
+  const since = await extensionConsentSince(c.env, userId);
+  const clientId = await storedExtensionClientId(c.env);
+  if (!clientId) return c.json({ enabled, since, sessions: 0 });
 
   let sessions = 0;
   let cursor: string | undefined;
@@ -30,18 +36,18 @@ extension.get("/api/extension", async (c) => {
     cursor = page.cursor;
   } while (cursor);
 
-  return c.json({ enabled: true, since: await extensionConsentSince(c.env, userId), sessions });
+  return c.json({ enabled, since, sessions });
 });
 
 /**
- * Signs every side panel out and forgets the approval, so the next sign-in
- * asks again. The approval goes first: a grant that failed to revoke is still
- * one nobody can renew without passing the screen.
+ * Signs every side panel out and forgets every approval, so the next sign-in
+ * asks again. The approvals go first: a grant that failed to revoke is still
+ * one nobody can renew into a new sign-in without passing the screen.
  */
 extension.delete("/api/extension", async (c) => {
   const userId = c.get("userId");
   await forgetExtensionConsent(c.env, userId);
-  const clientId = await getExtensionClientId(c.env);
+  const clientId = await storedExtensionClientId(c.env);
   if (clientId) await revokeGrants(c.env, userId, (grant) => grant.clientId === clientId);
   return c.json({ ok: true });
 });

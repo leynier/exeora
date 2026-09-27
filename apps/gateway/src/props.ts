@@ -26,3 +26,12 @@ export type Props = {
 export function propsOf(ctx: unknown): Props {
   return ((ctx as { props?: Props }).props ?? { userId: "" }) as Props;
 }
+
+/**
+ * Which of Exeora's own screens made a request, for the audit log: the name
+ * the token's client was registered with, "Exeora for Chrome" for the side
+ * panel, and the dashboard's when the token carries none.
+ */
+export function uiClientName(ctx: unknown): string {
+  return propsOf(ctx).clientName ?? "Exeora Dashboard";
+}

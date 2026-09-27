@@ -10,8 +10,8 @@ import { Badge, Card, Row } from "./ui.js";
  * Exeora for Chrome: whether this account approved it, how many side panels
  * are signed in, and the one way to end all of them from here.
  *
- * Drawn only once the account has approved it, and not at all on a gateway
- * that names no extension: there is nothing to revoke before either.
+ * Drawn only once the account has approved it or holds a session: there is
+ * nothing to revoke before that.
  */
 export function ExtensionCard({ className = "" }: { className?: string }) {
   const extension = useExtension();
@@ -33,7 +33,9 @@ export function ExtensionCard({ className = "" }: { className?: string }) {
   });
 
   const status = extension.data;
-  if (!status?.enabled || (status.since === null && status.sessions === 0)) return null;
+  // Shown whenever there is something to revoke, even on a gateway that has
+  // since stopped allowing the extension: its sessions outlive the list.
+  if (!status || (status.since === null && status.sessions === 0)) return null;
 
   return (
     <>

@@ -55,9 +55,9 @@ bun run ext:dev      # WXT opens Chrome with the extension loaded and reloads it
 
 The side panel reuses the dashboard's Workspace screen through the `@dashboard` alias, so a change under `apps/web/dashboard/src` shows up in both. A development build talks to `http://localhost:8787`; `bun run ext:build` targets `https://exeora.dev`, and `EXEORA_GATEWAY_URL` overrides either. To load a build by hand, open `chrome://extensions`, turn on developer mode and load `apps/extension/.output/chrome-mv3` unpacked.
 
-The `key` in `apps/extension/wxt.config.ts` pins the extension id to `helnfgncjgikiojakjdfppmmflbdjamo`, which is the id `EXEORA_EXTENSION_IDS` in `apps/gateway/wrangler.jsonc` allows to sign in. A build without it gets another id, and the gateway refuses its sign-in redirect. The Chrome Web Store refuses the field and assigns its own id, which is also listed in `EXEORA_EXTENSION_IDS`; see [Releasing the Chrome extension](#releasing-the-chrome-extension).
+The `key` in `apps/extension/wxt.config.ts` pins the extension id to `helnfgncjgikiojakjdfppmmflbdjamo`. Copy `EXEORA_EXTENSION_IDS` from `apps/gateway/.dev.vars.example` into your `.dev.vars` so the local gateway lets that id sign in; a build without the key gets another id, and the gateway refuses its sign-in. Production allows no id until the Chrome Web Store listing exists, and then only the store's: the committed key is public, so anyone can build an extension with that id. See [Releasing the Chrome extension](#releasing-the-chrome-extension).
 
-Signing in asks for consent once per account. Revoking the extension from Settings in the dashboard signs every browser out and asks again next time.
+Signing in asks for consent once per account and extension id, so approving one build never lets another sign in without asking. Taking an id off `EXEORA_EXTENSION_IDS` refuses its next sign-in. Revoking the extension from Settings in the dashboard signs every browser out and asks again next time, and still works after the list is emptied.
 
 ### Checks
 
