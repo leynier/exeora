@@ -193,7 +193,8 @@ function Form({
 
           <details className="mt-4" open={!connected}>
             <summary className="text-body-md text-foreground-muted hover:text-foreground">
-              Another Git server
+              {/* "Another" only means something beside a list of GitHub's. */}
+              {connected || offerConnect ? "Another Git server" : "By its address"}
             </summary>
             <Field
               label="Repository URL"

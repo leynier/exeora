@@ -9,6 +9,8 @@ import { parsePolicy } from "../clients.js";
 import { destroyCloudProject } from "../cloud/provisioning.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
+import { linkByRepository } from "../github/links.js";
+import { hasUserToken } from "../github/user-token.js";
 import { locationsOf } from "../locations.js";
 import { registerProject } from "../project-register.js";
 import type { ApiEnv } from "./router.js";
@@ -77,6 +79,16 @@ projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
   }
   if (registered.created) await grantNewProject(c.env, { userId, projectId: registered.id });
 
+  // A checkout registered from a machine is connected to GitHub the same way
+  // one picked from the list is, when the account can reach its repository
+  // there. Without this the machine that adds a project by its address would
+  // be refused the credential it is about to clone with.
+  if (repository && registered.location !== "updated") {
+    await connectToGitHub(c.env, userId).catch((error) =>
+      console.error("could not connect a registered project to GitHub", error),
+    );
+  }
+
   return c.json(
     {
       id: registered.id,
@@ -89,6 +101,12 @@ projects.post("/api/projects", zValidator("json", projectInput), async (c) => {
     registered.created ? 201 : 200,
   );
 });
+
+async function connectToGitHub(env: Env, userId: string): Promise<void> {
+  if (!(await hasUserToken(env, userId))) return;
+  // Called as a plain function: the runtime's fetch refuses a `this`.
+  await linkByRepository(env, userId, (input, init) => fetch(input, init));
+}
 
 projects.get("/api/projects", async (c) => {
   const userId = c.get("userId");

@@ -239,6 +239,16 @@ export async function disconnect(
       `UPDATE github_repositories SET lost_access_at = ?3, updated_at = ?3
         WHERE user_id = ?1 AND installation_id = ?2 AND lost_access_at IS NULL`,
     ).bind(userId, row.installationId, Date.now()),
+    // With the last connection goes the token that spoke for the person on
+    // GitHub: there is nothing left for it to be used for, and a credential
+    // nobody can use is one that can only be lost.
+    env.DB.prepare(
+      `DELETE FROM github_user_tokens
+        WHERE user_id = ?1
+          AND NOT EXISTS (
+            SELECT 1 FROM github_installations WHERE user_id = ?1 AND id != ?2
+          )`,
+    ).bind(userId, row.id),
   ]);
   return { manageUrl: manageUrl(row) };
 }

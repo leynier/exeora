@@ -431,4 +431,44 @@ describe("disconnecting", () => {
     expect(mine?.lostAccessAt).toBeInstanceOf(Date);
     expect(theirs?.lostAccessAt).toBeNull();
   });
+
+  it("forgets the token that spoke for the person once the last connection goes", async () => {
+    const database = db(env);
+    await database
+      .insert(schema.githubInstallations)
+      .values([
+        {
+          id: "ghi_first",
+          userId: USER,
+          installationId: 301,
+          accountLogin: "me",
+          accountType: "User",
+        },
+        {
+          id: "ghi_second",
+          userId: USER,
+          installationId: 302,
+          accountLogin: "acme",
+          accountType: "Organization",
+        },
+      ])
+      .run();
+    await database
+      .insert(schema.githubUserTokens)
+      .values({ userId: USER, login: "me", accessCiphertext: "v1.sealed.token" })
+      .run();
+    const token = () =>
+      database
+        .select({ userId: schema.githubUserTokens.userId })
+        .from(schema.githubUserTokens)
+        .where(eq(schema.githubUserTokens.userId, USER))
+        .get();
+
+    await disconnect(env, USER, "ghi_first");
+    // One connection is left, and it still needs to be spoken for.
+    expect(await token()).toEqual({ userId: USER });
+
+    await disconnect(env, USER, "ghi_second");
+    expect(await token()).toBeUndefined();
+  });
 });
