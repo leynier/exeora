@@ -13,6 +13,7 @@ import { relayName } from "../api/ops.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
+import { rootSelector } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import type { CloudEnv } from "./access.js";
@@ -148,6 +149,15 @@ export async function listWorkspacesWithCloud(
   const where = (deviceId: string, onCloud: boolean) =>
     onCloud ? cloud?.slug : locations.find((location) => location.deviceId === deviceId)?.slug;
 
+  // Every location that holds a copy has a root: the default's is `main`, and
+  // the others are `main@<location>`.
+  const elsewhere = locations.filter(
+    (location) =>
+      !location.default &&
+      location.deviceId !== null &&
+      (location.kind === "cloud" || location.status === "ready"),
+  );
+
   return [
     // The root first. It is where a call that names no workspace lands, and an
     // agent that was told a project has no workspaces would otherwise conclude
@@ -160,6 +170,15 @@ export async function listWorkspacesWithCloud(
       root: true,
       ...(chosen ? { location: chosen.slug } : {}),
     },
+    ...elsewhere.map((location) => ({
+      slug: rootSelector(location.slug),
+      name: `project root on ${location.name}`,
+      // Which branch that copy has checked out is the machine's to say.
+      branch: null,
+      managed: false,
+      root: true,
+      location: location.slug,
+    })),
     ...rows.map(({ status, error, deviceId, ...workspace }) => {
       const location = where(deviceId ?? project.deviceId, status !== null);
       return {

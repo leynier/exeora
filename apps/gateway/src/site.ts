@@ -112,7 +112,15 @@ site.get("/terminal/connect", async (c) => {
     if (!workspace) return c.text("Workspace not found.", 404);
     servedBy = workspace.deviceId ?? project.deviceId;
   }
-  if (deviceId !== servedBy) return c.text("Project not found.", 404);
+  // The root of a location other than the default is served by that
+  // location's machine, which is the one case where the machine named is
+  // neither the project's nor a workspace's.
+  if (
+    deviceId !== servedBy &&
+    !(workspaceId === undefined && (await holdsRoot(c.env, projectId, deviceId)))
+  ) {
+    return c.text("Project not found.", 404);
+  }
   const device = await db(c.env)
     .select({ id: schema.devices.id })
     .from(schema.devices)
@@ -149,3 +157,19 @@ site.get("/terminal/connect", async (c) => {
 
 // Registered last, so it only sees paths no OAuth route claimed.
 site.all("*", (c) => serveAssets(c.req.raw, c.env));
+
+/** Whether a machine is a location of the project that has a copy of its root. */
+async function holdsRoot(env: Pick<Env, "DB">, projectId: string, deviceId: string) {
+  const row = await db(env)
+    .select({ id: schema.projectLocations.id })
+    .from(schema.projectLocations)
+    .where(
+      and(
+        eq(schema.projectLocations.projectId, projectId),
+        eq(schema.projectLocations.deviceId, deviceId),
+        eq(schema.projectLocations.status, "ready"),
+      ),
+    )
+    .get();
+  return row !== undefined;
+}

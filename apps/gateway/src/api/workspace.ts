@@ -7,6 +7,12 @@ import { z } from "zod";
 import { beginAudit, finishAudit } from "../audit.js";
 import { db, schema } from "../db/client.js";
 import { newId } from "../ids.js";
+import {
+  defaultRootSelector,
+  ROOT_SELECTOR,
+  resolveLocationRoot,
+  rootLocation,
+} from "../location-roots.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -24,6 +30,8 @@ type ResolvedTarget = {
   deviceId: string;
   workspaceId?: string;
   workspaceSlug?: string;
+  /** What the audit trail keeps: the workspace, or the root with its location. */
+  recordedAs: string;
 };
 
 workspace.get(
@@ -85,7 +93,7 @@ workspace.post(
       userId,
       projectId,
       ...(target.workspaceId ? { workspaceId: target.workspaceId } : {}),
-      ...(target.workspaceSlug ? { workspaceSlug: target.workspaceSlug } : {}),
+      workspaceSlug: target.recordedAs,
       tool: `source_control.${action.action}`,
       endpoint: "dashboard",
       caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
@@ -157,7 +165,7 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
     userId,
     projectId,
     ...(target.workspaceId ? { workspaceId: target.workspaceId } : {}),
-    ...(target.workspaceSlug ? { workspaceSlug: target.workspaceSlug } : {}),
+    workspaceSlug: target.recordedAs,
     tool: "terminal.open",
     endpoint: "dashboard",
     caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
@@ -215,7 +223,12 @@ async function ownedTarget(
   selector?: string,
 ): Promise<ResolvedTarget | null> {
   const project = await db(env)
-    .select({ deviceId: schema.projects.deviceId, removedAt: schema.devices.revokedAt })
+    .select({
+      deviceId: schema.projects.deviceId,
+      removedAt: schema.devices.revokedAt,
+      machine: schema.devices.name,
+      kind: schema.devices.kind,
+    })
     .from(schema.projects)
     .innerJoin(schema.devices, eq(schema.projects.deviceId, schema.devices.id))
     .where(
@@ -229,8 +242,19 @@ async function ownedTarget(
   if (!project) return null;
   // Only the project root needs the default location's machine. A workspace
   // on another machine is served there whatever became of the default.
-  if (!selector || selector === "main") {
-    return project.removedAt === null ? { deviceId: project.deviceId } : null;
+  if (!selector || selector === ROOT_SELECTOR) {
+    if (project.removedAt !== null) return null;
+    return {
+      deviceId: project.deviceId,
+      recordedAs: defaultRootSelector({ name: project.machine, kind: project.kind }),
+    };
+  }
+  // The root of another location: the same kind of call, to the machine that
+  // holds that copy, and with no workspace named either.
+  const location = rootLocation(selector);
+  if (location !== null) {
+    const root = await resolveLocationRoot(env, projectId, location).catch(() => null);
+    return root ? { deviceId: root.deviceId, recordedAs: root.slug } : null;
   }
 
   const ws = await db(env)
@@ -258,6 +282,7 @@ async function ownedTarget(
     deviceId: ws.deviceId ?? project.deviceId,
     workspaceId: ws.id,
     workspaceSlug: ws.slug,
+    recordedAs: ws.slug,
   };
 }
 

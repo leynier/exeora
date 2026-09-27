@@ -54,7 +54,7 @@ export async function placeWorkspaceTool(
     project: ProjectRef;
     tool: ToolName;
     args: unknown;
-    workspace: { id: string; slug: string; deviceId: string | null } | null;
+    workspace: { id: string | null; slug: string; deviceId: string | null } | null;
   },
 ): Promise<Placement> {
   const { where, args } = takeWhere(call.args);

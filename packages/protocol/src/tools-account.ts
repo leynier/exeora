@@ -24,7 +24,7 @@ export const WorkspaceRef = z
   .string()
   .min(1)
   .describe(
-    "A connected workspace's slug or stable id. Use main, or omit it, for the project root.",
+    "A workspace's slug or stable id, from list_workspaces. Use main, or omit it, for the project root at the default location, and main@<location> for the root in another location.",
   );
 
 /**
@@ -76,7 +76,10 @@ export const ListWorkspacesOutput = z.object({
   project: z.string(),
   workspaces: z.array(
     z.object({
-      /** What `workspace` takes. `main` is the project root at the default location. */
+      /**
+       * What `workspace` takes. `main` is the project root at the default
+       * location, and `main@<location>` the root of another one.
+       */
       slug: z.string(),
       name: z.string(),
       branch: z.string().nullable(),

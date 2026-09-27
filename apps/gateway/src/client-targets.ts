@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { parsePolicy } from "./clients.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
+import { defaultRootSelector } from "./location-roots.js";
 import { type LocationView, locationsOf } from "./locations.js";
 
 /**
@@ -33,6 +34,8 @@ export async function resolveTarget(
   entry: { userId: string; projectId: string; clientId: string | undefined },
 ): Promise<{
   deviceId: string;
+  /** What a call to the project root is recorded as: `main@laptop`. */
+  defaultRoot: string;
   /**
    * Whether the default location's machine was removed. It used to make the
    * whole project unreachable; a project that lives in several places is
@@ -46,6 +49,8 @@ export async function resolveTarget(
   const row = await db(env)
     .select({
       deviceId: schema.projects.deviceId,
+      deviceName: schema.devices.name,
+      deviceKind: schema.devices.kind,
       deviceRevokedAt: schema.devices.revokedAt,
       commandPolicy: schema.projects.commandPolicy,
       clientRevokedAt: schema.projectClients.revokedAt,
@@ -69,6 +74,7 @@ export async function resolveTarget(
   }
   return {
     deviceId: row.deviceId,
+    defaultRoot: defaultRootSelector({ name: row.deviceName, kind: row.deviceKind }),
     defaultRemoved: row.deviceRevokedAt !== null,
     clientRevokedAt: entry.clientId ? row.clientRevokedAt : null,
     policy: parsePolicy(row.commandPolicy),
@@ -92,10 +98,17 @@ export async function resolveTarget(
 export async function resolveAccountTarget(
   env: Pick<Env, "DB">,
   entry: { userId: string; projectId: string; clientId: string },
-): Promise<{ deviceId: string; defaultRemoved: boolean; policy: CommandPolicy } | null> {
+): Promise<{
+  deviceId: string;
+  defaultRoot: string;
+  defaultRemoved: boolean;
+  policy: CommandPolicy;
+} | null> {
   const row = await db(env)
     .select({
       deviceId: schema.projects.deviceId,
+      deviceName: schema.devices.name,
+      deviceKind: schema.devices.kind,
       deviceRevokedAt: schema.devices.revokedAt,
       commandPolicy: schema.projects.commandPolicy,
     })
@@ -119,6 +132,7 @@ export async function resolveAccountTarget(
   }
   return {
     deviceId: row.deviceId,
+    defaultRoot: defaultRootSelector({ name: row.deviceName, kind: row.deviceKind }),
     defaultRemoved: row.deviceRevokedAt !== null,
     policy: parsePolicy(row.commandPolicy),
   };

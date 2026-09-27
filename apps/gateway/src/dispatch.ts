@@ -16,6 +16,7 @@ import "./env.js";
 import { relayName } from "./api/ops.js";
 import { db, schema } from "./db/client.js";
 import { newId } from "./ids.js";
+import { ROOT_SELECTOR, resolveLocationRoot, rootLocation } from "./location-roots.js";
 import { locationNames, locationsOf } from "./locations.js";
 import type { DispatchResult } from "./mcp.js";
 import { callRelayTool, requestRelayApproval } from "./relay-client.js";
@@ -94,7 +95,7 @@ export async function dispatchToDevice(
   }
 
   const workspace = await resolveWorkspace(env, projectId, call.workspace);
-  const approved = call.approved && call.approvedWorkspaceId === workspace?.id;
+  const approved = call.approved && call.approvedWorkspaceId === workspaceKey(workspace);
 
   // Checked here as well as on the machine, and both are necessary. This is
   // the only side that holds the account's policy, and an older CLI would
@@ -108,12 +109,7 @@ export async function dispatchToDevice(
     return {
       kind: "needs-approval",
       projectId,
-      ...(workspace
-        ? {
-            workspaceId: workspace.id,
-            workspaceSlug: workspace.slug,
-          }
-        : {}),
+      ...approvalTarget(workspace),
     };
   }
 
@@ -125,7 +121,7 @@ export async function dispatchToDevice(
       tool,
       caller,
       endpoint,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...recorded(workspace, project.defaultRoot),
     });
   } catch (error) {
     console.error("audit outbox begin failed", error);
@@ -207,7 +203,7 @@ export async function dispatchToDevice(
     const outcome = await requestRelayApproval(relay, {
       id: newId("apr"),
       projectId,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...routing(workspace),
       tool,
       prompt: `${describeCall(tool, args)}${workspace ? ` Workspace: ${workspace.slug}.` : ""}`,
       clientName: caller.clientName ?? caller.mcp?.name,
@@ -245,7 +241,7 @@ export async function dispatchToDevice(
     const frame = {
       requestId,
       projectId,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...routing(workspace),
       tool,
       // A machine is never told `where`: by now it is the one that was chosen.
       args: placement ? placement.args : args,
@@ -266,7 +262,7 @@ export async function dispatchToDevice(
             projectId,
             tool,
             args: placement.args,
-            workspace,
+            workspace: workspace?.id ? { id: workspace.id, slug: workspace.slug } : null,
             signal,
             issuedAt: Date.now(),
             // The machine applies the checkout's `exeora.toml` to the same
@@ -312,15 +308,64 @@ async function defaultRemoved(
 }
 
 /**
- * The workspace a call names, with the machine that serves it when it has one
- * of its own. Null is the project root, which every project has.
+ * What a call named as its workspace. `id` is null for the project root in a
+ * location other than the default: it is a place a call can land, with a
+ * machine of its own, and it is not a workspace row.
+ */
+export interface ResolvedWorkspace {
+  id: string | null;
+  slug: string;
+  deviceId: string | null;
+}
+
+/** What the machine is told: a workspace by id and slug, and nothing for a root. */
+export function routing(
+  workspace: ResolvedWorkspace | null,
+): { workspaceId: string; workspaceSlug: string } | Record<string, never> {
+  return workspace?.id ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {};
+}
+
+/**
+ * What the audit trail keeps. A call to a project root is recorded with the
+ * location it ran in, `main@laptop`, which is the one place the trail can say
+ * where: the archive's columns are fixed, and the slug is one of them.
+ */
+export function recorded(
+  workspace: ResolvedWorkspace | null,
+  defaultRoot: string,
+): { workspaceId?: string; workspaceSlug: string } {
+  if (!workspace) return { workspaceSlug: defaultRoot };
+  return { ...(workspace.id ? { workspaceId: workspace.id } : {}), workspaceSlug: workspace.slug };
+}
+
+/** What an approval is bound to, so one given for a place is not spent in another. */
+export function workspaceKey(workspace: ResolvedWorkspace | null): string | undefined {
+  return workspace ? (workspace.id ?? workspace.slug) : undefined;
+}
+
+export function approvalTarget(
+  workspace: ResolvedWorkspace | null,
+): { workspaceId: string; workspaceSlug: string } | Record<string, never> {
+  const key = workspaceKey(workspace);
+  return workspace && key ? { workspaceId: key, workspaceSlug: workspace.slug } : {};
+}
+
+/**
+ * The workspace a call names, with the machine that serves it. Null is the
+ * project root at the default location, which every project has.
  */
 export async function resolveWorkspace(
   env: Pick<Env, "DB">,
   projectId: string,
   selector: string | undefined,
-): Promise<{ id: string; slug: string; deviceId: string | null } | null> {
-  if (!selector || selector.toLowerCase() === "main") return null;
+): Promise<ResolvedWorkspace | null> {
+  if (!selector || selector.toLowerCase() === ROOT_SELECTOR) return null;
+  const location = rootLocation(selector);
+  if (location !== null) {
+    const root = await resolveLocationRoot(env, projectId, location);
+    // The default's root is `main` under another name, and is treated as it.
+    return root.default ? null : { id: null, slug: root.slug, deviceId: root.deviceId };
+  }
   const row = await db(env)
     .select({
       id: schema.workspaces.id,

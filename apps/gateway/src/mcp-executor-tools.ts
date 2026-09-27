@@ -8,7 +8,7 @@ import type {
 
 const workspaceRouting = {
   workspace: WorkspaceRef.optional().describe(
-    "Run this call in a connected Git workspace by slug or id. Omit it, or use main, for the project root.",
+    "Run this call in a workspace, by slug or id. Omit it, or use main, for the project root at the default location; main@<location> is the root in another location.",
   ),
 };
 const requiredWorkspaceRouting = {

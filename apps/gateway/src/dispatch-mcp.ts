@@ -8,7 +8,15 @@ import { relayName } from "./api/ops.js";
 import { describeMcpCall } from "./approval.js";
 import { type AuditHandle, beginAudit } from "./audit.js";
 import { resolveAccountTarget, resolveTarget, targetDevice } from "./client-targets.js";
-import { callerLabel, record, resolveWorkspace } from "./dispatch.js";
+import {
+  approvalTarget,
+  callerLabel,
+  record,
+  recorded,
+  resolveWorkspace,
+  routing,
+  workspaceKey,
+} from "./dispatch.js";
 import "./env.js";
 import { newId } from "./ids.js";
 import type { DispatchResult } from "./mcp.js";
@@ -68,7 +76,7 @@ export async function dispatchMcpToDevice(
   // executor that runs it is the one whose hint counts.
   const descriptor =
     deviceId === project.deviceId ? tool : await descriptorOn(relay, projectId, tool);
-  const approved = call.approved && call.approvedWorkspaceId === workspace?.id;
+  const approved = call.approved && call.approvedWorkspaceId === workspaceKey(workspace);
   const readOnlyHint = descriptor.annotations?.readOnlyHint;
   const verdict = mcpPolicyAllows(project.policy, readOnlyHint);
   const confirm = needsMcpApproval(project.policy, readOnlyHint) && !approved;
@@ -77,7 +85,7 @@ export async function dispatchMcpToDevice(
     return {
       kind: "needs-approval",
       projectId,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...approvalTarget(workspace),
     };
   }
 
@@ -89,7 +97,7 @@ export async function dispatchMcpToDevice(
       tool: tool.exposedName,
       caller,
       endpoint,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...recorded(workspace, project.defaultRoot),
     });
   } catch (error) {
     console.error("audit outbox begin failed", error);
@@ -123,7 +131,7 @@ export async function dispatchMcpToDevice(
     const outcome = await requestRelayApproval(relay, {
       id: newId("apr"),
       projectId,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...routing(workspace),
       tool: tool.exposedName,
       prompt: `${describeMcpCall(tool.server, tool.name, args)}${workspace ? ` Workspace: ${workspace.slug}.` : ""}`,
       clientName: caller.clientName ?? caller.mcp?.name,
@@ -146,7 +154,7 @@ export async function dispatchMcpToDevice(
     const value = await callRelayMcpTool(relay, {
       requestId: newId("req"),
       projectId,
-      ...(workspace ? { workspaceId: workspace.id, workspaceSlug: workspace.slug } : {}),
+      ...routing(workspace),
       server: tool.server,
       tool: tool.name,
       args,

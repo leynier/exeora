@@ -23,7 +23,7 @@ import type { DispatchResult } from "./mcp.js";
 export const WORKSPACE_SCHEMA = {
   type: "string",
   description:
-    "Run this call in a connected Git workspace by slug or id. Omit it, or use main, for the project root.",
+    "Run this call in a workspace, by slug or id. Omit it, or use main, for the project root at the default location; main@<location> is the root in another location.",
 } as const;
 
 /** One proxied call, as the dispatcher receives it. */

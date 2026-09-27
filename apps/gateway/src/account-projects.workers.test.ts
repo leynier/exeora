@@ -147,6 +147,15 @@ describe("what list_workspaces says", () => {
         root: true,
         location: "laptop",
       },
+      // The desktop holds a copy too, and its root can be worked in.
+      {
+        slug: "main@desktop",
+        name: "project root on Desktop",
+        branch: null,
+        managed: false,
+        root: true,
+        location: "desktop",
+      },
       {
         slug: "fix-login",
         name: "fix/login",
