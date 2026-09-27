@@ -22,8 +22,19 @@ export interface PlacesOptions {
   accountClients?: unknown[];
   /** The rows of the activity log, newest first. */
   calls?: unknown[];
+  /** What a project's page holds for scripts. Nothing saved when absent. */
+  scripts?: unknown;
   /** Answers a request itself and returns true, or leaves it to the defaults. */
   handle?: (route: Route, request: Request, path: string) => Promise<boolean> | boolean;
+}
+
+/** What a project that never saved a script answers. */
+const noScripts = { install: null, resume: null, runRepositoryScripts: true, updatedAt: null };
+
+/** A script as the gateway keeps it: nothing for a blank field, and a new line at its end. */
+function kept(script: string | null): string | null {
+  if (script === null || script.trim() === "") return null;
+  return script.endsWith("\n") ? script : `${script}\n`;
 }
 
 function bodyOf(request: Request): unknown {
@@ -84,7 +95,11 @@ export async function mockPlaces(page: Page, options: PlacesOptions = {}): Promi
         return;
       }
       const match = /^\/api\/projects\/([^/]+)\/workspaces$/.exec(path);
-      const body = match?.[1] ? (workspaces[match[1]] ?? []) : lists[path];
+      const body = path.endsWith("/cloud-scripts")
+        ? (options.scripts ?? noScripts)
+        : match?.[1]
+          ? (workspaces[match[1]] ?? [])
+          : lists[path];
       if (body !== undefined) {
         await route.fulfill({ status: 200, json: body });
         return;
@@ -140,6 +155,27 @@ export async function mockPlaces(page: Page, options: PlacesOptions = {}): Promi
     }
     if (method === "POST" && path.endsWith("/remove")) {
       await route.fulfill({ status: 200, json: { ok: true, status: "removed" } });
+      return;
+    }
+    if (method === "PUT" && path.endsWith("/cloud-scripts")) {
+      const body = bodyOf(request) as {
+        install: string | null;
+        resume: string | null;
+        runRepositoryScripts: boolean;
+      };
+      await route.fulfill({
+        status: 200,
+        json: {
+          install: kept(body.install),
+          resume: kept(body.resume),
+          runRepositoryScripts: body.runRepositoryScripts,
+          updatedAt: Date.now(),
+        },
+      });
+      return;
+    }
+    if (method === "POST" && /\/hooks\/(install|resume)\/run$/.test(path)) {
+      await route.fulfill({ status: 202, json: { ok: true } });
       return;
     }
     if (method === "POST" && path.endsWith("/retry")) {

@@ -122,38 +122,65 @@ export function GitHubCard({ className = "" }: { className?: string }) {
         ) : (
           <Divided>
             {installations.map((installation) => (
-              <Row key={installation.id}>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-title-md truncate">{installation.accountLogin}</p>
-                    <Badge>
-                      {installation.repositorySelection === "all"
-                        ? "all repositories"
-                        : "selected repositories"}
-                    </Badge>
-                    {installation.suspended && <Badge tone="error">suspended</Badge>}
+              <div key={installation.id}>
+                <Row>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-title-md truncate">{installation.accountLogin}</p>
+                      <Badge>
+                        {installation.repositorySelection === "all"
+                          ? "all repositories"
+                          : "selected repositories"}
+                      </Badge>
+                      {installation.suspended && <Badge tone="error">suspended</Badge>}
+                    </div>
+                    <p className="text-body-md text-foreground-faint">
+                      {installation.accountType === "Organization" ? "Organisation" : "Account"}
+                      {installation.suspended
+                        ? " · suspended on GitHub, so nothing of it can be read until it is resumed there"
+                        : ""}
+                    </p>
                   </div>
-                  <p className="text-body-md text-foreground-faint">
-                    {installation.accountType === "Organization" ? "Organisation" : "Account"}
-                    {installation.suspended
-                      ? " · suspended on GitHub, so nothing of it can be read until it is resumed there"
-                      : ""}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                  <a className="btn" href={installation.manageUrl} target="_blank" rel="noreferrer">
-                    Change repositories
-                  </a>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    disabled={disconnect.isPending}
-                    onClick={() => setLeaving(installation)}
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              </Row>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <a
+                      className="btn"
+                      href={installation.manageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Change repositories
+                    </a>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={disconnect.isPending}
+                      onClick={() => setLeaving(installation)}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                </Row>
+                {/* GitHub does not grant what the app starts asking for: it asks
+                  the owner, and until they accept the installation holds what
+                  it held before. Nothing here can accept for them. */}
+                {(installation.pendingPermissions?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 pb-4">
+                    <p className="text-body-md text-warning min-w-0 flex-1">
+                      GitHub is waiting for you to accept new permissions for{" "}
+                      {installation.accountLogin}. Until you do, gh in your instances cannot read
+                      issues, checks or workflow runs.
+                    </p>
+                    <a
+                      className="btn shrink-0"
+                      href={installation.manageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Review on GitHub
+                    </a>
+                  </div>
+                )}
+              </div>
             ))}
           </Divided>
         )}

@@ -1,5 +1,5 @@
 import { request } from "./api.js";
-import type { ProjectLocation, State } from "./api-types.js";
+import type { CloudHook, ProjectLocation, State } from "./api-types.js";
 
 /**
  * Projects where they live, and everything that runs them.
@@ -41,6 +41,54 @@ export interface LocalMachine extends MachineBase {
   projects: MachineProject[];
 }
 
+/** One run of a script inside an instance, as the instance reported it. */
+export interface HookRun {
+  runId: string;
+  /** `skipped` is a hook with no script to run, which is nothing to worry about. */
+  status: "running" | "ok" | "failed" | "timed_out" | "skipped";
+  /** The project's page, the file in the repository, or `none` when there is no script. */
+  source: "dashboard" | "repository" | "none";
+  /** Why it ran: set up, a changed script, a person asking, or a resume from sleep. */
+  trigger: "setup" | "changed" | "manual" | "cold" | "warm";
+  scriptSha256: string | null;
+  exitCode: number | null;
+  startedAt: number;
+  finishedAt: number | null;
+  /** The end of what the script printed. Only there for a run that failed or ran out of time. */
+  output?: string;
+  /** Whether the script printed more than was kept. */
+  truncated: boolean;
+}
+
+/** What became of each script on one instance. Null is a hook that never ran there. */
+export type InstanceHooks = {
+  /** False for an instance made with a CLI older than 0.19.0: scripts never run there. */
+  supported: boolean;
+} & Record<CloudHook, HookRun | null>;
+
+export interface InstanceTool {
+  name: string;
+  /** `present` was already there, `installed` was put there when the instance was set up. */
+  state: "present" | "installed" | "failed" | "skipped";
+  version: string | null;
+  /** Only `gh` is: an instance without it fails, and any other tool is merely reported. */
+  required: boolean;
+  /** Why it failed or was skipped, as the instance said it. */
+  reason: string | null;
+}
+
+/** The basic tools of an instance, and what it found to install them with. */
+export interface ToolsReport {
+  tools: InstanceTool[];
+  environment: {
+    os: string | null;
+    arch: string | null;
+    sudo: boolean;
+    apt: boolean;
+    memoryDisk: boolean;
+  };
+}
+
 /** A machine Exeora Cloud runs: one workspace of one project, and nothing else. */
 export interface CloudInstance extends MachineBase {
   kind: "cloud";
@@ -56,6 +104,10 @@ export interface CloudInstance extends MachineBase {
   readyAt: number | null;
   /** What the provider says, when it was asked. Null without `live`. */
   runtime: "cold" | "warm" | "running" | null;
+  /** Left out by a gateway that predates scripts, which is read as nothing to say. */
+  hooks?: InstanceHooks;
+  /** Null until the instance reports what it installed. */
+  tools?: ToolsReport | null;
 }
 
 export type Machine = LocalMachine | CloudInstance;
@@ -71,6 +123,12 @@ export interface GitHubInstallation {
   suspended: boolean;
   /** Where, on github.com, the repositories it reaches are chosen. */
   manageUrl: string;
+  /**
+   * What the Exeora GitHub App asks for that this installation has not
+   * accepted yet. Empty when nothing is waiting, and left out by a gateway
+   * that does not say.
+   */
+  pendingPermissions?: string[];
 }
 
 export interface GitHubStatus {

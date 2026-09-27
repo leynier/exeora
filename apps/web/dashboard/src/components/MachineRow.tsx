@@ -59,7 +59,8 @@ export function MachineRow({
           </div>
           {meta ? <p className="text-body-md text-foreground-faint mt-1 truncate">{meta}</p> : null}
           {failure ? <div className="mt-2">{failure}</div> : null}
-          {note ? <p className="text-body-md text-foreground-muted mt-2">{note}</p> : null}
+          {/* Not a paragraph: a note can hold a disclosure and a button of its own. */}
+          {note ? <div className="text-body-md text-foreground-muted mt-2">{note}</div> : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {actions}
@@ -79,9 +80,18 @@ export function MachineRow({
 }
 
 /** A label and its value, for the reference material behind a disclosure. */
-export function Fact({ label, children }: { label: string; children: ReactNode }) {
+export function Fact({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  /** For a fact that takes the whole row, which a list does. */
+  className?: string;
+}) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-label-md text-foreground-faint font-mono uppercase">{label}</dt>
       <dd className="text-body-md mt-0.5 font-mono break-all">{children}</dd>
     </div>
