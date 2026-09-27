@@ -3,7 +3,9 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { revokeOwnedDevice } from "../cloud/revoke.js";
+import { destroyCloudProject } from "../cloud/teardown.js";
 import { db, schema } from "../db/client.js";
+import { listMachines } from "../machines-view.js";
 import "../env.js";
 import { newId } from "../ids.js";
 import { limitsFor } from "../plans.js";
@@ -91,6 +93,17 @@ devices.get("/api/devices", async (c) => {
 });
 
 /**
+ * Every machine running for the account, the user's own and Exeora Cloud's,
+ * with what each of them holds. `live` also asks the provider what the cloud
+ * ones are doing right now, which costs a request to somebody else's API and
+ * is for the page that shows them, not for every poll.
+ */
+devices.get("/api/machines", async (c) => {
+  const live = c.req.query("live") === "1";
+  return c.json({ machines: await listMachines(c.env, c.get("userId"), { live }) });
+});
+
+/**
  * Revocation is a soft delete: the row stays so the audit log keeps its
  * references, and the relay refuses a socket whose device has `revokedAt` set.
  */
@@ -121,6 +134,25 @@ devices.delete("/api/devices/:id/permanently", async (c) => {
 
   if (!device) return c.json({ error: "not_found" }, 404);
   if (device.revokedAt === null) return c.json({ error: "not_revoked" }, 409);
+
+  // A project that lives only here goes with the machine. If it holds
+  // workspaces on Exeora Cloud, those are machines that would be left running
+  // with nothing naming them, so they are taken down first.
+  const leaving = await c.env.DB.prepare(
+    `SELECT p.id FROM projects p
+       JOIN cloud_projects c ON c.project_id = p.id
+      WHERE p.user_id = ?1 AND p.device_id = ?2
+        AND NOT EXISTS (
+          SELECT 1 FROM project_locations l
+            JOIN devices d ON d.id = l.device_id
+           WHERE l.project_id = p.id AND l.device_id != ?2 AND d.revoked_at IS NULL
+        )`,
+  )
+    .bind(userId, id)
+    .all<{ id: string }>();
+  for (const project of leaving.results) {
+    await destroyCloudProject(c.env, userId, project.id);
+  }
 
   await permanentlyDeleteDevice(c.env, userId, id);
 

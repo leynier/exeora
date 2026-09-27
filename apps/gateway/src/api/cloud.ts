@@ -1,7 +1,10 @@
+import { repositoryKey } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { grantNewProject } from "../account-access.js";
+import { addCloudLocation } from "../cloud/location.js";
 import {
   createCloudProject,
   createCloudWorkspace,
@@ -13,6 +16,7 @@ import {
   validRepoUrl,
 } from "../cloud/provisioning.js";
 import { listCloudProjects } from "../cloud/views.js";
+import { db, schema } from "../db/client.js";
 import "../env.js";
 import type { ApiEnv } from "./router.js";
 
@@ -75,22 +79,46 @@ cloud.get("/api/cloud/projects", async (c) =>
 
 cloud.post("/api/cloud/projects", zValidator("json", projectInput), async (c) => {
   const body = c.req.valid("json");
-  const result = await createCloudProject(c.env, c.get("userId"), {
+  const userId = c.get("userId");
+  const credential = body.token
+    ? { username: body.username ?? "x-access-token", secret: body.token }
+    : undefined;
+
+  // One repository is one project. A repository the account already has,
+  // on somebody's laptop say, is put on Cloud as one more place it lives,
+  // rather than made again under a second name with a second URL.
+  const key = repositoryKey(body.repoUrl);
+  const same = key
+    ? await db(c.env)
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(and(eq(schema.projects.userId, userId), eq(schema.projects.repoKey, key)))
+        .orderBy(schema.projects.createdAt)
+        .get()
+    : undefined;
+  if (same) {
+    const added = await addCloudLocation(c.env, userId, same.id, { credential });
+    if (added !== true) {
+      if (added.error === "no_repository") return c.json(added, 422);
+      return failed(c, added);
+    }
+    return c.json({ projectId: same.id, deviceId: null, status: "ready", location: "joined" });
+  }
+
+  const result = await createCloudProject(c.env, userId, {
     name: body.name,
     slug: body.slug,
     repoUrl: body.repoUrl,
     defaultBranch: body.defaultBranch,
-    credential: body.token
-      ? { username: body.username ?? "x-access-token", secret: body.token }
-      : undefined,
+    credential,
   });
   if ("error" in result) return failed(c, result);
   await grantNewProject(c.env, {
-    userId: c.get("userId"),
+    userId,
     projectId: result.projectId,
     clientIds: body.clientIds,
   });
-  return c.json({ ...result, status: "creating" }, 202);
+  return c.json({ ...result, status: "creating", location: "created" }, 202);
 });
 
 cloud.post("/api/cloud/projects/:id/workspaces", zValidator("json", workspaceInput), async (c) => {

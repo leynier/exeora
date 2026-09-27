@@ -38,7 +38,8 @@ function call(
 const project = (slug: string, extra: Record<string, unknown> = {}) => ({
   name: slug,
   slug,
-  repoUrl: "https://github.com/leynier/exeora.git",
+  // One repository is one project, so each of these is a repository of its own.
+  repoUrl: `https://github.com/leynier/${slug}.git`,
   ...extra,
 });
 
@@ -153,8 +154,19 @@ describe("Exeora Cloud routes", () => {
     expect(onto.status).toBe(400);
     expect(await onto.json()).toEqual({ error: "cloud_device" });
 
-    const again = await call("/api/cloud/projects", { body: project("demo") });
+    // Another repository under a name that is taken is refused; the same
+    // repository again is the project it already is.
+    const again = await call("/api/cloud/projects", {
+      body: project("demo", { repoUrl: "https://github.com/leynier/other.git" }),
+    });
     expect(again.status).toBe(409);
+    const same = await call("/api/cloud/projects", {
+      body: project("demo-again", {
+        repoUrl: "https://github.com/leynier/demo.git",
+      }),
+    });
+    expect(same.status).toBe(200);
+    expect(await same.json()).toMatchObject({ projectId: body.projectId, location: "joined" });
 
     // Nor can a laptop take the slug over and point the project at itself.
     await db(env)

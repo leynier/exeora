@@ -60,7 +60,9 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
   }
   if (method === "GET") {
     return (
-      ["/api/me", "/api/devices", "/api/projects", "/api/tool-calls"].includes(path) ||
+      ["/api/me", "/api/devices", "/api/machines", "/api/projects", "/api/tool-calls"].includes(
+        path,
+      ) ||
       /^\/api\/projects\/[^/]+\/workspaces$/.test(path) ||
       /^\/api\/projects\/[^/]+\/locations$/.test(path) ||
       /^\/api\/relay\/[^/]+$/.test(path)
