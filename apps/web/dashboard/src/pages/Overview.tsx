@@ -39,7 +39,10 @@ export function Overview() {
   const failed = recent.filter((call) => call.status === "error");
   const list = projects.data ?? [];
 
-  if (machines.isError || projects.isError || calls.isError) {
+  // The activity log failing is not a reason to hide what is running: it is
+  // kept in a warehouse of its own, and that can be down while every machine
+  // is up. Its card and its number say so; the rest of the page stands.
+  if (machines.isError || projects.isError) {
     return <PageHeader title="Overview" subtitle="Live account data is temporarily unavailable." />;
   }
 
@@ -96,8 +99,8 @@ export function Overview() {
         )}
         <Stat
           label="Failed calls"
-          value={`${failed.length}`}
-          hint={`of the last ${recent.length}`}
+          value={calls.isError ? "–" : `${failed.length}`}
+          hint={calls.isError ? "the activity log is unavailable" : `of the last ${recent.length}`}
           to="/activity"
           loading={calls.isLoading}
         />
@@ -129,6 +132,10 @@ export function Overview() {
         >
           {calls.isLoading ? (
             <SkeletonRows count={2} />
+          ) : calls.isError ? (
+            <EmptyState title="The activity log is unavailable">
+              Calls are still running and still being recorded. Try again in a moment.
+            </EmptyState>
           ) : recent.length === 0 ? (
             <EmptyState title="No tool calls yet">
               They appear here as soon as an agent uses one.

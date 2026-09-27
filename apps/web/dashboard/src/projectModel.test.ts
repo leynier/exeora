@@ -120,13 +120,13 @@ const instance = (patch: Partial<CloudInstance>): CloudInstance => ({
 
 describe("rootLabel", () => {
   it("names the project root by its real branch, marked as the default", () => {
-    expect(rootLabel("master")).toBe("master · default");
-    expect(rootLabel("main")).toBe("main · default");
+    expect(rootLabel("master")).toBe("master · default branch");
+    expect(rootLabel("main")).toBe("main · default branch");
   });
 
   it("falls back to the mark alone for a directory with no branch known", () => {
-    expect(rootLabel(null)).toBe("default");
-    expect(rootLabel(undefined)).toBe("default");
+    expect(rootLabel(null)).toBe("default branch");
+    expect(rootLabel(undefined)).toBe("default branch");
   });
 });
 
@@ -147,8 +147,8 @@ describe("workspace labels", () => {
 
   it("turns the `main` of the log into the default branch", () => {
     const workspaces = [workspace({})];
-    expect(callWorkspaceLabel(null, project(), workspaces)).toBe("master · default");
-    expect(callWorkspaceLabel("main", project(), workspaces)).toBe("master · default");
+    expect(callWorkspaceLabel(null, project(), workspaces)).toBe("master · default branch");
+    expect(callWorkspaceLabel("main", project(), workspaces)).toBe("master · default branch");
     expect(callWorkspaceLabel("fix-login", project(), workspaces)).toBe("fix/login");
     expect(callWorkspaceLabel("gone", project(), workspaces)).toBe("gone");
   });
@@ -245,13 +245,13 @@ describe("groupByLocation", () => {
       "Exeora Cloud",
     ]);
     expect(tree.groups[0]?.entries.map((entry) => entry.label)).toEqual([
-      "master · default",
+      "master · default branch",
       "fix/login",
       "zebra",
     ]);
     expect(tree.groups[1]?.entries).toEqual([]);
     expect(tree.groups[2]?.entries.map((entry) => entry.label)).toEqual([
-      "master · default",
+      "master · default branch",
       "feature/search",
     ]);
     expect(tree.unplaced).toEqual([]);
@@ -280,7 +280,7 @@ describe("groupByLocation", () => {
   it("lists an instance that is being set up before its workspace is", () => {
     const tree = groupByLocation(project(), [], machines);
     expect(tree.groups[2]?.entries.map((entry) => [entry.label, entry.state])).toEqual([
-      ["master · default", "asleep"],
+      ["master · default branch", "asleep"],
       ["feature/search", "setting up"],
     ]);
   });
@@ -297,7 +297,7 @@ describe("groupByLocation", () => {
   it("reads a workspace older than locations as the default machine's", () => {
     const tree = groupByLocation(project(), [workspace({ deviceId: null })], []);
     expect(tree.groups[0]?.entries.map((entry) => entry.label)).toEqual([
-      "master · default",
+      "master · default branch",
       "fix/login",
     ]);
   });
@@ -305,7 +305,9 @@ describe("groupByLocation", () => {
   it("keeps a workspace on a machine that is no location apart, not under a wrong one", () => {
     const tree = groupByLocation(project(), [workspace({ deviceId: "dev_gone" })], []);
     expect(tree.unplaced.map((entry) => entry.label)).toEqual(["fix/login"]);
-    expect(tree.groups[0]?.entries.map((entry) => entry.label)).toEqual(["master · default"]);
+    expect(tree.groups[0]?.entries.map((entry) => entry.label)).toEqual([
+      "master · default branch",
+    ]);
   });
 });
 
@@ -368,7 +370,7 @@ describe("workspaceOptions", () => {
       [instance({}), { ...settingUp, state: "asleep", status: "ready" }],
     );
     expect(options).toEqual([
-      { value: "main", label: "master · default · laptop" },
+      { value: "main", label: "master · default branch · laptop" },
       { value: "fix-login", label: "fix/login · laptop" },
       { value: "feature-search", label: "feature/search · Exeora Cloud" },
     ]);
@@ -376,7 +378,7 @@ describe("workspaceOptions", () => {
 
   it("prefers the branch the root is really on", () => {
     const [root] = workspaceOptions(project(), [], [], "release");
-    expect(root?.label).toBe("release · default · laptop");
+    expect(root?.label).toBe("release · default branch · laptop");
   });
 
   it("lists an instance that is being set up with its state, out of reach", () => {

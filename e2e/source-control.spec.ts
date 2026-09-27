@@ -36,8 +36,10 @@ test("closing a terminal chip ends the session on the machine as well", async ({
     },
   });
   await page.goto("/dashboard/");
-  await page.getByRole("button", { name: "Close terminal main · default" }).click();
+  await page.getByRole("button", { name: "Close terminal main · default branch" }).click();
 
   await expect.poll(() => closed).toEqual([`/api/projects/${project.id}/terminal`]);
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toHaveCount(0);
 });

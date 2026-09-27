@@ -75,7 +75,7 @@ export function LocationBlock({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <StateBadge state={location.state} />
           <h3 className="text-title-md truncate">{location.name}</h3>
-          {location.default && <Badge tone="brand">default</Badge>}
+          {location.default && <Badge tone="brand">default location</Badge>}
           {location.localPath ? (
             <details className="min-w-0">
               <summary className="text-body-md text-foreground-faint hover:text-foreground">
@@ -144,7 +144,7 @@ function EntryRow({
     <MachineRow
       state={entry.state}
       title={<span className="font-mono">{entry.branch ?? entry.label}</span>}
-      badges={entry.root ? <Badge>default</Badge> : null}
+      badges={entry.root ? <Badge>default branch</Badge> : null}
       meta={entry.root ? null : entry.slug}
       note={entry.root && !entry.openable ? NOT_DEFAULT : undefined}
       menuLabel={`Actions for ${entry.label}`}

@@ -55,7 +55,7 @@ export function InstanceRow({
       }
       // The root is its real branch with the mark beside it, the same way the
       // root of a machine is drawn.
-      badges={root ? <Badge>default</Badge> : null}
+      badges={root ? <Badge>default branch</Badge> : null}
       meta={
         <>
           {root ? "" : `${instance.workspace.slug} · `}created {relativeTime(instance.createdAt)}

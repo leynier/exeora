@@ -121,7 +121,7 @@ export function LocalMachines({
                             >
                               {held.name}
                             </Link>
-                            {held.default && <Badge tone="brand">default</Badge>}
+                            {held.default && <Badge tone="brand">default location</Badge>}
                             <span className="text-foreground-faint tabular-nums">
                               {held.workspaces} {held.workspaces === 1 ? "workspace" : "workspaces"}
                             </span>

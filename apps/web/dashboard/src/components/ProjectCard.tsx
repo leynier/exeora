@@ -57,7 +57,7 @@ export function ProjectCard({
             <StateDot state={location.state} />
             <span className="max-w-48 truncate">{location.name}</span>
             {location.default && (
-              <span className="text-label-md text-brand font-mono uppercase">default</span>
+              <span className="text-label-md text-brand font-mono uppercase">default location</span>
             )}
           </li>
         ))}

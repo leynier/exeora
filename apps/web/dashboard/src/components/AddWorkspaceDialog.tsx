@@ -162,7 +162,7 @@ function Form({
     ...locations.map((location) => ({
       value: location.slug,
       label: location.name,
-      hint: location.default ? `${location.state} · default` : location.state,
+      hint: location.default ? `${location.state} · default location` : location.state,
     })),
     ...(offerCloud ? [{ value: NEW_CLOUD, label: "Exeora Cloud (adds the project there)" }] : []),
   ];

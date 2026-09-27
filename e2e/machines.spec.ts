@@ -54,7 +54,7 @@ test("shows every instance with its state, and how much room is left", async ({ 
   await expect(panel.getByRole("link", { name: "Widgets" })).toHaveCount(3);
   // The root by its branch and the mark, a workspace by its branch.
   await expect(panel.getByText("master", { exact: true })).toBeVisible();
-  await expect(panel.getByText("default", { exact: true })).toHaveCount(1);
+  await expect(panel.getByText("default branch", { exact: true })).toHaveCount(1);
   await expect(panel.getByText("feature/search", { exact: true })).toBeVisible();
   // The state is Exeora's word, and what the provider says is a hint beside it.
   await expect(panel.getByText(/^asleep· cold, resumes in a moment$/)).toBeVisible();
@@ -137,9 +137,11 @@ test("destroys the root instance and leaves the project where else it lives", as
   const sent = await mockPlaces(page);
   await openWorkspace(page, cloud);
 
-  await page.getByRole("button", { name: "Actions for master · default" }).click();
+  await page.getByRole("button", { name: "Actions for master · default branch" }).click();
   await page.getByRole("menuitem", { name: "Destroy" }).click();
-  const dialog = page.getByRole("dialog", { name: "Destroy the instance for master · default?" });
+  const dialog = page.getByRole("dialog", {
+    name: "Destroy the instance for master · default branch?",
+  });
   await expect(dialog).toContainText("Anything on it that was not pushed is lost");
   await expect(dialog).toContainText("The project keeps its other locations");
   await dialog.getByRole("button", { name: "Destroy instance" }).click();
@@ -162,12 +164,12 @@ test("says the whole project goes with the root of one that lives only on Cloud"
   const sent = await mockPlaces(page, { projects: [onlyCloud], machines: [instance()] });
   await openWorkspace(page, cloud);
 
-  await page.getByRole("button", { name: "Actions for master · default" }).click();
+  await page.getByRole("button", { name: "Actions for master · default branch" }).click();
   await page.getByRole("menuitem", { name: "Destroy" }).click();
   // Asked for as what it is, behind the one confirmation a project has.
   const dialog = page.getByRole("dialog", { name: "Remove Widgets?" });
   await expect(dialog).toContainText("Its MCP URL.");
-  await expect(dialog).toContainText("The instance on Exeora Cloud (master · default)");
+  await expect(dialog).toContainText("The instance on Exeora Cloud (master · default branch)");
   await dialog.getByRole("button", { name: "Remove project" }).click();
 
   await expect(page.getByRole("status")).toContainText("Removing Widgets.");

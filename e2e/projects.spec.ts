@@ -22,7 +22,7 @@ test("lists each project with its locations and nothing to remove it with", asyn
   const chips = card.getByRole("list", { name: "Locations of Widgets" }).getByRole("listitem");
   await expect(chips).toHaveCount(3);
   // The state is a word for whoever cannot see the dot, and the default is marked.
-  await expect(chips.nth(0)).toHaveText("onlineLaptopdefault");
+  await expect(chips.nth(0)).toHaveText("onlineLaptopdefault location");
   await expect(chips.nth(1)).toHaveText("not clonedDesktop");
   await expect(chips.nth(2)).toHaveText("asleepExeora Cloud");
 
@@ -46,7 +46,10 @@ test("groups workspaces under their locations, the root named by its branch", as
   await expect(laptop.getByText("online", { exact: true })).toBeVisible();
   // `master`, because that is the branch, and never `main` or "project root".
   await expect(laptop.getByText("master", { exact: true })).toBeVisible();
-  await expect(laptop.getByText("default", { exact: true })).toHaveCount(2);
+  // Two things are the default here, and each says which: the location
+  // calls land on, and the branch the repository opens on.
+  await expect(laptop.getByText("default location", { exact: true })).toHaveCount(1);
+  await expect(laptop.getByText("default branch", { exact: true })).toHaveCount(1);
   await expect(laptop.getByText("fix/login", { exact: true })).toBeVisible();
   await expect(laptop.getByText("feature/search")).toHaveCount(0);
 
@@ -82,7 +85,9 @@ test("adds a workspace where it was asked for", async ({ page }) => {
 
   // Each location is listed with its state, and says what choosing it does.
   await dialog.getByRole("button", { name: "Where" }).click();
-  await expect(dialog.getByRole("option", { name: "Laptop · online · default" })).toBeVisible();
+  await expect(
+    dialog.getByRole("option", { name: "Laptop · online · default location" }),
+  ).toBeVisible();
   await expect(dialog.getByRole("option", { name: "Desktop · not cloned" })).toBeVisible();
   await dialog.getByRole("option", { name: "Exeora Cloud · asleep" }).click();
   await expect(dialog.getByText("3 of 10 in use")).toBeVisible();
@@ -238,7 +243,7 @@ test("removes a location after listing what goes with it", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Remove location" }).click();
   const dialog = page.getByRole("dialog", { name: "Remove Exeora Cloud from Widgets?" });
   await expect(dialog).toContainText(
-    "The 3 instances for master · default, feature/billing, feature/search.",
+    "The 3 instances for master · default branch, feature/billing, feature/search.",
   );
   await expect(dialog).toContainText("Anything on them that was not pushed.");
   await dialog.getByRole("button", { name: "Remove location" }).click();

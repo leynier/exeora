@@ -291,8 +291,11 @@ workspaceCreate.post(
             ? 403
             : 422;
       // `unforced` lets the page offer "remove anyway" for exactly the refusals
-      // that forcing answers, and not for a machine that is simply off.
-      return c.json({ error: code, message: error.message, unforced: !body.force }, status);
+      // that forcing answers, and not for a machine that is simply off. The
+      // machine words its refusal for an agent, which is told to pass an
+      // argument; a person is given a button, so that sentence is left out.
+      const message = error.message.replace(/\s*Pass force[^.]*\./i, "").trim();
+      return c.json({ error: code, message, unforced: !body.force }, status);
     }
   },
 );

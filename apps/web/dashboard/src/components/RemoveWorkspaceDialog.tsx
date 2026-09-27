@@ -92,15 +92,12 @@ export function RemoveWorkspaceDialog({
                   ) : null}
                   .
                 </li>
-                <li>
-                  Nothing that was not committed: a working copy with changes like that is refused,
-                  and says so.
-                </li>
               </>
             )}
           </ul>
           <p className="text-body-md text-foreground-muted mt-3">
-            The branch stays in the repository, and so does everything that was pushed.
+            The branch stays in the repository, and so does everything that was pushed. A working
+            copy with changes that were never committed is not removed without asking again.
           </p>
 
           <DialogError>

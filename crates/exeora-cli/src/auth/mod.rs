@@ -241,7 +241,7 @@ impl AuthManager {
             if tokio::time::Instant::now() >= deadline {
                 bail!("Timed out waiting for authorization. Try `exeora login --code` again.");
             }
-            let poll = self
+            let sent = self
                 .http
                 .post(device_token_endpoint)
                 .form(&[
@@ -249,7 +249,11 @@ impl AuthManager {
                     ("device_code", started.device_code.as_str()),
                 ])
                 .send()
-                .await?;
+                .await;
+            // A request that did not get through is the network, not an
+            // answer. Somebody is in the middle of typing the code on another
+            // device, so the next poll tries again, until the code runs out.
+            let Ok(poll) = sent else { continue };
             let status = poll.status();
             if status.as_u16() == 429 {
                 interval = retry_after_secs(&poll)

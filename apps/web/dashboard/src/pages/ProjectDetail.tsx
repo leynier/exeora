@@ -201,7 +201,11 @@ export function ProjectDetail() {
             </Link>
           }
         >
-          {history.length === 0 ? (
+          {calls.isError ? (
+            <EmptyState title="The activity log is unavailable">
+              Calls are still running and still being recorded. Try again in a moment.
+            </EmptyState>
+          ) : history.length === 0 ? (
             <EmptyState title="Nothing yet">
               Calls made against this project appear here.
             </EmptyState>

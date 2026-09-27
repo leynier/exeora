@@ -76,7 +76,7 @@ describe("attentionItems", () => {
       machines: [{ ...failed, workspace: { id: null, slug: "main", branch: "master" } } as Machine],
       accountClients: [],
     });
-    expect(item?.title).toBe("The instance for master · default of Widgets failed.");
+    expect(item?.title).toBe("The instance for master · default branch of Widgets failed.");
   });
 });
 

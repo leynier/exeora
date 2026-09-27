@@ -22,13 +22,15 @@ export function defaultBranchOf(
 }
 
 /**
- * What the project root is called: its real branch, marked as the default.
+ * What the project root is called: its real branch, marked as the default
+ * branch. The mark says "branch" because a location can be the default too,
+ * and the two sit side by side on the project's page.
  *
  * Never `main` unless that is the branch. With no branch known, which is a
  * directory that has no repository, the mark alone is the name.
  */
 export function rootLabel(branch: string | null | undefined): string {
-  return branch ? `${branch} · default` : "default";
+  return branch ? `${branch} · default branch` : "default branch";
 }
 
 /** A workspace by its branch. The slug stands in for a detached HEAD. */

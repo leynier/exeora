@@ -19,11 +19,11 @@ test("opens workspace from the tab with custom project and workspace dropdowns",
   await expect(page.locator("select")).toHaveCount(0);
   await expect(page.getByRole("button", { name: `Project ${project.name}` })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Workspace main · default · Laptop" }),
+    page.getByRole("button", { name: "Workspace main · default branch · Laptop" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Workspace main · default · Laptop" }).click();
+  await page.getByRole("button", { name: "Workspace main · default branch · Laptop" }).click();
   await page.getByRole("option", { name: "feature/trees · Laptop" }).click();
   await expect(page).toHaveURL(
     `/dashboard/workspace?project=${project.id}&workspace=${workspace.slug}`,
@@ -79,7 +79,7 @@ test("keeps source control and terminal bound to the selected workspace", async 
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await page.getByRole("button", { name: "Workspace feature/trees · Laptop" }).click();
-  await page.getByRole("option", { name: "main · default · Laptop" }).click();
+  await page.getByRole("option", { name: "main · default branch · Laptop" }).click();
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
   await page.getByRole("button", { name: "Source Control" }).click();
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
@@ -147,13 +147,19 @@ test("keeps an open terminal listed when switching workspaces", async ({ page })
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
-  await page.getByRole("button", { name: "Workspace main · default · Laptop" }).click();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Workspace main · default branch · Laptop" }).click();
   await page.getByRole("option", { name: "feature/trees · Laptop" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Source Control" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / main · default" }).click();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default branch" }).click();
   await expect(page.getByRole("button", { name: "Terminal", exact: true })).toHaveClass(
     /border-brand/,
   );
@@ -166,17 +172,21 @@ test("keeps an open terminal listed on other dashboard pages", async ({ page }) 
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Machines", exact: true }).click();
   await expect(page).toHaveURL("/dashboard/machines");
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / main · default" }).click();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default branch" }).click();
   await expect(page).toHaveURL(/\/dashboard\/workspace\?project=/);
   await expect(page).toHaveURL(/view=terminal/);
 });
 
 test("lists terminals that outlived a reload on every dashboard page", async ({ page }) => {
-  const chip = page.getByRole("button", { name: "E2E project / main · default" });
+  const chip = page.getByRole("button", { name: "E2E project / main · default branch" });
   await signedIn(page);
   await mockApi(page, {
     terminals: [{ sessionId: "term_live", projectId: project.id, startedAt: Date.now() }],
@@ -200,11 +210,15 @@ test("keeps an open terminal listed when switching projects", async ({ page }) =
   await page.getByRole("button", { name: "Terminal" }).click();
   await page.getByRole("button", { name: "Open terminal" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Open terminal" }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: `Project ${project.name}` }).click();
   await page.getByRole("option", { name: otherProject.name }).click();
-  await expect(page.getByRole("button", { name: "E2E project / main · default" })).toBeVisible();
-  await page.getByRole("button", { name: "E2E project / main · default" }).click();
+  await expect(
+    page.getByRole("button", { name: "E2E project / main · default branch" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "E2E project / main · default branch" }).click();
   await expect(page).toHaveURL(`/dashboard/workspace?project=${project.id}&view=terminal`);
 });
 
