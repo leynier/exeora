@@ -8,11 +8,14 @@ use crate::{
     policy::{CommandPolicy, effective_policy, mcp_policy_allows, policy_allows},
     protocol::{
         CLOUD_FEATURE, HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST, HEARTBEAT_TIMEOUT_MS,
-        MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROTOCOL_VERSION, REJECTED_BACKOFF_MAX_MS,
-        REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
+        MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROJECT_CLONE_FEATURE, PROTOCOL_VERSION,
+        REJECTED_BACKOFF_MAX_MS, REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
     },
     tools::{CallScope, ToolEngine},
-    workspace::WorkspaceEngine,
+    workspace::{
+        WorkspaceEngine,
+        clone::{CloneContext, Repository, prepare_project},
+    },
     workspaces::{self, CreateWorkspace, PublicWorkspace},
 };
 use anyhow::{Context, Result, anyhow};
@@ -38,7 +41,10 @@ use url::Url;
 
 pub struct ActiveCall {
     cancel: CancellationToken,
-    root: PathBuf,
+    /// The directory the call works in. None for the one call that has none
+    /// yet: preparing a project is what makes the directory, so there is no
+    /// served root whose removal should end it.
+    root: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -79,6 +85,7 @@ impl ConnectMode {
 
 const CLOUD_WORKSPACE_MESSAGE: &str =
     "Cloud workspaces are machines, managed from the dashboard and the gateway, not from here.";
+const CLOUD_PREPARE_MESSAGE: &str = "A cloud machine holds the one repository it was created for. Projects are put on Exeora Cloud from the dashboard and the gateway, not cloned from here.";
 
 /// A frame that is work, and so a reason to keep a cloud machine awake. The
 /// acknowledgements are deliberately not: an idle CLI receives those forever.
@@ -454,10 +461,7 @@ async fn connect_once(
         && !json_output
         && std::io::IsTerminal::is_terminal(&std::io::stdin())
         && std::io::IsTerminal::is_terminal(&std::io::stdout());
-    let mut features = vec!["source-control-v1", "terminal-v1", "mcp-proxy-v1"];
-    if !mode.is_local() {
-        features.push(CLOUD_FEATURE);
-    }
+    let features = announced_features(mode.is_local());
     socket.send(Message::Text(serde_json::to_string(&json!({
         "type": "hello", "protocolVersion": PROTOCOL_VERSION, "deviceId": device_id,
         "cliVersion": CLI_VERSION, "platform": platform(),
@@ -605,7 +609,7 @@ async fn connect_once(
                                 spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output).await;
                             }
                             Some("workspace.call") => {
-                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), !mode.is_local()).await;
+                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
                             }
                             Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
                                 handle_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone()).await;
@@ -770,7 +774,7 @@ async fn spawn_tool_call(
         request_id.clone(),
         ActiveCall {
             cancel: cancel.clone(),
-            root: root.clone(),
+            root: Some(root.clone()),
         },
     );
     emit_event(
@@ -953,7 +957,7 @@ async fn spawn_mcp_call(
         request_id.clone(),
         ActiveCall {
             cancel: cancel.clone(),
-            root: root.clone(),
+            root: Some(root.clone()),
         },
     );
     let exposed = descriptor.exposed_name;
@@ -1236,12 +1240,31 @@ fn workspace_internal_error(error: anyhow::Error) -> ExeoraError {
 async fn cancel_root(in_flight: &InFlight, root: &Path) {
     let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     for call in in_flight.lock().await.values() {
-        let call_root =
-            std::fs::canonicalize(&call.root).unwrap_or_else(|_| call.root.to_path_buf());
-        if call_root == root {
+        if call.canonical_root().as_ref() == Some(&root) {
             call.cancel.cancel();
         }
     }
+}
+
+impl ActiveCall {
+    fn canonical_root(&self) -> Option<PathBuf> {
+        self.root
+            .as_ref()
+            .map(|root| std::fs::canonicalize(root).unwrap_or_else(|_| root.clone()))
+    }
+}
+
+/// What this CLI tells the gateway it can do beyond the tools. A machine of
+/// Exeora Cloud does not clone projects: it holds the repository it was
+/// created for, so only a person's own machine announces that.
+fn announced_features(local: bool) -> Vec<&'static str> {
+    let mut features = vec!["source-control-v1", "terminal-v1", "mcp-proxy-v1"];
+    features.push(if local {
+        PROJECT_CLONE_FEATURE
+    } else {
+        CLOUD_FEATURE
+    });
+    features
 }
 
 async fn handle_approval(
@@ -1287,6 +1310,7 @@ async fn spawn_workspace_call(
     lifecycle_lock: LifecycleLock,
     in_flight: InFlight,
     outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
     cloud: bool,
 ) {
     let Some(request_id) = message
@@ -1314,6 +1338,45 @@ async fn spawn_workspace_call(
         ));
         return;
     }
+    let action = message.get("action").cloned().unwrap_or_else(|| json!({}));
+    // Answered before the project is looked up: preparing a project is how a
+    // machine comes to have one the config does not know yet.
+    if action.get("action").and_then(Value::as_str) == Some("project_prepare") {
+        if cloud {
+            send_error(ExeoraError::new(
+                ErrorCode::Forbidden,
+                CLOUD_PREPARE_MESSAGE,
+            ));
+            return;
+        }
+        let repository = match action
+            .get("repository")
+            .ok_or_else(|| {
+                ExeoraError::new(ErrorCode::InvalidArguments, "A repository is required.")
+            })
+            .and_then(Repository::from_value)
+        {
+            Ok(repository) => repository,
+            Err(error) => {
+                send_error(error);
+                return;
+            }
+        };
+        spawn_project_prepare(
+            request_id,
+            project_id.to_owned(),
+            repository,
+            started,
+            config_path,
+            api,
+            lifecycle_lock,
+            in_flight,
+            outgoing,
+            json_output,
+        )
+        .await;
+        return;
+    }
     let target = match resolve_target(
         &config_path,
         project_id,
@@ -1326,7 +1389,6 @@ async fn spawn_workspace_call(
             return;
         }
     };
-    let action = message.get("action").cloned().unwrap_or_else(|| json!({}));
     if cloud && action.get("action").and_then(Value::as_str) == Some("workspace_create") {
         send_error(ExeoraError::new(
             ErrorCode::Forbidden,
@@ -1339,7 +1401,7 @@ async fn spawn_workspace_call(
         request_id.clone(),
         ActiveCall {
             cancel: cancel.clone(),
-            root: target.root.clone(),
+            root: Some(target.root.clone()),
         },
     );
     let create_workspace = action.get("action").and_then(Value::as_str) == Some("workspace_create");
@@ -1361,6 +1423,73 @@ async fn spawn_workspace_call(
         };
         in_flight.lock().await.remove(&request_id);
         let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
+    });
+}
+
+/// Clones the project onto this machine, or takes the checkout that is
+/// already in its projects folder, and answers with where it is.
+///
+/// The call waits for the clone but does not own it. When the gateway gives
+/// up on the call, or the connection drops, the call ends and the clone goes
+/// on: it reports to the gateway how it ended, and the next call finds the
+/// project in the config.
+#[allow(clippy::too_many_arguments)]
+async fn spawn_project_prepare(
+    request_id: String,
+    project_id: String,
+    repository: Repository,
+    started: u64,
+    config_path: PathBuf,
+    api: ApiClient,
+    lifecycle_lock: LifecycleLock,
+    in_flight: InFlight,
+    outgoing: mpsc::UnboundedSender<Value>,
+    json_output: bool,
+) {
+    let cancel = CancellationToken::new();
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: None,
+        },
+    );
+    emit_event(
+        json_output,
+        "call",
+        json!({ "tool": "project_prepare", "project": repository.slug }),
+    );
+    if !json_output {
+        println!("→ project_prepare ({})", repository.slug);
+    }
+    tokio::spawn(async move {
+        let slug = repository.slug.clone();
+        let result = match CloneContext::for_machine(
+            &config_path,
+            &api,
+            &project_id,
+            Some(lifecycle_lock),
+        ) {
+            Ok(context) => prepare_project(context, &project_id, repository, cancel)
+                .await
+                .map(|prepared| prepared.to_value()),
+            Err(error) => Err(error),
+        };
+        in_flight.lock().await.remove(&request_id);
+        let elapsed = now_ms().saturating_sub(started);
+        let ok = result.is_ok();
+        let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
+        emit_event(
+            json_output,
+            "result",
+            json!({ "tool": "project_prepare", "project": slug, "ok": ok, "durationMs": elapsed }),
+        );
+        if !json_output {
+            println!(
+                "{} project_prepare ({slug}) {elapsed}ms",
+                if ok { "✓" } else { "✗" }
+            );
+        }
     });
 }
 
@@ -1717,7 +1846,7 @@ async fn reconcile_roots(
         let calls = in_flight.lock().await;
         calls
             .values()
-            .map(|call| std::fs::canonicalize(&call.root).unwrap_or_else(|_| call.root.clone()))
+            .filter_map(ActiveCall::canonical_root)
             .filter(|root| !allowed.contains(root))
             .collect::<Vec<_>>()
     });
@@ -1728,8 +1857,10 @@ async fn reconcile_roots(
     {
         let calls = in_flight.lock().await;
         for call in calls.values() {
-            let root = std::fs::canonicalize(&call.root).unwrap_or_else(|_| call.root.clone());
-            if removed.contains(&root) {
+            if call
+                .canonical_root()
+                .is_some_and(|root| removed.contains(&root))
+            {
                 call.cancel.cancel();
             }
         }
@@ -1787,15 +1918,279 @@ fn platform() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{awake_event, handshake_rejection, resolve_target, result_frame};
+    use super::{
+        announced_features, awake_event, execute_workspace_tool, handshake_rejection,
+        resolve_target, result_frame, spawn_workspace_call,
+    };
     use crate::{
         config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         error::ErrorCode,
-        protocol::MAX_RESULT_BYTES,
+        protocol::{MAX_RESULT_BYTES, ToolName},
+        testing::Gateway,
+        tools::ToolEngine,
+        workspace::WorkspaceEngine,
     };
-    use serde_json::json;
-    use std::fs;
+    use serde_json::{Value, json};
+    use std::{collections::HashMap, fs, path::Path, process::Command, sync::Arc, time::Duration};
     use tempfile::tempdir;
+    use tokio::sync::{Mutex, mpsc};
+    use tokio_util::sync::CancellationToken;
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(cwd)
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(
+            output.status.success(),
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// Sends one `workspace.call` through the same door the relay uses and
+    /// answers with the result frame.
+    async fn workspace_call(
+        gateway: &Gateway,
+        config_path: &Path,
+        project_id: &str,
+        action: Value,
+        cloud: bool,
+    ) -> Value {
+        let (outgoing, mut results) = mpsc::unbounded_channel();
+        spawn_workspace_call(
+            json!({
+                "type": "workspace.call",
+                "requestId": "req_test",
+                "projectId": project_id,
+                "action": action,
+            }),
+            config_path.to_path_buf(),
+            gateway.api().await,
+            Arc::new(WorkspaceEngine::new()),
+            Arc::new(Mutex::new(())),
+            Arc::new(Mutex::new(HashMap::new())),
+            outgoing,
+            true,
+            cloud,
+        )
+        .await;
+        tokio::time::timeout(Duration::from_secs(30), results.recv())
+            .await
+            .expect("an answer in time")
+            .expect("an answer")
+    }
+
+    #[test]
+    fn announces_project_cloning_only_from_a_machine_of_the_person() {
+        assert!(announced_features(true).contains(&"project-clone-v1"));
+        assert!(!announced_features(true).contains(&"cloud-v1"));
+        assert!(announced_features(false).contains(&"cloud-v1"));
+        assert!(!announced_features(false).contains(&"project-clone-v1"));
+    }
+
+    #[tokio::test]
+    async fn prepares_a_project_the_config_has_never_heard_of() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("projects");
+        let checkout = root.join("api");
+        fs::create_dir_all(&checkout).unwrap();
+        git(&checkout, &["init", "--quiet"]);
+        git(
+            &checkout,
+            &["remote", "add", "origin", "git@github.com:Acme/API.git"],
+        );
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.data_mut().device_id = Some("dev_laptop".to_owned());
+        config.data_mut().projects_root = Some(root.clone());
+        config.save().unwrap();
+        let gateway = Gateway::start(|_, _, _| (200, json!({ "locations": [] }))).await;
+
+        let frame = workspace_call(
+            &gateway,
+            &config_path,
+            "prj_new",
+            json!({
+                "action": "project_prepare",
+                "repository": {
+                    "url": "https://github.com/acme/api.git",
+                    "slug": "api",
+                    "name": "API",
+                    "credential": "machine",
+                },
+            }),
+            false,
+        )
+        .await;
+
+        assert_eq!(frame["type"], "workspace.result");
+        assert_eq!(frame["requestId"], "req_test");
+        assert_eq!(frame["result"]["ok"], true, "{frame}");
+        assert_eq!(frame["result"]["value"]["kind"], "prepared");
+        assert_eq!(frame["result"]["value"]["adopted"], true);
+        assert_eq!(
+            frame["result"]["value"]["localPath"],
+            json!(checkout.to_string_lossy())
+        );
+
+        // The project is served from the next call on, from the checkout.
+        let resolved = resolve_target(&config_path, "prj_new", None, None).unwrap();
+        assert_eq!(resolved.root, fs::canonicalize(&checkout).unwrap());
+        assert_eq!(
+            resolved.project.repo_url.as_deref(),
+            Some("https://github.com/acme/api.git")
+        );
+        // And the gateway was told where the copy is.
+        let reports = gateway.received_as("PUT", "/api/projects/prj_new/locations/dev_laptop");
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].body["status"], "ready");
+        assert_eq!(
+            reports[0].body["localPath"],
+            json!(checkout.to_string_lossy())
+        );
+    }
+
+    #[tokio::test]
+    async fn answers_a_prepare_it_cannot_do_with_the_reason() {
+        let directory = tempdir().unwrap();
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.data_mut().projects_root = Some(directory.path().join("projects"));
+        config.save().unwrap();
+        let gateway = Gateway::start(|_, _, _| (200, json!({}))).await;
+        let repository =
+            json!({ "url": "https://github.com/acme/api.git", "slug": "api", "name": "API" });
+
+        // A cloud machine holds one repository and clones no other.
+        let frame = workspace_call(
+            &gateway,
+            &config_path,
+            "prj_new",
+            json!({ "action": "project_prepare", "repository": repository }),
+            true,
+        )
+        .await;
+        assert_eq!(frame["result"]["error"]["code"], "FORBIDDEN");
+
+        for action in [
+            json!({ "action": "project_prepare" }),
+            json!({ "action": "project_prepare", "repository": { "url": "https://github.com/acme/api.git", "slug": "../api", "name": "API" } }),
+            json!({ "action": "project_prepare", "repository": { "url": "file:///srv/api.git", "slug": "api", "name": "API" } }),
+        ] {
+            let frame = workspace_call(&gateway, &config_path, "prj_new", action, false).await;
+            assert_eq!(
+                frame["result"]["error"]["code"], "INVALID_ARGUMENTS",
+                "{frame}"
+            );
+        }
+
+        // Every other action still needs a project this machine serves.
+        let frame = workspace_call(
+            &gateway,
+            &config_path,
+            "prj_new",
+            json!({ "action": "status" }),
+            false,
+        )
+        .await;
+        assert_eq!(frame["result"]["error"]["code"], "UNKNOWN_PROJECT");
+        assert!(gateway.received().is_empty());
+    }
+
+    #[tokio::test]
+    async fn ignores_where_in_the_arguments_of_a_workspace_tool() {
+        let directory = tempdir().unwrap();
+        let repository = directory.path().join("repository");
+        fs::create_dir(&repository).unwrap();
+        git(&repository, &["init", "--quiet"]);
+        git(&repository, &["config", "user.email", "test@example.com"]);
+        git(&repository, &["config", "user.name", "Exeora Test"]);
+        fs::write(repository.join("tracked.txt"), "main\n").unwrap();
+        git(&repository, &["add", "tracked.txt"]);
+        git(&repository, &["commit", "--quiet", "-m", "initial"]);
+        let config_path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(config_path.clone()).unwrap();
+        config.data_mut().device_id = Some("dev_laptop".to_owned());
+        config.data_mut().workspace_root = Some(directory.path().join("workspaces"));
+        let project = ProjectEntry {
+            id: "prj_1".to_owned(),
+            slug: "repository".to_owned(),
+            name: "Repository".to_owned(),
+            root: fs::canonicalize(&repository).unwrap(),
+            repo_url: None,
+            default_branch: None,
+        };
+        config.upsert_project(project.clone());
+        config.save().unwrap();
+        // The gateway files the workspace under a slug of its own choosing.
+        let gateway = Gateway::start(|_, path, body| {
+            (
+                200,
+                json!({
+                    "id": path.rsplit('/').next().unwrap_or_default(),
+                    "projectId": "prj_1",
+                    "slug": "feature-laptop",
+                    "name": body["name"],
+                    "branch": body["branch"],
+                    "localPath": body["localPath"],
+                    "managed": true,
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                }),
+            )
+        })
+        .await;
+        let api = gateway.api().await;
+        let engine = ToolEngine::new().unwrap();
+        let lock = Arc::new(Mutex::new(()));
+
+        let listed = execute_workspace_tool(
+            &config_path,
+            &api,
+            &engine,
+            &lock,
+            &project,
+            &project.root,
+            None,
+            ToolName::ListGitWorkspaces,
+            json!({ "where": "laptop" }),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(listed["workspaces"].as_array().map(Vec::len), Some(1));
+
+        let created = execute_workspace_tool(
+            &config_path,
+            &api,
+            &engine,
+            &lock,
+            &project,
+            &project.root,
+            None,
+            ToolName::CreateWorkspace,
+            json!({ "branch": "feature", "where": "laptop" }),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        // What the caller is told is the slug later calls are routed by.
+        assert_eq!(created["workspace"]["slug"], "feature-laptop");
+        assert_eq!(created["outcome"], "active");
+        let sent = gateway.received();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].body["deviceId"], "dev_laptop");
+        assert_eq!(sent[0].body["slug"], "feature");
+        assert!(sent[0].body.get("where").is_none());
+        let id = created["workspace"]["id"].as_str().unwrap();
+        let resolved =
+            resolve_target(&config_path, "prj_1", Some(id), Some("feature-laptop")).unwrap();
+        assert!(resolved.root.join("tracked.txt").is_file());
+    }
 
     #[test]
     fn rejects_an_oversized_tool_result_before_it_reaches_the_socket() {
@@ -1854,6 +2249,8 @@ mod tests {
             slug: "project".to_owned(),
             name: "Project".to_owned(),
             root: main.clone(),
+            repo_url: None,
+            default_branch: None,
         });
         for (id, slug, root, sync_state) in [
             (

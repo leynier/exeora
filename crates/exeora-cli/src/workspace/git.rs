@@ -11,7 +11,7 @@ const MAX_GIT_OUTPUT: usize = 900_000;
 const GIT_TIMEOUT: Duration = Duration::from_secs(300);
 /// ssh reads host-key and passphrase prompts from the terminal, which
 /// `GIT_TERMINAL_PROMPT` does not cover; they would block until the timeout.
-const NON_INTERACTIVE_SSH: &str = "ssh -o BatchMode=yes";
+pub(super) const NON_INTERACTIVE_SSH: &str = "ssh -o BatchMode=yes";
 #[cfg(windows)]
 const NULL_DEVICE: &str = "NUL";
 #[cfg(not(windows))]
@@ -21,11 +21,11 @@ pub struct GitWorkspace {
     operation: Mutex<()>,
 }
 
-struct GitOutput {
-    success: bool,
-    code: Option<i32>,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
+pub(super) struct GitOutput {
+    pub(super) success: bool,
+    pub(super) code: Option<i32>,
+    pub(super) stdout: Vec<u8>,
+    pub(super) stderr: Vec<u8>,
 }
 
 impl GitWorkspace {
@@ -759,48 +759,62 @@ impl GitWorkspace {
         env: &[(&str, &str)],
         cancel: &CancellationToken,
     ) -> Result<GitOutput, ExeoraError> {
-        let mut command = Command::new("git");
-        crate::cgroup::drop_oom_exemption(&mut command);
-        command
-            .current_dir(root)
-            .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_OPTIONAL_LOCKS", "0")
-            .env("LC_ALL", "C")
-            .envs(env.iter().copied())
-            .stdin(if stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        let mut child = command
-            .spawn()
-            .map_err(|error| ExeoraError::tool(format!("Could not start Git: {error}")))?;
-        if let Some(input) = stdin
-            && let Some(mut child_stdin) = child.stdin.take()
-        {
-            child_stdin
-                .write_all(input)
-                .await
-                .map_err(|error| ExeoraError::tool(format!("Could not write to Git: {error}")))?;
-        }
-        let output = tokio::select! {
-            _ = cancel.cancelled() => return Err(ExeoraError::new(ErrorCode::Cancelled, "Workspace operation cancelled.")),
-            result = tokio::time::timeout(GIT_TIMEOUT, child.wait_with_output()) => {
-                result.map_err(|_| ExeoraError::new(ErrorCode::ToolTimeout, "Git operation timed out."))?
-                    .map_err(|error| ExeoraError::tool(format!("Git failed: {error}")))?
-            }
-        };
-        Ok(GitOutput {
-            success: output.status.success(),
-            code: output.status.code(),
-            stdout: output.stdout,
-            stderr: output.stderr,
-        })
+        run_git(root, args, stdin, env, GIT_TIMEOUT, cancel).await
     }
+}
+
+/// Runs git where nobody is there to answer it: no terminal prompt, no
+/// optional locks, messages in the one language the callers read. Shared with
+/// the clone of a project, which needs the same manners and a longer timeout.
+pub(super) async fn run_git<S: AsRef<std::ffi::OsStr>>(
+    cwd: &Path,
+    args: &[S],
+    stdin: Option<&[u8]>,
+    env: &[(&str, &str)],
+    timeout: Duration,
+    cancel: &CancellationToken,
+) -> Result<GitOutput, ExeoraError> {
+    let mut command = Command::new("git");
+    crate::cgroup::drop_oom_exemption(&mut command);
+    command
+        .current_dir(cwd)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("LC_ALL", "C")
+        .envs(env.iter().copied())
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = command
+        .spawn()
+        .map_err(|error| ExeoraError::tool(format!("Could not start Git: {error}")))?;
+    if let Some(input) = stdin
+        && let Some(mut child_stdin) = child.stdin.take()
+    {
+        child_stdin
+            .write_all(input)
+            .await
+            .map_err(|error| ExeoraError::tool(format!("Could not write to Git: {error}")))?;
+    }
+    let output = tokio::select! {
+        _ = cancel.cancelled() => return Err(ExeoraError::new(ErrorCode::Cancelled, "Workspace operation cancelled.")),
+        result = tokio::time::timeout(timeout, child.wait_with_output()) => {
+            result.map_err(|_| ExeoraError::new(ErrorCode::ToolTimeout, "Git operation timed out."))?
+                .map_err(|error| ExeoraError::tool(format!("Git failed: {error}")))?
+        }
+    };
+    Ok(GitOutput {
+        success: output.status.success(),
+        code: output.status.code(),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
 }
 
 /// How far a local branch is past its upstream, from `%(upstream:track)`:

@@ -24,10 +24,9 @@ pub enum CloudCommand {
         slug: Option<String>,
         #[arg(
             long,
-            default_value = "main",
-            help = "The branch the main workspace checks out"
+            help = "The branch the main workspace checks out; the repository's default when absent"
         )]
-        branch: String,
+        branch: Option<String>,
         #[arg(
             long,
             help = "Read a repository access token from stdin, for a private repository"
@@ -115,8 +114,11 @@ pub async fn run(api: &ApiClient, command: CloudCommand, json_output: bool) -> R
         } => {
             let name = name.unwrap_or_else(|| repository_name(&git_url));
             let slug = slug.unwrap_or_else(|| slugify(&name));
-            let mut body =
-                json!({ "name": name, "slug": slug, "repoUrl": git_url, "defaultBranch": branch });
+            let mut body = json!({ "name": name, "slug": slug, "repoUrl": git_url });
+            // Left out when nobody named one: the gateway asks the repository.
+            if let Some(branch) = branch {
+                body["defaultBranch"] = json!(branch);
+            }
             if token_stdin {
                 body["token"] = json!(token_from_stdin()?);
                 body["username"] = json!(username);
@@ -279,7 +281,7 @@ fn describe(machine: &CloudMachineView) -> String {
 }
 
 /// Polls the listing until the machine is ready or has failed.
-async fn wait_ready(
+pub(crate) async fn wait_ready(
     api: &ApiClient,
     device_id: &str,
     json_output: bool,
@@ -327,7 +329,7 @@ async fn find_project(api: &ApiClient, selector: &str) -> Result<CloudProjectVie
         .ok_or_else(|| anyhow!("No cloud project {selector}. See `exeora cloud list`."))
 }
 
-fn confirm(yes: bool, json_output: bool, question: &str) -> Result<bool> {
+pub(crate) fn confirm(yes: bool, json_output: bool, question: &str) -> Result<bool> {
     if yes {
         return Ok(true);
     }
@@ -339,7 +341,12 @@ fn confirm(yes: bool, json_output: bool, question: &str) -> Result<bool> {
         .interact()?)
 }
 
-fn finish(json_output: bool, kind: &str, slug: &str, machine: &CloudMachineView) -> Result<()> {
+pub(crate) fn finish(
+    json_output: bool,
+    kind: &str,
+    slug: &str,
+    machine: &CloudMachineView,
+) -> Result<()> {
     if json_output {
         println!(
             "{}",
@@ -351,7 +358,7 @@ fn finish(json_output: bool, kind: &str, slug: &str, machine: &CloudMachineView)
     Ok(())
 }
 
-fn done(json_output: bool, fields: serde_json::Value) -> Result<()> {
+pub(crate) fn done(json_output: bool, fields: serde_json::Value) -> Result<()> {
     if json_output {
         println!("{fields}");
     } else {
@@ -362,7 +369,7 @@ fn done(json_output: bool, fields: serde_json::Value) -> Result<()> {
 
 /// A token only ever arrives on stdin: never in argv, so never in a shell
 /// history or a process list.
-fn token_from_stdin() -> Result<String> {
+pub(crate) fn token_from_stdin() -> Result<String> {
     let mut token = String::new();
     std::io::stdin()
         .read_to_string(&mut token)

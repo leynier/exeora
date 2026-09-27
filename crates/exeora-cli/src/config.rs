@@ -16,6 +16,28 @@ pub struct ProjectEntry {
     pub slug: String,
     pub name: String,
     pub root: PathBuf,
+    /// The https address of the repository this directory is a checkout of.
+    /// Absent for a directory with no remote, and in every config written
+    /// before 0.18.0 or by the bootstrap of a cloud machine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_branch: Option<String>,
+}
+
+impl ProjectEntry {
+    /// An entry for a directory whose repository is not known, which is what
+    /// every entry was before a project could live in several locations.
+    pub fn directory(id: String, slug: String, name: String, root: PathBuf) -> Self {
+        Self {
+            id,
+            slug,
+            name,
+            root,
+            repo_url: None,
+            default_branch: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,6 +103,10 @@ pub struct ConfigData {
     pub workspaces: Vec<WorkspaceEntry>,
     #[serde(default)]
     pub workspace_root: Option<PathBuf>,
+    /// Where projects are cloned on this machine. Unused in cloud mode, where
+    /// the bootstrap decides where the one checkout goes.
+    #[serde(default)]
+    pub projects_root: Option<PathBuf>,
     #[serde(default)]
     pub star: StarPrompt,
 }
@@ -98,6 +124,7 @@ impl Default for ConfigData {
             projects: Vec::new(),
             workspaces: Vec::new(),
             workspace_root: None,
+            projects_root: None,
             star: StarPrompt::default(),
         }
     }
@@ -170,6 +197,26 @@ impl ConfigStore {
         }
     }
 
+    pub fn projects_root(&self) -> Result<PathBuf> {
+        if let Some(path) = env::var_os("EXEORA_PROJECTS_ROOT") {
+            return absolute_path(PathBuf::from(path));
+        }
+        if let Some(path) = &self.data.projects_root {
+            return absolute_path(path.clone());
+        }
+        default_projects_root()
+    }
+
+    pub fn projects_root_source(&self) -> &'static str {
+        if env::var_os("EXEORA_PROJECTS_ROOT").is_some() {
+            "env"
+        } else if self.data.projects_root.is_some() {
+            "config"
+        } else {
+            "default"
+        }
+    }
+
     pub fn find_project(&self, id: &str) -> Option<&ProjectEntry> {
         self.data.projects.iter().find(|entry| entry.id == id)
     }
@@ -207,6 +254,25 @@ impl ConfigStore {
             fs::create_dir_all(parent)?;
         }
         let _lock = ConfigLock::acquire(&self.path)?;
+        self.write()
+    }
+
+    /// Changes the file as it is now rather than as some caller read it a
+    /// while ago. A clone runs for minutes, and what it has to add must not
+    /// undo what other calls wrote to the config in the meantime: the file is
+    /// read again and written back without letting go of the lock.
+    pub fn update(path: &Path, change: impl FnOnce(&mut Self)) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let _lock = ConfigLock::acquire(path)?;
+        let mut config = Self::load_from(path.to_path_buf())?;
+        change(&mut config);
+        config.write()?;
+        Ok(config)
+    }
+
+    fn write(&self) -> Result<()> {
         let mut file = AtomicWriteFile::options()
             .open(&self.path)
             .with_context(|| format!("Could not open {}", self.path.display()))?;
@@ -285,6 +351,12 @@ pub fn default_workspace_root() -> Result<PathBuf> {
     }
 }
 
+/// `~/exeora`, in plain sight: these are the person's own checkouts, which
+/// they open in an editor, unlike the workspaces kept under the data folder.
+pub fn default_projects_root() -> Result<PathBuf> {
+    Ok(home_dir()?.join("exeora"))
+}
+
 pub fn config_path() -> Result<PathBuf> {
     if let Some(path) = env::var_os("EXEORA_CONFIG_PATH") {
         return Ok(PathBuf::from(path));
@@ -329,4 +401,110 @@ fn home_dir() -> Result<PathBuf> {
     env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from)
         .context("Could not determine the home directory")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConfigStore, ProjectEntry};
+    use std::{fs, path::PathBuf};
+    use tempfile::tempdir;
+
+    #[test]
+    fn loads_a_config_written_before_projects_had_a_repository() {
+        let directory = tempdir().expect("temp directory");
+        let path = directory.path().join("config.json");
+        // What 0.17.0 wrote, and what the bootstrap of a cloud machine writes.
+        fs::write(
+            &path,
+            r#"{
+              "gatewayUrl": "https://exeora.dev",
+              "deviceId": "dev_1",
+              "deviceName": "laptop",
+              "projects": [{ "id": "prj_1", "slug": "api", "name": "API", "root": "/code/api" }],
+              "workspaces": [],
+              "workspaceRoot": "/data/workspaces"
+            }"#,
+        )
+        .expect("fixture");
+
+        let config = ConfigStore::load_from(path).expect("config");
+        assert_eq!(
+            config.data().projects,
+            vec![ProjectEntry::directory(
+                "prj_1".to_owned(),
+                "api".to_owned(),
+                "API".to_owned(),
+                PathBuf::from("/code/api"),
+            )]
+        );
+        assert!(config.data().projects_root.is_none());
+    }
+
+    #[test]
+    fn writes_the_repository_only_when_there_is_one() {
+        let directory = tempdir().expect("temp directory");
+        let path = directory.path().join("config.json");
+        let mut config = ConfigStore::load_from(path.clone()).expect("config");
+        config.upsert_project(ProjectEntry::directory(
+            "prj_plain".to_owned(),
+            "plain".to_owned(),
+            "Plain".to_owned(),
+            PathBuf::from("/code/plain"),
+        ));
+        config.upsert_project(ProjectEntry {
+            repo_url: Some("https://github.com/acme/api.git".to_owned()),
+            default_branch: Some("main".to_owned()),
+            ..ProjectEntry::directory(
+                "prj_api".to_owned(),
+                "api".to_owned(),
+                "API".to_owned(),
+                PathBuf::from("/code/api"),
+            )
+        });
+        config.save().expect("save");
+
+        let text = fs::read_to_string(&path).expect("saved config");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        assert!(value["projects"][0].get("repoUrl").is_none());
+        assert_eq!(
+            value["projects"][1]["repoUrl"],
+            "https://github.com/acme/api.git"
+        );
+        assert_eq!(value["projects"][1]["defaultBranch"], "main");
+    }
+
+    #[test]
+    fn update_keeps_what_was_written_since_the_caller_last_read() {
+        let directory = tempdir().expect("temp directory");
+        let path = directory.path().join("config.json");
+        let stale = ConfigStore::load_from(path.clone()).expect("config");
+        assert!(stale.data().projects.is_empty());
+
+        let mut other = ConfigStore::load_from(path.clone()).expect("config");
+        other.upsert_project(ProjectEntry::directory(
+            "prj_first".to_owned(),
+            "first".to_owned(),
+            "First".to_owned(),
+            PathBuf::from("/code/first"),
+        ));
+        other.save().expect("save");
+
+        let updated = ConfigStore::update(&path, |config| {
+            config.upsert_project(ProjectEntry::directory(
+                "prj_second".to_owned(),
+                "second".to_owned(),
+                "Second".to_owned(),
+                PathBuf::from("/code/second"),
+            ));
+        })
+        .expect("update");
+
+        let ids: Vec<_> = updated
+            .data()
+            .projects
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect();
+        assert_eq!(ids, ["prj_first", "prj_second"]);
+    }
 }

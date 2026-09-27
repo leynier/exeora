@@ -28,6 +28,9 @@ pub const MAX_MCP_TOOL_NAME_LENGTH: usize = 64;
 // Cloud mode. The feature string and the wake port are shared with the
 // gateway through `packages/protocol/src/cloud.ts`; the rest is the CLI's own.
 pub const CLOUD_FEATURE: &str = "cloud-v1";
+/// Announced by a CLI that can clone a project it does not have; shared with
+/// the gateway through `packages/protocol/src/repository.ts`.
+pub const PROJECT_CLONE_FEATURE: &str = "project-clone-v1";
 pub const WAKE_PORT: u16 = 8080;
 /// A clock gap past this is a paused machine, and the socket is dead.
 pub const RESUME_GAP_MS: u64 = 5_000;

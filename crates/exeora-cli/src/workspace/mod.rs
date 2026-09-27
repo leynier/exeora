@@ -1,3 +1,4 @@
+pub mod clone;
 mod git;
 mod terminal;
 

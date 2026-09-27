@@ -1,12 +1,16 @@
 use crate::{
     CLI_VERSION,
-    api::{ApiClient, DeviceView, ToolCallView},
+    api::{ApiClient, DeviceView, ProjectRegistration, ProjectView, ToolCallView, WorkspaceView},
     auth::{
         AuthManager, clear_credentials, discover_client, load_credentials, using_file_fallback,
     },
+    cloud::commands::{confirm, done, finish, wait_ready},
     config::{ConfigStore, DEFAULT_GATEWAY, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     connection::connect_forever,
+    git_credential::GitCredentialArgs,
     policy::{LocalCommandPolicy, POLICY_FILENAME, PolicyMode, render_policy_toml},
+    projects::{self, ProjectCommand, can_ask, find_location, location_names},
+    repo::{checkout_root, default_branch_of, https_repository_url, origin_of, repository_key},
     workspaces,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -45,17 +49,20 @@ pub enum Commands {
         #[command(subcommand)]
         command: Option<GatewayCommand>,
     },
-    #[command(about = "Manage this machine")]
+    #[command(
+        visible_alias = "machine",
+        about = "Manage your machines, this one and the ones Exeora Cloud runs"
+    )]
     Device {
         #[command(subcommand)]
         command: DeviceCommand,
     },
-    #[command(about = "Manage projects on this machine")]
+    #[command(about = "Manage projects and the places they live")]
     Project {
         #[command(subcommand)]
         command: ProjectCommand,
     },
-    #[command(about = "Manage Git workspaces connected to Exeora projects")]
+    #[command(about = "Manage the Git workspaces of your projects, wherever they are")]
     Workspace {
         #[command(subcommand)]
         command: WorkspaceCommand,
@@ -86,11 +93,23 @@ pub enum Commands {
     Sync,
     #[command(about = "Upgrade this native installation to the latest Exeora CLI")]
     Upgrade,
-    #[command(about = "Manage Exeora Cloud: repositories on machines Exeora runs for you")]
+    // Kept so scripts written for 0.17.0 go on working. Everything it does
+    // is now said with `project` and `workspace` and `--on cloud`.
+    #[command(
+        hide = true,
+        about = "Manage Exeora Cloud: repositories on machines Exeora runs for you"
+    )]
     Cloud {
         #[command(subcommand)]
         command: crate::cloud::commands::CloudCommand,
     },
+    // Run by git, not by a person: see `git_credential.rs`.
+    #[command(
+        name = "git-credential",
+        hide = true,
+        about = "Answer git with a short-lived credential for a project's repository"
+    )]
+    GitCredential(GitCredentialArgs),
 }
 
 #[derive(Debug, Args)]
@@ -136,27 +155,16 @@ pub enum DeviceCommand {
         #[arg(short, long)]
         name: Option<String>,
     },
-    #[command(about = "List your registered machines")]
+    #[command(about = "List your machines and the ones Exeora Cloud runs for you")]
     List,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum ProjectCommand {
-    #[command(about = "Register a local directory as a project")]
-    Add {
-        path: Option<PathBuf>,
-        #[arg(short, long)]
-        slug: Option<String>,
-    },
-    #[command(about = "List projects registered on this machine")]
-    List,
-    #[command(about = "Stop serving a project from this machine")]
-    Remove { slug: String },
 }
 
 #[derive(Debug, Subcommand)]
 pub enum WorkspaceCommand {
-    #[command(about = "Create a Git workspace and connect it to an Exeora project")]
+    #[command(
+        about = "Create a Git workspace of a project, on this machine or wherever --on says",
+        long_about = "Create a Git workspace of a project.\n\nWithout --on, or with --on naming this machine, the workspace is a Git worktree here; a project this machine is a location of and holds no copy of yet is cloned first. With --on naming another location the workspace is made there: a worktree on that machine, or a machine of its own on Exeora Cloud."
+    )]
     Create {
         branch: String,
         #[arg(long = "from")]
@@ -166,11 +174,17 @@ pub enum WorkspaceCommand {
         reuse_existing_branch: bool,
         #[arg(short, long)]
         project: Option<String>,
+        #[arg(
+            long = "on",
+            value_name = "MACHINE|cloud",
+            help = "The location to create it in; this machine by default"
+        )]
+        on: Option<String>,
         #[arg(short, long)]
         name: Option<String>,
         #[arg(short, long)]
         slug: Option<String>,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "on")]
         path: Option<PathBuf>,
     },
     #[command(about = "Connect an existing Git workspace to an Exeora project")]
@@ -183,22 +197,39 @@ pub enum WorkspaceCommand {
         #[arg(short, long)]
         slug: Option<String>,
     },
-    #[command(about = "List workspaces connected to Exeora")]
+    #[command(about = "List the workspaces of your projects and where each one lives")]
     List {
         #[arg(short, long, conflicts_with = "all")]
         project: Option<String>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Every project, not only the one of the current directory"
+        )]
         all: bool,
     },
     #[command(about = "Disconnect a workspace from Exeora without deleting it")]
     Detach { selector: String },
-    #[command(about = "Disconnect and remove a Git workspace")]
+    #[command(
+        about = "Disconnect and remove a Git workspace, or take down its machine on Exeora Cloud"
+    )]
     Remove {
         selector: String,
+        #[arg(
+            short,
+            long,
+            help = "The project, when several have a workspace by that name"
+        )]
+        project: Option<String>,
         #[arg(long)]
         force: bool,
         #[arg(long)]
         delete_branch: bool,
+        #[arg(
+            short = 'y',
+            long,
+            help = "Do not ask before taking down a machine on Exeora Cloud"
+        )]
+        yes: bool,
     },
 }
 
@@ -267,6 +298,12 @@ pub async fn run(cli: Cli) -> Result<()> {
     if matches!(&cli.command, Commands::Upgrade) {
         return crate::upgrade::run(cli.json).await;
     }
+    // Before anything that could fail: git runs this one, and a helper that
+    // exits with an error gets in the way of the helpers after it.
+    if let Commands::GitCredential(args) = cli.command {
+        crate::git_credential::run(args).await;
+        return Ok(());
+    }
     let mut config = ConfigStore::load()?;
     // A cloud machine has no session, no browser and no registration to do:
     // it reads what the bootstrap wrote and dials the relay.
@@ -323,9 +360,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Commands::Device { command } => device_command(&mut config, &api, command, cli.json).await,
-        Commands::Project { command } => {
-            project_command(&mut config, &api, command, cli.json).await
-        }
+        Commands::Project { command } => projects::run(&mut config, &api, command, cli.json).await,
         Commands::Workspace { command } => {
             workspace_command(&mut config, &api, command, cli.json).await
         }
@@ -338,7 +373,48 @@ pub async fn run(cli: Cli) -> Result<()> {
         | Commands::Config { .. }
         | Commands::Prompt { .. }
         | Commands::Init(_)
+        | Commands::GitCredential(_)
         | Commands::Upgrade => unreachable!(),
+    }
+}
+
+/// A folder this machine keeps things in, which is every setting there is.
+#[derive(Clone, Copy)]
+enum Setting {
+    WorkspaceRoot,
+    ProjectsRoot,
+}
+
+impl Setting {
+    const NAMES: &str = "workspace-root, projects-root";
+
+    fn named(key: &str) -> Result<Self> {
+        match key {
+            "workspace-root" => Ok(Self::WorkspaceRoot),
+            "projects-root" => Ok(Self::ProjectsRoot),
+            _ => bail!("Unknown setting {key}. Available settings: {}", Self::NAMES),
+        }
+    }
+
+    fn value(self, config: &ConfigStore) -> Result<PathBuf> {
+        match self {
+            Self::WorkspaceRoot => config.workspace_root(),
+            Self::ProjectsRoot => config.projects_root(),
+        }
+    }
+
+    fn source(self, config: &ConfigStore) -> &'static str {
+        match self {
+            Self::WorkspaceRoot => config.workspace_root_source(),
+            Self::ProjectsRoot => config.projects_root_source(),
+        }
+    }
+
+    fn store(self, config: &mut ConfigStore, value: Option<PathBuf>) {
+        match self {
+            Self::WorkspaceRoot => config.data_mut().workspace_root = value,
+            Self::ProjectsRoot => config.data_mut().projects_root = value,
+        }
     }
 }
 
@@ -348,24 +424,24 @@ fn config_command(
     json_output: bool,
 ) -> Result<()> {
     match command {
-        ConfigCommand::Get { key } if key == "workspace-root" => {
-            let value = config.workspace_root()?;
+        ConfigCommand::Get { key } => {
+            let setting = Setting::named(key)?;
+            let value = setting.value(config)?;
             if json_output {
-                emit(
-                    json!({ "key": key, "value": value, "source": config.workspace_root_source() }),
-                )
+                emit(json!({ "key": key, "value": value, "source": setting.source(config) }))
             } else {
                 println!("{}", value.display());
                 Ok(())
             }
         }
-        ConfigCommand::Set { key, value } if key == "workspace-root" => {
+        ConfigCommand::Set { key, value } => {
+            let setting = Setting::named(key)?;
             let value = if value.is_absolute() {
                 value.clone()
             } else {
                 env::current_dir()?.join(value)
             };
-            config.data_mut().workspace_root = Some(value.clone());
+            setting.store(config, Some(value.clone()));
             config.save()?;
             if json_output {
                 emit(json!({ "key": key, "value": value }))
@@ -374,22 +450,18 @@ fn config_command(
                 Ok(())
             }
         }
-        ConfigCommand::Unset { key } if key == "workspace-root" => {
-            config.data_mut().workspace_root = None;
+        ConfigCommand::Unset { key } => {
+            let setting = Setting::named(key)?;
+            setting.store(config, None);
             config.save()?;
             if json_output {
                 emit(
-                    json!({ "key": key, "value": config.workspace_root()?, "source": config.workspace_root_source() }),
+                    json!({ "key": key, "value": setting.value(config)?, "source": setting.source(config) }),
                 )
             } else {
                 println!("Unset {key}.");
                 Ok(())
             }
-        }
-        ConfigCommand::Get { key }
-        | ConfigCommand::Set { key, .. }
-        | ConfigCommand::Unset { key } => {
-            bail!("Unknown setting {key}. Available settings: workspace-root")
         }
     }
 }
@@ -406,11 +478,32 @@ async fn workspace_command(
             from_ref,
             reuse_existing_branch,
             project,
+            on,
             name,
             slug,
             path,
         } => {
-            let project = workspaces::resolve_project(config, project.as_deref())?;
+            if let Some(on) = on.as_deref()
+                && let Some((remote, place)) =
+                    another_location(config, api, project.as_deref(), on).await?
+            {
+                return create_workspace_elsewhere(
+                    api,
+                    &remote,
+                    &place,
+                    json!({
+                        "branch": branch,
+                        "from": from_ref,
+                        "reuseExistingBranch": reuse_existing_branch,
+                        "name": name,
+                        "slug": slug,
+                    }),
+                    json_output,
+                )
+                .await;
+            }
+            let project =
+                projects::local_project(config, api, project.as_deref(), json_output).await?;
             let entry = workspaces::create(
                 config,
                 &project,
@@ -437,43 +530,11 @@ async fn workspace_command(
             persist_workspace(config, api, entry, json_output).await
         }
         WorkspaceCommand::List { project, all } => {
-            let project_id = if all {
-                None
-            } else {
-                Some(workspaces::resolve_project(config, project.as_deref())?.id)
-            };
-            let entries: Vec<_> = config
-                .data()
-                .workspaces
-                .iter()
-                .filter(|entry| project_id.as_ref().is_none_or(|id| &entry.project_id == id))
-                .collect();
-            if json_output {
-                return emit(serde_json::to_value(entries)?);
-            }
-            if entries.is_empty() {
-                println!("No connected workspaces.");
-            }
-            for entry in entries {
-                let project = config
-                    .data()
-                    .projects
-                    .iter()
-                    .find(|project| project.id == entry.project_id)
-                    .map_or("removed", |project| project.slug.as_str());
-                println!(
-                    "{:<20} {:<18} {:<14} {}",
-                    entry.slug,
-                    project,
-                    format!("{:?}", entry.sync_state).to_lowercase(),
-                    entry.root.display()
-                );
-            }
-            Ok(())
+            list_workspaces(config, api, project.as_deref(), all, json_output).await
         }
         WorkspaceCommand::Detach { selector } => {
             let outcome =
-                workspaces::detach(config, api, find_workspace(config, &selector)?).await?;
+                workspaces::detach(config, api, find_workspace(config, &selector, None)?).await?;
             if json_output {
                 emit(json!({
                     "workspace": outcome.entry,
@@ -494,10 +555,26 @@ async fn workspace_command(
         }
         WorkspaceCommand::Remove {
             selector,
+            project,
             force,
             delete_branch,
+            yes,
         } => {
-            let entry = find_workspace(config, &selector)?;
+            let entry = match find_workspace(config, &selector, project.as_deref()) {
+                Ok(entry) => entry,
+                // Not on this machine. It may be one Exeora Cloud runs.
+                Err(missing) => {
+                    return remove_workspace_elsewhere(
+                        api,
+                        &selector,
+                        project.as_deref(),
+                        yes,
+                        json_output,
+                        missing,
+                    )
+                    .await;
+                }
+            };
             let project = config
                 .data()
                 .projects
@@ -537,26 +614,34 @@ async fn persist_workspace(
 ) -> Result<()> {
     let outcome = workspaces::persist(config, api, entry).await?;
     if json_output {
-        emit(json!({
+        let mut value = json!({
             "workspace": outcome.entry,
             "outcome": outcome.outcome
-        }))
+        });
+        if let Some(problem) = &outcome.problem {
+            value["problem"] = json!(problem);
+        }
+        emit(value)
     } else {
         println!(
             "Connected {} at {}.{}",
             outcome.entry.slug,
             outcome.entry.root.display(),
-            if outcome.outcome == "active" {
-                ""
-            } else {
-                " Gateway sync is pending; run `exeora sync`."
+            match (&outcome.problem, outcome.outcome) {
+                (Some(problem), _) => format!(" The gateway did not take it. {problem}"),
+                (None, "active") => String::new(),
+                (None, _) => " Gateway sync is pending; run `exeora sync`.".to_owned(),
             }
         );
         Ok(())
     }
 }
 
-fn find_workspace(config: &ConfigStore, selector: &str) -> Result<WorkspaceEntry> {
+fn find_workspace(
+    config: &ConfigStore,
+    selector: &str,
+    project: Option<&str>,
+) -> Result<WorkspaceEntry> {
     if let Some(entry) = config
         .data()
         .workspaces
@@ -565,20 +650,278 @@ fn find_workspace(config: &ConfigStore, selector: &str) -> Result<WorkspaceEntry
     {
         return Ok(entry.clone());
     }
+    let project_id = project.and_then(|project| {
+        config
+            .data()
+            .projects
+            .iter()
+            .find(|entry| entry.id == project || entry.slug.eq_ignore_ascii_case(project))
+            .map(|entry| entry.id.as_str())
+    });
     let matches: Vec<_> = config
         .data()
         .workspaces
         .iter()
         .filter(|entry| entry.slug.eq_ignore_ascii_case(selector))
+        .filter(|entry| project.is_none() || project_id == Some(entry.project_id.as_str()))
         .cloned()
         .collect();
     match matches.as_slice() {
         [] => Err(anyhow!("No workspace called {selector} on this machine.")),
         [entry] => Ok(entry.clone()),
         _ => bail!(
-            "Several projects have a workspace called {selector}. Use its ID from `exeora workspace list --all`."
+            "Several projects have a workspace called {selector}. Pass --project, or use its ID from `exeora workspace list --all`."
         ),
     }
+}
+
+/// The project and the location `--on` names, when that is somewhere other
+/// than this machine. None when it is this machine after all, by whichever
+/// of its names.
+async fn another_location(
+    config: &ConfigStore,
+    api: &ApiClient,
+    project: Option<&str>,
+    on: &str,
+) -> Result<Option<(ProjectView, String)>> {
+    if projects::names_this_machine(config, on) {
+        return Ok(None);
+    }
+    let selector = match project {
+        Some(project) => project.to_owned(),
+        None => workspaces::resolve_project(config, None)?.id,
+    };
+    let remote = projects::find_project(api, &selector).await?;
+    let place = match find_location(config, &remote.locations, on) {
+        Some(location)
+            if location.device_id.is_some() && location.device_id == config.data().device_id =>
+        {
+            return Ok(None);
+        }
+        Some(location) => location.slug.clone(),
+        // Every project with a repository can be put on Exeora Cloud, and
+        // asking for a workspace there is what puts it.
+        None if on.trim().eq_ignore_ascii_case("cloud") => "cloud".to_owned(),
+        None => bail!(
+            "{} does not live on {on}. Its locations are: {}. Add one with `exeora project locations add {} --on {on}`.",
+            remote.slug,
+            location_names(&remote.locations),
+            remote.slug
+        ),
+    };
+    Ok(Some((remote, place)))
+}
+
+/// Asks the gateway for a workspace in another location: a worktree on that
+/// machine, which answers when it is made, or a machine of its own on Exeora
+/// Cloud, which is waited for.
+async fn create_workspace_elsewhere(
+    api: &ApiClient,
+    project: &ProjectView,
+    place: &str,
+    mut body: Value,
+    json_output: bool,
+) -> Result<()> {
+    if let Some(fields) = body.as_object_mut() {
+        fields.retain(|_, value| !value.is_null() && *value != json!(false));
+        fields.insert("where".to_owned(), json!(place));
+    }
+    let answer = api.create_workspace_at(&project.id, body).await?;
+    let text = |pointer: &str| answer.pointer(pointer).and_then(Value::as_str);
+    if text("/status") == Some("creating") {
+        let device_id =
+            text("/deviceId").context("The gateway did not say which machine it is making")?;
+        let slug = text("/slug").unwrap_or("workspace").to_owned();
+        if !json_output {
+            println!("Creating {}/{slug} on a new machine…", project.slug);
+        }
+        let machine = wait_ready(api, device_id, json_output).await?;
+        return finish(json_output, "workspace", &slug, &machine);
+    }
+    if json_output {
+        return emit(answer);
+    }
+    println!(
+        "Created {} on {} at {}.",
+        text("/workspace/slug").unwrap_or("the workspace"),
+        text("/where").unwrap_or(place),
+        text("/workspace/localPath").unwrap_or("its workspace folder")
+    );
+    Ok(())
+}
+
+/// The projects a listing is about: the one named, every one, or the one the
+/// current directory is in. Every one too when the directory is in none.
+fn listed_projects<'a>(
+    config: &ConfigStore,
+    remote: &'a [ProjectView],
+    project: Option<&str>,
+    all: bool,
+) -> Result<Vec<&'a ProjectView>> {
+    if let Some(selector) = project {
+        let found = remote
+            .iter()
+            .find(|entry| entry.id == selector || entry.slug.eq_ignore_ascii_case(selector))
+            .ok_or_else(|| anyhow!("No project called {selector}. See `exeora project list`."))?;
+        return Ok(vec![found]);
+    }
+    if !all
+        && let Ok(local) = workspaces::resolve_project(config, None)
+        && let Some(found) = remote.iter().find(|entry| entry.id == local.id)
+    {
+        return Ok(vec![found]);
+    }
+    Ok(remote.iter().collect())
+}
+
+fn workspace_place(config: &ConfigStore, workspace: &WorkspaceView) -> String {
+    let here = workspace.device_id.is_some() && workspace.device_id == config.data().device_id;
+    let name = if workspace.cloud {
+        "Exeora Cloud".to_owned()
+    } else {
+        workspace
+            .machine
+            .clone()
+            .unwrap_or_else(|| "unknown machine".to_owned())
+    };
+    if here {
+        format!("{name} (this machine)")
+    } else {
+        name
+    }
+}
+
+async fn list_workspaces(
+    config: &ConfigStore,
+    api: &ApiClient,
+    project: Option<&str>,
+    all: bool,
+    json_output: bool,
+) -> Result<()> {
+    let remote = api.list_projects().await?;
+    let mut rows = Vec::new();
+    let mut lines = Vec::new();
+    for project in listed_projects(config, &remote, project, all)? {
+        let known = api.list_workspaces(&project.id).await?;
+        // What this machine made and the gateway has not heard of yet.
+        let unsent: Vec<_> = config
+            .data()
+            .workspaces
+            .iter()
+            .filter(|entry| entry.project_id == project.id)
+            .filter(|entry| known.iter().all(|workspace| workspace.id != entry.id))
+            .map(|entry| WorkspaceView {
+                id: entry.id.clone(),
+                project_id: entry.project_id.clone(),
+                slug: entry.slug.clone(),
+                name: entry.name.clone(),
+                branch: entry.branch.clone(),
+                local_path: entry.root.to_string_lossy().into_owned(),
+                managed: entry.managed,
+                device_id: config.data().device_id.clone(),
+                machine: config.data().device_name.clone(),
+                cloud: false,
+                created_at: 0,
+                updated_at: 0,
+            })
+            .collect();
+        for workspace in known.into_iter().chain(unsent) {
+            let here =
+                workspace.device_id.is_some() && workspace.device_id == config.data().device_id;
+            let state = config
+                .data()
+                .workspaces
+                .iter()
+                .find(|entry| entry.id == workspace.id)
+                .map(|entry| entry.sync_state);
+            let mut row = serde_json::to_value(&workspace)?;
+            row["projectSlug"] = json!(project.slug);
+            row["thisMachine"] = json!(here);
+            row["syncState"] = json!(state);
+            rows.push(row);
+            lines.push(format!(
+                "{:<24} {:<18} {:<32} {}{}",
+                workspace.slug,
+                project.slug,
+                workspace_place(config, &workspace),
+                workspace.branch.as_deref().unwrap_or("-"),
+                match state {
+                    None | Some(WorkspaceSyncState::Active) => String::new(),
+                    Some(state) => format!("  [{}]", format!("{state:?}").to_lowercase()),
+                }
+            ));
+        }
+    }
+    if json_output {
+        return emit(Value::Array(rows));
+    }
+    if lines.is_empty() {
+        println!("No workspaces. Create one with `exeora workspace create <branch>`.");
+    }
+    for line in lines {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// Removes a workspace this machine does not hold. One that is a machine on
+/// Exeora Cloud is taken down through the gateway; one on another machine of
+/// the person is removed there, where its files are.
+async fn remove_workspace_elsewhere(
+    api: &ApiClient,
+    selector: &str,
+    project: Option<&str>,
+    yes: bool,
+    json_output: bool,
+    missing: anyhow::Error,
+) -> Result<()> {
+    // Without the gateway there is nothing more to look at, and what was
+    // asked is still a workspace this machine does not have.
+    let Ok(remote) = api.list_projects().await else {
+        return Err(missing);
+    };
+    let mut found = Vec::new();
+    for entry in remote.iter().filter(|entry| {
+        project
+            .is_none_or(|project| entry.id == project || entry.slug.eq_ignore_ascii_case(project))
+    }) {
+        for workspace in api.list_workspaces(&entry.id).await? {
+            if workspace.id == selector || workspace.slug.eq_ignore_ascii_case(selector) {
+                found.push((entry, workspace));
+            }
+        }
+    }
+    let (project, workspace) = match found.as_slice() {
+        [] => return Err(missing),
+        [one] => one,
+        _ => bail!(
+            "Several projects have a workspace called {selector}. Pass --project, or use its ID from `exeora workspace list --all`."
+        ),
+    };
+    if !workspace.cloud {
+        bail!(
+            "{} lives on {}. Run `exeora workspace remove {}` there, where its files are.",
+            workspace.slug,
+            workspace.machine.as_deref().unwrap_or("another machine"),
+            workspace.slug
+        );
+    }
+    if !confirm(
+        yes,
+        json_output,
+        &format!(
+            "Remove {}/{} and its machine? Anything not pushed from it is lost.",
+            project.slug, workspace.slug
+        ),
+    )? {
+        return Ok(());
+    }
+    api.cloud_remove_workspace(&project.id, &workspace.id)
+        .await?;
+    done(
+        json_output,
+        json!({ "removed": "workspace", "slug": workspace.slug }),
+    )
 }
 
 async fn sign_in(auth: &AuthManager, code: bool) -> Result<crate::auth::LoginResult> {
@@ -643,114 +986,78 @@ async fn device_command(
             println!("Registered {} ({}).", registered.name, registered.id);
         }
         DeviceCommand::List => {
-            let devices = api.list_devices().await?;
+            let machines = api.list_machines_raw().await?;
+            let this = config.data().device_id.as_deref();
             if json_output {
-                emit(Value::Array(
-                    devices
+                return emit(Value::Array(
+                    machines
                         .into_iter()
-                        .map(|entry| {
-                            let this = config.data().device_id.as_deref() == Some(&entry.id);
-                            let mut value = serde_json::to_value(&entry).unwrap_or_default();
-                            value["online"] = json!(is_online(&entry));
-                            value["thisMachine"] = json!(this);
-                            value
+                        .map(|mut machine| {
+                            let here = this.is_some()
+                                && machine.get("deviceId").and_then(Value::as_str) == this;
+                            machine["thisMachine"] = json!(here);
+                            machine
                         })
                         .collect(),
-                ))?;
-            } else if devices.is_empty() {
-                println!("No devices registered yet.");
-            } else {
-                for entry in devices {
-                    println!(
-                        "{:<20} {:<9} {}{}",
-                        entry.name,
-                        if entry.revoked_at.is_some() {
-                            "revoked"
-                        } else if is_online(&entry) {
-                            "online"
-                        } else {
-                            "offline"
-                        },
-                        entry.platform,
-                        if config.data().device_id.as_deref() == Some(&entry.id) {
-                            "  (this machine)"
-                        } else {
-                            ""
-                        }
-                    );
-                }
+                ));
+            }
+            if machines.is_empty() {
+                println!("No machines yet. Run `exeora connect` on one to register it.");
+            }
+            for machine in machines {
+                let machine: crate::api::MachineView = serde_json::from_value(machine)?;
+                println!("{}", describe_machine(&machine, this));
             }
         }
     }
     Ok(())
 }
 
-async fn project_command(
-    config: &mut ConfigStore,
-    api: &ApiClient,
-    command: ProjectCommand,
-    json_output: bool,
-) -> Result<()> {
-    match command {
-        ProjectCommand::Add { path, slug } => {
-            let device = config.data().device_id.clone().ok_or_else(|| {
-                anyhow!("This machine is not registered. Run `exeora device register` first.")
-            })?;
-            let root = project_root(Some(path.unwrap_or_else(|| PathBuf::from("."))))?;
-            let name = file_name(&root)?;
-            let slug = slug.unwrap_or_else(|| slugify(&name));
-            let added = api
-                .add_project(&device, &name, &slug, &root.to_string_lossy())
-                .await?;
-            let entry = ProjectEntry {
-                id: added.id,
-                slug: added.slug.unwrap_or(slug),
-                name: added.name,
-                root,
-            };
-            config.upsert_project(entry.clone());
-            config.save()?;
-            println!("Added {}.", entry.name);
-            println!("{}", project_mcp_url(&config.gateway_url(), &entry.id)?);
+/// One line for a machine: whose it is, what it is doing, what it holds.
+fn describe_machine(machine: &crate::api::MachineView, this: Option<&str>) -> String {
+    let holds = if machine.kind == "cloud" {
+        match (&machine.project, &machine.workspace) {
+            (Some(project), Some(workspace)) => format!(
+                "{}/{} ({})",
+                project.slug,
+                workspace.slug,
+                workspace.branch.as_deref().unwrap_or("-")
+            ),
+            _ => String::new(),
         }
-        ProjectCommand::List => {
-            if json_output {
-                emit(Value::Array(
-                    config
-                        .data()
-                        .projects
-                        .iter()
-                        .map(|entry| project_json(entry, &config.gateway_url()))
-                        .collect::<Result<_>>()?,
-                ))?;
-            } else if config.data().projects.is_empty() {
-                println!("No projects yet. Run `exeora project add` in a directory.");
-            } else {
-                for entry in &config.data().projects {
-                    println!("{:<20} {}", entry.slug, entry.root.display());
-                    println!(
-                        "{:<20} {}",
-                        "",
-                        project_mcp_url(&config.gateway_url(), &entry.id)?
-                    );
+    } else {
+        let copies: Vec<_> = machine
+            .projects
+            .iter()
+            .map(|project| {
+                let mut copy = project.slug.clone();
+                if project.is_default {
+                    copy.push('*');
                 }
-            }
+                if project.status != "ready" && !project.status.is_empty() {
+                    copy.push_str(&format!(" [{}]", project.status));
+                }
+                if project.workspaces > 0 {
+                    copy.push_str(&format!(" +{}", project.workspaces));
+                }
+                copy
+            })
+            .collect();
+        format!("{}  {}", machine.platform, copies.join(", "))
+    };
+    let line = format!(
+        "{:<24} {:<6} {:<11} {}{}",
+        machine.name,
+        machine.kind,
+        machine.state,
+        holds.trim(),
+        if this == Some(machine.device_id.as_str()) {
+            "  (this machine)"
+        } else {
+            ""
         }
-        ProjectCommand::Remove { slug } => {
-            let entry = config
-                .data()
-                .projects
-                .iter()
-                .find(|entry| entry.slug == slug)
-                .cloned()
-                .ok_or_else(|| anyhow!("No project called {slug} on this machine."))?;
-            let _ = api.remove_project(&entry.id).await?;
-            config.remove_project(&entry.id);
-            config.save()?;
-            println!("Removed {slug}.");
-        }
-    }
-    Ok(())
+    );
+    line.trim_end().to_owned()
 }
 
 async fn connect_command(
@@ -775,6 +1082,7 @@ async fn connect_command(
     };
     let device = ensure_device(config, api, devices, args.name).await?;
     config.save()?;
+    ask_projects_root(config, json_output)?;
     if config.data().projects.is_empty() && !json_output {
         println!(
             "No projects registered yet. Run `exeora project add` in a directory to serve it."
@@ -790,6 +1098,51 @@ async fn connect_command(
         crate::connection::ConnectMode::Local,
     )
     .await
+}
+
+/// Asks, the first time `connect` runs at a terminal, where projects should
+/// be cloned on this machine. Once: the answer is saved, and a machine that
+/// was told through the config or the environment is never asked.
+fn ask_projects_root(config: &mut ConfigStore, json_output: bool) -> Result<()> {
+    if config.data().projects_root.is_some()
+        || env::var_os("EXEORA_PROJECTS_ROOT").is_some()
+        || !can_ask(json_output)
+    {
+        return Ok(());
+    }
+    let suggested = config.projects_root()?;
+    let answer: String =
+        cliclack::input("Where should Exeora clone your projects on this machine?")
+            .default_input(&suggested.to_string_lossy())
+            .interact()?;
+    let chosen = projects_root_from(answer.trim(), &suggested)?;
+    config.data_mut().projects_root = Some(chosen.clone());
+    config.save()?;
+    println!(
+        "Projects are cloned into {}. Change it with `exeora config set projects-root <path>`.",
+        chosen.display()
+    );
+    Ok(())
+}
+
+/// The folder somebody typed, with `~` read the way a shell would.
+fn projects_root_from(answer: &str, suggested: &Path) -> Result<PathBuf> {
+    if answer.is_empty() {
+        return Ok(suggested.to_path_buf());
+    }
+    let home = env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+    let path = match (answer.strip_prefix('~'), home) {
+        (Some(""), Some(home)) => home,
+        (Some(rest), Some(home)) if rest.starts_with(['/', '\\']) => {
+            home.join(rest.trim_start_matches(['/', '\\']))
+        }
+        _ => PathBuf::from(answer),
+    };
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        env::current_dir()?.join(path)
+    })
 }
 
 async fn status_command(config: &ConfigStore, api: &ApiClient, json_output: bool) -> Result<()> {
@@ -1046,19 +1399,14 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
             device.name
         );
     }
-    let authority: Vec<_> = remote
-        .into_iter()
-        .filter(|entry| entry.device_id == stored)
-        .collect();
-    let next: Vec<ProjectEntry> = authority
-        .into_iter()
-        .map(|entry| ProjectEntry {
-            id: entry.id,
-            slug: entry.slug,
-            name: entry.name,
-            root: PathBuf::from(entry.local_path),
-        })
-        .collect();
+    let mut next = projects_on_this_machine(&stored, &remote, &config.data().projects);
+    let taught = teach_repositories(api, &stored, &remote, &next).await;
+    if taught > 0 {
+        // The gateway may have answered by joining a checkout to a project it
+        // already had. What it holds now is what this machine should mirror.
+        let remote = api.list_projects().await?;
+        next = projects_on_this_machine(&stored, &remote, &config.data().projects);
+    }
     let projects_changed = next != config.data().projects;
     if projects_changed {
         config.data_mut().projects = next;
@@ -1070,7 +1418,11 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
     for mut entry in pending {
         match entry.sync_state {
             WorkspaceSyncState::PendingUpsert => {
-                if api.put_workspace(&entry.project_id, &entry).await.is_ok() {
+                if let Ok(registered) = api
+                    .put_workspace(&entry.project_id, &entry, Some(&stored))
+                    .await
+                {
+                    workspaces::adopt_registration(&mut entry, &registered);
                     entry.sync_state = WorkspaceSyncState::Active;
                     config.upsert_workspace(entry);
                     synced += 1;
@@ -1114,14 +1466,130 @@ async fn sync_command(config: &mut ConfigStore, api: &ApiClient) -> Result<()> {
         }
     }
     config.save()?;
+    if taught > 0 {
+        println!(
+            "Told Exeora the repository of {taught} project(s), so other machines can hold a copy of them."
+        );
+    }
     if projects_changed || synced > 0 || recovered > 0 {
         println!(
             "Synchronized projects and {synced} pending workspaces with the gateway; recovered {recovered} interrupted removals."
         );
-    } else {
+    } else if taught == 0 {
         println!("Already up to date.");
     }
     Ok(())
+}
+
+/// The projects that belong in this machine's config, as the gateway sees
+/// them.
+///
+/// A project belongs here when one of its locations is this machine, whether
+/// or not it is the default one. The root is where that location says the
+/// copy is. A location that has no copy yet, because nobody has asked for a
+/// workspace on it or because it is being cloned right now, keeps whatever
+/// entry this machine already has and gains none: the clone writes the entry
+/// when there is something to point at.
+fn projects_on_this_machine(
+    device: &str,
+    remote: &[ProjectView],
+    local: &[ProjectEntry],
+) -> Vec<ProjectEntry> {
+    remote
+        .iter()
+        .filter_map(|project| {
+            let known = local.iter().find(|entry| entry.id == project.id);
+            let default_here = project.device_id == device;
+            let root = if project.locations.is_empty() {
+                // A gateway from before locations: the project is on one
+                // machine, and that is the whole of what it says.
+                default_here.then(|| PathBuf::from(&project.local_path))
+            } else {
+                let location = project
+                    .location_on(device)
+                    .filter(|location| !location.is_cloud())?;
+                let waiting = matches!(location.status.as_str(), "pending" | "cloning");
+                location
+                    .local_path
+                    .as_deref()
+                    .filter(|_| !waiting)
+                    .map(PathBuf::from)
+                    .or_else(|| known.map(|entry| entry.root.clone()))
+                    .or_else(|| {
+                        (default_here && !waiting).then(|| PathBuf::from(&project.local_path))
+                    })
+            }?;
+            Some(ProjectEntry {
+                id: project.id.clone(),
+                slug: project.slug.clone(),
+                name: project.name.clone(),
+                root,
+                repo_url: project
+                    .repo_url
+                    .clone()
+                    .or_else(|| known.and_then(|entry| entry.repo_url.clone())),
+                default_branch: project
+                    .default_branch
+                    .clone()
+                    .or_else(|| known.and_then(|entry| entry.default_branch.clone())),
+            })
+        })
+        .collect()
+}
+
+/// Tells the gateway the repository of projects it knows only as a directory.
+///
+/// That is every project registered by a CLI older than 0.18.0. Until the
+/// gateway knows the repository, the project cannot live anywhere else. Sent
+/// as the same registration again, which the gateway reads as an update.
+/// Answers with how many it told; one that is refused is left as it was.
+async fn teach_repositories(
+    api: &ApiClient,
+    device: &str,
+    remote: &[ProjectView],
+    local: &[ProjectEntry],
+) -> usize {
+    let mut taught = 0;
+    for entry in local {
+        let unknown_to_gateway = remote
+            .iter()
+            .find(|project| project.id == entry.id)
+            .is_some_and(|project| project.repo_url.is_none());
+        if !unknown_to_gateway {
+            continue;
+        }
+        let Some(repo_url) = repository_of(&entry.root) else {
+            continue;
+        };
+        let default_branch = default_branch_of(&entry.root);
+        let told = api
+            .add_project(ProjectRegistration {
+                device_id: device,
+                name: &entry.name,
+                slug: &entry.slug,
+                local_path: &entry.root.to_string_lossy(),
+                repo_url: Some(&repo_url),
+                default_branch: default_branch.as_deref(),
+            })
+            .await;
+        if told.is_ok() {
+            taught += 1;
+        }
+    }
+    taught
+}
+
+/// The https address of the repository a directory is the top of. None for a
+/// folder inside a checkout: the project is that folder, not the repository.
+fn repository_of(root: &Path) -> Option<String> {
+    let root = root.canonicalize().ok()?;
+    let top = checkout_root(&root)?.canonicalize().ok()?;
+    if top != root {
+        return None;
+    }
+    let origin = origin_of(&root)?;
+    repository_key(&origin)?;
+    https_repository_url(&origin)
 }
 
 async fn gateway_command(
@@ -1267,7 +1735,7 @@ fn normalize_gateway(input: &str) -> Result<String> {
     Ok(url.origin().ascii_serialization())
 }
 
-fn project_root(path: Option<PathBuf>) -> Result<PathBuf> {
+pub(crate) fn project_root(path: Option<PathBuf>) -> Result<PathBuf> {
     let root = absolute(path.unwrap_or_else(|| PathBuf::from(".")))?;
     let home = env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .and_then(|home| PathBuf::from(home).canonicalize().ok());
@@ -1291,7 +1759,7 @@ fn validate_project_root(root: PathBuf, home: Option<&Path>) -> Result<PathBuf> 
     Ok(root)
 }
 
-fn slugify(value: &str) -> String {
+pub(crate) fn slugify(value: &str) -> String {
     let slug = value
         .to_lowercase()
         .chars()
@@ -1318,12 +1786,12 @@ fn absolute(path: PathBuf) -> Result<PathBuf> {
             .with_context(|| format!("Could not resolve {}", path.display()))
     })
 }
-fn file_name(path: &Path) -> Result<String> {
+pub(crate) fn file_name(path: &Path) -> Result<String> {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .context("The project path has no directory name")
 }
-fn project_mcp_url(gateway: &str, id: &str) -> Result<Url> {
+pub(crate) fn project_mcp_url(gateway: &str, id: &str) -> Result<Url> {
     Ok(Url::parse(gateway)?.join(&format!("/p/{id}/mcp"))?)
 }
 fn project_json(entry: &ProjectEntry, gateway: &str) -> Result<Value> {
@@ -1347,7 +1815,7 @@ fn parse_mode(value: &str) -> Result<PolicyMode> {
         _ => bail!("invalid policy mode: {value}"),
     }
 }
-fn emit(value: Value) -> Result<()> {
+pub(crate) fn emit(value: Value) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
 }
@@ -1367,14 +1835,6 @@ fn source_description(source: &str) -> &'static str {
         _ => "configured",
     }
 }
-fn is_online(device: &DeviceView) -> bool {
-    device.revoked_at.is_none()
-        && device.online.unwrap_or_else(|| {
-            device
-                .last_seen_at
-                .is_some_and(|at| crate::protocol::now_ms().saturating_sub(at) < 90_000)
-        })
-}
 fn client_name(call: &ToolCallView) -> String {
     call.client_name.clone().unwrap_or_else(|| {
         if call.client_id.is_some() {
@@ -1387,9 +1847,379 @@ fn client_name(call: &ToolCallView) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_project_root;
-    use std::{fs, path::PathBuf};
+    use super::{
+        describe_machine, listed_projects, projects_on_this_machine, projects_root_from,
+        sync_command, validate_project_root,
+    };
+    use crate::{
+        api::{MachineView, ProjectView},
+        config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
+        testing::{Gateway, listed_location, listed_project},
+    };
+    use serde_json::{Value, json};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+    };
     use tempfile::tempdir;
+
+    fn views(projects: Value) -> Vec<ProjectView> {
+        serde_json::from_value(projects).expect("project views")
+    }
+
+    fn entry(id: &str, slug: &str, root: &str) -> ProjectEntry {
+        ProjectEntry::directory(
+            id.to_owned(),
+            slug.to_owned(),
+            slug.to_owned(),
+            PathBuf::from(root),
+        )
+    }
+
+    #[test]
+    fn a_project_belongs_here_when_one_of_its_locations_is_this_machine() {
+        let remote = views(json!([
+            // The default is another machine, and this one holds a copy too.
+            listed_project(
+                "prj_shared",
+                "shared",
+                json!({
+                    "repoUrl": "https://github.com/acme/shared.git",
+                    "defaultBranch": "main",
+                    "locations": [
+                        listed_location(Some("dev_elsewhere"), "desktop", json!({ "default": true, "localPath": "/elsewhere/shared" })),
+                        listed_location(Some("dev_here"), "laptop", json!({ "localPath": "/here/shared" })),
+                    ],
+                })
+            ),
+            // Chosen as a location, not cloned yet, and known here already.
+            listed_project(
+                "prj_pending",
+                "pending",
+                json!({
+                    "locations": [
+                        listed_location(Some("dev_elsewhere"), "desktop", json!({ "default": true })),
+                        listed_location(Some("dev_here"), "laptop", json!({ "status": "pending", "state": "not cloned" })),
+                    ],
+                })
+            ),
+            // Being cloned right now, by a call that has not finished.
+            listed_project(
+                "prj_cloning",
+                "cloning",
+                json!({
+                    "locations": [
+                        listed_location(Some("dev_here"), "laptop", json!({ "status": "cloning", "localPath": "/here/half" })),
+                    ],
+                })
+            ),
+            // Lives on another machine and on Exeora Cloud, not here.
+            listed_project(
+                "prj_away",
+                "away",
+                json!({
+                    "locations": [
+                        listed_location(Some("dev_elsewhere"), "desktop", json!({ "default": true })),
+                        listed_location(None, "cloud", json!({ "kind": "cloud" })),
+                    ],
+                })
+            ),
+            // From a gateway that lists no locations: where it is, is `deviceId`.
+            listed_project(
+                "prj_legacy",
+                "legacy",
+                json!({ "deviceId": "dev_here", "localPath": "/here/legacy" })
+            ),
+            listed_project("prj_legacy_away", "legacy-away", json!({})),
+        ]));
+        let local = [
+            entry("prj_pending", "pending", "/here/pending"),
+            entry("prj_away", "away", "/here/away"),
+            entry("prj_gone", "gone", "/here/gone"),
+        ];
+
+        let next = projects_on_this_machine("dev_here", &remote, &local);
+        let roots: Vec<_> = next
+            .iter()
+            .map(|entry| (entry.id.as_str(), entry.root.to_string_lossy().into_owned()))
+            .collect();
+        assert_eq!(
+            roots,
+            [
+                ("prj_shared", "/here/shared".to_owned()),
+                ("prj_pending", "/here/pending".to_owned()),
+                ("prj_legacy", "/here/legacy".to_owned()),
+            ]
+        );
+        assert_eq!(
+            next[0].repo_url.as_deref(),
+            Some("https://github.com/acme/shared.git")
+        );
+        assert_eq!(next[0].default_branch.as_deref(), Some("main"));
+    }
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(cwd)
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(output.status.success(), "git {}", args.join(" "));
+    }
+
+    #[tokio::test]
+    async fn sync_tells_the_gateway_the_repository_of_a_project_it_knows_as_a_directory() {
+        let temp = tempdir().expect("temp directory");
+        let checkout = fs::canonicalize(temp.path()).expect("path").join("api");
+        fs::create_dir(&checkout).expect("checkout");
+        git(&checkout, &["init", "--quiet"]);
+        git(
+            &checkout,
+            &["remote", "add", "origin", "git@github.com:Acme/API.git"],
+        );
+        git(
+            &checkout,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/trunk",
+            ],
+        );
+        let plain = fs::canonicalize(temp.path()).expect("path").join("notes");
+        fs::create_dir(&plain).expect("directory");
+
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.upsert_project(entry("prj_api", "api", &checkout.to_string_lossy()));
+        config.upsert_project(entry("prj_notes", "notes", &plain.to_string_lossy()));
+        config.save().expect("save");
+
+        let api_path = checkout.to_string_lossy().into_owned();
+        let notes_path = plain.to_string_lossy().into_owned();
+        let taught = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let heard = taught.clone();
+        let gateway = Gateway::start(move |method, path, _| match (method, path) {
+            ("GET", "/api/devices") => (
+                200,
+                json!([{ "id": "dev_here", "name": "laptop", "platform": "linux", "cliVersion": null, "online": true, "lastSeenAt": null, "revokedAt": null }]),
+            ),
+            ("GET", "/api/projects") => {
+                let known = heard.load(std::sync::atomic::Ordering::SeqCst);
+                (
+                    200,
+                    json!([
+                        listed_project("prj_api", "api", json!({
+                            "deviceId": "dev_here",
+                            "localPath": api_path,
+                            "repoUrl": if known { json!("https://github.com/Acme/API.git") } else { Value::Null },
+                            "defaultBranch": if known { json!("trunk") } else { Value::Null },
+                            "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": api_path }))],
+                        })),
+                        listed_project("prj_notes", "notes", json!({
+                            "deviceId": "dev_here",
+                            "localPath": notes_path,
+                            "locations": [listed_location(Some("dev_here"), "laptop", json!({ "default": true, "localPath": notes_path }))],
+                        })),
+                    ]),
+                )
+            }
+            ("POST", "/api/projects") => {
+                heard.store(true, std::sync::atomic::Ordering::SeqCst);
+                (
+                    200,
+                    json!({ "id": "prj_api", "slug": "api", "name": "api", "location": "updated" }),
+                )
+            }
+            _ => (404, json!({ "error": "not_found" })),
+        })
+        .await;
+
+        sync_command(&mut config, &gateway.api().await)
+            .await
+            .expect("sync");
+
+        let sent = gateway.received_as("POST", "/api/projects");
+        assert_eq!(sent.len(), 1, "only the checkout with a remote is told");
+        assert_eq!(
+            sent[0].body,
+            json!({
+                "deviceId": "dev_here",
+                "name": "api",
+                "slug": "api",
+                "localPath": checkout.to_string_lossy(),
+                "repoUrl": "https://github.com/Acme/API.git",
+                "defaultBranch": "trunk",
+            })
+        );
+        let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
+        let api_entry = saved.find_project("prj_api").expect("entry");
+        assert_eq!(
+            api_entry.repo_url.as_deref(),
+            Some("https://github.com/Acme/API.git")
+        );
+        assert_eq!(api_entry.default_branch.as_deref(), Some("trunk"));
+        assert!(
+            saved
+                .find_project("prj_notes")
+                .expect("entry")
+                .repo_url
+                .is_none()
+        );
+
+        // Once the gateway knows, the next run has nothing to say.
+        sync_command(&mut config, &gateway.api().await)
+            .await
+            .expect("sync");
+        assert_eq!(gateway.received_as("POST", "/api/projects").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn sync_takes_the_slug_the_gateway_stored_for_a_pending_workspace() {
+        let temp = tempdir().expect("temp directory");
+        let root = fs::canonicalize(temp.path()).expect("path");
+        let mut config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_here".to_owned());
+        config.upsert_project(entry("prj_api", "api", &root.to_string_lossy()));
+        config.upsert_workspace(WorkspaceEntry {
+            id: "wsp_fix".to_owned(),
+            project_id: "prj_api".to_owned(),
+            slug: "fix-login".to_owned(),
+            name: "fix/login".to_owned(),
+            branch: Some("fix/login".to_owned()),
+            git_root: root.join("fix-login"),
+            root: root.join("fix-login"),
+            managed: true,
+            sync_state: WorkspaceSyncState::PendingUpsert,
+        });
+        config.save().expect("save");
+        let project_path = root.to_string_lossy().into_owned();
+        let gateway = Gateway::start(move |method, path, body| match (method, path) {
+            ("GET", "/api/devices") => (
+                200,
+                json!([{ "id": "dev_here", "name": "laptop", "platform": "linux", "cliVersion": null, "online": true, "lastSeenAt": null, "revokedAt": null }]),
+            ),
+            ("GET", "/api/projects") => (
+                200,
+                json!([listed_project("prj_api", "api", json!({
+                    "deviceId": "dev_elsewhere",
+                    "locations": [
+                        listed_location(Some("dev_elsewhere"), "desktop", json!({ "default": true })),
+                        listed_location(Some("dev_here"), "laptop", json!({ "localPath": project_path })),
+                    ],
+                }))]),
+            ),
+            ("PUT", "/api/projects/prj_api/workspaces/wsp_fix") => (
+                200,
+                json!({
+                    "id": "wsp_fix", "projectId": "prj_api", "slug": "fix-login-laptop",
+                    "name": "fix/login", "branch": body["branch"], "localPath": body["localPath"],
+                    "managed": true, "deviceId": body["deviceId"], "cloud": false,
+                    "machine": "laptop", "createdAt": 1, "updatedAt": 1,
+                }),
+            ),
+            _ => (404, json!({ "error": "not_found" })),
+        })
+        .await;
+
+        sync_command(&mut config, &gateway.api().await)
+            .await
+            .expect("sync");
+
+        let sent = gateway.received_as("PUT", "/api/projects/prj_api/workspaces/wsp_fix");
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].body["deviceId"], "dev_here");
+        assert_eq!(sent[0].body["slug"], "fix-login");
+        let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
+        assert_eq!(saved.data().workspaces.len(), 1);
+        assert_eq!(saved.data().workspaces[0].slug, "fix-login-laptop");
+        assert_eq!(
+            saved.data().workspaces[0].sync_state,
+            WorkspaceSyncState::Active
+        );
+        // The project stayed, though its default location is another machine.
+        assert!(saved.find_project("prj_api").is_some());
+    }
+
+    #[test]
+    fn lists_the_project_that_was_named_or_all_of_them() {
+        let temp = tempdir().expect("temp directory");
+        let config = ConfigStore::load_from(temp.path().join("config.json")).expect("config");
+        let remote = views(json!([
+            listed_project("prj_a", "alpha", json!({})),
+            listed_project("prj_b", "beta", json!({})),
+        ]));
+        let slugs = |project: Option<&str>, all: bool| {
+            listed_projects(&config, &remote, project, all).map(|found| {
+                found
+                    .iter()
+                    .map(|project| project.slug.clone())
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(slugs(Some("BETA"), false).expect("found"), ["beta"]);
+        assert_eq!(slugs(Some("prj_a"), false).expect("found"), ["alpha"]);
+        assert_eq!(slugs(None, true).expect("found"), ["alpha", "beta"]);
+        assert!(slugs(Some("gamma"), false).is_err());
+    }
+
+    #[test]
+    fn describes_a_machine_by_what_it_is_doing() {
+        let machine =
+            |value: Value| -> MachineView { serde_json::from_value(value).expect("machine") };
+        let laptop = machine(json!({
+            "deviceId": "dev_here", "kind": "local", "name": "laptop", "platform": "linux",
+            "cliVersion": "0.18.0", "online": true, "state": "online", "lastSeenAt": 1,
+            "createdAt": 1, "revokedAt": null,
+            "projects": [
+                { "projectId": "prj_a", "slug": "alpha", "name": "Alpha", "localPath": "/code/alpha", "status": "ready", "default": true, "workspaces": 2 },
+                { "projectId": "prj_b", "slug": "beta", "name": "Beta", "localPath": null, "status": "pending", "default": false, "workspaces": 0 },
+            ],
+        }));
+        assert_eq!(
+            describe_machine(&laptop, Some("dev_here")),
+            "laptop                   local  online      linux  alpha* +2, beta [pending]  (this machine)"
+        );
+        // A cloud machine that is not connected is asleep, which is what it
+        // is for, and never offline.
+        let cloud = machine(json!({
+            "deviceId": "dev_cloud", "kind": "cloud", "name": "alpha-fix", "platform": "linux",
+            "cliVersion": "0.18.0", "online": false, "state": "asleep", "lastSeenAt": 1,
+            "createdAt": 1, "revokedAt": null,
+            "project": { "id": "prj_a", "slug": "alpha", "name": "Alpha" },
+            "workspace": { "id": "wsp_1", "slug": "fix", "branch": "fix/login" },
+            "status": "ready", "step": null, "error": null,
+        }));
+        assert_eq!(
+            describe_machine(&cloud, Some("dev_here")),
+            "alpha-fix                cloud  asleep      alpha/fix (fix/login)"
+        );
+    }
+
+    #[test]
+    fn reads_the_folder_somebody_typed() {
+        let suggested = Path::new("/home/me/exeora");
+        assert_eq!(
+            projects_root_from("", suggested).expect("path"),
+            PathBuf::from("/home/me/exeora")
+        );
+        let absolute = std::env::temp_dir().join("code");
+        assert_eq!(
+            projects_root_from(&absolute.to_string_lossy(), suggested).expect("path"),
+            absolute
+        );
+        if let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
+            assert_eq!(
+                projects_root_from("~/code", suggested).expect("path"),
+                PathBuf::from(&home).join("code")
+            );
+            assert_eq!(
+                projects_root_from("~", suggested).expect("path"),
+                PathBuf::from(&home)
+            );
+        }
+    }
 
     #[test]
     fn rejects_home_root_and_files_as_project_boundaries() {

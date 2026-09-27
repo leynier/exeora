@@ -1,8 +1,43 @@
 use crate::{auth::AuthManager, policy::CommandPolicy};
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::sync::Arc;
+use serde_json::{Value, json};
+use std::{fmt, sync::Arc};
 use url::Url;
+
+/// A refusal from the gateway, kept in its parts so a command can tell one
+/// refusal from another by its code instead of by reading the sentence.
+#[derive(Debug)]
+pub struct ApiError {
+    pub status: u16,
+    /// The `error` of the body: `slug_taken`, `no_repository`, `not_a_location`.
+    pub code: Option<String>,
+    /// The `message` of the body, when the gateway wrote a sentence for a person.
+    pub message: Option<String>,
+    summary: String,
+}
+
+impl fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.message.as_deref().unwrap_or(&self.summary))
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+/// The code of a gateway refusal, when that is what the error is.
+pub fn error_code(error: &anyhow::Error) -> Option<&str> {
+    error
+        .downcast_ref::<ApiError>()
+        .and_then(|error| error.code.as_deref())
+}
+
+/// Whether the gateway answered that it has no such route or no such thing.
+pub fn is_not_found(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<ApiError>()
+        .is_some_and(|error| error.status == 404)
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,11 +57,192 @@ pub struct ProjectView {
     pub id: String,
     pub slug: String,
     pub name: String,
+    /// The machine of the default location.
     pub device_id: String,
     pub local_path: String,
+    #[serde(default)]
+    pub repo_url: Option<String>,
+    #[serde(default)]
+    pub default_branch: Option<String>,
+    /// Empty from a gateway older than locations, where the project is on
+    /// `device_id` and nowhere else.
+    #[serde(default)]
+    pub locations: Vec<LocationView>,
     pub mcp_url: String,
     pub policy: CommandPolicy,
     pub created_at: u64,
+    #[serde(default)]
+    pub cloud: Option<ProjectCloudView>,
+}
+
+impl ProjectView {
+    /// The copy of this project on a machine, when it has one there.
+    pub fn location_on(&self, device_id: &str) -> Option<&LocationView> {
+        self.locations
+            .iter()
+            .find(|location| location.device_id.as_deref() == Some(device_id))
+    }
+}
+
+/// One place a project lives: a machine of the person, or Exeora Cloud.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationView {
+    pub id: String,
+    pub kind: String,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    pub name: String,
+    pub slug: String,
+    #[serde(default)]
+    pub local_path: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub error_code: Option<String>,
+    #[serde(default, rename = "default")]
+    pub is_default: bool,
+    #[serde(default)]
+    pub online: bool,
+    #[serde(default)]
+    pub state: String,
+}
+
+impl LocationView {
+    pub fn is_cloud(&self) -> bool {
+        self.kind == "cloud"
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectCloudView {
+    pub repo_url: String,
+    pub default_branch: String,
+    #[serde(default)]
+    pub has_credential: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct Locations {
+    locations: Vec<LocationView>,
+}
+
+/// What `POST /api/projects` answers. `location` says what happened: the
+/// project was `created`, this machine `joined` one that existed, or the same
+/// registration was `updated`. Absent from a gateway older than locations.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectAdded {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub slug: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+}
+
+/// What this machine sends when it registers a directory.
+#[derive(Debug, Clone)]
+pub struct ProjectRegistration<'a> {
+    pub device_id: &'a str,
+    pub name: &'a str,
+    pub slug: &'a str,
+    pub local_path: &'a str,
+    pub repo_url: Option<&'a str>,
+    pub default_branch: Option<&'a str>,
+}
+
+/// A machine of the account as `GET /api/machines` lists it: one the person
+/// owns, holding copies of projects, or one Exeora Cloud runs for a workspace.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineView {
+    pub device_id: String,
+    pub kind: String,
+    pub name: String,
+    #[serde(default)]
+    pub platform: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub revoked_at: Option<u64>,
+    #[serde(default)]
+    pub projects: Vec<MachineProjectView>,
+    #[serde(default)]
+    pub project: Option<MachineCloudProjectView>,
+    #[serde(default)]
+    pub workspace: Option<MachineCloudWorkspaceView>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineProjectView {
+    pub slug: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default, rename = "default")]
+    pub is_default: bool,
+    #[serde(default)]
+    pub workspaces: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MachineCloudProjectView {
+    pub slug: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MachineCloudWorkspaceView {
+    pub slug: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+
+/// Whether the account is connected to GitHub, which decides whose
+/// credentials a clone tries first.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubStatus {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub connected: bool,
+    #[serde(default)]
+    pub connect_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRepositoryView {
+    pub full_name: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub private: bool,
+    #[serde(default)]
+    pub default_branch: Option<String>,
+    pub url: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubRepositories {
+    #[serde(default)]
+    repositories: Vec<GithubRepositoryView>,
+}
+
+/// A short-lived credential for one repository. It has no `Debug`, so that no
+/// log line or error chain can ever carry the password by accident.
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCredential {
+    pub host: String,
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub expires_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -39,6 +255,16 @@ pub struct WorkspaceView {
     pub branch: Option<String>,
     pub local_path: String,
     pub managed: bool,
+    /// The machine that holds this checkout. Absent from a gateway older than
+    /// locations, where it is the project's machine.
+    #[serde(default)]
+    pub device_id: Option<String>,
+    /// The name of that machine.
+    #[serde(default)]
+    pub machine: Option<String>,
+    /// Whether that machine is one Exeora Cloud runs for this workspace alone.
+    #[serde(default)]
+    pub cloud: bool,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -80,7 +306,6 @@ struct ToolCallsPage {
 pub struct Registered {
     pub id: String,
     pub name: String,
-    pub slug: Option<String>,
 }
 
 /// A machine of a cloud project, as `GET /api/cloud/projects` lists it.
@@ -189,11 +414,25 @@ impl ApiClient {
                     _ => {}
                 }
             }
-            bail!(
-                "{} {path} failed ({status}): {}",
-                method.as_str(),
-                detail.chars().take(200).collect::<String>()
-            );
+            let body = serde_json::from_str::<Value>(&detail).ok();
+            let field = |name: &str| {
+                body.as_ref()
+                    .and_then(|value| value.get(name))
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty())
+                    .map(str::to_owned)
+            };
+            return Err(ApiError {
+                status,
+                code: field("error"),
+                message: field("message"),
+                summary: format!(
+                    "{} {path} failed ({status}): {}",
+                    method.as_str(),
+                    detail.chars().take(200).collect::<String>()
+                ),
+            }
+            .into());
         }
         Ok(response.json().await?)
     }
@@ -271,14 +510,152 @@ impl ApiClient {
         self.request(reqwest::Method::GET, "/api/projects", None)
             .await
     }
-    pub async fn add_project(
+    /// The same listing as the gateway wrote it, for `--json`.
+    pub async fn list_projects_raw(&self) -> Result<Vec<Value>> {
+        self.request(reqwest::Method::GET, "/api/projects", None)
+            .await
+    }
+    pub async fn add_project(&self, project: ProjectRegistration<'_>) -> Result<ProjectAdded> {
+        let mut body = json!({
+            "deviceId": project.device_id,
+            "name": project.name,
+            "slug": project.slug,
+            "localPath": project.local_path,
+        });
+        if let Some(repo_url) = project.repo_url {
+            body["repoUrl"] = json!(repo_url);
+        }
+        if let Some(default_branch) = project.default_branch {
+            body["defaultBranch"] = json!(default_branch);
+        }
+        self.request(reqwest::Method::POST, "/api/projects", Some(body))
+            .await
+    }
+    pub async fn list_locations(&self, project_id: &str) -> Result<Vec<LocationView>> {
+        let page: Locations = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/projects/{project_id}/locations"),
+                None,
+            )
+            .await?;
+        Ok(page.locations)
+    }
+    pub async fn add_location(&self, project_id: &str, body: Value) -> Result<Vec<LocationView>> {
+        let page: Locations = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/projects/{project_id}/locations"),
+                Some(body),
+            )
+            .await?;
+        Ok(page.locations)
+    }
+    pub async fn remove_location(&self, project_id: &str, location_id: &str) -> Result<Value> {
+        self.request(
+            reqwest::Method::DELETE,
+            &format!("/api/projects/{project_id}/locations/{location_id}"),
+            None,
+        )
+        .await
+    }
+    pub async fn set_default_location(
         &self,
+        project_id: &str,
+        location_id: &str,
+    ) -> Result<Vec<LocationView>> {
+        let page: Locations = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/projects/{project_id}/default-location"),
+                Some(json!({ "locationId": location_id })),
+            )
+            .await?;
+        Ok(page.locations)
+    }
+    /// What this machine says about its own copy of a project: that it is
+    /// cloning, where the copy ended up, or why there is none.
+    pub async fn report_location(
+        &self,
+        project_id: &str,
         device_id: &str,
-        name: &str,
-        slug: &str,
-        local_path: &str,
-    ) -> Result<Registered> {
-        self.request(reqwest::Method::POST, "/api/projects", Some(serde_json::json!({ "deviceId": device_id, "name": name, "slug": slug, "localPath": local_path }))).await
+        body: Value,
+    ) -> Result<Value> {
+        self.request(
+            reqwest::Method::PUT,
+            &format!("/api/projects/{project_id}/locations/{device_id}"),
+            Some(body),
+        )
+        .await
+    }
+    /// Makes a workspace wherever the project lives, through the gateway.
+    pub async fn create_workspace_at(&self, project_id: &str, body: Value) -> Result<Value> {
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/projects/{project_id}/workspaces"),
+            Some(body),
+        )
+        .await
+    }
+    pub async fn list_machines_raw(&self) -> Result<Vec<Value>> {
+        let page: Value = self
+            .request(reqwest::Method::GET, "/api/machines", None)
+            .await?;
+        Ok(page
+            .get("machines")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default())
+    }
+    pub async fn list_machines(&self) -> Result<Vec<MachineView>> {
+        self.list_machines_raw()
+            .await?
+            .into_iter()
+            .map(|machine| Ok(serde_json::from_value(machine)?))
+            .collect()
+    }
+    /// Whether the account is connected to GitHub. A gateway without the
+    /// route, or without a GitHub App, is one where nothing is connected.
+    pub async fn github(&self) -> Result<GithubStatus> {
+        match self
+            .request(reqwest::Method::GET, "/api/github", None)
+            .await
+        {
+            Ok(status) => Ok(status),
+            Err(error) if is_not_found(&error) => Ok(GithubStatus::default()),
+            Err(error) => Err(error),
+        }
+    }
+    pub async fn github_repositories(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<GithubRepositoryView>> {
+        let page: GithubRepositories = self
+            .request(
+                reqwest::Method::GET,
+                &format!(
+                    "/api/github/repositories?q={}&limit={limit}",
+                    url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>()
+                ),
+                None,
+            )
+            .await?;
+        Ok(page.repositories)
+    }
+    /// A short-lived credential for the repository of a project, for git.
+    pub async fn git_credential(
+        &self,
+        project_id: &str,
+        device_id: Option<&str>,
+    ) -> Result<GitCredential> {
+        let body = device_id.map_or_else(|| json!({}), |id| json!({ "deviceId": id }));
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/projects/{project_id}/git-credential"),
+            Some(body),
+        )
+        .await
     }
     pub async fn remove_project(&self, id: &str) -> Result<serde_json::Value> {
         self.request(
@@ -296,21 +673,29 @@ impl ApiClient {
         )
         .await
     }
+    /// Tells the gateway about a checkout on this machine. `device_id` is
+    /// the machine reporting it, which is where it is: without it the gateway
+    /// would file the checkout under the project's default location.
     pub async fn put_workspace(
         &self,
         project_id: &str,
         workspace: &crate::config::WorkspaceEntry,
+        device_id: Option<&str>,
     ) -> Result<WorkspaceView> {
+        let mut body = json!({
+            "slug": workspace.slug,
+            "name": workspace.name,
+            "branch": workspace.branch,
+            "localPath": workspace.root,
+            "managed": workspace.managed,
+        });
+        if let Some(device_id) = device_id {
+            body["deviceId"] = json!(device_id);
+        }
         self.request(
             reqwest::Method::PUT,
             &format!("/api/projects/{project_id}/workspaces/{}", workspace.id),
-            Some(serde_json::json!({
-                "slug": workspace.slug,
-                "name": workspace.name,
-                "branch": workspace.branch,
-                "localPath": workspace.root,
-                "managed": workspace.managed,
-            })),
+            Some(body),
         )
         .await
     }

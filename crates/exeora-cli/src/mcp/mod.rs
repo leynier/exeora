@@ -435,6 +435,8 @@ mod tests {
             slug: "a".to_owned(),
             name: "A".to_owned(),
             root: dir.path().to_path_buf(),
+            repo_url: None,
+            default_branch: None,
         };
         let manager = McpManager::new(&user, &[project]);
 

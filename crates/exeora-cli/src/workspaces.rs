@@ -59,6 +59,8 @@ pub struct GitWorkspaceInfo {
 pub struct WorkspaceOutcome {
     pub entry: WorkspaceEntry,
     pub outcome: &'static str,
+    /// Why the gateway did not take it, when trying again would not help.
+    pub problem: Option<String>,
 }
 
 pub struct RemoveOutcome {
@@ -260,16 +262,59 @@ pub async fn persist(
 ) -> Result<WorkspaceOutcome> {
     config.upsert_workspace(entry.clone());
     config.save()?;
-    let outcome = match api.put_workspace(&entry.project_id, &entry).await {
-        Ok(_) => {
+    let device_id = config.data().device_id.clone();
+    let mut problem = None;
+    let outcome = match api
+        .put_workspace(&entry.project_id, &entry, device_id.as_deref())
+        .await
+    {
+        Ok(stored) => {
+            adopt_registration(&mut entry, &stored);
             entry.sync_state = WorkspaceSyncState::Active;
             config.upsert_workspace(entry.clone());
             config.save()?;
             "active"
         }
-        Err(_) => "pendingUpsert",
+        Err(error) => {
+            problem = refusal(&error);
+            "pendingUpsert"
+        }
     };
-    Ok(WorkspaceOutcome { entry, outcome })
+    Ok(WorkspaceOutcome {
+        entry,
+        outcome,
+        problem,
+    })
+}
+
+/// What to do about a refusal that `exeora sync` alone would meet again.
+fn refusal(error: &anyhow::Error) -> Option<String> {
+    match crate::api::error_code(error)? {
+        "not_a_location" => Some(
+            "This machine is not one of the project's locations. Add it with `exeora project locations add <project> --on here`, then run `exeora sync`.".to_owned(),
+        ),
+        "slug_conflict" => Some(
+            "Another workspace of the project on this machine has that slug. Detach this one and attach it again with another --slug.".to_owned(),
+        ),
+        _ => None,
+    }
+}
+
+/// Takes the slug and the name the gateway stored, which are the ones it
+/// routes by. They are what was sent unless the same branch already has a
+/// workspace in another location of the project: then the gateway keeps both
+/// apart with a suffix, and a local entry under the slug that was asked for
+/// would never match a call again.
+pub fn adopt_registration(entry: &mut WorkspaceEntry, stored: &crate::api::WorkspaceView) {
+    if stored.id != entry.id {
+        return;
+    }
+    if validate_slug(&stored.slug).is_ok() && !stored.slug.eq_ignore_ascii_case("main") {
+        entry.slug = stored.slug.clone();
+    }
+    if !stored.name.trim().is_empty() {
+        entry.name = stored.name.clone();
+    }
 }
 
 pub async fn detach(
@@ -293,7 +338,11 @@ pub async fn detach(
             "pendingDelete"
         }
     };
-    Ok(WorkspaceOutcome { entry, outcome })
+    Ok(WorkspaceOutcome {
+        entry,
+        outcome,
+        problem: None,
+    })
 }
 
 pub async fn remove(
@@ -618,10 +667,14 @@ fn git_checked(cwd: &Path, args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CreateWorkspace, attach, create, discover, is_dirty, path_for_branch, remove_git_worktree,
-        slugify,
+        CreateWorkspace, adopt_registration, attach, create, discover, is_dirty, path_for_branch,
+        persist, remove_git_worktree, slugify,
     };
-    use crate::config::{ConfigStore, ProjectEntry, WorkspaceSyncState};
+    use crate::{
+        config::{ConfigStore, ProjectEntry, WorkspaceSyncState},
+        testing::Gateway,
+    };
+    use serde_json::json;
     use std::{fs, process::Command};
     use tempfile::tempdir;
 
@@ -648,6 +701,8 @@ mod tests {
             slug: "repository".to_owned(),
             name: "Repository".to_owned(),
             root: fs::canonicalize(&repository).expect("root"),
+            repo_url: None,
+            default_branch: None,
         };
         config.upsert_project(project.clone());
         let destination = temp.path().join("feature-workspace");
@@ -701,6 +756,8 @@ mod tests {
             slug: "repository".to_owned(),
             name: "Repository".to_owned(),
             root: fs::canonicalize(&repository).expect("root"),
+            repo_url: None,
+            default_branch: None,
         };
         config.upsert_project(project.clone());
 
@@ -735,6 +792,189 @@ mod tests {
         assert!(candidate.connected);
         assert_eq!(candidate.connected_slug.as_deref(), Some("existing"));
         assert!(path_for_branch(&config, &project, "feature/existing").is_err());
+    }
+
+    /// A repository with one commit and a workspace of it that is not yet
+    /// known to the gateway.
+    fn pending_workspace(temp: &std::path::Path) -> (ConfigStore, crate::config::WorkspaceEntry) {
+        let repository = temp.join("repository");
+        fs::create_dir(&repository).expect("repository");
+        git(&repository, &["init"]);
+        git(&repository, &["config", "user.email", "test@example.com"]);
+        git(&repository, &["config", "user.name", "Exeora Test"]);
+        fs::write(repository.join("tracked.txt"), "main\n").expect("fixture");
+        git(&repository, &["add", "tracked.txt"]);
+        git(&repository, &["commit", "-m", "initial"]);
+
+        let mut config = ConfigStore::load_from(temp.join("config.json")).expect("config");
+        config.data_mut().device_id = Some("dev_laptop".to_owned());
+        let project = ProjectEntry {
+            id: "prj_test".to_owned(),
+            slug: "repository".to_owned(),
+            name: "Repository".to_owned(),
+            root: fs::canonicalize(&repository).expect("root"),
+            repo_url: None,
+            default_branch: None,
+        };
+        config.upsert_project(project.clone());
+        let entry = create(
+            &config,
+            &project,
+            CreateWorkspace {
+                branch: "fix/login".to_owned(),
+                from: None,
+                reuse_existing_branch: false,
+                name: None,
+                slug: None,
+                path: Some(temp.join("fix-login")),
+                source: None,
+            },
+        )
+        .expect("workspace");
+        (config, entry)
+    }
+
+    #[tokio::test]
+    async fn takes_the_slug_and_the_name_the_gateway_stored() {
+        let temp = tempdir().expect("temp directory");
+        let (mut config, entry) = pending_workspace(temp.path());
+        assert_eq!(entry.slug, "fix-login");
+        // The same branch already has a workspace in another location of the
+        // project, so the gateway keeps this one apart with a suffix.
+        let gateway = Gateway::start(|_, _, body| {
+            (
+                200,
+                json!({
+                    "id": "wsp_other",
+                    "projectId": "prj_test",
+                    "slug": format!("{}-laptop", body["slug"].as_str().unwrap_or_default()),
+                    "name": "fix/login (laptop)",
+                    "branch": body["branch"],
+                    "localPath": body["localPath"],
+                    "managed": true,
+                    "deviceId": body["deviceId"],
+                    "cloud": false,
+                    "machine": "laptop",
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                }),
+            )
+        })
+        .await;
+        let api = gateway.api().await;
+
+        // An answer about another workspace is not this one's to take.
+        let foreign = persist(&mut config, &api, entry.clone())
+            .await
+            .expect("outcome");
+        assert_eq!(foreign.outcome, "active");
+        assert_eq!(foreign.entry.slug, "fix-login");
+
+        let gateway = Gateway::start(|_, path, body| {
+            (
+                200,
+                json!({
+                    "id": path.rsplit('/').next().unwrap_or_default(),
+                    "projectId": "prj_test",
+                    "slug": format!("{}-laptop", body["slug"].as_str().unwrap_or_default()),
+                    "name": "fix/login (laptop)",
+                    "branch": body["branch"],
+                    "localPath": body["localPath"],
+                    "managed": true,
+                    "deviceId": body["deviceId"],
+                    "cloud": false,
+                    "machine": "laptop",
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                }),
+            )
+        })
+        .await;
+        let api = gateway.api().await;
+        let outcome = persist(&mut config, &api, entry.clone())
+            .await
+            .expect("outcome");
+
+        assert_eq!(outcome.outcome, "active");
+        assert_eq!(outcome.entry.slug, "fix-login-laptop");
+        assert_eq!(outcome.entry.name, "fix/login (laptop)");
+        assert_eq!(outcome.entry.sync_state, WorkspaceSyncState::Active);
+        let sent = gateway.received();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].method, "PUT");
+        assert_eq!(
+            sent[0].path,
+            format!("/api/projects/prj_test/workspaces/{}", entry.id)
+        );
+        assert_eq!(sent[0].body["deviceId"], "dev_laptop");
+        assert_eq!(sent[0].body["slug"], "fix-login");
+
+        // What was written is what the next call is resolved against.
+        let saved = ConfigStore::load_from(config.path().to_path_buf()).expect("config");
+        let stored = saved
+            .data()
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == entry.id)
+            .expect("stored workspace");
+        assert_eq!(stored.slug, "fix-login-laptop");
+        assert_eq!(stored.name, "fix/login (laptop)");
+    }
+
+    #[tokio::test]
+    async fn keeps_a_workspace_pending_when_the_gateway_refuses_it() {
+        let temp = tempdir().expect("temp directory");
+        let (mut config, entry) = pending_workspace(temp.path());
+        let gateway = Gateway::start(|_, _, _| (409, json!({ "error": "slug_conflict" }))).await;
+        let api = gateway.api().await;
+
+        let outcome = persist(&mut config, &api, entry).await.expect("outcome");
+        assert_eq!(outcome.outcome, "pendingUpsert");
+        assert!(
+            outcome
+                .problem
+                .as_deref()
+                .is_some_and(|problem| problem.contains("--slug"))
+        );
+        assert_eq!(outcome.entry.slug, "fix-login");
+        assert_eq!(outcome.entry.sync_state, WorkspaceSyncState::PendingUpsert);
+    }
+
+    #[test]
+    fn refuses_a_stored_slug_that_could_not_be_routed() {
+        let mut entry = crate::config::WorkspaceEntry {
+            id: "wsp_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            slug: "fix-login".to_owned(),
+            name: "fix/login".to_owned(),
+            branch: None,
+            git_root: "/code/fix-login".into(),
+            root: "/code/fix-login".into(),
+            managed: true,
+            sync_state: WorkspaceSyncState::PendingUpsert,
+        };
+        let stored = |slug: &str, name: &str| crate::api::WorkspaceView {
+            id: "wsp_1".to_owned(),
+            project_id: "prj_1".to_owned(),
+            slug: slug.to_owned(),
+            name: name.to_owned(),
+            branch: None,
+            local_path: "/code/fix-login".to_owned(),
+            managed: true,
+            device_id: None,
+            machine: None,
+            cloud: false,
+            created_at: 0,
+            updated_at: 0,
+        };
+        for slug in ["main", "", "Fix Login", "../x"] {
+            adopt_registration(&mut entry, &stored(slug, ""));
+            assert_eq!(entry.slug, "fix-login", "{slug:?}");
+            assert_eq!(entry.name, "fix/login");
+        }
+        adopt_registration(&mut entry, &stored("fix-login-desktop", "Fix login"));
+        assert_eq!(entry.slug, "fix-login-desktop");
+        assert_eq!(entry.name, "Fix login");
     }
 
     fn git(cwd: &std::path::Path, args: &[&str]) {

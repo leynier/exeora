@@ -8,9 +8,14 @@ pub mod connection;
 pub mod error;
 #[allow(dead_code, clippy::all)]
 pub mod generated;
+pub mod git_credential;
 pub mod mcp;
 pub mod policy;
+pub mod projects;
 pub mod protocol;
+pub mod repo;
+#[cfg(test)]
+pub(crate) mod testing;
 pub mod tools;
 pub mod upgrade;
 pub mod workspace;

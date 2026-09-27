@@ -33,8 +33,12 @@ fn exposes_the_command_surface_and_version_flag() {
                 .and(predicate::str::contains("prompt"))
                 .and(predicate::str::contains("sync"))
                 .and(predicate::str::contains("upgrade"))
-                .and(predicate::str::contains("cloud"))
-                .and(predicate::str::contains("keep it awake")),
+                .and(predicate::str::contains("workspace"))
+                .and(predicate::str::contains("keep it awake"))
+                // One set of verbs for every place a project lives: `cloud`
+                // still runs, for the scripts that call it, and is not offered.
+                .and(predicate::str::is_match(r"(?m)^\s+cloud\b").unwrap().not())
+                .and(predicate::str::contains("git-credential").not()),
         );
 
     Command::cargo_bin("exeora")
