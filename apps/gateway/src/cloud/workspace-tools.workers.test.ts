@@ -118,6 +118,37 @@ async function machineAnswering(deviceId: string, answer: WorkspaceUnpublished) 
   return socket;
 }
 
+/**
+ * Says what became of a machine until the call waiting on it has heard.
+ *
+ * The provisioning object writes `creating` when it starts, and on a slow
+ * runner that lands after a status written here once, which leaves the call
+ * polling a machine that never gets anywhere.
+ */
+async function settle(
+  waiting: Promise<unknown>,
+  deviceId: string,
+  outcome: { status: "ready" } | { status: "error"; error: string },
+) {
+  let heard = false;
+  waiting.then(
+    () => {
+      heard = true;
+    },
+    () => {
+      heard = true;
+    },
+  );
+  while (!heard) {
+    await db(env)
+      .update(schema.cloudMachines)
+      .set(outcome)
+      .where(eq(schema.cloudMachines.deviceId, deviceId))
+      .run();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 async function readyWorkspace(branch: string, slug: string) {
   const created = call("create_workspace", { branch });
   let workspace: { id: string; slug: string; deviceId: string | null } | undefined;
@@ -134,11 +165,7 @@ async function readyWorkspace(branch: string, slug: string) {
       .get();
   }
   if (!workspace?.deviceId) throw new Error("the workspace was never recorded");
-  await db(env)
-    .update(schema.cloudMachines)
-    .set({ status: "ready" })
-    .where(eq(schema.cloudMachines.deviceId, workspace.deviceId))
-    .run();
+  await settle(created, workspace.deviceId, { status: "ready" });
   await created;
   return { ...workspace, deviceId: workspace.deviceId };
 }
@@ -234,11 +261,7 @@ describe("workspace tools on a cloud project", () => {
       deviceId = row?.deviceId;
     }
     if (!deviceId) throw new Error("the workspace machine was never recorded");
-    await db(env)
-      .update(schema.cloudMachines)
-      .set({ status: "ready" })
-      .where(eq(schema.cloudMachines.deviceId, deviceId))
-      .run();
+    await settle(pending, deviceId, { status: "ready" });
 
     await expect(pending).resolves.toMatchObject({
       workspace: { slug: "feature-x", branch: "feature/x", managed: true },
@@ -275,11 +298,10 @@ describe("workspace tools on a cloud project", () => {
       deviceId = row?.deviceId;
     }
     if (!deviceId) throw new Error("the workspace machine was never recorded");
-    await db(env)
-      .update(schema.cloudMachines)
-      .set({ status: "error", error: "the Sprites token was rejected" })
-      .where(eq(schema.cloudMachines.deviceId, deviceId))
-      .run();
+    await settle(failing, deviceId, {
+      status: "error",
+      error: "the Sprites token was rejected",
+    });
     await expect(failing).rejects.toMatchObject({ code: "TOOL_FAILED" });
 
     const late = answerCloudWorkspaceTool(env, {
