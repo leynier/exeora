@@ -5,17 +5,18 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc
   title="Getting started"
-  description="One command on the machine you want to serve, and a URL to point a client at."
+  description="Two ways in: a machine of your own, or Exeora Cloud. Both end with a URL to point a client at."
   canonicalPath="/docs/"
 >
   <p>
-    Exeora connects an AI client to the development environment on a machine you control. The code
-    stays where it is. Nothing is uploaded, no port is opened, and no tunnel is configured, because
-    the CLI dials out to the gateway and holds that connection open. Nothing ever dials in, which is
-    why the same command works on a laptop behind NAT and on a box behind a corporate firewall.
+    Exeora connects an AI client to a project: a repository with a working copy on a machine, where
+    an agent can read, edit and run things. There are two ways to give a project a machine, and
+    neither is the lesser one. A machine of your own keeps the code where it already is. Exeora
+    Cloud clones the repository onto an instance, a machine Exeora runs, so an agent can work with
+    nothing of yours switched on. A project can use both, and you can add the second one later.
   </p>
 
-  <h2>Install and run it</h2>
+  <h2 id="your-machine">A machine of your own</h2>
 
   <InstallCommands id="docs-getting-started" />
 
@@ -25,13 +26,26 @@ exeora project add the-project-you-want-to-serve</pre>
   <p>
     That is the whole setup. <code>connect</code> opens a browser to sign in if you are not signed
     in and registers the machine if it is not registered. It does not have to run inside a project
-    directory. <code>exeora project add</code> registers a directory to serve. Each step is skipped
-    when it is already done, so running <code>connect</code> again just connects.
+    directory. <code>exeora project add</code> registers a directory to serve, where it is. Each
+    step is skipped when it is already done, so running <code>connect</code> again just connects.
+  </p>
+
+  <p>
+    Nothing is uploaded, no port is opened, and no tunnel is configured, because the CLI dials out
+    to the gateway and holds that connection open. Nothing ever dials in, which is why the same
+    command works on a laptop behind NAT and on a box behind a corporate firewall.
+  </p>
+
+  <p>
+    <code>exeora project add</code> also takes a repository instead of a directory:{" "}
+    <code>exeora project add owner/repo</code> clones it into this machine's projects folder,{" "}
+    <code>~/exeora</code> unless you chose another, and registers the clone. The first time{" "}
+    <code>connect</code> runs at a terminal it asks where that folder should be.
   </p>
 
   <p>
     It prints an MCP URL. <a href="/docs/clients/">Point a client at it</a>, and leave{" "}
-    <code>connect</code> running: nothing is served while it is not.
+    <code>connect</code> running: nothing on this machine is served while it is not.
   </p>
 
   <p>
@@ -46,12 +60,51 @@ exeora project add the-project-you-want-to-serve</pre>
     verifies the published checksum, and securely replaces the current binary.
   </p>
 
+  <h2 id="cloud">Exeora Cloud</h2>
+
+  <p>
+    This way starts in the dashboard and needs no CLI. Exeora Cloud is enabled per account by an
+    administrator while there is no billing, so an account that does not have it yet is told so
+    where the choice is offered.
+  </p>
+
+  <ul>
+    <li>
+      First, sign in to the dashboard and open <strong>Settings</strong>. Under{" "}
+      <strong>GitHub</strong>, choose <strong>Connect GitHub</strong> and pick, on GitHub, which
+      repositories Exeora is given. See <a href="/docs/github/">connecting GitHub</a>.
+    </li>
+    <li>
+      Then open <strong>Projects</strong> and choose <strong>Add project</strong>. Pick the
+      repository from the list. There is no address to type and no token to paste.
+    </li>
+    <li>
+      Last, choose Exeora Cloud as the place it lives first. Exeora clones the repository onto an
+      instance and connects the CLI there.
+    </li>
+  </ul>
+
+  <p>
+    The project's page shows its MCP URL as soon as the project exists, and the state of the
+    instance until it is ready. A repository on another Git server is added from the same dialog,
+    with its https address and, when it is private, a token. See{" "}
+    <a href="/docs/cloud/">Exeora Cloud</a>.
+  </p>
+
   <h2>What a project is</h2>
 
   <p>
-    A project is one directory on one machine, and it is the boundary every tool is confined to. An
-    agent connected to it cannot read, write or run anything outside it: paths are resolved and
-    checked against the root before anything touches the disk.
+    A project is a repository. It lives in one or more locations: your machines and Exeora Cloud.
+    One location is the default, and a call that names no workspace lands there. A workspace is a
+    branch with a working copy of its own, in one location. See{" "}
+    <a href="/docs/projects/">projects, locations and workspaces</a>.
+  </p>
+
+  <p>
+    The boundary every tool is confined to is the project's directory in the location the call
+    lands on: the project root, or the working copy of the workspace the call names. An agent
+    cannot read, write or run anything outside it through a path: paths are resolved and checked
+    against that directory before anything touches the disk.
   </p>
 
   <p>
@@ -61,18 +114,19 @@ exeora project add the-project-you-want-to-serve</pre>
 
   <p>
     Each project gets its own URL and its own token. A token minted for one project is not accepted
-    at another, so "this client may read that repository" is a sentence you can say one repository at
-    a time.
+    at another, so "this client may work on that repository" is a sentence you can say one
+    repository at a time. It covers the project wherever it lives: every location, and every
+    workspace in them.
   </p>
 
   <p>
     There is also one URL that covers several, <code>https://exeora.dev/mcp</code>, so a client can
-    be configured once instead of once per repository. You tick which projects it may reach when you
-    authorize it, and it moves between them itself. See{" "}
+    be configured once instead of once per project. You choose which projects it may reach when you
+    authorize it, and it names the project on each call. See{" "}
     <a href="/docs/clients/#which-url">which URL to use</a>.
   </p>
 
-  <h2>What it can do to your machine</h2>
+  <h2>What it can do to a machine</h2>
 
   <p>
     <strong>A new project allows everything.</strong> Until you narrow it, an agent connected to a

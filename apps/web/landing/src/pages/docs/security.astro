@@ -12,15 +12,27 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc
   title="Security"
-  description="What leaves your machine, what an agent can reach, and where the boundaries end."
+  description="What leaves your machine, what an agent can reach, which credentials exist, and where the boundaries end."
   canonicalPath="/docs/security/"
 >
   <h2>What leaves the machine</h2>
 
   <p>
-    The results of tool calls, and nothing else. Your repository is not uploaded, cloned or indexed.
-    A file's contents cross the network only when an agent reads that file, and only as far as the
-    client that asked.
+    From a machine of your own, the results of tool calls and what describes the project. Exeora
+    does not upload, clone or index a repository that lives on your machines. A file's contents
+    cross the network only when an agent reads that file, and only as far as the client that asked.
+  </p>
+
+  <p>
+    What describes the project is sent when it is registered: its name, the path of its directory
+    on that machine, and, for the top of a checkout, the address of its remote and its default
+    branch. The address is what lets another location clone the same repository. It is stored in
+    its https form, without any user name or token that was written into it.
+  </p>
+
+  <p>
+    <a href="/docs/cloud/">Exeora Cloud</a> is the exception, and it is one you choose: a project
+    put there is cloned onto instances Exeora runs.
   </p>
 
   <p>
@@ -60,13 +72,30 @@ import Doc from "../../layouts/Doc.astro";
     hand out cannot describe different things.
   </p>
 
+  <h2 id="grants">A grant is for a project, in every location</h2>
+
+  <p>
+    What a client is given is a project, and a project can live in several
+    <a href="/docs/projects/">locations</a>. The grant reaches all of them. A client authorized
+    for a project can work in its project root, in every workspace of every location, and can
+    create a workspace in any of those locations, which on Exeora Cloud starts an instance. There
+    is no grant for one machine only.
+  </p>
+
+  <p>
+    The project's policy is one policy and applies wherever the call lands. An{" "}
+    <code>exeora.toml</code> belongs to a checkout, so it narrows what may happen in that copy and
+    says nothing about the copies in other locations.
+  </p>
+
   <h2>Every path is confined</h2>
 
   <p>
-    Paths are resolved and checked against the project root before anything touches the disk.
-    Absolute paths, and anything climbing out with <code>..</code>, are refused rather than resolved.
-    Symlinks are resolved before the check, so a link pointing outside the project does not become a
-    way through it.
+    Paths are resolved and checked against the directory the call lands in before anything touches
+    the disk: the project root in the default location, or the working copy of the workspace the
+    call names. Absolute paths, and anything climbing out with <code>..</code>, are refused rather
+    than resolved. Symlinks are resolved before the check, so a link pointing outside the project
+    does not become a way through it.
   </p>
 
   <h2>Policy is checked twice</h2>
@@ -84,13 +113,63 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     With no executor connected, a call fails at once with <code>LOCAL_EXECUTOR_OFFLINE</code>, and
     every call carries an absolute deadline the executor re-checks on arrival. A command landing
-    hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept.
+    hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept. An
+    instance on Exeora Cloud that was asleep is woken before the call is sent. One that does not
+    come up in time answers <code>EXECUTOR_WAKING</code>, and the call is dropped rather than held
+    for it.
   </p>
 
   <p>
     The same rule runs the other way. When the client hangs up or the connection drops, the CLI kills
     the command's whole process group, and processes started with <code>start_command</code> die with
     the connection. Nothing keeps working once there is nobody left to read the answer.
+  </p>
+
+  <h2 id="credentials">Which credentials exist, and where each one lives</h2>
+
+  <table>
+    <thead>
+      <tr><th>Credential</th><th>Where it lives</th><th>What it opens</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Your CLI session</td>
+        <td>The keychain of your machine, or a <code>0600</code> file where there is none</td>
+        <td>Your account, as far as the CLI acts on it</td>
+      </tr>
+      <tr>
+        <td>The git credentials of your machine</td>
+        <td>On that machine, wherever git keeps them. Exeora never reads or copies them.</td>
+        <td>Whatever you gave git</td>
+      </tr>
+      <tr>
+        <td>Machine token</td>
+        <td>On the disk of one instance, in a file only the CLI's user can read. The gateway keeps only its SHA-256.</td>
+        <td>That instance's relay socket, and the git credential of the one project it was made for. Nothing else on the API, and nothing once the instance is destroyed.</td>
+      </tr>
+      <tr>
+        <td>GitHub installation token</td>
+        <td>Nowhere. It is made when git asks, handed to git by the credential helper, and stored by neither.</td>
+        <td>One repository, for one hour, with no more than you can do on GitHub yourself</td>
+      </tr>
+      <tr>
+        <td>GitHub user token</td>
+        <td>In the gateway's database, encrypted with AES-256-GCM under a key held as a secret of the gateway, together with the token that renews it. It is never sent to a machine.</td>
+        <td>Asking GitHub, as you, which repositories you can reach</td>
+      </tr>
+      <tr>
+        <td>Repository token for another Git server</td>
+        <td>In the gateway's database, encrypted the same way, and on each instance of that project, in a file only the CLI's user can read. Never on a machine of yours. Deleted with the project.</td>
+        <td>What the token was issued for on that server</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    A project <a href="/docs/github/">connected to GitHub</a> has no long-lived repository token on
+    any machine. That does not put the repository out of an agent's reach: a command an agent runs
+    can run git, and git can ask for a token, on an instance or on a machine of yours alike. What
+    it removes is a secret that sits on a disk for months.
   </p>
 
   <h2>Where the boundaries end</h2>
@@ -113,7 +192,10 @@ import Doc from "../../layouts/Doc.astro";
       <strong>A new project allows everything.</strong> Nothing is restricted until you restrict it.
     </li>
     <li>
-      <strong>A cloud machine is a machine Exeora runs.</strong> With <a href="/docs/cloud/">Exeora Cloud</a> the repository is cloned onto a microVM operated by Exeora on Fly.io, so the code is on infrastructure that is not yours. The machine's own credential opens nothing but its relay socket; a repository token you give is stored encrypted at the gateway and, inside the machine, is readable by the user the agent's commands run as. Commands there are capped in memory, not in what they may reach on the network.
+      <strong>An instance is a machine Exeora runs.</strong> With <a href="/docs/cloud/">Exeora Cloud</a> the repository is cloned onto a microVM operated by Exeora on Fly.io, so the code is on infrastructure that is not yours. A repository token you give is stored encrypted at the gateway and, inside the instance, is readable by the user the agent's commands run as. Commands there are capped in memory, not in what they may reach on the network.
+    </li>
+    <li>
+      <strong>A grant does not stop at a machine.</strong> Authorizing a client for a project that lives on your laptop and on Exeora Cloud authorizes it in both, and in any location you add later.
     </li>
     <li>
       <strong>Confirmation only reaches a person who is there.</strong> A machine with no terminal

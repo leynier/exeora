@@ -8,13 +8,34 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/workspace/"
 >
   <p>
-    Open the <strong>Workspace</strong> tab in the dashboard. Choose a project, then a workspace,
-    from the dropdowns at the top of that page. Source Control and the terminal are available only
-    to the signed-in owner of that project, while its Exeora CLI is connected. The
-    <strong>project root</strong> is the directory you registered; it may be on any branch, not
-    necessarily <code>main</code>. Any other option is a Git workspace connected through{" "}
-    <code>exeora workspace</code> or created from Source Control. Project pages still offer{" "}
-    <strong>Open workspace</strong>, which lands on the same tab.
+    Open <strong>Workspace</strong> in the dashboard. Choose a project, then a workspace, from the
+    dropdowns at the top of that page. Source Control and the terminal are available only to the
+    signed-in owner of that project, while the machine that holds the selected workspace is
+    connected. Project pages still offer <strong>Open workspace</strong>, which lands on the same
+    page.
+  </p>
+
+  <h2 id="selector">The selector</h2>
+
+  <p>
+    A workspace is a branch with a working copy of its own, in one
+    <a href="/docs/projects/">location</a> of the project. The selector names each one by its branch
+    and the location that holds it, because the same branch can have a working copy in two
+    locations and the slug alone does not say which is which.
+  </p>
+
+  <p>
+    The first entry is the <strong>project root</strong>, marked <code>default</code>: the working
+    copy a call lands in when it names no workspace. It is listed once, for the default location,
+    and shows the branch that copy is really on, which is not necessarily <code>main</code>. The
+    root of any other location is opened by making that location the default on the project's
+    page.
+  </p>
+
+  <p>
+    Every other entry is a workspace: a Git worktree on one of your machines, or an instance on
+    Exeora Cloud. An instance that is still being set up is listed with its state and cannot be
+    chosen until it is ready. One that is asleep is woken when you select it.
   </p>
 
   <h2>Source Control</h2>
@@ -27,13 +48,26 @@ import Doc from "../../layouts/Doc.astro";
     current branch, other local branches, and remotes you can check out. Choosing a branch that is
     already checked out in another connected workspace switches the view to that workspace rather
     than running <code>git switch</code> in place. Type a name there to create a branch from HEAD,
-    delete a merged local branch, or create a new Git workspace from Source Control.
+    or delete a merged local branch.
+  </p>
+
+  <p>
+    The same control creates a workspace. Type a branch and choose <strong>Create workspace</strong>:
+    the dialog asks where, and offers every location of the project, starting on the one you are
+    looking at. It says what the choice will do before you confirm it. On a machine that already
+    holds a copy it adds a worktree. On a machine that holds none it clones the repository there
+    first, which can take a few minutes. On Exeora Cloud it starts an instance, which counts
+    against the plan's limit. A machine that is offline cannot take a workspace until
+    <code>exeora connect</code> is running on it.
   </p>
 
   <p>
     Exeora invokes the installed <code>git</code> executable directly, without passing these actions
-    through a shell. Credentials stay on the connected machine, and interactive credential prompts
-    are disabled so an unattended operation fails instead of hanging.
+    through a shell. Fetch, pull and push use the credentials git has on that machine, and
+    interactive credential prompts are disabled so an unattended operation fails instead of
+    hanging. For a project <a href="/docs/github/">connected to GitHub</a>, git on an instance, and
+    on a machine whose own credentials could not read the repository, asks Exeora for a
+    short-lived token instead.
   </p>
 
   <p>
@@ -51,7 +85,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     Opening a terminal requires an explicit confirmation. It starts the machine's default shell in a
-    real pseudo-terminal at the selected workspace's local path. Open terminals belong to the
+    real pseudo-terminal at the selected workspace's path on the machine that holds it. Open
+    terminals belong to the
     dashboard as a whole: the list stays in the chrome when you leave Workspace, switch project, or
     reload the tab. Closing the browser detaches the dashboard; the local process keeps running
     until you close that terminal, the CLI disconnects, the machine is revoked, or the session

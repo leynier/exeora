@@ -8,7 +8,7 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/plans/"
 >
   <p>
-    Every account is on a plan. Plans decide how many machines and projects you may keep, how many <a href="/docs/cloud/">cloud machines</a> you may run, and how long the audit log remains visible. There is no self-serve billing yet: the free plan is the default for everyone.
+    Every account is on a plan. Plans decide how many machines and projects you may keep, how many <a href="/docs/cloud/">Exeora Cloud</a> instances you may run, and how long the audit log remains visible. There is no self-serve billing yet: the free plan is the default for everyone.
   </p>
 
   <h2>Free</h2>
@@ -19,7 +19,7 @@ import Doc from "../../layouts/Doc.astro";
         <th></th>
         <th>Live machines</th>
         <th>Projects</th>
-        <th>Cloud machines</th>
+        <th>Cloud instances</th>
         <th>Audit history</th>
       </tr>
     </thead>
@@ -59,20 +59,22 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
-    <strong>Cloud machines</strong> count every machine Exeora runs for the account, one per cloud workspace, in whatever state it is in. They do not count as live machines, and a cloud project counts as a project. Removing a workspace frees its slot once the machine is gone. Cloud itself is enabled per account by an administrator while there is no billing.
+    <strong>Cloud instances</strong> have a cap of their own. It counts every instance Exeora runs for the account, in whatever state it is in: one per workspace on Exeora Cloud, and one for the project root of a project that was created there or has Cloud as its default location. They do not count as live machines, so an instance never takes a slot from a laptop. Removing a workspace frees its slot once the instance is gone. Cloud itself is enabled per account by an administrator while there is no billing.
   </p>
 
   <p>
-    <strong>Projects</strong> count every project on the account. Re-registering a project that
-    already exists under the same slug (what <code>exeora project add</code> does on a machine that is
-    already known) does not consume a new slot.
+    <strong>Projects</strong> count once, however many <a href="/docs/projects/">locations</a> they
+    live in. A project is a repository, so a second machine that joins it, or Exeora Cloud added as
+    a location, consumes no new slot. Neither does registering again a project that machine
+    already holds.
   </p>
 
   <h2>When a limit is hit</h2>
 
   <p>
-    Registering one machine or project too many returns a clear error from the CLI and a{" "}
-    <code>403</code> with <code>error: "plan_limit"</code> from the API. The dashboard Settings page
+    Registering one machine or project too many, or asking for one instance too many, returns a
+    clear error from the CLI and a <code>403</code> with <code>error: "plan_limit"</code> from the
+    API, which names the limit that was reached. The dashboard Settings page
     shows the current plan and how much of each cap is in use.
   </p>
 

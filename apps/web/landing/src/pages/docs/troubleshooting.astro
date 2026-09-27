@@ -20,8 +20,9 @@ import Doc from "../../layouts/Doc.astro";
   <h2><code>LOCAL_EXECUTOR_OFFLINE</code></h2>
 
   <p>
-    No CLI is connected for the machine that serves this project. Run{" "}
-    <code>exeora connect</code> on that machine and leave it running.
+    A machine of yours is off, or no CLI is connected on it. Which machine depends on the call: the
+    one that holds the workspace it named, or the project's default location when it named none.
+    Run <code>exeora connect</code> on that machine and leave it running.
   </p>
 
   <p>
@@ -29,12 +30,142 @@ import Doc from "../../layouts/Doc.astro";
     landing hours later when a laptop wakes up is worse than one that never ran.
   </p>
 
+  <p>
+    The same code, with a message that says so, is the answer when the machine of the default
+    location was revoked. The message lists where the project still lives. Work in a workspace
+    there, or choose a new default location on the project's page or with{" "}
+    <code>exeora project default</code>.
+  </p>
+
   <h2><code>EXECUTOR_WAKING</code></h2>
 
   <p>
-    The project lives on a machine Exeora Cloud runs, the machine was asleep, and it did not come up
-    in time for this call. Send the call again after a few seconds. If it keeps happening, the
-    machine's state and the reason are on the dashboard.
+    The call was for an instance on Exeora Cloud, the instance was asleep, and it did not come up
+    in time. Nobody has to start anything: send the same call again after a few seconds. If it
+    keeps happening, look at the instance under <strong>Machines</strong>, on the Exeora Cloud
+    tab. One that failed says why and what to do, and <strong>Retry</strong> sets it up again.
+  </p>
+
+  <h2>A clone failed on a machine</h2>
+
+  <p>
+    The first workspace asked for on a machine that holds no copy of the repository clones it into
+    that machine's projects folder. When that fails, the location shows as <code>failed</code> on
+    the project's page with the reason, and the call that asked is refused with it. Run from the
+    machine itself, <code>exeora workspace create</code> also prints the line git gave. Nothing is
+    left behind by a clone that failed, so the next attempt starts clean.
+  </p>
+
+  <ul>
+    <li>
+      <strong>The repository refused access, or was not found.</strong> A private repository
+      looks the same as a missing one to a machine that has no access to it. A clone tries a
+      short-lived token from Exeora when the project is{" "}
+      <a href="/docs/github/">connected to GitHub</a>, then the git credentials of the machine over
+      https, then ssh, and none of them can stop to ask for a password. Connect GitHub, or set up
+      git credentials on that machine, then ask for the workspace again.
+    </li>
+    <li>
+      <strong>A directory is in the way.</strong> The clone goes to{" "}
+      <code>&lt;projects-root&gt;/&lt;slug&gt;</code>. A checkout of the same repository at that
+      path is adopted. Anything else there is refused without being touched, with a message that
+      names it. Move it somewhere else, or choose another folder with{" "}
+      <code>exeora config set projects-root &lt;path&gt;</code>.
+    </li>
+    <li>
+      <strong>The projects folder cannot be created or written to.</strong> Choose another one the
+      same way.
+    </li>
+    <li>
+      <strong>The machine could not reach the host, or the clone timed out.</strong> A clone is
+      stopped after thirty minutes. Check the connection of that machine, then try again.
+    </li>
+    <li>
+      <strong>The machine is not connected, or its CLI is too old to clone.</strong> Run{" "}
+      <code>exeora connect</code> there, or <code>exeora upgrade</code>. Cloning by hand and
+      running <code>exeora project add</code> in the checkout ends in the same place.
+    </li>
+  </ul>
+
+  <p>
+    A call that ends before a long clone does not stop it. The clone goes on, the machine tells
+    Exeora when it is ready, and <code>list_workspaces</code> or the project's page says so.
+  </p>
+
+  <h2><code>slug_taken</code> on <code>exeora project add</code></h2>
+
+  <p>
+    A project with that name already lives on another machine, and the directory you are adding is
+    not a checkout of the same repository. Exeora refuses rather than moving the project to this
+    machine, which would leave the other one holding nothing. Add the directory under another name
+    with <code>--slug</code>, or remove the other project first.
+  </p>
+
+  <p>
+    If the two are meant to be the same project, they need the same remote: a checkout whose remote
+    is already a project joins it whatever the directory is called. A project added by a CLI older
+    than 0.18.0 has no repository on record until <code>exeora sync</code> runs on the machine that
+    holds it.
+  </p>
+
+  <h2>GitHub could not be connected</h2>
+
+  <p>
+    The way back from GitHub ends on Settings with the outcome. When it failed, the address carries
+    a <code>reason</code> and the dashboard says it in words:
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Reason</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>state_invalid</code></td>
+        <td>The request was altered or is older than ten minutes. Start again from Settings.</td>
+      </tr>
+      <tr>
+        <td><code>state_used</code></td>
+        <td>That link was already used once. Start again from Settings.</td>
+      </tr>
+      <tr>
+        <td><code>session_required</code></td>
+        <td>The browser that came back is not signed in to Exeora as the account that asked. Finish it in the browser where you are signed in.</td>
+      </tr>
+      <tr>
+        <td><code>denied</code></td>
+        <td>The installation was cancelled on GitHub.</td>
+      </tr>
+      <tr>
+        <td><code>approval_pending</code></td>
+        <td>The organisation approves installations, and the request is with one of its owners. Connect again once they have approved it.</td>
+      </tr>
+      <tr>
+        <td><code>code_missing</code>, <code>code_rejected</code></td>
+        <td>GitHub did not confirm who you are. Its authorization expires ten minutes after it is given. Connect again.</td>
+      </tr>
+      <tr>
+        <td><code>installation_invalid</code></td>
+        <td>The installation named in the address could not be read. Connect again.</td>
+      </tr>
+      <tr>
+        <td><code>installation_not_visible</code></td>
+        <td>GitHub does not list that installation for the account that authorized. Install the app from the account that owns the repositories, or ask an owner of the organisation to.</td>
+      </tr>
+      <tr>
+        <td><code>no_installation</code></td>
+        <td>The app is not installed on any account you can reach. Install it on GitHub, then connect again.</td>
+      </tr>
+      <tr>
+        <td><code>github_unavailable</code></td>
+        <td>GitHub did not answer. Try again in a few minutes.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    Later on, the dashboard asking you to connect again means GitHub stopped accepting the
+    authorization your account had. See <a href="/docs/github/#lost-access">when access is lost</a>.
   </p>
 
   <h2>The gateway closed the connection</h2>
@@ -124,7 +255,8 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     <code>exeora status</code> marks these, and they happen when a project was removed from the
-    dashboard while this machine was not looking. <code>exeora sync</code> reconciles the two.
+    dashboard, or taken off this machine as a location, while this machine was not looking.{" "}
+    <code>exeora sync</code> reconciles the two.
   </p>
 
   <h2>A process disappeared</h2>
@@ -147,7 +279,7 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>
     The published Linux binary is linked against glibc 2.31, which is Ubuntu 20.04 LTS. A machine
-    older than that — Ubuntu 18.04, Debian 10, CentOS 7 — will refuse to start it. Upgrade the
+    older than that, such as Ubuntu 18.04, Debian 10 or CentOS 7, will refuse to start it. Upgrade the
     distribution. If the machine can run the repository's required Rust toolchain and build
     dependencies, a native source build may work, but systems with glibc older than 2.31 are not
     supported.

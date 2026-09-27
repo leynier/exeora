@@ -18,6 +18,8 @@ exeora project add the-project-you-want-to-serve
 
 `connect` signs you in, registers the machine, and keeps the outbound connection open. It does not have to be run from a project directory. `exeora project add` registers a directory to serve. Point any client at the printed MCP URL and leave `connect` running.
 
+A project is a repository, and it lives in one or more locations: your machines and Exeora Cloud. One location is the default, where a call that names no workspace lands. Running `exeora project add` in a checkout whose remote is already a project joins that project as one more location. With GitHub connected in the dashboard, a project can also be added by picking a repository from a list and letting Exeora Cloud hold it, with no machine of yours switched on. See [projects, locations and workspaces](https://exeora.dev/docs/projects/).
+
 **Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [releases](https://github.com/leynier/exeora/releases/latest)
 
 > **Demo.** Drop a terminal recording at `docs/demo.gif` when you have one (see `docs/demo.gif.placeholder`). Until then, the live product is at [exeora.dev](https://exeora.dev).
@@ -66,7 +68,7 @@ flowchart TD
 |---|---|---|---|
 | Where your code lives | The machine you ran it on | The machine you ran it on | A copy on their infrastructure |
 | Inbound port | **None** | None, but a public URL is published | None |
-| What is reachable | Fifteen tools, one project directory | Whatever is listening on that port | A full shell in the copy |
+| What is reachable | Seventeen tools, confined to the project | Whatever is listening on that port | A full shell in the copy |
 | Per-project isolation | Separate OAuth resource and token | You build it | One sandbox per project |
 | Authentication | OAuth 2.1, built in | Whatever your service does | The vendor's account |
 | Your real toolchain and state | **Yes** | Yes | Reinstalled, never quite the same |
@@ -75,7 +77,7 @@ flowchart TD
 ## What you get
 
 - **No inbound network path** - outbound HTTPS is the only requirement. Home routers, corporate proxies and cloud VMs with no public address all work unconfigured.
-- **Your code never leaves the machine** - Exeora routes tool calls; it does not store the repository.
+- **Your code stays where you put it** - on a machine of yours, Exeora routes tool calls and does not store the repository. Exeora Cloud holds a clone only of a project you put there.
 - **A token per endpoint** - a token minted for one project is refused at another. Ownership is checked in the database too.
 - **Paths stay in the project** - every path is resolved before anything touches disk. `..` and outward symlinks are rejected.
 - **Modes and command rules** - read only, allow list, deny list, per-tool restrictions. Shell metacharacters are refused whenever a list is in force.
@@ -164,6 +166,9 @@ claude mcp add --transport http exeora <the URL>
 | | |
 |---|---|
 | Getting started | [exeora.dev/docs](https://exeora.dev/docs/) |
+| Projects, locations and workspaces | [exeora.dev/docs/projects](https://exeora.dev/docs/projects/) |
+| Connecting GitHub | [exeora.dev/docs/github](https://exeora.dev/docs/github/) |
+| Exeora Cloud | [exeora.dev/docs/cloud](https://exeora.dev/docs/cloud/) |
 | Connecting a client | [exeora.dev/docs/clients](https://exeora.dev/docs/clients/) |
 | The agent prompt | [exeora.dev/docs/agent-prompt](https://exeora.dev/docs/agent-prompt/) |
 | What a project allows | [exeora.dev/docs/policy](https://exeora.dev/docs/policy/) |

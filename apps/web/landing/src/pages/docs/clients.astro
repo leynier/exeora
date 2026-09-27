@@ -32,10 +32,17 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
-    With all projects chosen, you add the URL once and it keeps working as projects come and go. With
-    a chosen list, a project you add later stays out of reach until you give it to the client, either
-    while creating the project or under <strong>Clients</strong> in the dashboard. Taking one project
-    away from a client that had all of them turns it into a chosen list.
+    With all projects chosen, you add the URL once and it keeps working as projects come and go: a
+    project is given to that client the moment it is created, from the dashboard or from a
+    machine. With a chosen list, a project you add later stays out of reach until you give it to
+    the client, either while adding the project in the dashboard or under <strong>Clients</strong>.
+    Taking one project away from a client that had all of them turns it into a chosen list.
+  </p>
+
+  <p>
+    Either way, what a client is given is a project, not a machine. It reaches that project in
+    every location it lives in, and <code>list_projects</code> shows it those locations and the
+    state of each.
   </p>
 
   <p>
@@ -97,9 +104,11 @@ import Doc from "../../layouts/Doc.astro";
   <h2>If a call fails immediately</h2>
 
   <p>
-    <code>LOCAL_EXECUTOR_OFFLINE</code> means no CLI is connected for that project's machine. Nothing
-    is queued, on purpose. <code>EXECUTOR_WAKING</code> means a machine Exeora Cloud runs was asleep
-    and is coming up, and the call is worth sending again. See{" "}
+    <code>LOCAL_EXECUTOR_OFFLINE</code> means a machine of yours is off, or
+    <code>exeora connect</code> is not running on it: the machine that holds the workspace the call
+    named, or the default location when it named none. Nothing is queued, on purpose.{" "}
+    <code>EXECUTOR_WAKING</code> means an instance on Exeora Cloud was asleep and did not come up in
+    time, and the call is worth sending again. See{" "}
     <a href="/docs/troubleshooting/">troubleshooting</a>.
   </p>
 </Doc>

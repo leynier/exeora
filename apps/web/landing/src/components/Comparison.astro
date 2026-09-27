@@ -13,7 +13,7 @@ const rows = [
   {
     dimension: "Where it runs",
     values: [
-      "Any connected machine, or an Exeora Cloud workspace",
+      "Any machine of yours, or an instance on Exeora Cloud",
       "The same computer as the client",
       "A vendor-hosted copy",
     ],
@@ -36,7 +36,11 @@ const rows = [
   },
   {
     dimension: "Real toolchain and state",
-    values: ["Yes, on the target machine", "Yes, on the client machine", "Reinstalled in the copy"],
+    values: [
+      "Yes, in the location the call lands on",
+      "Yes, on the client machine",
+      "Reinstalled in the copy",
+    ],
   },
   {
     dimension: "Policies and approvals",
@@ -53,7 +57,7 @@ const rows = [
   {
     dimension: "Setup",
     values: [
-      "Connect the machine and add a project",
+      "Connect a machine, or pick a repository for Exeora Cloud",
       "Install in every client environment",
       "Upload or import the repository",
     ],

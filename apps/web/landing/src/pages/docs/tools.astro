@@ -42,8 +42,8 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   canonicalPath="/docs/tools/"
 >
   <p>
-    Project paths are relative to the project root and confined to it before anything touches the
-    disk. <code>read_file</code>, <code>list_files</code>, <code>grep</code> and command{" "}
+    Project paths are relative to the project root, or to the working copy of the workspace the
+    call names, and confined to it before anything touches the disk. <code>read_file</code>, <code>list_files</code>, <code>grep</code> and command{" "}
     <code>cwd</code> may also use <code>~/.agents/AGENTS.md</code> and paths under{" "}
     <code>~/.agents/skills/</code>. Writes cannot. Any other absolute path, or one that climbs out
     with <code>..</code>, is refused with <code>PATH_ESCAPE</code>.
@@ -70,15 +70,33 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
-    File, command and process tools accept <code>workspace</code>, naming a connected Git workspace by
-    slug or id; omit it or pass <code>main</code> for the project root.{" "}
+    File, command and process tools accept <code>workspace</code>, naming a connected workspace by
+    slug or id, and run on the machine that holds it. Omit it or pass <code>main</code> for the
+    project root at the default <a href="/docs/projects/">location</a>.{" "}
     <code>create_workspace</code> accepts it as an optional source, while{" "}
     <code>detach_workspace</code> and <code>remove_workspace</code> require it as their target.{" "}
     <code>list_git_workspaces</code> and <code>attach_workspace</code> do not take it. The gateway
-    resolves selectors to stable ids and removes the routing field before executor validation.{" "}
-    <code>list_workspaces</code> remains the gateway inventory and works while the machine is offline;
-    <code>list_git_workspaces</code> requires the machine and includes unattached Git checkouts. A
+    resolves selectors to stable ids and removes the routing field before executor validation. A
     workspace error never falls back to main.
+  </p>
+
+  <p>
+    <code>create_workspace</code> and <code>list_git_workspaces</code> also take{" "}
+    <code>where</code>, which names a location of the project: a machine's name, or{" "}
+    <code>cloud</code>, as <code>list_projects</code> and <code>list_workspaces</code> name them.
+    Without it a workspace is made at the default location, or beside the workspace named by{" "}
+    <code>workspace</code>, which is the checkout it starts from. <code>where</code> is read by the
+    gateway and never sent to a machine, which by then is the one that was chosen. The first
+    workspace on a machine that holds no copy of the repository clones it there first, and one on
+    Exeora Cloud starts an instance, so the call can take a minute or more.
+  </p>
+
+  <p>
+    <code>list_workspaces</code> is the gateway's inventory across every location. It lists the
+    project root as <code>main</code> and every other workspace with the location that holds it,
+    and for a workspace on Exeora Cloud the status of its instance. It works while machines are
+    offline. <code>list_git_workspaces</code> asks one machine, requires it to be connected, and
+    includes Git checkouts that are not connected to Exeora.
   </p>
 
   {
@@ -129,9 +147,12 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   <h2 id="choosing-a-project">Choosing a project</h2>
 
   <p>
-    <code>list_projects</code> exists only on the account URL, where one connection covers several
-    projects and a caller needs to see the valid targets. It is answered by the gateway and never
-    reaches a machine, so no project policy applies to it.
+    Two tools are answered by the gateway and never reach a machine, so they work with every
+    machine offline and no project policy applies to them. <code>list_projects</code> exists only
+    on the account URL, where one connection covers several projects and a caller needs to see the
+    valid targets. It shows each project with its repository and the locations it lives in, by the
+    names <code>where</code> takes, and the state of each. <code>list_workspaces</code> is on both
+    URLs. On a project's own URL it takes no <code>project</code>.
   </p>
 
   <p>
@@ -151,7 +172,9 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
         <p>
           <strong>{tool.title}</strong>
           {tool.readOnly && <span class="text-foreground-faint"> · read only</span>}
-          <span class="text-foreground-faint"> · account URL only</span>
+          {tool.name === "list_projects" && (
+            <span class="text-foreground-faint"> · account URL only</span>
+          )}
         </p>
 
         <p>{tool.description}</p>

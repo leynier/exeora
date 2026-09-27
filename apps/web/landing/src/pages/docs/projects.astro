@@ -1,0 +1,137 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Projects, locations and workspaces"
+  description="What a project is, where it lives, and how a branch gets a working copy of its own."
+  canonicalPath="/docs/projects/"
+>
+  <p>Three words carry the whole model, and the rest of the documentation uses them the same way everywhere.</p>
+
+  <ul>
+    <li><strong>A project is a repository.</strong> One repository is one project, however many copies of it there are. The project is what a client is authorized for and what a policy is set on.</li>
+    <li><strong>A location is a place the project lives</strong>: one of your machines, or Exeora Cloud. A project lives in one or more of them.</li>
+    <li><strong>A workspace is a branch with a working copy of its own</strong>, in one location. On a machine of yours it is a Git worktree. On Exeora Cloud it is a machine of its own, called an instance.</li>
+  </ul>
+
+  <p>A machine is a computer of yours with the CLI on it. An instance is a machine Exeora Cloud runs for you. Tools behave the same on both, so an agent uses a workspace without caring which kind holds it.</p>
+
+  <h2 id="default-location">The default location</h2>
+
+  <p>One location of a project is the default. A call that names no workspace lands there, in the project root of that location. A call that names a workspace goes to the machine that holds that workspace, wherever it is.</p>
+
+  <p>The location a project was first added in starts as the default. Change it from the project's page in the dashboard, with <strong>Make default</strong> on a location, or from the CLI:</p>
+
+  <pre>exeora project default api --on desktop
+exeora project default api --on cloud</pre>
+
+  <p>Making Exeora Cloud the default asks for an instance for the project root, because that is the only time a call that names no workspace would land on Cloud. See <a href="/docs/cloud/">Exeora Cloud</a>.</p>
+
+  <p>The dashboard, <code>exeora project list</code> and the <code>list_projects</code> tool all describe a location with the same words:</p>
+
+  <table>
+    <thead>
+      <tr><th>State</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>online</code></td><td>The machine is connected and answers calls.</td></tr>
+      <tr><td><code>asleep</code></td><td>Exeora Cloud with nothing running right now. The next call wakes the instance, so it counts as reachable.</td></tr>
+      <tr><td><code>offline</code></td><td>A machine of yours that is off, or where <code>exeora connect</code> is not running.</td></tr>
+      <tr><td><code>not cloned</code></td><td>The machine is a location and holds no copy yet. The first workspace made there clones the repository.</td></tr>
+      <tr><td><code>setting up</code></td><td>The repository is being cloned, or an instance is being made.</td></tr>
+      <tr><td><code>failed</code></td><td>The clone or the instance failed. The reason and what to do about it are shown beside it.</td></tr>
+      <tr><td><code>removed</code></td><td>The machine was revoked, so nothing there answers.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="second-machine">How a second machine joins a project</h2>
+
+  <p>What makes a checkout on another machine the same project is its remote. Exeora reduces the address to host, owner and name, so an ssh remote and an https remote of the same repository are the same project. There are two ways to add the machine, and they end in the same place.</p>
+
+  <h3>From a checkout that is already there</h3>
+
+  <pre>cd ~/code/api
+exeora project add .</pre>
+
+  <p>When the remote of that checkout is already a project of your account, the machine joins that project as one more location, and the CLI says so instead of announcing a new project. The machine takes the id, slug and name the project already has, whatever the directory is called. Nothing is cloned and nothing is moved.</p>
+
+  <p>Only the top of a checkout says which repository it is. A folder inside a checkout is registered as that folder, a project of its own with no repository, because another machine that cloned the repository would hold something else.</p>
+
+  <h3>By adding the location and letting the first workspace clone</h3>
+
+  <pre>exeora project locations add api --on desktop
+exeora workspace create fix/login --project api --on desktop</pre>
+
+  <p>The first command can run on any machine signed in to your account, or be done from the project's page with <strong>Add location</strong>. It clones nothing: it says the project may live on that machine. The first workspace asked for there is what brings the copy. The machine has to be registered and connected for that, because only the machine can clone onto itself.</p>
+
+  <p>There is also a shorter form when you are at the second machine: <code>exeora project add owner/repo</code> clones the repository into its projects folder and joins the project in one step.</p>
+
+  <h2 id="projects-folder">The projects folder</h2>
+
+  <p>Each machine has a projects folder, <code>~/exeora</code> by default. <code>exeora connect</code> asks for it the first time it runs at a terminal. Read or change it afterwards:</p>
+
+  <pre>exeora config get projects-root
+exeora config set projects-root ~/code/exeora
+exeora config unset projects-root</pre>
+
+  <p><code>EXEORA_PROJECTS_ROOT</code> overrides it for one environment.</p>
+
+  <p>The first time a workspace is asked for on a machine that holds no copy of the repository, the CLI makes one at <code>&lt;projects-root&gt;/&lt;slug&gt;</code>. If a checkout of the same repository is already at that path, it is adopted as it is. Otherwise the repository is cloned there. The CLI never deletes or overwrites what it finds: a folder at that path that holds something else is refused with a message that names it.</p>
+
+  <p>A clone tries three ways of asking, in this order, and stops at the first that works: a short-lived token from Exeora when the project is <a href="/docs/github/">connected to GitHub</a>, the git credentials of the machine over https, and ssh. None of them can stop to ask for a password, because a machine that serves calls in the background has nobody watching it. The clone is made beside its destination and moved into place at the end, so a clone that fails leaves nothing behind. It is stopped after thirty minutes.</p>
+
+  <p>Workspaces on a machine are Git worktrees of that clone. They are kept under <code>workspace-root</code>, a separate folder in the platform's data directory, so the projects folder holds only the checkouts you would open in an editor.</p>
+
+  <h2 id="workspaces">Workspaces</h2>
+
+  <p>A workspace is created in the location you name, from any of three places: the dashboard (<strong>Add workspace</strong> on a project's page, or from Source Control), the CLI, and an agent through the <code>create_workspace</code> tool, which takes the location as <code>where</code>.</p>
+
+  <pre>exeora workspace create fix/login
+exeora workspace create fix/login --project api --on desktop
+exeora workspace create fix/login --project api --on cloud</pre>
+
+  <p>Without <code>--on</code> the workspace is a worktree on the machine the command runs on. With <code>--on cloud</code> it is an instance, and a project that is not on Exeora Cloud yet is put there on the way. <code>list_workspaces</code> and <code>exeora workspace list --all</code> show every workspace with the location that holds it.</p>
+
+  <h3 id="slugs">Workspace slugs across locations</h3>
+
+  <p>A workspace is named in a call by its slug, which comes from the branch: <code>fix/login</code> becomes <code>fix-login</code>. The same branch can have a working copy in two locations, and both would ask for the same slug. The first keeps it. The second is given the slug with its location behind it, <code>fix-login-desktop</code> or <code>fix-login-cloud</code>, so each can be named and each call reaches the machine that holds what it names.</p>
+
+  <p>Two workspaces on the same machine asking for one slug is a real conflict, and it is refused. <code>main</code> is reserved: it is the project root at the default location.</p>
+
+  <h2 id="moving-work">Work moves through the remote</h2>
+
+  <p>Nothing copies files between locations. A change made on the laptop reaches the desktop or an instance the way it reaches a colleague: commit and push there, fetch here. A workspace in one location does not see uncommitted work in another, and removing a location does not move what was only there.</p>
+
+  <h2 id="removing-a-location">Taking a project off a location</h2>
+
+  <pre>exeora project locations remove api --on desktop</pre>
+
+  <p>Exeora forgets the location and the workspaces it knew there. On a machine of yours nothing on disk is touched: the checkout and its worktrees stay where they are, no longer served. On Exeora Cloud the instances are what the location is, so they are destroyed, with anything that was never pushed from them.</p>
+
+  <p>The default location cannot be removed until another one is the default, and the only location of a project cannot be removed at all: that is removing the project, and it is asked for as such with <code>exeora project remove</code>.</p>
+
+  <h2 id="removing-a-machine">When a machine is removed</h2>
+
+  <p>A machine leaves in two steps, from <strong>Machines</strong> in the dashboard. <strong>Revoke</strong> closes its connection at once. <strong>Delete</strong> is offered afterwards and cannot be undone.</p>
+
+  <p>While a machine is revoked and not yet deleted, a project that lives somewhere else as well is still reachable through its workspaces in the other locations. A call that names no workspace is refused if the revoked machine was the default location, and the refusal lists where the project still lives. Choose a new default to bring those calls back.</p>
+
+  <p>Deleting the machine settles it for every project that lived there:</p>
+
+  <ul>
+    <li><strong>A project that lives on another machine stays</strong>, and its default moves there. A copy that is ready is preferred to one that is not cloned yet, and the oldest location wins a tie.</li>
+    <li><strong>A project that lived only on that machine goes with it</strong>, along with its activity history. The files on the machine are not deleted.</li>
+    <li><strong>A project that is also on Exeora Cloud stays.</strong> When Cloud is the only other place it lives, Cloud is given an instance for the project root and becomes the default. If that instance cannot be made, because the plan has no room for it for example, the machine is not deleted and the dashboard says why.</li>
+  </ul>
+
+  <h2 id="no-remote">Directories with no remote</h2>
+
+  <p>A directory that is not the top of a checkout, or a checkout with no remote, is still a project. It has no repository, so there is nothing another location could clone: it stays on the one machine it was added from, and adding a location or putting it on Exeora Cloud is refused with the reason.</p>
+
+  <p>To change that, give the checkout a remote and run <code>exeora sync</code> on the machine it lives on. The same command teaches Exeora the repository of projects that were added by a CLI older than 0.18.0, which did not send it.</p>
+
+  <h2 id="same-name">A name that belongs to another repository</h2>
+
+  <p>Registering a directory under a slug that already names a project on another machine, when the two are not checkouts of the same repository, is refused with <code>slug_taken</code>. It used to move the project to the new machine without a word and leave the other one holding nothing. Add the directory under another name with <code>--slug</code>, or remove the other project first.</p>
+</Doc>

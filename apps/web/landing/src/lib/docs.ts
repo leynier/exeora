@@ -7,6 +7,8 @@
  */
 export const DOC_PAGES = [
   { href: "/docs/", label: "Getting started" },
+  { href: "/docs/projects/", label: "Projects, locations and workspaces" },
+  { href: "/docs/github/", label: "Connecting GitHub" },
   { href: "/docs/clients/", label: "Connecting a client" },
   { href: "/docs/tools/", label: "Tools" },
   { href: "/docs/mcp-proxy/", label: "Proxy other MCP servers" },

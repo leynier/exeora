@@ -9,8 +9,10 @@ import Doc from "../../layouts/Doc.astro";
 >
   <p>
     Everything below <code>connect</code> is a piece you can run on its own.
-    <code>connect</code> signs in and keeps the machine online; <code>project add</code> registers a
-    directory.
+    <code>connect</code> signs in and keeps the machine online; <code>project add</code> adds a
+    directory or a repository as a project. Commands that act on a project take
+    <code>--on</code> to say which <a href="/docs/projects/">location</a> they mean, so the same
+    commands serve this machine, another machine of yours, and Exeora Cloud.
   </p>
 
   <table>
@@ -32,27 +34,39 @@ import Doc from "../../layouts/Doc.astro";
       </tr>
       <tr>
         <td><code>device register</code> / <code>device list</code></td>
-        <td>Register this machine by hand, or list your machines</td>
+        <td>Register this machine by hand, or list your machines and the instances Exeora Cloud runs. <code>machine</code> is another name for <code>device</code>.</td>
       </tr>
       <tr>
-        <td><code>project add [path]</code></td>
-        <td>Register a directory so this machine can serve it</td>
+        <td><code>project add [target]</code></td>
+        <td>Add a directory or a repository as a project</td>
       </tr>
       <tr>
         <td><code>project list</code> / <code>project remove &lt;slug&gt;</code></td>
-        <td>Manage this machine's projects</td>
+        <td>List your projects and where each one lives, or remove one everywhere it lives</td>
+      </tr>
+      <tr>
+        <td><code>project locations &lt;slug&gt;</code> / <code>project locations add|remove</code></td>
+        <td>List, add or remove the locations of a project</td>
+      </tr>
+      <tr>
+        <td><code>project default &lt;slug&gt;</code></td>
+        <td>Choose the location that calls naming no workspace land on</td>
+      </tr>
+      <tr>
+        <td><code>project credential &lt;slug&gt;</code></td>
+        <td>Replace or remove the repository token Exeora Cloud clones a project with</td>
       </tr>
       <tr>
         <td><code>workspace create</code> / <code>workspace attach</code></td>
-        <td>Create or connect a Git workspace as a project subspace</td>
+        <td>Create a workspace in any location, or connect a Git workspace that already exists on this machine</td>
       </tr>
       <tr>
         <td><code>workspace list</code> / <code>workspace detach</code> / <code>workspace remove</code></td>
-        <td>Inspect, disconnect or physically remove connected workspaces</td>
+        <td>List workspaces and where each one lives, disconnect one, or remove one</td>
       </tr>
       <tr>
-        <td><code>config get|set|unset workspace-root</code></td>
-        <td>Control where Exeora creates managed workspaces by default</td>
+        <td><code>config get|set|unset &lt;key&gt;</code></td>
+        <td>Read or change <code>projects-root</code> and <code>workspace-root</code>, the two folders this machine keeps things in</td>
       </tr>
       <tr>
         <td><code>init [path]</code></td>
@@ -73,6 +87,10 @@ import Doc from "../../layouts/Doc.astro";
       <tr>
         <td><code>sync</code></td>
         <td>Reconcile this machine's registration and projects with the dashboard</td>
+      </tr>
+      <tr>
+        <td><code>git-credential</code></td>
+        <td>The credential helper git runs. Not a command for a person, and left out of <code>exeora --help</code>.</td>
       </tr>
       <tr>
         <td><code>upgrade</code></td>
@@ -107,6 +125,13 @@ import Doc from "../../layouts/Doc.astro";
   </table>
 
   <p>
+    The first time <code>connect</code> runs at a terminal it asks where projects should be cloned
+    on this machine, and saves the answer as <code>projects-root</code>. A machine that was told
+    through <code>exeora config</code> or <code>EXEORA_PROJECTS_ROOT</code> is never asked, and
+    neither is one running under <code>--json</code> or without a terminal.
+  </p>
+
+  <p>
     While <code>connect</code> is running, Exeora asks the operating system to keep both the machine
     and its display awake. The request covers relay reconnects and is released when the command
     exits. It does not override an explicit sleep request or closing a laptop lid. If the operating
@@ -130,43 +155,214 @@ import Doc from "../../layouts/Doc.astro";
     Exeora is open source, so <code>https://exeora.dev</code> is a default rather than an address. <code>exeora gateway use https://your.example.com</code> points this machine at your own deployment and stores the choice, so every later command follows it with no flag and no variable. <code>exeora gateway</code> prints the active one and where it came from; <code>exeora gateway reset</code> goes back to the hosted one. <code>exeora login</code> and <code>exeora connect</code> take <code>--gateway</code> to do the same thing on the way past.
   </p>
 
-  <h2>workspaces</h2>
-
-  <p>
-    <code>exeora workspace create feature/name</code> creates a native Git worktree wrapped as an Exeora
-    workspace from the current workspace's <code>HEAD</code>, registers it under the current Exeora project and
-    synchronizes its stable id with the gateway.
-    Use <code>--from &lt;ref&gt;</code> to choose another base, or{" "}
-    <code>--reuse-existing-branch</code> when the branch already exists. <code>--project</code> selects
-    a project when the command is not run inside one.
-  </p>
-
-  <p>
-    <code>attach</code> connects an existing workspace without taking ownership of its creation.{" "}
-    <code>detach</code> only disconnects it from Exeora. <code>remove</code> runs Git's worktree
-    removal and refuses uncommitted changes unless <code>--force</code> is present; branches are kept
-    unless <code>--delete-branch</code> is requested, and then Git's safe <code>branch -d</code> is used.
-  </p>
-
-  <p>
-    The default root follows the platform data directory.{" "}
-    <code>EXEORA_WORKSPACE_ROOT</code> overrides
-    it for one environment, while <code>exeora config set workspace-root &lt;path&gt;</code> persists it.
-    A gateway outage leaves a safe pending record and <code>exeora sync</code> retries it.
-  </p>
-
   <p>
     One gateway is active at a time. Switching forgets the machine registration, the projects and the session belonging to the previous one, because a device id issued by one gateway's database means nothing to another. The CLI lists what it is about to forget and asks before it does. It also checks that a gateway actually answers at the address before touching anything, so a typo leaves a working setup exactly as it was.
   </p>
 
-  <h2>cloud</h2>
+  <h2 id="project">project</h2>
+
+  <pre>exeora project add
+exeora project add ~/code/api
+exeora project add owner/repo
+exeora project add owner/repo --on cloud
+exeora project add https://git.example.com/you/repo.git</pre>
 
   <p>
-    <code>exeora cloud add &lt;https-url&gt;</code> puts a repository on a machine Exeora runs and waits until its CLI connects. <code>--name</code>, <code>--slug</code> and <code>--branch</code> override what the URL implies; <code>--token-stdin</code> reads a token for a private repository from standard input, with <code>--username</code> when the host wants one. <code>exeora cloud list</code> shows every cloud project and the state of each machine. <code>exeora cloud workspace create &lt;project&gt; &lt;branch&gt;</code> opens a branch on a machine of its own, from <code>--from &lt;ref&gt;</code> when the branch is new; <code>workspace remove</code> and <code>cloud remove</code> take machines down, and ask first unless <code>-y</code> is given. <code>exeora cloud credential &lt;project&gt; --token-stdin</code> replaces the token a private repository clones with (<code>--clear</code> removes it); machines created or retried from then on use it. See <a href="/docs/cloud/">Exeora Cloud</a>.
+    <code>project add</code> takes a directory on this machine, the address of a repository, or
+    <code>owner/repo</code> on GitHub. A directory is registered where it is; one that exists is
+    read as a directory whatever else its name could mean. A repository is cloned into this
+    machine's projects folder, or put on Exeora Cloud with <code>--on cloud</code>. With no
+    target, the current directory is added. When it is not inside a checkout, the command runs at
+    a terminal and <a href="/docs/github/">GitHub is connected</a>, a repository is picked from a
+    list instead, and the command asks where it should live.
   </p>
 
   <p>
-    <code>exeora connect --cloud</code> is the other side: what the machine itself runs as a service. It reads a machine token from disk instead of signing in, holds the machine awake while it works, and answers the gateway's wake requests. There is no reason to run it on a laptop.
+    What makes a checkout the same project on another machine is its remote. Adding a checkout
+    whose remote is already a project of your account joins that project as one more location,
+    and the command says so. A name that belongs to a different repository on another machine is
+    refused with <code>slug_taken</code> rather than moved. See{" "}
+    <a href="/docs/projects/#second-machine">how a second machine joins a project</a>.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Flag</th><th>What it does</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--name</code>, <code>--slug</code></td><td>Override what the directory or the repository implies</td></tr>
+      <tr>
+        <td><code>--on &lt;machine|cloud&gt;</code></td>
+        <td>Where a repository goes: this machine by default, or <code>cloud</code>. Naming another machine of yours adds it as a location of a project that already exists. A directory is always added from the machine it is on.</td>
+      </tr>
+      <tr><td><code>--branch</code></td><td>The project's default branch; the repository's own by default</td></tr>
+      <tr>
+        <td><code>--token-stdin</code>, <code>--username</code></td>
+        <td>A repository token read from standard input, for a private repository on Exeora Cloud. Refused for a machine of yours, which clones with the GitHub connection of your account or its own git credentials.</td>
+      </tr>
+      <tr><td><code>-y</code></td><td>Do not ask before cloning or before starting an instance</td></tr>
+    </tbody>
+  </table>
+
+  <pre>exeora project list
+exeora project locations api
+exeora project locations add api --on desktop
+exeora project locations remove api --on desktop
+exeora project default api --on desktop
+exeora project credential api --token-stdin &lt; token.txt
+exeora project credential api --remove
+exeora project remove api</pre>
+
+  <p>
+    <code>--on</code> takes a machine's name, that name as a slug, <code>here</code> for the
+    machine the command runs on, or <code>cloud</code>. <code>project list</code> prints every
+    project of the account with its repository, and under it each location with its state and its
+    path, the default marked with <code>*</code>. <code>locations add</code> clones nothing: the
+    first workspace made in that location brings the copy. <code>locations remove</code> and{" "}
+    <code>project remove</code> ask first unless <code>-y</code> is given, never delete files on
+    your machines, and destroy the instances on Exeora Cloud.
+  </p>
+
+  <p>
+    <code>project credential</code> is for a repository that is not connected to GitHub. The token
+    arrives on standard input, never as an argument, so it stays out of shell history and process
+    lists. Instances created or retried from then on use it; one already running keeps the token
+    it was set up with.
+  </p>
+
+  <h2 id="workspace">workspace</h2>
+
+  <pre>exeora workspace create feature/name
+exeora workspace create feature/name --from main
+exeora workspace create feature/name --project api --on desktop
+exeora workspace create feature/name --project api --on cloud</pre>
+
+  <p>
+    Without <code>--on</code>, or with <code>--on</code> naming this machine,{" "}
+    <code>workspace create</code> makes a native Git worktree here, from the current workspace's{" "}
+    <code>HEAD</code>, registers it under the project and synchronizes its stable id with the
+    gateway. A project this machine is a location of and holds no copy of yet is cloned into the
+    projects folder first. With <code>--on</code> naming another location the workspace is made
+    there: a worktree on that machine, which has to be connected, or an instance on Exeora Cloud,
+    which the command waits for.
+  </p>
+
+  <p>
+    Use <code>--from &lt;ref&gt;</code> to choose another base, or{" "}
+    <code>--reuse-existing-branch</code> when the branch already exists. <code>--project</code>{" "}
+    selects a project when the command is not run inside one. <code>--path</code> places a
+    worktree on this machine somewhere other than the default root, and cannot be combined with{" "}
+    <code>--on</code>.
+  </p>
+
+  <p>
+    <code>workspace list</code> shows the workspaces of the project the current directory is in,
+    with the machine that holds each one, or of every project when the directory is in none.{" "}
+    <code>--project</code> names another project and <code>--all</code> lists every project.
+  </p>
+
+  <p>
+    <code>attach</code> connects an existing workspace on this machine without taking ownership of
+    its creation. <code>detach</code> only disconnects it from Exeora. <code>remove</code> runs
+    Git's worktree removal and refuses uncommitted changes unless <code>--force</code> is present;
+    branches are kept unless <code>--delete-branch</code> is requested, and then Git's safe{" "}
+    <code>branch -d</code> is used. A workspace on Exeora Cloud is removed by destroying its
+    instance, after asking unless <code>-y</code> is given. A workspace on another machine of
+    yours is removed there, where its files are, and the command says which machine that is.
+  </p>
+
+  <p>
+    A gateway outage leaves a safe pending record and <code>exeora sync</code> retries it.
+  </p>
+
+  <h2 id="config">config</h2>
+
+  <pre>exeora config get projects-root
+exeora config set projects-root ~/code/exeora
+exeora config unset workspace-root</pre>
+
+  <table>
+    <thead>
+      <tr><th>Key</th><th>What it is</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>projects-root</code></td>
+        <td>Where a repository is cloned when this machine has no copy of it</td>
+        <td><code>~/exeora</code></td>
+      </tr>
+      <tr>
+        <td><code>workspace-root</code></td>
+        <td>Where Exeora creates the worktrees of managed workspaces</td>
+        <td>The platform's data directory</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>EXEORA_PROJECTS_ROOT</code> and <code>EXEORA_WORKSPACE_ROOT</code> override them for one
+    environment. A relative path given to <code>set</code> is resolved against the current
+    directory before it is stored.
+  </p>
+
+  <h2 id="device">device</h2>
+
+  <p>
+    <code>exeora device list</code>, or <code>exeora machine list</code>, prints every machine of
+    the account: the ones you connected, with the projects each holds, and the instances Exeora
+    Cloud runs, with the project and workspace each was made for. The machine the command runs on
+    is marked.
+  </p>
+
+  <h2 id="sync">sync</h2>
+
+  <p>
+    <code>exeora sync</code> brings this machine's configuration in line with what the gateway
+    holds. It forgets a machine that was deleted from the dashboard, mirrors the projects this
+    machine is a location of, and retries the workspace registrations and removals that a gateway
+    outage left pending. It also tells Exeora the repository of projects the gateway knows only as
+    a directory, which is every project added by a CLI older than 0.18.0. Run it once on such a
+    machine: until the gateway knows the repository, the project cannot live anywhere else.
+  </p>
+
+  <h2 id="git-credential">git-credential</h2>
+
+  <pre>exeora git-credential [--project &lt;id&gt;] get|store|erase</pre>
+
+  <p>
+    A <a href="https://git-scm.com/docs/gitcredentials" target="_blank" rel="noopener">git
+    credential helper</a>, run by git rather than by you. For <code>get</code> it reads git's
+    request from standard input and answers with a short-lived token for the repository of the
+    project, made by the gateway for a project <a href="/docs/github/">connected to GitHub</a>.
+    Without <code>--project</code> the project is found from the host and path git names, which
+    needs <code>credential.useHttpPath</code> to be <code>true</code>. <code>store</code> and{" "}
+    <code>erase</code> do nothing: the token is made on request and kept nowhere.
+  </p>
+
+  <p>
+    A helper that fails must fail quietly. On any failure it prints nothing to standard output,
+    exits with success and says why on standard error, so git moves on to the next helper. It
+    answers only over https and only for the host git asked about.
+  </p>
+
+  <p>
+    You do not configure it. When the CLI clones with this helper and the machine's own git could
+    not have read the repository, it writes the helper into that repository's{" "}
+    <code>.git/config</code>, for that host only, so later fetches and pushes work. Your global git
+    configuration is never changed.
+  </p>
+
+  <h2 id="cloud">cloud</h2>
+
+  <p>
+    Exeora Cloud has no commands of its own: it is a location, reached with{" "}
+    <code>--on cloud</code> on the commands above. The older <code>exeora cloud</code> commands
+    still work as aliases, so scripts written for them keep running. See{" "}
+    <a href="/docs/cloud/">Exeora Cloud</a>.
+  </p>
+
+  <p>
+    <code>exeora connect --cloud</code> is the other side: what an instance itself runs as a service. It reads a machine token from disk instead of signing in, holds the instance awake while it works, and answers the gateway's wake requests. There is no reason to run it on a laptop.
   </p>
 
   <h2>init</h2>
@@ -214,13 +410,47 @@ import Doc from "../../layouts/Doc.astro";
   <h2>Machine-readable output</h2>
 
   <p>
-    <code>--json</code> makes <code>status</code>, <code>logs</code>, <code>device list</code> and{" "}
-    <code>project list</code>, <code>workspace list</code> and <code>config get</code> print one JSON document instead of drawing on the terminal. Errors
+    <code>--json</code> makes <code>status</code>, <code>logs</code>, <code>device list</code>,{" "}
+    <code>project list</code>, <code>project locations</code>, <code>workspace list</code> and <code>config get</code> print one JSON document instead of drawing on the terminal. Errors
     become JSON on stderr with a non-zero exit, so a caller piping stdout into a parser gets either
-    valid JSON or nothing.
+    valid JSON or nothing. Under <code>--json</code> nothing is asked, so a command that removes
+    something or destroys an instance needs <code>-y</code>.
   </p>
 
   <pre>exeora logs --json | jq '.[] | select(.status == "error")'</pre>
+
+  <p>
+    Three of those documents changed shape when projects gained locations, because they stopped
+    describing one machine and started describing the account:
+  </p>
+
+  <ul>
+    <li>
+      <code>project list</code> prints the account's projects as the gateway lists them, not only
+      the ones on this machine. Each carries <code>repoUrl</code>, <code>defaultBranch</code>,{" "}
+      <code>mcpUrl</code> and <code>locations</code>, and each location its <code>slug</code>,{" "}
+      <code>name</code>, <code>kind</code>, <code>state</code>, <code>localPath</code> and whether
+      it is the <code>default</code>.
+    </li>
+    <li>
+      <code>device list</code> prints every machine with its <code>kind</code>,{" "}
+      <code>local</code> or <code>cloud</code>, its <code>state</code> and{" "}
+      <code>thisMachine</code>. A machine of yours lists the <code>projects</code> it holds; an
+      instance names its <code>project</code> and <code>workspace</code>.
+    </li>
+    <li>
+      <code>workspace list</code> prints every workspace of the listed projects wherever it is,
+      with <code>machine</code>, <code>deviceId</code>, <code>cloud</code>,{" "}
+      <code>projectSlug</code>, <code>thisMachine</code> and <code>syncState</code>.
+    </li>
+  </ul>
+
+  <p>
+    <code>project add</code> answers with <code>project</code> and <code>location</code>, which is{" "}
+    <code>created</code>, <code>joined</code> or <code>updated</code>, and with{" "}
+    <code>adopted</code> when a repository was placed on this machine: true for a checkout that was
+    already in the projects folder, false for a fresh clone.
+  </p>
 
   <p>
     <code>status</code> carries <code>accountMcpUrl</code> alongside each project's own{" "}

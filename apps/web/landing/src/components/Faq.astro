@@ -9,11 +9,11 @@ import Section from "./Section.astro";
 const questions = [
   {
     q: "Can you see my code?",
-    a: "No. The gateway routes tool calls and returns their results; it never receives a copy of your repository. What does cross the wire is whatever a tool returns, for example the lines a grep matched, and none of that is stored. The audit log records the tool name, the outcome and the duration, never arguments or output.",
+    a: "Not on a machine of yours. The gateway routes tool calls and returns their results; it never receives a copy of your repository. What does cross the wire is whatever a tool returns, for example the lines a grep matched, and none of that is stored. The audit log records the tool name, the outcome and the duration, never arguments or output. Exeora Cloud is the exception, and one you choose: a project you put there is cloned onto an instance Exeora runs.",
   },
   {
     q: "What happens when the machine goes away?",
-    a: "The connection drops and calls to that project fail immediately with LOCAL_EXECUTOR_OFFLINE. Nothing is queued, by design: every call also carries an absolute deadline that the CLI rechecks on arrival, so a command asked for hours ago cannot run when the machine wakes up.",
+    a: "The connection drops and calls that land on that machine fail immediately with LOCAL_EXECUTOR_OFFLINE. Nothing is queued, by design: every call also carries an absolute deadline that the CLI rechecks on arrival, so a command asked for hours ago cannot run when the machine wakes up. A project that also lives on another machine or on Exeora Cloud stays reachable through its workspaces there.",
   },
   {
     q: "Can I limit which commands run?",

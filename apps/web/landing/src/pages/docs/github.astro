@@ -1,0 +1,115 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Connecting GitHub"
+  description="What the GitHub App is given, what Exeora stores, and how the tokens that clone and push are scoped."
+  canonicalPath="/docs/github/"
+>
+  <p>Connecting GitHub is done once for an account or an organisation. After that a project is added by picking a repository from a list, with no address and no token, and Exeora clones, fetches and pushes with tokens that last an hour and reach that one repository. It is optional: every project works without it, with the git credentials a machine already has or with a token you give.</p>
+
+  <h2 id="connect">Connecting</h2>
+
+  <p>Open <strong>Settings</strong> in the dashboard and choose <strong>Connect GitHub</strong> on the GitHub card. GitHub asks where to install the Exeora app, on your own account or on an organisation, and which repositories it is given: all of them or the ones you select. Then it sends you back to the dashboard.</p>
+
+  <p>The way back is accepted only in a browser signed in to Exeora as the account that asked, within ten minutes, and once. A link made by one person does nothing in the browser of another. An organisation that approves installations leaves the request with one of its owners: connect again once they have approved it.</p>
+
+  <p>Connecting is separate from signing in. Signing in with GitHub only tells Exeora who you are, and gives it no access to any repository.</p>
+
+  <h2 id="what-it-gives">What connecting gives</h2>
+
+  <ul>
+    <li><strong>A list to pick from.</strong> <strong>Add project</strong> in the dashboard lists the repositories you can reach, most recently pushed first. <code>exeora project add</code> with no argument, run outside a checkout, offers the same list in the terminal.</li>
+    <li><strong>No token to paste.</strong> A project picked from the list is connected to its repository. Instances on Exeora Cloud clone, fetch and push it with short-lived tokens.</li>
+    <li><strong>A way in for a machine that has none.</strong> On a machine of yours the same tokens are used when its own git credentials cannot reach the remote.</li>
+  </ul>
+
+  <p>A project becomes connected when it is picked from the list in the dashboard, or added from a machine with <code>exeora project add</code> while its repository is one you can reach on GitHub. Projects you already had are connected at the moment you connect GitHub, under the same condition. A project whose repository is added to the installation later is connected at that moment.</p>
+
+  <h2 id="permissions">What the app is allowed to do</h2>
+
+  <p>The app asks for three repository permissions, and the tokens Exeora makes never carry more:</p>
+
+  <table>
+    <thead>
+      <tr><th>Permission</th><th>Level</th><th>Why</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Contents</td><td>Read and write</td><td>Clone and fetch, and push a branch.</td></tr>
+      <tr><td>Metadata</td><td>Read-only</td><td>Name the repository and its default branch.</td></tr>
+      <tr><td>Pull requests</td><td>Read and write</td><td>Open the pull request for a branch that was pushed.</td></tr>
+    </tbody>
+  </table>
+
+  <p>An installation that was not given pull requests still clones and pushes: Exeora asks for a token without that permission when GitHub refuses the full one. The app also receives GitHub's events about the installation and its repositories, which is how Exeora learns that a repository was renamed, removed or deleted without waiting for a clone to fail.</p>
+
+  <h2 id="tokens">How tokens are scoped, and how long they last</h2>
+
+  <p>A token is made when git asks for one and at no other time. Git on the machine runs <code>exeora git-credential</code>, which asks the gateway, and the gateway asks GitHub for an installation token. Each one is:</p>
+
+  <ul>
+    <li><strong>For one repository</strong>: the repository of the project that asked, and no other the installation holds.</li>
+    <li><strong>Good for an hour</strong>, which is how long GitHub makes an installation token last.</li>
+    <li><strong>Cut down to what you can do on GitHub yourself.</strong> Nothing for someone who can no longer read the repository. Read-only for someone who may read it and not push.</li>
+  </ul>
+
+  <p>Two callers can ask for one, and nobody else: an instance on Exeora Cloud, for the one project it was made for, and your own signed-in CLI, for a project of your account. The dashboard cannot, so a token never reaches a browser.</p>
+
+  <p>An agent that is allowed to run commands in a project can run git there, and git can ask for a token. That is the same as on any machine that holds git credentials and lets an agent run commands. Use the project's <a href="/docs/policy/">policy</a> to decide whether an agent may run git at all.</p>
+
+  <h2 id="who-reaches-what">You reach only what you can reach on GitHub</h2>
+
+  <p>An installation belongs to a person or an organisation on GitHub, and it may hold many repositories. What one member of that organisation may see is a different list. Exeora asks GitHub as you, with your own token, before it lists a repository, connects a project to one, or makes a token for one. An organisation that gave the app forty repositories shows you the six you can open there.</p>
+
+  <p>What GitHub says about your access to a repository is remembered for ten minutes, so git does not turn every fetch into a question to GitHub. A change on GitHub therefore reaches Exeora within ten minutes.</p>
+
+  <h2 id="stored">What is stored</h2>
+
+  <ul>
+    <li><strong>The installations your account was shown by GitHub</strong>: GitHub's id for each, the account or organisation it is on, whether it was given all repositories or selected ones, and whether it is suspended.</li>
+    <li><strong>Which repository each connected project is</strong>: GitHub's id for it, its full name, and whether it is private.</li>
+    <li><strong>Your GitHub login and the token that speaks to GitHub as you</strong>, with the token that renews it. GitHub issues the first for eight hours. Both are stored encrypted, under a key the gateway holds, and Exeora renews them before they run out.</li>
+  </ul>
+
+  <p>The tokens that clone and push are not in that list. They are made on request and written nowhere: not in the database, and not on the machine, where the credential helper answers git and stores nothing. For a connected project there is no long-lived repository token on any machine.</p>
+
+  <h2 id="lost-access">When access is lost</h2>
+
+  <table>
+    <thead>
+      <tr><th>What happened on GitHub</th><th>What Exeora does</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>You can no longer read the repository</td><td>The next request for a token is refused and the project is marked as having lost access.</td></tr>
+      <tr><td>The repository was taken out of the installation, or deleted</td><td>The project is marked as having lost access when GitHub says so.</td></tr>
+      <tr><td>The app was uninstalled</td><td>The installation is removed from every Exeora account that held it, and the projects that cloned through it lose access.</td></tr>
+      <tr><td>The installation was suspended</td><td>No token is made for it until it is resumed on GitHub.</td></tr>
+      <tr><td>The repository was renamed or moved to another owner</td><td>The project follows it to the new address.</td></tr>
+      <tr><td>GitHub stopped accepting your authorization</td><td>Exeora forgets the token and asks you to connect again. Nothing is reached through GitHub until you do.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Losing access removes nothing. The project, its locations and its working copies stay. A machine of yours keeps working with its own git credentials. An instance on Exeora Cloud can no longer fetch or push, and what is already cloned on it stays readable and editable. The connection comes back when the access does: when the repository is added to the installation again, or when you connect GitHub again.</p>
+
+  <h2 id="disconnect">Disconnecting</h2>
+
+  <p>On the GitHub card under <strong>Settings</strong>, choose <strong>Disconnect</strong> beside an account. Exeora lets go of that installation, and the projects that cloned through it lose access in the way described above.</p>
+
+  <p>Disconnecting does not uninstall the app, because other Exeora accounts may be using the same installation. <strong>Change repositories</strong> on the same card opens the installation on GitHub, which is where the repositories it is given are changed and where the app is removed. Disconnecting also leaves your authorization of the app on GitHub as it was, which is revoked there. Exeora deletes the token it stored for you when the last account is disconnected, and also the first time GitHub refuses it.</p>
+
+  <h2 id="other-servers">Other Git servers</h2>
+
+  <p>A repository on any other Git server is a project like any other. It is added with its https address instead of being picked from a list, and the same goes for a GitHub repository on an account that has not connected.</p>
+
+  <ul>
+    <li><strong>On a machine of yours</strong>, git uses the credentials that machine already has, over https and then over ssh. Exeora stores nothing for it.</li>
+    <li><strong>On Exeora Cloud</strong>, a private repository needs a token with read access to clone and write access to push. It is given when the project is added, under <strong>Another Git server</strong> in the dialog, or on standard input from the CLI. See <a href="/docs/cloud/#private-repositories">private repositories on Exeora Cloud</a>.</li>
+  </ul>
+
+  <pre>exeora project add https://git.example.com/you/repo.git --on cloud --token-stdin &lt; token.txt</pre>
+
+  <h2 id="self-hosted">On a gateway of your own</h2>
+
+  <p>The GitHub card appears only on a gateway that has a GitHub App. The app's settings and the secrets it needs are in the <a href="https://github.com/leynier/exeora/blob/main/docs/self-hosting.md">self-hosting guide</a>. Without them projects clone as described under other Git servers.</p>
+</Doc>

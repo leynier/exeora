@@ -4,80 +4,118 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc
   title="Exeora Cloud"
-  description="A repository on a machine Exeora runs, so an agent can work on it without a machine of your own."
+  description="A location Exeora runs for you, so an agent can work on a project with no machine of yours switched on."
   canonicalPath="/docs/cloud/"
 >
   <p>
-    Everything else in Exeora assumes a machine you own with the CLI on it. Cloud drops that requirement: you give it the HTTPS address of a repository, it clones the repository onto a machine it runs, connects the CLI there, and from then on the project behaves like any other. Clients connect the same way, the policy works the same way, Source Control and the terminal open the same way. The one difference you notice is that the machine sleeps.
+    Exeora Cloud is one more <a href="/docs/projects/">location</a> a project can live in. Your machines hold a project as a checkout with the CLI beside it. Cloud holds it as instances: machines Exeora runs, each with a clone of the repository and the CLI connected. Clients connect the same way, the policy works the same way, Source Control and the terminal open the same way. The one difference you notice is that an instance sleeps.
   </p>
 
   <p>
     Cloud is behind a flag while there is no billing: administrators have it, and they can turn it on for an account from that account's page in the administration panel. Everyone else sees what it is and who to ask.
   </p>
 
-  <h2>One machine per workspace</h2>
+  <h2>Putting a project on Cloud</h2>
 
   <p>
-    Adding a repository creates one machine, checked out on the default branch. That is the project root: calls that name no workspace go there. Opening a branch as a workspace, from the Cloud page, from Source Control or with <code>create_workspace</code> over MCP, creates another machine with its own clone on that branch. Machines never share a disk, so a build on one branch cannot starve another, and removing a workspace is removing exactly one machine.
+    A project needs a repository with an https address to live on Cloud, because an instance starts from a clone. There are three ways to put it there:
+  </p>
+
+  <ul>
+    <li>
+      <strong>Add the project there.</strong> In the dashboard, <strong>Add project</strong> under Projects, pick the repository and choose Exeora Cloud as the place it lives first. A repository that is already a project of yours is not made again: it gains Cloud as one more location.
+    </li>
+    <li>
+      <strong>Add the location to a project you have.</strong> <strong>Add location</strong> on the project's page, or <code>exeora project locations add</code>. This costs nothing and starts nothing: it records where to clone from and with what.
+    </li>
+    <li>
+      <strong>Ask for a workspace there.</strong> Creating a workspace on Cloud puts the project there on the way, from the dashboard, from the CLI with <code>--on cloud</code>, or from an agent with <code>create_workspace</code> and <code>where</code> set to <code>cloud</code>.
+    </li>
+  </ul>
+
+  <h2>One instance per workspace</h2>
+
+  <p>
+    Every workspace on Cloud is an instance of its own, with its own clone on its branch. Instances never share a disk, so a build on one branch cannot starve another, and removing a workspace is removing exactly one instance.
   </p>
 
   <p>
-    A workspace branch that exists on the remote is checked out as it is. One that does not is created from the base you name, or from the default branch, and stays local until you push it. The dashboard and <code>list_git_workspaces</code> show each machine's state: <code>creating</code> with what it is doing, <code>ready</code>, <code>error</code> with why, or <code>destroying</code>.
+    An instance for the project root exists only when the project was created on Cloud or Cloud is its default location, because those are the only cases where a call that names no workspace lands there. A project that has Cloud as a second location holds only workspaces there. Making Cloud the default, with <strong>Make default</strong> on the project's page or <code>exeora project default</code>, is what asks for the instance of the project root, checked out on the default branch.
+  </p>
+
+  <p>
+    A workspace branch that exists on the remote is checked out as it is. One that does not is created from the base you name, or from the default branch, and stays local until you push it. <code>list_workspaces</code> reports the status of each instance: <code>creating</code>, <code>ready</code>, <code>error</code> with why, or <code>destroying</code>. The dashboard shows the same, with the step an instance that is being created has reached.
+  </p>
+
+  <h2>When an instance fails</h2>
+
+  <p>
+    An instance that could not be set up says why and what to do about it, in a sentence, with what the instance actually said folded behind it. The repository refused access, no repository was found at the address, the branch does not exist, Cloud could not start the instance, or setting it up took too long. <strong>Retry</strong> on the instance sets it up again, from the project's page or from <strong>Machines</strong> under the Exeora Cloud tab. When the cause is a token, set a new one first: a retry uses it.
   </p>
 
   <h2>Sleeping and waking</h2>
 
   <p>
-    A machine sleeps a minute or so after it stops working. Its disk keeps everything: the checkout, uncommitted changes, whatever a terminal left behind. The gateway wakes it before the next call it routes there, which costs the first call after a pause about a second, and the CLI keeps it awake as long as a call is in flight, a command started with <code>start_command</code> is running, or a terminal is open. Nothing keeps a machine awake for being looked at, except an open Source Control or terminal tab, which polls it.
+    An instance sleeps a minute or so after it stops working. Its disk keeps everything: the checkout, uncommitted changes, whatever a terminal left behind. The gateway wakes it before the next call it routes there, which costs the first call after a pause about a second, and the CLI keeps it awake as long as a call is in flight, a command started with <code>start_command</code> is running, or a terminal is open. Nothing keeps an instance awake for being looked at, except an open Source Control or terminal tab, which polls it.
   </p>
 
   <p>
-    A cold start, after a longer sleep, restarts the CLI rather than resuming it. Background processes and terminal sessions are gone then, the way they are after a laptop reboots; files are not.
+    A cold start, after a longer sleep, restarts the CLI rather than resuming it. Background processes and terminal sessions are gone then, the way they are after a laptop reboots; files are not. A call that arrives while an instance is still coming up is answered with <code>EXECUTOR_WAKING</code>, and is worth sending again.
   </p>
 
-  <h2>Private repositories</h2>
+  <h2 id="private-repositories">Private repositories</h2>
 
   <p>
-    A private repository needs a token with read and write access, given when the repository is added. The gateway stores it encrypted, hands it to each machine of that repository as it is set up, and deletes it with the repository. A token that was wrong or has expired is replaced from the repository's card on the Cloud page or with <code>exeora cloud credential</code>; machines created or retried from then on clone with the new one, and a machine already running keeps the one it was set up with. Inside the machine the token lives in a file only the CLI's user can read, wired to git for that one host; an agent running commands there runs as that user and could read it, which is the same as on any machine where an agent is allowed to run commands.
+    A project <a href="/docs/github/">connected to GitHub</a> keeps no repository token on its instances. Git there is wired to <code>exeora git-credential</code>, which asks the gateway for a token that lasts an hour and reaches that one repository, each time git needs one.
   </p>
 
   <p>
-    The machine's own credential is separate: a token that opens nothing but that machine's relay socket, so a token taken from one machine reaches no other project and no API.
+    Any other private repository needs a token with read and write access, given when the project is put on Cloud. The gateway stores it encrypted, hands it to each instance of that project as it is set up, and deletes it with the project. A token that was wrong or has expired is replaced from the menu of the Cloud location on the project's page or with <code>exeora project credential</code>; instances created or retried from then on clone with the new one, and an instance already running keeps the one it was set up with. Inside the instance the token lives in a file only the CLI's user can read, wired to git for that one host; an agent running commands there runs as that user and could read it, which is the same as on any machine where an agent is allowed to run commands.
+  </p>
+
+  <p>
+    The instance's own credential is separate: a machine token that does two things and nothing else. It opens that instance's relay socket, and it asks for the git credential of the one project the instance was made for. A token taken from one instance reaches no other project and nothing else on the API.
   </p>
 
   <h2>Limits</h2>
 
   <p>
-    A machine has 8 vCPUs, about 8 GB of memory and a large disk. Commands the CLI runs are capped at 6 GB of memory as a group: a build that exceeds it is killed with <code>exitCode: null</code> and a note in <code>stderr</code>, and the machine stays up. Cloud machines have their own cap on the <a href="/docs/plans/">plan</a>, separate from machines you register yourself.
+    An instance has 8 vCPUs, about 8 GB of memory and a large disk. Commands the CLI runs are capped at 6 GB of memory as a group: a build that exceeds it is killed with <code>exitCode: null</code> and a note in <code>stderr</code>, and the instance stays up. Instances have their own cap on the <a href="/docs/plans/">plan</a>, separate from machines you register yourself.
   </p>
 
   <h2>From the CLI</h2>
 
   <p>
-    Everything the Cloud page does is a command on a signed-in laptop too, against the same API:
+    Cloud has no commands of its own. It is a location, so the commands are the ones every location takes, with <code>--on cloud</code>, run on any machine that is signed in:
   </p>
 
-  <pre>exeora cloud add https://github.com/you/repo.git
-exeora cloud add https://github.com/you/private.git --token-stdin &lt; token.txt
-exeora cloud list
-exeora cloud workspace create repo feature/name --from main
-exeora cloud workspace remove repo feature-name
-exeora cloud credential repo --token-stdin &lt; token.txt
-exeora cloud remove repo</pre>
+  <pre>exeora project add owner/repo --on cloud
+exeora project add https://git.example.com/you/private.git --on cloud --token-stdin &lt; token.txt
+exeora project locations add api --on cloud
+exeora project default api --on cloud
+exeora workspace create feature/name --project api --on cloud --from main
+exeora workspace remove feature-name --project api
+exeora project credential api --token-stdin &lt; token.txt
+exeora project locations remove api --on cloud
+exeora machine list</pre>
 
   <p>
-    <code>add</code> and <code>workspace create</code> wait until the machine is ready, or report why it is not. The token only ever arrives on standard input, never as an argument, so it stays out of shell history and process lists. Destructive commands ask first unless <code>-y</code> is given, which <code>--json</code> requires.
+    <code>project add</code> and <code>workspace create</code> wait until the instance is ready, or report why it is not. The token only ever arrives on standard input, never as an argument, so it stays out of shell history and process lists. Commands that destroy an instance ask first unless <code>-y</code> is given, which <code>--json</code> requires. The older <code>exeora cloud</code> commands still work as aliases, so scripts written for them keep running.
   </p>
 
   <h2>Removing</h2>
 
   <p>
-    Removing a workspace destroys its machine, with whatever was never pushed from it. Removing a repository destroys every machine of it, the default branch's last, and the stored token with them. The repository on its host is never touched: Exeora only ever clones and pushes to it as you ask.
+    Removing a workspace destroys its instance. From the dashboard and from <code>remove_workspace</code> it is refused while the instance holds work the remote does not have, unless you force it, because the instance is the only copy. From the CLI it asks first and says so. Taking a project off Cloud destroys every instance of it there and leaves the project in its other locations; it is refused while Cloud is the default or the only location. Removing a project destroys every instance of it, the one of the project root last, and the stored token with them.
+  </p>
+
+  <p>
+    <strong>Destroy</strong> on an instance under Machines does the same as removing its workspace. On the instance of the project root it destroys that copy and the project keeps its other locations. When the project lives only on Cloud there is nothing left to hold it, so destroying that instance removes the whole project, and the dashboard asks for it as such. The repository on its host is never touched: Exeora only ever clones, fetches and pushes to it as you ask.
   </p>
 
   <h2>Where it runs</h2>
 
   <p>
-    Machines are microVMs on Fly.io, operated by Exeora, one per workspace. On a self-hosted gateway they are yours: see <a href="/docs/self-hosting/">self-hosting</a> for the two secrets that turn Cloud on. Because a machine dials the gateway from outside, the gateway needs a public address; a development server on <code>localhost</code> cannot host Cloud.
+    Instances are microVMs on Fly.io, operated by Exeora, one per workspace. On a self-hosted gateway they are yours: the <a href="https://github.com/leynier/exeora/blob/main/docs/self-hosting.md">self-hosting guide</a> names the two secrets that turn Cloud on. Because an instance dials the gateway from outside, the gateway needs a public address; a development server on <code>localhost</code> cannot host Cloud.
   </p>
 </Doc>

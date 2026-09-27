@@ -14,7 +14,7 @@ import Legal from "../layouts/Legal.astro";
   title="Privacy"
   description="What Exeora stores, what it deliberately does not, and how to have it removed."
   canonicalPath="/privacy/"
-  updated="23 September 2026"
+  updated="26 September 2026"
 >
   <p>
     Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico, who is the data
@@ -25,16 +25,16 @@ import Legal from "../layouts/Legal.astro";
 
   <h2>What is never collected</h2>
   <p>
-    This is the part that matters most, so it comes first. Your code never leaves the machine it is
-    on. The gateway relays a tool call to your machine and relays the answer back to the AI client
-    that asked; nothing in between is stored.
+    This is the part that matters most, so it comes first. Code on a machine of yours never leaves
+    that machine. The gateway relays a tool call to the machine and relays the answer back to the
+    AI client that asked; nothing in between is stored.
   </p>
   <p>
-    The one exception is one you choose: a repository you put on <a href="/docs/cloud/">Exeora
-    Cloud</a> is cloned onto a machine Exeora operates on Fly.io, and lives there until you remove
-    it. A repository token you give for it is stored encrypted, used only to set up that
-    repository's machines, and deleted with the repository. Nothing on the machine is read by
-    Exeora other than to relay your own calls.
+    The one exception is one you choose: a project you put on <a href="/docs/cloud/">Exeora
+    Cloud</a> is cloned onto instances Exeora operates on Fly.io, one per workspace, and lives
+    there until you remove them. Nothing on an instance is read by Exeora other than to relay your
+    own calls. Nothing copies files between the places a project lives: work moves between them
+    through the repository's own remote, when you or an agent push and fetch.
   </p>
   <ul>
     <li><strong>No source code.</strong> Nothing read, written or searched is kept.</li>
@@ -55,13 +55,35 @@ import Legal from "../layouts/Legal.astro";
     </li>
     <li>
       <strong>Your machines.</strong> The name you gave each one, its platform, the CLI version it
-      reported, and when it was last seen. The last-seen time is what draws the online badge.
+      reported, and when it was last seen. The last-seen time is what draws the online badge. The
+      instances Exeora Cloud runs for you are kept the same way, with the project and workspace
+      each was made for, its state, and why it failed when it did.
     </li>
     <li>
-      <strong>Your projects.</strong> The name and slug you chose, and the absolute path of the
-      directory on your machine. The path is stored so the dashboard can show you which directory a
-      project is, and is never sent to a tool: the CLI on your machine is the authority on where a
-      project lives.
+      <strong>Your projects.</strong> The name and slug you chose and, when the project is a
+      repository, the https address of its remote and its default branch, without any user name or
+      token that was written into the address. The address is what lets a second machine or Exeora
+      Cloud hold the same project.
+    </li>
+    <li>
+      <strong>Where each project lives.</strong> For every location, the machine it is on, the
+      absolute path of the project's directory there, and whether the copy is ready, being cloned
+      or failed, with the reason when it failed. The path is stored so the dashboard can show you
+      which directory a project is, and is never sent to a tool: the CLI on the machine is the
+      authority on where a project lives.
+    </li>
+    <li>
+      <strong>Your connection to GitHub, if you make one.</strong> Which installations of the
+      Exeora app GitHub listed for you, with the account or organisation each is on. Which
+      repository each connected project is: GitHub's id for it, its full name, and whether it is
+      private. Your GitHub login, and the token that lets Exeora ask GitHub, as you, which
+      repositories you can reach, with the token that renews it. Those two are stored encrypted.
+      See <a href="/docs/github/#stored">connecting GitHub</a>.
+    </li>
+    <li>
+      <strong>A repository token you give.</strong> Only for a repository on another Git server
+      that you put on Exeora Cloud. It is stored encrypted, handed to the instances of that project
+      as they are set up, and deleted with the project.
     </li>
     <li>
       <strong>Authorized clients.</strong> Which AI clients you approved against which project, what
@@ -87,6 +109,12 @@ import Legal from "../layouts/Legal.astro";
     us the identity fields listed above. The CLI is distributed through GitHub releases. Nothing is
     sold, and nothing is shared with anyone else except where the law requires it.
   </p>
+  <p>
+    Two more parties are involved only if you use what involves them. If you connect GitHub,
+    Exeora asks GitHub which repositories you can reach and asks it for the tokens that clone and
+    push. Those tokens last an hour, reach one repository, and are not stored. If you use Exeora
+    Cloud, your instances run on Fly.io, and the repository is cloned there from its host.
+  </p>
 
   <h2>Where</h2>
   <p>
@@ -105,7 +133,7 @@ import Legal from "../layouts/Legal.astro";
       <strong>Access.</strong> Your account data and recent activity are shown in the dashboard, on the machines, projects, clients and activity screens. Contact us for other retained data.
     </li>
     <li>
-      <strong>Deletion.</strong> Deleting your account removes its active identity, machines, projects and authorizations, and queues erasure of its audit archive. Archive erasure is asynchronous and includes a later pass to catch events already in flight. Account deletion cannot be undone.
+      <strong>Deletion.</strong> Deleting your account removes its active identity, machines, projects, authorizations and what was stored of its connection to GitHub, and queues erasure of its audit archive. Archive erasure is asynchronous and includes a later pass to catch events already in flight. Account deletion cannot be undone.
     </li>
   </ul>
   <p>
