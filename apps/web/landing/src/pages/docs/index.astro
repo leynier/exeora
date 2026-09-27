@@ -101,6 +101,10 @@ exeora project add the-project-you-want-to-serve</pre>
   </p>
 
   <p>
+    A project is removed only when you remove it. One that has a repository and loses its last location, because a machine was deleted or an instance was destroyed, stays with its MCP URL, its policy and its clients. It <a href="/docs/projects/#nowhere">lives nowhere</a> until it is given a place again.
+  </p>
+
+  <p>
     The boundary every tool is confined to is the project's directory in the location the call
     lands on: the project root, or the working copy of the workspace the call names. An agent
     cannot read, write or run anything outside it through a path: paths are resolved and checked

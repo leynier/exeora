@@ -83,6 +83,10 @@ import Doc from "../../layouts/Doc.astro";
   </p>
 
   <p>
+    A grant outlasts the locations. A project that has a repository and loses its last location <a href="/docs/projects/#nowhere">lives nowhere</a> and keeps its clients and its policy. Its clients reach it again, under the same policy, as soon as it is given a place. To take a project away from its clients for good, remove the project or revoke the clients.
+  </p>
+
+  <p>
     The project's policy is one policy and applies wherever the call lands. An{" "}
     <code>exeora.toml</code> belongs to a checkout, so it narrows what may happen in that copy and
     says nothing about the copies in other locations.
@@ -116,7 +120,8 @@ import Doc from "../../layouts/Doc.astro";
     hours after it was asked for, when a laptop wakes up, is the hazard this refuses to accept. An
     instance on Exeora Cloud that was asleep is woken before the call is sent. One that does not
     come up in time answers <code>EXECUTOR_WAKING</code>, and the call is dropped rather than held
-    for it.
+    for it. So is the call that finds Exeora Cloud with no instance for the project root: it asks
+    for the instance and is not kept waiting for it.
   </p>
 
   <p>

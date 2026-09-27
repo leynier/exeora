@@ -11,7 +11,7 @@ import Doc from "../../layouts/Doc.astro";
 
   <ul>
     <li><strong>A project is a repository.</strong> One repository is one project, however many copies of it there are. The project is what a client is authorized for and what a policy is set on.</li>
-    <li><strong>A location is a place the project lives</strong>: one of your machines, or Exeora Cloud. A project lives in one or more of them.</li>
+    <li><strong>A location is a place the project lives</strong>: one of your machines, or Exeora Cloud. A project lives in one or more of them. One that has a repository and loses its last location stays a project, and <a href="#nowhere">lives nowhere</a> until it is given a place again.</li>
     <li><strong>A workspace is a branch with a working copy of its own</strong>, in one location. On a machine of yours it is a Git worktree. On Exeora Cloud it is a machine of its own, called an instance.</li>
   </ul>
 
@@ -43,6 +43,7 @@ exeora project default api --on cloud</pre>
       <tr><td><code>not cloned</code></td><td>The machine is a location and holds no copy yet. The first workspace made there clones the repository.</td></tr>
       <tr><td><code>setting up</code></td><td>The repository is being cloned, or an instance is being made.</td></tr>
       <tr><td><code>failed</code></td><td>The clone or the instance failed. The reason and what to do about it are shown beside it.</td></tr>
+      <tr><td><code>no instance</code></td><td>Exeora Cloud is the default location and holds no instance for the project root. The next call to the project root makes one.</td></tr>
       <tr><td><code>removed</code></td><td>The machine was revoked, so nothing there answers.</td></tr>
     </tbody>
   </table>
@@ -111,7 +112,9 @@ exeora workspace create fix/login --project api --on cloud</pre>
 
   <p>Exeora forgets the location and the workspaces it knew there. On a machine of yours nothing on disk is touched: the checkout and its worktrees stay where they are, no longer served. On Exeora Cloud the instances are what the location is, so they are destroyed, with anything that was never pushed from them.</p>
 
-  <p>The default location cannot be removed until another one is the default, and the only location of a project cannot be removed at all: that is removing the project, and it is asked for as such with <code>exeora project remove</code>.</p>
+  <p>While the project lives somewhere else as well, the default location cannot be removed until another one is the default.</p>
+
+  <p>The only location of a project can be removed when the project has a repository. The project stays, and <a href="#nowhere">lives nowhere</a> until it is given a place again. A <a href="#no-remote">directory with no remote</a> cannot lose its only location, because nothing could clone it anywhere else: that is removing the project, and it is asked for as such with <code>exeora project remove</code>.</p>
 
   <h2 id="removing-a-machine">When a machine is removed</h2>
 
@@ -123,13 +126,31 @@ exeora workspace create fix/login --project api --on cloud</pre>
 
   <ul>
     <li><strong>A project that lives on another machine stays</strong>, and its default moves there. A copy that is ready is preferred to one that is not cloned yet, then a machine of yours to Exeora Cloud, and then the oldest location.</li>
-    <li><strong>A project that lived only on that machine goes with it</strong>, along with its activity history. The files on the machine are not deleted.</li>
-    <li><strong>A project that is also on Exeora Cloud stays.</strong> When Cloud is the only other place it lives, Cloud is given an instance for the project root and becomes the default. If that instance cannot be made, because the plan has no room for it for example, the machine is not deleted and the dashboard says why.</li>
+    <li><strong>A repository that lived only on that machine stays</strong>, and <a href="#nowhere">lives nowhere</a>. It keeps its MCP URL, its policy, its clients and its activity history. The files on the machine are not deleted.</li>
+    <li><strong>A directory with no remote that lived only on that machine goes with it</strong>, along with its activity history, because nothing could clone it anywhere else. The files on the machine are not deleted.</li>
+    <li><strong>A project that is also on Exeora Cloud stays.</strong> When Cloud is the only other place it lives, Cloud becomes the default location, in state <code>no instance</code>. No instance is made at that moment, so the room left in the plan never stops a machine from being deleted. The next call to the project root makes the instance.</li>
   </ul>
+
+  <h2 id="nowhere">A project that lives nowhere</h2>
+
+  <p>A project is deleted only by removing it, with <code>exeora project remove</code> or <strong>Remove project</strong> in the dashboard. Losing its last location does not delete a project that has a repository. It lives nowhere: it is still listed, and it keeps its MCP URL, its policy and its clients.</p>
+
+  <p>A project comes to live nowhere in three ways. The last machine that held it was deleted. Its only location was removed. Or the instance of its project root on Exeora Cloud was destroyed while it lived on no machine of yours.</p>
+
+  <p>When no location is left, the dashboard and <code>exeora project list</code> show the project as <code>nowhere</code>, and <code>list_projects</code> lists it with no locations. Nothing can serve a call to it, so a call is refused with a message that says it lives nowhere. Give it a place again in any of these ways:</p>
+
+  <ul>
+    <li><code>exeora project add .</code> in a checkout of it. The machine joins the project that is already there.</li>
+    <li><code>exeora project add owner/repo</code> on a machine, which clones the repository into the projects folder and joins the project.</li>
+    <li><code>exeora project locations add api --on desktop</code>, or <strong>Add location</strong> on the project's page. The first workspace made there clones the repository.</li>
+    <li><code>create_workspace</code> with <code>where</code> set to <code>cloud</code>, from an agent. It puts the project on Exeora Cloud.</li>
+  </ul>
+
+  <p>The first machine given to a project that lives nowhere becomes its default location. A project that is on Exeora Cloud keeps Cloud as its default location, in state <code>no instance</code>. The next call to its project root makes the instance and is answered with <code>EXECUTOR_WAKING</code>: send it again in about a minute. <code>exeora project default api --on cloud</code> and <strong>Start instance</strong> on the project's page ask for the instance ahead of the call.</p>
 
   <h2 id="no-remote">Directories with no remote</h2>
 
-  <p>A directory that is not the top of a checkout, or a checkout with no remote, is still a project. It has no repository, so there is nothing another location could clone: it stays on the one machine it was added from, and adding a location or putting it on Exeora Cloud is refused with the reason.</p>
+  <p>A directory that is not the top of a checkout, or a checkout with no remote, is still a project. It has no repository, so there is nothing another location could clone: it stays on the one machine it was added from, and adding a location or putting it on Exeora Cloud is refused with the reason. For the same reason it goes with that machine: its only location cannot be removed, and deleting the machine deletes the project.</p>
 
   <p>To change that, give the checkout a remote and run <code>exeora sync</code> on the machine it lives on. The same command teaches Exeora the repository of projects that were added by a CLI older than 0.18.0, which did not send it.</p>
 
