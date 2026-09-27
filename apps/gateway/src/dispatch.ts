@@ -16,7 +16,12 @@ import "./env.js";
 import { relayName } from "./api/ops.js";
 import { db, schema } from "./db/client.js";
 import { newId } from "./ids.js";
-import { ROOT_SELECTOR, resolveLocationRoot, rootLocation } from "./location-roots.js";
+import {
+  defaultRootSelector,
+  ROOT_SELECTOR,
+  resolveLocationRoot,
+  rootLocation,
+} from "./location-roots.js";
 import { locationNames, locationsOf } from "./locations.js";
 import type { DispatchResult } from "./mcp.js";
 import { callRelayTool, requestRelayApproval } from "./relay-client.js";
@@ -121,7 +126,7 @@ export async function dispatchToDevice(
       tool,
       caller,
       endpoint,
-      ...recorded(workspace, project.defaultRoot),
+      ...(await recordedIn(env, projectId, workspace)),
     });
   } catch (error) {
     console.error("audit outbox begin failed", error);
@@ -336,6 +341,15 @@ export function recorded(
 ): { workspaceId?: string; workspaceSlug: string } {
   if (!workspace) return { workspaceSlug: defaultRoot };
   return { ...(workspace.id ? { workspaceId: workspace.id } : {}), workspaceSlug: workspace.slug };
+}
+
+/** `recorded`, asking what the default location is called only for a call that lands there. */
+export async function recordedIn(
+  env: Pick<Env, "DB">,
+  projectId: string,
+  workspace: ResolvedWorkspace | null,
+) {
+  return recorded(workspace, workspace ? "" : await defaultRootSelector(env, projectId));
 }
 
 /** What an approval is bound to, so one given for a place is not spent in another. */

@@ -12,7 +12,7 @@ import {
   approvalTarget,
   callerLabel,
   record,
-  recorded,
+  recordedIn,
   resolveWorkspace,
   routing,
   workspaceKey,
@@ -97,7 +97,7 @@ export async function dispatchMcpToDevice(
       tool: tool.exposedName,
       caller,
       endpoint,
-      ...recorded(workspace, project.defaultRoot),
+      ...(await recordedIn(env, projectId, workspace)),
     });
   } catch (error) {
     console.error("audit outbox begin failed", error);

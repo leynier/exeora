@@ -1,8 +1,8 @@
 import { ExeoraError } from "@exeora/protocol";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import "./env.js";
-import { CLOUD_LOCATION_SLUG, locationNames, locationSlug, locationsOf } from "./locations.js";
+import { locationNames, locationsOf } from "./locations.js";
 
 /**
  * The project root, in whichever location holds a copy of it.
@@ -30,9 +30,36 @@ export function rootLocation(selector: string | undefined): string | null {
   return match?.[1] ? match[1].toLowerCase() : null;
 }
 
-/** What the root of the default location is recorded as, from the machine that holds it. */
-export function defaultRootSelector(machine: { name: string; kind: "local" | "cloud" }): string {
-  return rootSelector(machine.kind === "cloud" ? CLOUD_LOCATION_SLUG : locationSlug(machine.name));
+/**
+ * What the root of the default location is recorded as.
+ *
+ * The slug is the one `locationsOf` publishes, not one made again from the
+ * machine's name: two machines whose names read the same are told apart by a
+ * suffix there, and a call recorded without it would be filed under the other
+ * machine, and lead there when the selector is used again.
+ */
+export async function defaultRootSelector(
+  env: Pick<Env, "DB">,
+  projectId: string,
+): Promise<string> {
+  const project = await projectOf(env, projectId);
+  if (!project) return ROOT_SELECTOR;
+  const all = (await locationsOf(env, project.userId, [project])).get(project.id) ?? [];
+  const found = all.find((entry) => entry.default);
+  return found ? rootSelector(found.slug) : ROOT_SELECTOR;
+}
+
+function projectOf(env: Pick<Env, "DB">, projectId: string) {
+  return db(env)
+    .select({
+      id: schema.projects.id,
+      userId: schema.projects.userId,
+      deviceId: schema.projects.deviceId,
+      localPath: schema.projects.localPath,
+    })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, projectId))
+    .get();
 }
 
 export interface LocationRoot {
@@ -55,16 +82,7 @@ export async function resolveLocationRoot(
   projectId: string,
   location: string,
 ): Promise<LocationRoot> {
-  const project = await db(env)
-    .select({
-      id: schema.projects.id,
-      userId: schema.projects.userId,
-      deviceId: schema.projects.deviceId,
-      localPath: schema.projects.localPath,
-    })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.id, projectId)))
-    .get();
+  const project = await projectOf(env, projectId);
   if (!project) throw new ExeoraError("UNKNOWN_PROJECT", "That project is not available.");
 
   const all = (await locationsOf(env, project.userId, [project])).get(project.id) ?? [];

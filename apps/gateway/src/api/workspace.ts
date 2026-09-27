@@ -274,8 +274,6 @@ async function ownedTarget(
     .select({
       deviceId: schema.projects.deviceId,
       removedAt: schema.devices.revokedAt,
-      machine: schema.devices.name,
-      kind: schema.devices.kind,
     })
     .from(schema.projects)
     .innerJoin(schema.devices, eq(schema.projects.deviceId, schema.devices.id))
@@ -294,7 +292,7 @@ async function ownedTarget(
     if (project.removedAt !== null) return null;
     return {
       deviceId: project.deviceId,
-      recordedAs: defaultRootSelector({ name: project.machine, kind: project.kind }),
+      recordedAs: await defaultRootSelector(env, projectId),
     };
   }
   // The root of another location: the same kind of call, to the machine that

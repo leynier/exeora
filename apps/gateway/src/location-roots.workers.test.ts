@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { call as request } from "./api/clients-fixtures.js";
 import { listWorkspacesWithCloud } from "./cloud/workspace-tools.js";
 import { db, schema } from "./db/client.js";
-import { recorded, resolveWorkspace, routing, workspaceKey } from "./dispatch.js";
+import { recorded, recordedIn, resolveWorkspace, routing, workspaceKey } from "./dispatch.js";
 import { defaultRootSelector, rootLocation, rootSelector } from "./location-roots.js";
 import { registerProject } from "./project-register.js";
 
@@ -75,8 +75,35 @@ describe("naming the root of a location", () => {
     expect(rootLocation("main@a b")).toBeNull();
     expect(rootLocation(undefined)).toBeNull();
     expect(rootSelector("desktop")).toBe("main@desktop");
-    expect(defaultRootSelector({ name: "My Laptop", kind: "local" })).toBe("main@my-laptop");
-    expect(defaultRootSelector({ name: "api (main)", kind: "cloud" })).toBe("main@cloud");
+  });
+
+  it("records the default root under the name its location goes by", async () => {
+    expect(await defaultRootSelector(env, PROJECT)).toBe("main@laptop");
+    expect(await recordedIn(env, PROJECT, null)).toEqual({ workspaceSlug: "main@laptop" });
+  });
+
+  it("tells two machines whose names read the same apart", async () => {
+    // The older location keeps the name, and the default is the newer one.
+    const database = db(env);
+    await database
+      .update(schema.devices)
+      .set({ name: "LAPTOP" })
+      .where(eq(schema.devices.id, DESKTOP))
+      .run();
+    await database
+      .update(schema.projects)
+      .set({ deviceId: DESKTOP })
+      .where(eq(schema.projects.id, PROJECT))
+      .run();
+
+    expect(await defaultRootSelector(env, PROJECT)).toBe("main@laptop-2");
+    // What was recorded leads back to the machine it ran on, and the name
+    // without the suffix to the other one.
+    expect(await resolveWorkspace(env, PROJECT, "main@laptop-2")).toBeNull();
+    expect(await resolveWorkspace(env, PROJECT, "main@laptop")).toMatchObject({
+      slug: "main@laptop",
+      deviceId: LAPTOP,
+    });
   });
 
   it("goes to the machine that holds that copy, and names no workspace to it", async () => {
