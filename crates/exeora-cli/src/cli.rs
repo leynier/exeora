@@ -1575,12 +1575,7 @@ async fn logs_command(api: &ApiClient, args: LogsArgs, json_output: bool) -> Res
                         .is_some_and(|entry| entry.slug.eq_ignore_ascii_case(slug))
                 })
                 && args.workspace.as_ref().is_none_or(|selector| {
-                    call.workspace_id.as_deref() == Some(selector)
-                        || call
-                            .workspace_slug
-                            .as_deref()
-                            .is_some_and(|slug| slug.eq_ignore_ascii_case(selector))
-                        || (selector.eq_ignore_ascii_case("main") && call.workspace_id.is_none())
+                    ran_in(call, selector, by_id.get(call.project_id.as_str()).copied())
                 })
                 && args.client.as_ref().is_none_or(|name| {
                     client_name(call)
@@ -2140,6 +2135,35 @@ fn source_description(source: &str) -> &'static str {
         _ => "configured",
     }
 }
+/// Whether a call ran in the place a selector names.
+///
+/// `main` is the root of the default location and nothing else. The root of
+/// another location is recorded with no workspace id either, so what tells
+/// them apart is the slug on the row: none or `main` from before locations,
+/// and `main@<location>` since.
+fn ran_in(call: &ToolCallView, selector: &str, project: Option<&ProjectView>) -> bool {
+    if call.workspace_id.as_deref() == Some(selector) {
+        return true;
+    }
+    let slug = call.workspace_slug.as_deref();
+    if slug.is_some_and(|slug| slug.eq_ignore_ascii_case(selector)) {
+        return true;
+    }
+    if !selector.eq_ignore_ascii_case("main") || call.workspace_id.is_some() {
+        return false;
+    }
+    let Some(slug) = slug else { return true };
+    let Some((_, location)) = slug.split_once('@') else {
+        return false;
+    };
+    project.is_some_and(|project| {
+        project
+            .locations
+            .iter()
+            .any(|entry| entry.is_default && entry.slug.eq_ignore_ascii_case(location))
+    })
+}
+
 fn client_name(call: &ToolCallView) -> String {
     call.client_name.clone().unwrap_or_else(|| {
         if call.client_id.is_some() {
@@ -2154,10 +2178,10 @@ fn client_name(call: &ToolCallView) -> String {
 mod tests {
     use super::{
         describe_machine, listed_projects, machine_item, projects_on_this_machine,
-        projects_root_from, sync_command, validate_project_root, workspace_listing,
+        projects_root_from, ran_in, sync_command, validate_project_root, workspace_listing,
     };
     use crate::{
-        api::{MachineView, ProjectView},
+        api::{MachineView, ProjectView, ToolCallView},
         config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         testing::{Gateway, listed_location, listed_project},
     };
@@ -2171,6 +2195,70 @@ mod tests {
 
     fn views(projects: Value) -> Vec<ProjectView> {
         serde_json::from_value(projects).expect("project views")
+    }
+
+    fn call_in(workspace_id: Option<&str>, workspace_slug: Option<&str>) -> ToolCallView {
+        serde_json::from_value(json!({
+            "id": "call_1",
+            "projectId": "prj_api",
+            "workspaceId": workspace_id,
+            "workspaceSlug": workspace_slug,
+            "tool": "read_file",
+            "status": "ok",
+            "durationMs": 1,
+            "errorCode": null,
+            "clientId": null,
+            "clientName": null,
+            "createdAt": 1,
+        }))
+        .expect("tool call")
+    }
+
+    #[test]
+    fn main_is_the_root_of_the_default_location_and_of_no_other() {
+        let projects = views(json!([listed_project(
+            "prj_api",
+            "api",
+            json!({ "locations": [
+                listed_location(Some("dev_laptop"), "laptop", json!({ "default": true })),
+                listed_location(Some("dev_desktop"), "desktop", json!({})),
+            ] }),
+        )]));
+        let project = projects.first();
+
+        // Rows from before locations, and the default's own root since.
+        assert!(ran_in(&call_in(None, None), "main", project));
+        assert!(ran_in(&call_in(None, Some("main")), "MAIN", project));
+        assert!(ran_in(&call_in(None, Some("main@laptop")), "main", project));
+        // The root of another location is another place.
+        assert!(!ran_in(
+            &call_in(None, Some("main@desktop")),
+            "main",
+            project
+        ));
+        assert!(ran_in(
+            &call_in(None, Some("main@desktop")),
+            "main@desktop",
+            project
+        ));
+        // A project that is gone says nothing about which location was its default.
+        assert!(!ran_in(&call_in(None, Some("main@laptop")), "main", None));
+        // A workspace is matched by its id or its slug, and is never main.
+        assert!(ran_in(
+            &call_in(Some("ws_1"), Some("fix-login")),
+            "fix-login",
+            project
+        ));
+        assert!(ran_in(
+            &call_in(Some("ws_1"), Some("fix-login")),
+            "ws_1",
+            project
+        ));
+        assert!(!ran_in(
+            &call_in(Some("ws_1"), Some("fix-login")),
+            "main",
+            project
+        ));
     }
 
     fn entry(id: &str, slug: &str, root: &str) -> ProjectEntry {
