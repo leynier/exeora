@@ -14,6 +14,7 @@ export const MACHINE_ERROR_CODES = [
   "branch_not_found",
   "machine_unavailable",
   "timed_out",
+  "tools_failed",
   "setup_failed",
 ] as const;
 
@@ -27,7 +28,7 @@ export interface MachineFailure {
   detail: string | null;
 }
 
-const MESSAGES: Record<Exclude<MachineErrorCode, "branch_not_found">, string> = {
+const MESSAGES: Record<Exclude<MachineErrorCode, "branch_not_found" | "tools_failed">, string> = {
   clone_auth_failed: "The repository refused access. Set a token that can read it, then retry.",
   repo_not_found:
     "No repository was found at that address. If it is private, set a token that can read it, then retry.",
@@ -49,6 +50,8 @@ const SPRITES = /sprites (api|token)|could not reach the sprites/i;
 const BRANCH =
   /^the (branch|base) .+ (does not exist in|is not a branch or tag of) the repository\.?$/i;
 const TIMED_OUT = /timed out/i;
+/** The one tool a machine is not handed over without. Written by the tools step. */
+const TOOLS = /^The GitHub CLI \(gh\) could not be installed on the machine\b/;
 
 /** Reads a failure as it was thrown and says what it means. */
 export function explainFailure(raw: string): MachineFailure {
@@ -56,8 +59,14 @@ export function explainFailure(raw: string): MachineFailure {
 
   // The script's own verdicts are already sentences about the request.
   if (BRANCH.test(text)) return { code: "branch_not_found", message: text, detail: null };
+  if (TOOLS.test(text)) {
+    // The first line is the sentence, and what the machine printed follows.
+    const [message = text, ...rest] = text.split("\n");
+    const detail = rest.join("\n").trim();
+    return { code: "tools_failed", message, detail: detail.length > 0 ? detail : null };
+  }
 
-  const code: MachineErrorCode = SPRITES.test(text)
+  const code: keyof typeof MESSAGES = SPRITES.test(text)
     ? "machine_unavailable"
     : AUTH.test(text)
       ? "clone_auth_failed"

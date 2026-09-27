@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import type { CloudCliConfig } from "@exeora/protocol";
+import { eq } from "drizzle-orm";
 import { revokeDevice } from "../api/ops.js";
+import { db, schema } from "../db/client.js";
 import "../env.js";
 import {
   FatalStepError,
@@ -85,6 +87,13 @@ export class CloudMachine extends DurableObject<Env> {
       step: "Creating machine",
       error: null,
     });
+    // What an earlier attempt said of its tools and scripts is about a
+    // machine that is being made again from nothing.
+    await db(this.env)
+      .update(schema.cloudMachines)
+      .set({ installHook: null, resumeHook: null, toolsReport: null })
+      .where(eq(schema.cloudMachines.deviceId, record.deviceId))
+      .run();
     await this.schedule(0);
   }
 

@@ -1,7 +1,9 @@
 import { CLOUD_MAIN_WORKSPACE_SLUG } from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { isSpriteNameOfThisGateway } from "./cloud/access.js";
+import { type HooksView, hooksView } from "./cloud/hooks.js";
 import { listSprites, type Sprite } from "./cloud/sprites.js";
+import { type ToolsReport, toolsReportOf } from "./cloud/tools-report.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { NOWHERE_KIND } from "./nowhere.js";
@@ -66,12 +68,16 @@ export interface CloudMachineView extends MachineBase {
   readyAt: number | null;
   /** What the provider says the machine is doing, when it could be asked. */
   runtime: Sprite["status"] | null;
+  /** How the project's scripts went on this machine, the last time each ran. */
+  hooks: HooksView;
+  /** What the machine came with and what was added to it. Null before that step ran. */
+  tools: ToolsReport | null;
 }
 
 export type MachineView = LocalMachineView | CloudMachineView;
 
 export async function listMachines(
-  env: Pick<Env, "DB" | "SPRITES_TOKEN" | "CLOUD_SPRITE_PREFIX">,
+  env: Pick<Env, "DB" | "SPRITES_TOKEN" | "CLOUD_SPRITE_PREFIX" | "LATEST_CLI_VERSION">,
   userId: string,
   options: { live?: boolean; fetcher?: typeof fetch } = {},
 ): Promise<MachineView[]> {
@@ -198,6 +204,8 @@ export async function listMachines(
       errorDetail: machine.errorDetail,
       readyAt: machine.readyAt?.getTime() ?? null,
       runtime: runtime.get(machine.spriteName) ?? null,
+      hooks: hooksView(env, machine, device.cliVersion),
+      tools: toolsReportOf(machine.toolsReport),
     };
   });
 }
