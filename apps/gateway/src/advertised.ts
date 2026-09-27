@@ -1,7 +1,7 @@
 import { type McpToolDescriptor, TOOL_NAMES, type ToolName } from "@exeora/protocol";
 import { and, eq, isNull } from "drizzle-orm";
 import { relayName } from "./api/ops.js";
-import { accountProjects } from "./client-targets.js";
+import { accountProjects, livesOnAnotherMachine } from "./client-targets.js";
 import { isCloudProject } from "./cloud/workspace-tools.js";
 import { db, schema } from "./db/client.js";
 import type { ProjectMcpCatalog } from "./mcp-proxy-account-tools.js";
@@ -42,11 +42,16 @@ export async function advertisedTools(
 
   if (!project) return undefined;
 
-  const [capabilities, onCloud] = await Promise.all([
+  const [capabilities, onCloud, onOwnMachine] = await Promise.all([
     env.DEVICE_RELAY.getByName(relayName(userId, project.deviceId)).capabilities(),
     isCloudProject(env, projectId),
+    livesOnAnotherMachine(env, projectId, project.deviceId),
   ]);
-  const place = { onCloud, rootOnCloud: project.kind === "cloud" };
+  const place = {
+    onCloud,
+    rootOnCloud: project.kind === "cloud",
+    onOwnMachine: project.kind !== "cloud" || onOwnMachine,
+  };
 
   if (!capabilities) return onCloud ? cloudTools(new Set(TOOL_NAMES), place) : undefined;
 
@@ -67,13 +72,17 @@ export async function advertisedTools(
  */
 function cloudTools(
   offered: Set<ToolName>,
-  place: { onCloud: boolean; rootOnCloud: boolean },
+  place: { onCloud: boolean; rootOnCloud: boolean; onOwnMachine: boolean },
 ): Set<ToolName> {
   for (const name of ["create_workspace", "remove_workspace"] as const) offered.add(name);
   if (place.rootOnCloud) {
-    offered.delete("list_git_workspaces");
     offered.delete("attach_workspace");
     offered.delete("detach_workspace");
+    // Listing checkouts takes `where`, so it reaches a machine of the
+    // person's own even when the default is Cloud. It goes only when there is
+    // no such machine to ask.
+    if (place.onOwnMachine) offered.add("list_git_workspaces");
+    else offered.delete("list_git_workspaces");
   }
   return offered;
 }

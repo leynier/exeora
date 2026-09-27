@@ -159,6 +159,28 @@ describe("what list_workspaces says", () => {
     ]);
   });
 
+  it("names no location that list_projects would not", async () => {
+    await db(env)
+      .update(schema.devices)
+      .set({ revokedAt: new Date() })
+      .where(eq(schema.devices.id, LAPTOP))
+      .run();
+
+    const [root] = await listWorkspacesWithCloud(env, USER, PROJECT);
+    const [listed] = await reachable();
+
+    // The default's machine was removed: the root is still the root, and it
+    // is not said to be anywhere an agent could send a call.
+    expect(root).toEqual({
+      slug: "main",
+      name: "project root",
+      branch: "develop",
+      managed: false,
+      root: true,
+    });
+    expect(listed?.locations.map((location) => location.name)).toEqual(["desktop"]);
+  });
+
   it("says nothing of a project that is somebody else's", async () => {
     expect(await listWorkspacesWithCloud(env, "usr_stranger", PROJECT)).toEqual([]);
   });

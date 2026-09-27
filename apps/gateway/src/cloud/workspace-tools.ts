@@ -134,7 +134,11 @@ export async function listWorkspacesWithCloud(
       .where(eq(schema.workspaces.projectId, projectId))
       .orderBy(schema.workspaces.createdAt)
       .all(),
-    locationsOf(env, userId, [project]).then((all) => all.get(project.id) ?? []),
+    // A machine that was removed is not somewhere to send a call, and
+    // `list_projects` does not name it, so nothing is listed as living there.
+    locationsOf(env, userId, [project]).then((all) =>
+      (all.get(project.id) ?? []).filter((location) => location.state !== "removed"),
+    ),
   ]);
 
   const chosen = locations.find((location) => location.default);

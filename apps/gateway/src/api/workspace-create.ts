@@ -7,7 +7,7 @@ import { z } from "zod";
 import { beginAudit, finishAudit } from "../audit.js";
 import { addCloudLocation } from "../cloud/location.js";
 import { createCloudWorkspace } from "../cloud/provisioning.js";
-import { destroyCloudWorkspace } from "../cloud/teardown.js";
+import { answerCloudWorkspaceTool } from "../cloud/workspace-tools.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
 import { newId } from "../ids.js";
@@ -238,43 +238,42 @@ workspaceCreate.post(
       caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
     });
 
+    // The person who owns the account is asking, from their own dashboard:
+    // the account's policy is about what agents may do. The checkout's own
+    // `exeora.toml` is still applied by the machine, which is asked either way.
+    const frame = {
+      requestId: newId("req"),
+      projectId,
+      workspaceId: row.id,
+      workspaceSlug: row.slug,
+      tool: "remove_workspace" as const,
+      args: { force: body.force, deleteBranch: body.deleteBranch },
+      client: { name: "Exeora Dashboard" },
+      policy: DEFAULT_POLICY,
+      signal: c.req.raw.signal,
+    };
+
     try {
       if (row.cloud) {
-        if (!body.force) {
-          const value = await callRelayWorkspace(relay, {
-            requestId: newId("req"),
-            projectId,
-            workspaceId: row.id,
-            workspaceSlug: row.slug,
-            action: { action: "unpublished" },
-            signal: c.req.raw.signal,
-          });
-          if (value.kind === "unpublished" && !value.clean) {
-            throw new ExeoraError(
-              "TOOL_FAILED",
-              `This workspace holds work the remote does not have (${value.reasons.join("; ")}), and its machine is the only copy. Push it, or remove it anyway.`,
-            );
-          }
-        }
-        await destroyCloudWorkspace(c.env, userId, projectId, row.id);
+        // The same rules the tool has, by the same code: the machine is asked
+        // first, which stops what is running there; work the remote does not
+        // have refuses the removal; and forcing answers a machine that cannot
+        // be reached, never one that said no.
+        await answerCloudWorkspaceTool(c.env, {
+          userId,
+          projectId,
+          tool: "remove_workspace",
+          args: frame.args,
+          workspace: { id: row.id, slug: row.slug },
+          signal: c.req.raw.signal,
+          issuedAt: Date.now(),
+          askMachine: () => callRelayTool(relay, frame),
+        });
         await finishAudit(c.env, audit, { status: "ok" });
         return c.json({ ok: true, status: "removing" }, 202);
       }
 
-      // The person who owns the account is asking, from their own dashboard:
-      // the account's policy is about what agents may do. The checkout's own
-      // `exeora.toml` is still applied by the machine.
-      await callRelayTool(relay, {
-        requestId: newId("req"),
-        projectId,
-        workspaceId: row.id,
-        workspaceSlug: row.slug,
-        tool: "remove_workspace",
-        args: { force: body.force, deleteBranch: body.deleteBranch },
-        client: { name: "Exeora Dashboard" },
-        policy: DEFAULT_POLICY,
-        signal: c.req.raw.signal,
-      });
+      await callRelayTool(relay, frame);
       await finishAudit(c.env, audit, { status: "ok" });
       return c.json({ ok: true, status: "removed" });
     } catch (error) {
@@ -290,12 +289,19 @@ workspaceCreate.post(
           : code === "FORBIDDEN"
             ? 403
             : 422;
-      // `unforced` lets the page offer "remove anyway" for exactly the refusals
-      // that forcing answers, and not for a machine that is simply off. The
-      // machine words its refusal for an agent, which is told to pass an
-      // argument; a person is given a button, so that sentence is left out.
-      const message = error.message.replace(/\s*Pass force[^.]*\./i, "").trim();
-      return c.json({ error: code, message, unforced: !body.force }, status);
+      // `unforced` lets the page offer "remove anyway", and only for the
+      // refusals that forcing answers: work that would be lost, or a Cloud
+      // machine that could not be asked. A machine that is off, a call that
+      // timed out and a policy that said no are not among them, and forcing
+      // past those would destroy a copy nobody checked. The machine words its
+      // refusal for an agent, which is told to pass an argument; a person is
+      // given a button, so that sentence is left out.
+      const message = error.message
+        .replace(/\s*Pass force[^.]*\./i, "")
+        .replace(/,? or pass force[^.]*\./i, ".")
+        .trim();
+      const unforced = !body.force && code === "TOOL_FAILED";
+      return c.json({ error: code, message, unforced }, status);
     }
   },
 );

@@ -87,6 +87,8 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
       path === "/api/projects" ||
       // `exeora project add --on` puts a project on another of the person's machines.
       /^\/api\/projects\/[^/]+\/locations$/.test(path) ||
+      // `exeora workspace create --on` makes a workspace in another location.
+      /^\/api\/projects\/[^/]+\/workspaces$/.test(path) ||
       // `exeora git-credential`, for a clone on the person's own machine.
       GIT_CREDENTIAL.test(path)
     );
@@ -95,13 +97,17 @@ export function isExecutorApiRequest(method: string, path: string): boolean {
     return (
       /^\/api\/projects\/[^/]+\/workspaces\/[^/]+$/.test(path) ||
       // The CLI reports the state of its own copy: cloning, ready, failed.
-      /^\/api\/projects\/[^/]+\/locations\/[^/]+$/.test(path)
+      /^\/api\/projects\/[^/]+\/locations\/[^/]+$/.test(path) ||
+      // `exeora project default`.
+      /^\/api\/projects\/[^/]+\/default-location$/.test(path)
     );
   }
   return (
     method === "DELETE" &&
     (/^\/api\/projects\/[^/]+$/.test(path) ||
-      /^\/api\/projects\/[^/]+\/workspaces\/[^/]+$/.test(path))
+      /^\/api\/projects\/[^/]+\/workspaces\/[^/]+$/.test(path) ||
+      // `exeora project locations remove`.
+      /^\/api\/projects\/[^/]+\/locations\/[^/]+$/.test(path))
   );
 }
 

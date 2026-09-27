@@ -110,6 +110,45 @@ describe("OAuth scope ceilings", () => {
     expect(isExecutorApiRequest("GET", "/api/admin/users")).toBe(false);
   });
 
+  /**
+   * Every route `crates/exeora-cli/src/api.rs` calls, by the command that
+   * calls it. A route missing here is a command that answers 403 before it
+   * does anything, which no test of the command itself would notice.
+   */
+  it("lets the CLI reach every route its commands call", () => {
+    const calls: Array<[string, string]> = [
+      ["GET", "/api/projects"],
+      ["POST", "/api/projects"],
+      ["DELETE", "/api/projects/prj_one"],
+      ["GET", "/api/projects/prj_one/locations"],
+      ["POST", "/api/projects/prj_one/locations"],
+      ["PUT", "/api/projects/prj_one/locations/dev_one"],
+      ["DELETE", "/api/projects/prj_one/locations/loc_one"],
+      ["PUT", "/api/projects/prj_one/default-location"],
+      ["GET", "/api/projects/prj_one/workspaces"],
+      ["POST", "/api/projects/prj_one/workspaces"],
+      ["PUT", "/api/projects/prj_one/workspaces/wsp_one"],
+      ["DELETE", "/api/projects/prj_one/workspaces/wsp_one"],
+      ["POST", "/api/projects/prj_one/git-credential"],
+      ["GET", "/api/machines"],
+      ["GET", "/api/devices"],
+      ["GET", "/api/github"],
+      ["GET", "/api/github/repositories"],
+      ["GET", "/api/tool-calls"],
+      ["POST", "/api/cloud/projects/prj_one/workspaces"],
+      ["DELETE", "/api/cloud/projects/prj_one/workspaces/wsp_one"],
+    ];
+    for (const [method, path] of calls) {
+      expect(isExecutorApiRequest(method, path), `${method} ${path}`).toBe(true);
+    }
+
+    // What stays the dashboard's: who may call the project, what it allows,
+    // and the connection to GitHub itself.
+    expect(isExecutorApiRequest("DELETE", "/api/github/installations/ghi_one")).toBe(false);
+    expect(isExecutorApiRequest("PUT", "/api/account-clients/projects")).toBe(false);
+    expect(isExecutorApiRequest("DELETE", "/api/devices/dev_one/permanently")).toBe(false);
+  });
+
   it("requires execute for tool calls, unknown large posts and protocol mismatches", async () => {
     const legacyCall = new Request("https://exeora.dev/mcp", {
       method: "POST",

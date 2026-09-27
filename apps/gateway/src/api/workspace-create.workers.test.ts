@@ -230,6 +230,32 @@ describe("a workspace made from the dashboard", () => {
     cli.socket.close(1000, "done");
   });
 
+  it("offers forcing only for a refusal that forcing answers", async () => {
+    await db(env)
+      .insert(schema.workspaces)
+      .values({
+        id: "wsp_wc_off",
+        projectId: PROJECT,
+        slug: "fix-c",
+        name: "fix/c",
+        branch: "fix/c",
+        localPath: "/home/me/worktrees/api/fix-c",
+        managed: true,
+        deviceId: DESKTOP,
+      })
+      .run();
+
+    // Nobody is connected on the desktop: forcing would not change that, and
+    // a page told otherwise would offer to destroy a copy nobody looked at.
+    const response = await call(`/api/projects/${PROJECT}/workspaces/wsp_wc_off/remove`, {});
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "LOCAL_EXECUTOR_OFFLINE",
+      unforced: false,
+    });
+  });
+
   it("does not remove a workspace of somebody else's project", async () => {
     const response = await request(`/api/projects/${PROJECT}/workspaces/wsp_nope/remove`, {
       method: "POST",
