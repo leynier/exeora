@@ -39,6 +39,26 @@ test("searches the docs from the keyboard", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
+test("keeps the results cleared when an earlier search finishes late", async ({ page }) => {
+  await page.goto("/docs/");
+  await page.keyboard.press("Control+k");
+
+  const dialog = page.getByRole("dialog", { name: "Search the documentation" });
+  const box = dialog.getByRole("searchbox");
+  await box.fill("policy");
+  await box.fill("");
+  // Longer than Pagefind's debounce and the fetches behind it.
+  await page.waitForTimeout(1500);
+
+  await expect(dialog.locator("a[data-result]")).toHaveCount(0);
+  await expect(dialog.getByText("Type to search every page.")).toBeVisible();
+});
+
+test("names the shortcut for the platform", async ({ page }) => {
+  await page.goto("/docs/");
+  await expect(page.locator("[data-shortcut-hint]")).toHaveText("Ctrl K");
+});
+
 test.describe("mobile docs", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

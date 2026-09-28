@@ -70,8 +70,10 @@ import { CHROME_EXTENSION_URL } from "../../lib/site.js";
 
   <p>
     The extension asks Chrome for three permissions: the side panel, the identity window it signs in
-    through, and its own storage. Its only host permission is <code>exeora.dev</code>. It reads
-    nothing from the pages you visit and sends requests nowhere else.
+    through, and its own storage. Its only host permission is <code>exeora.dev</code>, where all of
+    its requests go, and it reads nothing from the pages you visit. The one thing it loads from
+    anywhere else is your profile picture, as an image from the provider you signed in with
+    (GitHub or Google).
   </p>
 
   <p>

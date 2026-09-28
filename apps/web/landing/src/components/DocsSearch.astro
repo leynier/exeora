@@ -84,6 +84,10 @@
   if (dialog && input && list && status) {
     let pagefind: Promise<Pagefind | null> | undefined;
     let active = -1;
+    // Bumped by every render. Pagefind's null return only covers a keystroke
+    // that lands before `debouncedSearch` resolves; the `data()` fetches after
+    // it are not cancelled, so each await checks it is still the latest.
+    let latest = 0;
 
     // The file only exists in the built site, once Pagefind has run, so the
     // bundler must not see this import at all. A plain `import()` of a variable
@@ -134,7 +138,11 @@
     };
 
     const render = async (query: string) => {
+      const generation = ++latest;
+      const stale = () => generation !== latest;
+
       const api = await load();
+      if (stale()) return;
       if (!api) {
         status.hidden = false;
         status.textContent = "Search is available in the built site.";
@@ -148,9 +156,10 @@
       }
 
       const search = await api.debouncedSearch(query);
-      if (!search) return; // Superseded by a later keystroke.
+      if (!search || stale()) return;
 
       const pages = await Promise.all(search.results.slice(0, 8).map((hit) => hit.data()));
+      if (stale()) return;
       const items = pages.map((page) => {
         const item = document.createElement("li");
         const title = page.meta.title ?? page.url;

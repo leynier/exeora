@@ -142,7 +142,9 @@ const prose =
             <path d="m20 20-3.5-3.5"></path>
           </svg>
           <span class="flex-1">Search</span>
-          <kbd class="text-label-md border-border rounded border px-1.5 font-mono">⌘K</kbd>
+          <kbd class="text-label-md border-border rounded border px-1.5 font-mono" data-shortcut-hint
+            >Ctrl K</kbd
+          >
         </button>
         <DocsNav current={canonicalPath} />
       </div>
@@ -265,6 +267,21 @@ const prose =
 </Layout>
 
 <script>
+  import { detectInstallPlatform } from "../lib/install-platform.js";
+
+  // The search shortcut is ⌘K on a Mac and Ctrl+K everywhere else, so the hint
+  // is written for the majority and corrected here for a Mac.
+  const client = navigator as Navigator & { userAgentData?: { platform?: string } };
+  const onMac =
+    detectInstallPlatform({
+      userAgentDataPlatform: client.userAgentData?.platform,
+      legacyPlatform: navigator.platform,
+      userAgent: navigator.userAgent,
+    }) === "macos";
+  if (onMac) {
+    for (const hint of document.querySelectorAll("[data-shortcut-hint]")) hint.textContent = "⌘K";
+  }
+
   const toggle = document.getElementById("docs-menu-toggle");
   const menu = document.getElementById("docs-menu");
   const bar = document.getElementById("docs-mobile-bar");
