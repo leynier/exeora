@@ -18,12 +18,11 @@ concurrency:
 permissions:
   contents: read
 
+# Deploy does not run ci.yml. A pull request runs those checks on the pull
+# request SHA. A direct push to main and workflow_dispatch apply migrations
+# and deploy that commit with no CI.
 jobs:
-  check:
-    uses: ./.github/workflows/ci.yml
-
   deploy:
-    needs: check
     runs-on: ubuntu-latest
     environment: production
     steps:

@@ -2,13 +2,13 @@ name: CI
 
 on:
   pull_request:
-  # Called by the deploy workflow, so nothing reaches production without
-  # passing the same checks first.
+  # release-cli.yml and release-extension.yml call this before publishing.
+  # Deploy does not.
   workflow_call:
 
-# Deliberately not `on: push` for main. Deploy already calls this workflow, and
-# running both put two jobs in the same concurrency group, where one cancelled
-# the other and reported it as a cancelled run.
+# Not on push to main. Pull requests run this file, and the release workflows
+# call it. Deploy does not: a direct push deploys with no CI. Running this file
+# both on push and from Deploy used to cancel one of the two runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
