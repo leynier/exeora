@@ -8,7 +8,7 @@ test("moves between views with the bar along the bottom", async ({ page }) => {
 
   const bar = page.getByRole("navigation", { name: "Workspace views" });
   await expect(bar).toBeVisible();
-  await expect(bar.getByRole("button")).toHaveCount(5);
+  await expect(bar.getByRole("button")).toHaveCount(6);
   await expect(page.getByRole("heading", { name: "Workspace" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /main\.txt/ })).toBeVisible();
 

@@ -41,7 +41,7 @@ import Doc from "../../layouts/Doc.astro";
   <h2 id="views">The views</h2>
 
   <p>
-    Workspace has five views. On a wide screen they are the icons down the left edge, with the
+    Workspace has six views. On a wide screen they are the icons down the left edge, with the
     view's list beside them and what you pick from the list open as tabs on the right: a single
     click opens a preview tab that the next click replaces, a double click keeps it. On a phone,
     and in the Chrome side panel, the same views are the bar along the bottom, the list fills the
@@ -63,8 +63,9 @@ import Doc from "../../layouts/Doc.astro";
     The files of the working copy, a folder at a time: only the root and the folders you open are
     listed, so a repository with a large dependency tree costs nothing until that folder is opened.
     Files matched by <code>.gitignore</code> are hidden unless you show them; <code>.git</code> is
-    never listed and never touched. What git says about a file is drawn beside it, and on the
-    folders above it, in the same letters Source Control uses.
+    never listed and never touched. Files and folders carry the icons of VS Code's Material Icon
+    Theme, by name and extension, here and in Search and Source Control. What git says about a
+    file is drawn beside it, and on the folders above it, in the same letters Source Control uses.
   </p>
 
   <p>
@@ -202,13 +203,40 @@ import Doc from "../../layouts/Doc.astro";
     every session ends after eight hours.
   </p>
 
+  <p>
+    The terminal sits in the Workspace frame like every other view: beside the column of views on a
+    wide screen, above the bar of views on a phone and in the side panel, so any other view is one
+    click away while the shell keeps running.
+  </p>
+
+  <h2 id="logs">Logs</h2>
+
+  <p>
+    Logs shows the calls agents make on the selected root or workspace as they run, the way
+    <code>exeora connect</code> prints them on the machine: an arrow when a call starts, with the
+    tool, what it is about and the client that made it, then a tick or a cross when it ends, with
+    how long it took and the error code of a call that failed. What a call is about is the command
+    it runs, the pattern it searches for, the path it reads or writes, or the arguments of a
+    proxied MCP tool. Several calls can be running at once; the header counts them.
+  </p>
+
+  <p>
+    Nothing in Logs is kept. The lines go to the tabs watching at that moment and are gone when the
+    tab closes: a tab opened later sees the calls still running, not the ones that already ended.
+    Switching to another view and back keeps the lines that arrived meanwhile, and switching the
+    root or workspace starts over. Watching never wakes an Exeora Cloud instance; the calls do.
+    Like a terminal, the connection uses a one-time ticket bound to this site's origin and to the
+    selected root or workspace, and it reconnects on its own when the network drops.
+  </p>
+
   <h2>What is recorded</h2>
 
   <p>
     Source Control mutations, every change the Explorer or a replace makes, generations by an
     assistant, pull request actions and terminal session openings appear in the audit stream, by
     name only. Exeora does <strong>not</strong> record command text, keystrokes, terminal output,
-    file contents, diffs, search queries or commit messages.
+    file contents, diffs, search queries or commit messages. What Logs shows of a call's
+    arguments is shown to you while you watch and written down nowhere.
   </p>
 
   <h2>Project policy</h2>

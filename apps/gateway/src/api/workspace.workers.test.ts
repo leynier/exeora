@@ -3,6 +3,7 @@ import { decodeRelayMessage, encodeMessage, PROTOCOL_VERSION } from "@exeora/pro
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
+import worker from "../index.js";
 import { api } from "./index.js";
 import { relayName } from "./ops.js";
 
@@ -76,6 +77,41 @@ describe("workspace ownership and availability", () => {
   it("never issues another owner a terminal ticket", async () => {
     const response = await call(`/api/projects/${PROJECT}/terminal-ticket`, OTHER, "POST");
     expect(response.status).toBe(404);
+  });
+
+  it("lets the owner watch the logs with the machine offline, once per ticket", async () => {
+    const other = await call(`/api/projects/${PROJECT}/logs-ticket`, OTHER, "POST");
+    expect(other.status).toBe(404);
+
+    const owner = await call(`/api/projects/${PROJECT}/logs-ticket`, OWNER, "POST");
+    expect(owner.status).toBe(200);
+    const { url } = (await owner.json()) as { url: string };
+    const socket = new URL(url);
+    expect(socket.pathname).toBe("/logs/connect");
+    expect(socket.searchParams.get("projectId")).toBe(PROJECT);
+    expect(socket.searchParams.get("deviceId")).toBe(DEVICE);
+    expect(socket.searchParams.get("ticket")).toMatch(/^[0-9a-f]{64}$/);
+
+    const origin = new URL(env.EXEORA_BASE_URL).origin;
+    const connect = (path: string) =>
+      worker.fetch(
+        new Request(`https://exeora.dev${path}`, {
+          headers: { Upgrade: "websocket", Origin: origin },
+        }),
+        env as unknown as Env,
+        createExecutionContext(),
+      );
+    // A logs ticket never opens a terminal, and is spent by the first use.
+    const asTerminal = await connect(`/terminal/connect${socket.search}&cols=80&rows=24`);
+    expect(asTerminal.status).toBe(403);
+
+    const again = await call(`/api/projects/${PROJECT}/logs-ticket`, OWNER, "POST");
+    const fresh = new URL(((await again.json()) as { url: string }).url);
+    const opened = await connect(`/logs/connect${fresh.search}`);
+    expect(opened.status).toBe(101);
+    opened.webSocket?.accept();
+    opened.webSocket?.close(1000, "done");
+    expect((await connect(`/logs/connect${fresh.search}`)).status).toBe(403);
   });
 
   it("closes terminals only for the owner, and reports when none was open", async () => {

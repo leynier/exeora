@@ -267,6 +267,15 @@ export async function mockApi(
       await new Promise(() => {});
       return;
     }
+    if (path.endsWith("/logs-ticket")) {
+      // A socket the spec answers with `page.routeWebSocket`.
+      const socket = new URL("/logs/connect", url.origin);
+      socket.searchParams.set("projectId", path.split("/")[3] ?? "");
+      const target = url.searchParams.get("workspace");
+      if (target) socket.searchParams.set("workspace", target);
+      await route.fulfill({ status: 200, json: { url: socket.toString(), expiresInMs: 30_000 } });
+      return;
+    }
     const asked = url.searchParams.get("workspace");
     const target =
       asked === workspace.id ? "workspace" : asked?.startsWith("main@") ? "elsewhere" : "main";

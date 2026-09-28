@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
 import { signOut } from "../auth.js";
 import { ApprovalBanner } from "../components/ApprovalBanner.js";
-import { GlobalTerminals, useTerminals } from "../components/Terminals.js";
+import { GlobalTerminals } from "../components/Terminals.js";
 import { ErrorBanner } from "../components/ui.js";
 import {
   useAdminUsers,
@@ -45,7 +45,6 @@ import {
 export function AppShell() {
   const me = useMe();
   const location = useLocation();
-  const { workspaceFills } = useTerminals();
   const workspace = location.pathname === "/workspace";
   const adminSection = isAdminSection(location.pathname);
   const projects = useProjects();
@@ -172,11 +171,9 @@ export function AppShell() {
 
         <main
           className={
-            workspaceFills
-              ? "flex min-h-0 w-full shrink-0 flex-col overflow-hidden px-4 pt-4 lg:px-6"
-              : workspace
-                ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-4 lg:px-6"
-                : "min-h-0 w-full flex-1 overflow-y-auto px-4 py-8 lg:px-6"
+            workspace
+              ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden px-4 py-4 lg:px-6"
+              : "min-h-0 w-full flex-1 overflow-y-auto px-4 py-8 lg:px-6"
           }
         >
           {failed && (

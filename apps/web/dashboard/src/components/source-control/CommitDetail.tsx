@@ -1,4 +1,4 @@
-import { IconButton } from "@exeora/design/react";
+import { FileIcon, IconButton } from "@exeora/design/react";
 import { Copy, FileDiff } from "lucide-react";
 import type { GitCommitFile } from "../../api-types-workspace.js";
 import { type Target, useCommitDetail } from "../../queries-workspace.js";
@@ -77,7 +77,7 @@ export function CommitDetail({
             <li key={file.path}>
               <button
                 type="button"
-                className="hover:bg-surface-variant flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs"
+                className="hover:bg-surface-variant flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left font-mono text-xs"
                 title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
                 onClick={() => onOpenFile(file)}
               >
@@ -86,6 +86,7 @@ export function CommitDetail({
                 >
                   {file.status}
                 </span>
+                <FileIcon name={file.path} />
                 <span className="min-w-0 flex-1 truncate">{file.path}</span>
                 {file.binary ? (
                   <span className="text-foreground-faint shrink-0">binary</span>

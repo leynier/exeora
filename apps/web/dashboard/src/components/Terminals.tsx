@@ -4,10 +4,12 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { type Location, useLocation, useNavigate } from "react-router";
 import type { Project } from "../api.js";
 import { api } from "../api.js";
@@ -29,6 +31,12 @@ type TerminalsApi = {
   focusSession: (session: OpenTerminalSession) => void;
   onExit: (key: string) => void;
   workspaceFills: boolean;
+  /**
+   * Where the Workspace screen wants its terminal drawn: an element inside
+   * its own frame, beside the column of views. Null while no such screen is up.
+   */
+  slot: HTMLElement | null;
+  setSlot: (element: HTMLElement | null) => void;
 };
 
 const TerminalsContext = createContext<TerminalsApi | null>(null);
@@ -42,6 +50,7 @@ export function useTerminals(): TerminalsApi {
 export function TerminalsProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<OpenTerminalSession[]>([]);
   const [killing, setKilling] = useState<string | null>(null);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   const closed = useRef(new Set<string>());
   const location = useLocation();
   const navigate = useNavigate();
@@ -101,39 +110,64 @@ export function TerminalsProvider({ children }: { children: ReactNode }) {
       focusSession,
       onExit,
       workspaceFills,
+      slot,
+      setSlot,
     }),
-    [sessions, killing, openSession, closeSession, focusSession, onExit, workspaceFills],
+    [sessions, killing, openSession, closeSession, focusSession, onExit, workspaceFills, slot],
   );
 
   return <TerminalsContext.Provider value={value}>{children}</TerminalsContext.Provider>;
 }
 
+/**
+ * Every open terminal, alive for as long as the tab is, whichever page is up.
+ *
+ * The shells live in one element that is never re-created, so moving between
+ * pages never drops a session. Elsewhere it is a row of chips along the
+ * bottom of the page. On the Workspace screen's Terminal view it is moved into
+ * the slot that view leaves in its frame, so the terminal sits beside the
+ * column of views like every other view does, and moved back when the view
+ * changes: the element moves, the shells in it are not touched.
+ */
 export function GlobalTerminals() {
-  const { sessions, killing, focusSession, closeSession, onExit, workspaceFills } = useTerminals();
+  const { sessions, killing, focusSession, closeSession, onExit, workspaceFills, slot } =
+    useTerminals();
   const location = useLocation();
   const projects = useProjects();
-  if (sessions.length === 0) return null;
+  const [host] = useState(() => document.createElement("div"));
+  const home = useRef<HTMLDivElement>(null);
+  const inSlot = workspaceFills && slot !== null;
+  const any = sessions.length > 0;
+
+  useLayoutEffect(() => {
+    if (!any) {
+      host.remove();
+      return;
+    }
+    const target = inSlot ? slot : home.current;
+    if (target && host.parentElement !== target) target.appendChild(host);
+    host.className = inSlot
+      ? "flex min-h-0 flex-1 flex-col"
+      : "border-border-subtle shrink-0 border-t px-4 py-3 lg:px-6";
+  }, [any, inSlot, slot, host]);
+
+  useEffect(() => () => host.remove(), [host]);
+
   const active = sessions.find((session) => matchesLocation(session, location)) ?? sessions[0];
   if (!active) return null;
 
-  return (
-    <div
-      className={
-        workspaceFills
-          ? "flex min-h-0 flex-1 flex-col px-4 pb-4 lg:px-6"
-          : "border-border-subtle shrink-0 border-t px-4 py-3 lg:px-6"
-      }
-    >
+  const content = (
+    <>
       <OpenTerminals
         sessions={sessions}
         activeKey={active.key}
         projects={projects.data ?? []}
-        className={workspaceFills ? "mb-3" : ""}
+        className={inSlot ? "mb-3" : ""}
         onSelect={focusSession}
         onClose={closeSession}
       />
       {sessions.map((session) => {
-        const shown = workspaceFills && session.key === active.key;
+        const shown = inSlot && session.key === active.key;
         return (
           <div
             key={session.key}
@@ -152,8 +186,24 @@ export function GlobalTerminals() {
           </div>
         );
       })}
-    </div>
+    </>
   );
+
+  return (
+    <>
+      <div ref={home} className={inSlot ? "hidden" : "contents"} />
+      {createPortal(content, host)}
+    </>
+  );
+}
+
+/**
+ * The place a terminal is drawn on the Workspace screen: an empty element
+ * that the open terminals are moved into for as long as it is on screen.
+ */
+export function TerminalSlot() {
+  const { setSlot } = useTerminals();
+  return <div ref={setSlot} data-testid="terminal-slot" className="flex min-h-0 flex-1 flex-col" />;
 }
 
 export function isWorkspaceTerminalView(location: Location): boolean {

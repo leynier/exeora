@@ -7,6 +7,8 @@ export type TabItem = {
   id: string;
   label: string;
   icon?: LucideIcon;
+  /** Drawn before the label in place of `icon`, such as a file's own icon. */
+  leading?: ReactNode;
   /** A short mark after the label: a count, or a dot for unsaved changes. */
   badge?: ReactNode;
   closable?: boolean;
@@ -107,7 +109,8 @@ export function Tabs({
                 }
               }}
             >
-              {Icon ? <Icon aria-hidden="true" className="size-3.5 shrink-0" /> : null}
+              {tab.leading ??
+                (Icon ? <Icon aria-hidden="true" className="size-3.5 shrink-0" /> : null)}
               <span className="max-w-48 truncate">{tab.label}</span>
               {tab.badge !== undefined && tab.badge !== null ? (
                 <span className="text-label-md font-mono tabular-nums">{tab.badge}</span>

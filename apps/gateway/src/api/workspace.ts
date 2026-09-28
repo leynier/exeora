@@ -226,15 +226,58 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
     caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
   });
   await finishAudit(c.env, audit, { status: "ok" });
-  const url = new URL("/terminal/connect", c.env.EXEORA_BASE_URL);
+  return c.json({
+    url: socketUrl(c.env, "/terminal/connect", projectId, target, ticket),
+    expiresInMs: 30_000,
+  });
+});
+
+/**
+ * A ticket to watch, live, the calls agents make on a root or workspace. Not
+ * audited and never wakes the machine: watching changes nothing there, and
+ * what is watched is what the audit already records as it happens.
+ */
+workspace.post("/api/projects/:id/logs-ticket", zValidator("query", targetQuery), async (c) => {
+  const userId = c.get("userId");
+  const projectId = c.req.param("id");
+  const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
+  if (!target) return c.json({ error: "not_found" }, 404);
+  const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, target.deviceId));
+  const origin =
+    firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
+  const ticket = await relay.createLogsTicket(
+    projectId,
+    target.workspaceId,
+    target.workspaceSlug,
+    origin,
+  );
+  if (!ticket) return c.json({ error: "logs_unavailable" }, 409);
+  return c.json({
+    url: socketUrl(c.env, "/logs/connect", projectId, target, ticket),
+    expiresInMs: 30_000,
+  });
+});
+
+/** Where a dashboard tab opens its socket to the machine, with the ticket it spends. */
+function socketUrl(
+  env: Pick<Env, "EXEORA_BASE_URL">,
+  path: "/terminal/connect" | "/logs/connect",
+  projectId: string,
+  target: {
+    deviceId: string;
+    workspaceId?: string | undefined;
+    workspaceSlug?: string | undefined;
+  },
+  ticket: string,
+): string {
+  const url = new URL(path, env.EXEORA_BASE_URL);
   url.searchParams.set("projectId", projectId);
   url.searchParams.set("deviceId", target.deviceId);
-  const { workspaceId, workspaceSlug } = target;
-  if (workspaceId) url.searchParams.set("workspaceId", workspaceId);
-  if (workspaceSlug) url.searchParams.set("workspaceSlug", workspaceSlug);
+  if (target.workspaceId) url.searchParams.set("workspaceId", target.workspaceId);
+  if (target.workspaceSlug) url.searchParams.set("workspaceSlug", target.workspaceSlug);
   url.searchParams.set("ticket", ticket);
-  return c.json({ url: url.toString(), expiresInMs: 30_000 });
-});
+  return url.toString();
+}
 
 async function runRead(
   c: Context<ApiEnv>,

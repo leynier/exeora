@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Explorer } from "../explorer/Explorer.js";
+import { LogsPanel } from "../logs/LogsPanel.js";
 import { PullRequestPanel } from "../pull-request/PullRequestPanel.js";
 import { SearchPanel } from "../search/SearchPanel.js";
 import { SourceControl } from "../source-control/SourceControl.js";
@@ -38,16 +39,20 @@ export function viewPanel(
       return {
         layout: "full",
         panel: (
-          <WorkspaceTerminals
-            projectId={ctx.project.id}
-            workspaceId={ctx.target.workspace}
-            workspaceSlug={ctx.root.selector}
-            targetLabel={ctx.targetLabel}
-            available={ctx.capabilities?.terminal === true}
-            visible
-          />
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <WorkspaceTerminals
+              projectId={ctx.project.id}
+              workspaceId={ctx.target.workspace}
+              workspaceSlug={ctx.root.selector}
+              targetLabel={ctx.targetLabel}
+              available={ctx.capabilities?.terminal === true}
+              visible
+            />
+          </div>
         ),
       };
+    case "logs":
+      return { layout: "full", panel: <LogsPanel ctx={ctx} /> };
     case "source":
       return {
         layout: "split",

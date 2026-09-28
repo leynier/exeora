@@ -8,6 +8,8 @@
 
 export { BottomBar, type BottomBarItem } from "./BottomBar.js";
 export { ContextMenu, type ContextMenuHandle, useContextMenu } from "./ContextMenu.js";
+export { FileIcon } from "./FileIcon.js";
+export { fileIconId } from "./fileIconModel.js";
 export { IconButton, type IconButtonProps } from "./IconButton.js";
 export { MenuPanel } from "./MenuPanel.js";
 export { isMenuAction, type MenuAction, type MenuEntry, menuStep } from "./menu.js";

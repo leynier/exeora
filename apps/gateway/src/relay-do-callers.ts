@@ -1,5 +1,6 @@
 import type { ExecutorCapabilities } from "@exeora/protocol";
 import { encodeMessage } from "@exeora/protocol";
+import { type LoggedCall, type LogsSocketState, logEnd } from "./relay-do-logs.js";
 import type { CallerResponse } from "./relay-internal.js";
 
 /**
@@ -49,6 +50,8 @@ export interface ToolCallerState {
   id: string;
   settled: boolean;
   issuedAt?: number;
+  /** Set once the call went down to the machine, for the Logs view's end line. */
+  log?: LoggedCall;
 }
 
 export interface TerminalCallerState {
@@ -74,7 +77,8 @@ export type SocketState =
   | ExecutorSocketState
   | ToolCallerState
   | ApprovalCallerState
-  | TerminalCallerState;
+  | TerminalCallerState
+  | LogsSocketState;
 
 export function attachmentOf(socket: WebSocket): SocketState | null {
   const attachment = socket.deserializeAttachment();
@@ -158,10 +162,19 @@ export function replaceOtherExecutors(ctx: DurableObjectState, current: WebSocke
     for (const caller of ctx.getWebSockets(role)) {
       const state = attachmentOf(caller);
       if (state?.role === role && !state.settled && state.issuedAt !== undefined) {
-        settleCaller(caller, offline("The machine reconnected while the call was in flight."));
+        settleCaller(caller, offline("The machine reconnected while the call was in flight."), ctx);
       }
     }
   }
+}
+
+/**
+ * A caller that stopped listening: the machine is told to stop, and a call
+ * the Logs view showed starting is shown ending there.
+ */
+export function cancelCaller(ctx: DurableObjectState, state: ToolCallerState): void {
+  sendCancel(ctx, state.id);
+  if (state.log) logEnd(ctx, state.id, state.log, { ok: false, errorCode: "CANCELLED" });
 }
 
 /** Best-effort cancellation for a caller that is no longer listening. */
@@ -201,10 +214,21 @@ export function callerSocket(
   });
 }
 
-export function settleCaller(socket: WebSocket, response: CallerResponse): void {
+/**
+ * Answers a caller once. With `ctx`, a call the Logs view showed starting is
+ * shown ending with the same answer.
+ */
+export function settleCaller(
+  socket: WebSocket,
+  response: CallerResponse,
+  ctx?: DurableObjectState,
+): void {
   const state = attachmentOf(socket);
-  if (!state || state.role === "executor" || state.settled) return;
+  if (!state || state.role === "executor" || state.role === "logs" || state.settled) return;
   socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
+  if (ctx && state.role === "tool" && state.log) {
+    logEnd(ctx, state.id, state.log, outcomeOf(response));
+  }
   try {
     socket.send(JSON.stringify(response));
   } catch {
@@ -244,7 +268,7 @@ export function failCallers(
     for (const socket of ctx.getWebSockets(role)) {
       const state = attachmentOf(socket);
       if (options.dispatchedOnly && state?.role === role && state.issuedAt === undefined) continue;
-      settleCaller(socket, offline(reason));
+      settleCaller(socket, offline(reason), ctx);
     }
   }
   failTerminalViewers(ctx, reason);
@@ -312,11 +336,22 @@ export function failUnreadableResult(ctx: DurableObjectState, raw: string): void
   if (!role) return;
   const caller = callerSocket(ctx, role, requestId);
   if (!caller) return;
-  settleCaller(caller, {
-    type: "error",
-    error: {
-      code: "INTERNAL_ERROR",
-      message: "The Exeora CLI sent a result this gateway could not read. Update the CLI.",
+  settleCaller(
+    caller,
+    {
+      type: "error",
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "The Exeora CLI sent a result this gateway could not read. Update the CLI.",
+      },
     },
-  });
+    ctx,
+  );
+}
+
+function outcomeOf(response: CallerResponse): { ok: boolean; errorCode?: string } {
+  if (response.type === "tool.result") {
+    return response.result.ok ? { ok: true } : { ok: false, errorCode: response.result.error.code };
+  }
+  return response.type === "error" ? { ok: false, errorCode: response.error.code } : { ok: true };
 }

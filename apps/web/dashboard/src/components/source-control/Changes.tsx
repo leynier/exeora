@@ -1,4 +1,4 @@
-import { ContextMenu, type MenuEntry, TreeView } from "@exeora/design/react";
+import { ContextMenu, FileIcon, type MenuEntry, TreeView } from "@exeora/design/react";
 import { Copy, FileDiff, Minus, Plus, Trash, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { GitFileState, WorkspaceAction } from "../../api.js";
@@ -97,17 +97,18 @@ function ChangeRow({
       <div className={`group flex items-center gap-1 px-1.5 ${active ? "bg-accent-subtle" : ""}`}>
         <button
           type="button"
-          className="min-w-0 flex-1 rounded px-1.5 py-1.5 text-left"
+          className="min-w-0 flex-1 cursor-pointer rounded px-1.5 py-1.5 text-left"
           title={file.path}
           onClick={() => actions.onOpen({ path: file.path, area })}
           onDoubleClick={() => actions.onOpen({ path: file.path, area }, true)}
         >
-          <span className="flex min-w-0 items-baseline gap-2 font-mono text-xs">
+          <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
             <span
               className={`w-3 shrink-0 text-center font-medium ${fileStatusClass(code, file.kind)}`}
             >
               {code}
             </span>
+            <FileIcon name={name} />
             <span className="min-w-0 truncate">
               {dir ? <span className="text-foreground-faint">{dir}</span> : null}
               <span className="text-foreground">{name}</span>
@@ -116,7 +117,7 @@ function ChangeRow({
         </button>
         <button
           type="button"
-          className="text-label-md text-foreground-faint hover:bg-surface-variant invisible shrink-0 rounded px-1.5 py-1 group-hover:visible group-focus-within:visible disabled:pointer-events-none"
+          className="text-label-md text-foreground-faint hover:bg-surface-variant invisible shrink-0 cursor-pointer rounded px-1.5 py-1 group-hover:visible group-focus-within:visible disabled:pointer-events-none"
           disabled={actions.pending}
           onClick={() =>
             actions.onRun({ action: area === "staged" ? "unstage" : "stage", paths: [file.path] })
@@ -189,6 +190,11 @@ function ChangesTree({
                 {fileStatusCode(data.file, area)}
               </span>
             ) : null}
+            <FileIcon
+              name={data.path}
+              kind={data.kind === "dir" ? "directory" : "file"}
+              open={row.expanded}
+            />
             <span
               className={`min-w-0 truncate ${data.kind === "dir" ? "text-foreground-muted" : "text-foreground"}`}
             >

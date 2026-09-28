@@ -272,9 +272,17 @@ test("keeps an open terminal listed when switching workspaces", async ({ page })
     page.getByRole("button", { name: "E2E project / main · default branch" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "E2E project / main · default branch" }).click();
-  await expect(page.getByRole("button", { name: "Terminal", exact: true })).toHaveClass(
-    /border-brand/,
+  await expect(page.getByRole("button", { name: "Terminal", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
+  // The shell sits in the frame beside the column of views, which stays a
+  // column rather than turning into a row of tabs above the terminal.
+  const views = page.getByRole("navigation", { name: "Workspace views" });
+  await expect(views.getByRole("button")).toHaveCount(6);
+  const box = await views.boundingBox();
+  expect(box && box.height > box.width).toBe(true);
+  await expect(page.getByTestId("terminal-slot").locator(".xterm")).toBeVisible();
 });
 
 test("keeps an open terminal listed on other dashboard pages", async ({ page }) => {

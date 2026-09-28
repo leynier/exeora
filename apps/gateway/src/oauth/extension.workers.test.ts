@@ -224,4 +224,18 @@ describe("terminal origins", () => {
     expect((await connect(`chrome-extension://${EXTENSION_ID}`)).status).toBe(400);
     expect((await connect(`chrome-extension://${"p".repeat(32)}`)).status).toBe(403);
   });
+
+  it("holds the logs socket to the same origins as the terminal", async () => {
+    async function connect(origin: string) {
+      return worker.fetch(
+        new Request("https://exeora.dev/logs/connect", {
+          headers: { Upgrade: "websocket", Origin: origin },
+        }),
+        on,
+        createExecutionContext(),
+      );
+    }
+    expect((await connect(`chrome-extension://${EXTENSION_ID}`)).status).toBe(400);
+    expect((await connect("https://evil.example")).status).toBe(403);
+  });
 });

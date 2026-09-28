@@ -1,4 +1,11 @@
-import { ContextMenu, IconButton, isWithin, type MenuEntry, TreeView } from "@exeora/design/react";
+import {
+  ContextMenu,
+  FileIcon,
+  IconButton,
+  isWithin,
+  type MenuEntry,
+  TreeView,
+} from "@exeora/design/react";
 import { useQueries } from "@tanstack/react-query";
 import {
   ChevronsDownUp,
@@ -291,6 +298,12 @@ export function Explorer({ ctx }: { ctx: WorkspaceContext }) {
                     }`}
                     title={entry.path}
                   >
+                    <FileIcon
+                      name={entry.name}
+                      kind={entry.type === "directory" ? "directory" : "file"}
+                      open={row.expanded}
+                      className={entry.ignored ? "opacity-60" : ""}
+                    />
                     <span className="min-w-0 truncate">{row.node.label}</span>
                     {status ? (
                       <span

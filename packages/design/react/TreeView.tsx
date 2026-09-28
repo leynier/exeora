@@ -130,7 +130,7 @@ export function TreeView<T>({
             tabIndex={index === tabStop ? 0 : -1}
             draggable={draggable}
             style={{ paddingLeft: row.depth * indent + 4 }}
-            className={`group flex min-w-0 cursor-default items-center gap-0.5 rounded-md pr-1 outline-none select-none focus-visible:-outline-offset-2 ${
+            className={`group flex min-w-0 cursor-pointer items-center gap-0.5 rounded-md pr-1 outline-none select-none focus-visible:-outline-offset-2 ${
               selected ? "bg-accent-subtle text-foreground" : "hover:bg-surface-variant"
             } ${over === node.id ? "ring-brand ring-1 ring-inset" : ""} ${
               dragging === node.id ? "opacity-50" : ""

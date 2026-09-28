@@ -235,20 +235,28 @@ export function handleTerminalCallerMessage(
   }
 }
 
+/**
+ * A one-use ticket for a dashboard socket. A terminal's needs a CLI that can
+ * open one; a logs socket's needs nothing from the machine, which may be
+ * asleep: watching it is no reason to wake it. The kind is kept with the
+ * ticket, so one can never be spent as the other.
+ */
 export async function issueTerminalTicket(
   ctx: DurableObjectState,
   projectId: string,
   workspaceId: string | undefined,
   workspaceSlug: string | undefined,
   origin: string,
+  kind: "terminal" | "logs" = "terminal",
 ): Promise<string | null> {
   const executor = executorSocket(ctx);
   const state = executor ? attachmentOf(executor) : null;
   if (
-    !executor ||
-    state?.role !== "executor" ||
-    !state.capabilities?.features?.includes("terminal-v1") ||
-    (workspaceId !== undefined && !state.capabilities.workspaceRouting)
+    kind === "terminal" &&
+    (!executor ||
+      state?.role !== "executor" ||
+      !state.capabilities?.features?.includes("terminal-v1") ||
+      (workspaceId !== undefined && !state.capabilities.workspaceRouting))
   ) {
     return null;
   }
@@ -260,6 +268,7 @@ export async function issueTerminalTicket(
     workspaceId,
     workspaceSlug,
     origin,
+    ...(kind === "logs" ? { kind } : {}),
     expiresAt: Date.now() + TERMINAL_TICKET_MS,
   });
   await scheduleWorkspaceAlarm(ctx);
@@ -273,6 +282,7 @@ export async function consumeTerminalTicket(
   workspaceId: string | undefined,
   workspaceSlug: string | undefined,
   origin: string,
+  kind: "terminal" | "logs" = "terminal",
 ): Promise<boolean> {
   const consumed = await ctx.storage.transaction(async (transaction) => {
     const key = `${TERMINAL_TICKET_PREFIX}${token}`;
@@ -281,11 +291,13 @@ export async function consumeTerminalTicket(
       workspaceId?: string;
       workspaceSlug?: string;
       origin: string;
+      kind?: "logs";
       expiresAt: number;
     }>(key);
     await transaction.delete(key);
     return Boolean(
       ticket &&
+        (ticket.kind ?? "terminal") === kind &&
         ticket.projectId === projectId &&
         ticket.workspaceId === workspaceId &&
         ticket.workspaceSlug === workspaceSlug &&
