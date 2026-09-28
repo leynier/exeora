@@ -62,7 +62,6 @@ export function viewPanel(
             where={ctx.home}
             status={ctx.status.data}
             loading={ctx.status.isLoading}
-            refreshing={ctx.status.isFetching}
             error={ctx.status.error}
             v2={ctx.capabilities?.sourceControlV2 === true}
             actions={ctx.actions}

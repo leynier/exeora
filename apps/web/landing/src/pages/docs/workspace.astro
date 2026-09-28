@@ -118,7 +118,10 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     A row's menu stages, unstages, discards, deletes an untracked file or copies its path; a
     folder's does the same for everything under it. The whole working tree, or everything staged,
-    opens as one diff. On a wide screen a diff can be shown side by side.
+    opens as one diff. On a wide screen a diff can be shown side by side. <strong>Auto refresh</strong>
+    reads the status and the open diff again every three seconds while Source Control is on
+    screen, and pauses while the browser tab or side panel is hidden. Turn it off to stop polling,
+    or use <strong>Refresh</strong> for a one-off update.
   </p>
 
   <p>

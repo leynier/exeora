@@ -7,6 +7,7 @@ import {
   List,
   ListTree,
   RefreshCw,
+  Repeat,
   Upload,
 } from "lucide-react";
 import type { GitStatus, Workspace, WorkspaceAction } from "../../api.js";
@@ -15,8 +16,9 @@ import { SourceControlBranchPicker } from "../SourceControlBranchPicker.js";
 
 /**
  * The branch, then the icons: fetch, pull with what is behind, push with
- * what is ahead, and the toggles for the history, tree or flat lists and
- * the whole diff. Each says its name on hover or focus.
+ * what is ahead, a refresh by hand and the polling toggle, and the toggles
+ * for the history, tree or flat lists and the whole diff. Each says its name
+ * on hover or focus.
  */
 export function SourceControlToolbar({
   status,
@@ -27,8 +29,10 @@ export function SourceControlToolbar({
   tree,
   history,
   refreshing,
+  autoRefresh,
   onRun,
   onRefresh,
+  onAutoRefreshChange,
   onToggleTree,
   onToggleHistory,
   onAllChanges,
@@ -44,8 +48,11 @@ export function SourceControlToolbar({
   tree: boolean;
   history: boolean;
   refreshing: boolean;
+  /** The list and the open diff are read again every few seconds. */
+  autoRefresh: boolean;
   onRun: (action: WorkspaceAction) => Promise<void>;
   onRefresh: () => void;
+  onAutoRefreshChange: (enabled: boolean) => void;
   onToggleTree: () => void;
   onToggleHistory: () => void;
   onAllChanges: () => void;
@@ -109,6 +116,13 @@ export function SourceControlToolbar({
           size="sm"
           busy={refreshing}
           onClick={onRefresh}
+        />
+        <IconButton
+          label="Auto refresh"
+          icon={Repeat}
+          size="sm"
+          pressed={autoRefresh}
+          onClick={() => onAutoRefreshChange(!autoRefresh)}
         />
         <span className="bg-border-subtle mx-0.5 h-4 w-px" aria-hidden="true" />
         <IconButton

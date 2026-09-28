@@ -56,7 +56,6 @@ export function SourceControl({
   where,
   status,
   loading,
-  refreshing,
   error,
   v2,
   actions,
@@ -75,7 +74,6 @@ export function SourceControl({
   where: ProjectLocation | undefined;
   status?: GitStatus;
   loading: boolean;
-  refreshing: boolean;
   error: unknown;
   /** The CLI announced `source-control-v2`: history, stash, amend, whole diffs. */
   v2: boolean;
@@ -116,15 +114,7 @@ export function SourceControl({
   );
 
   if (loading) return <Skeleton className="h-full w-full" />;
-  if (error)
-    return (
-      <ErrorBanner
-        error={error}
-        onRetry={() =>
-          client.invalidateQueries({ queryKey: keys.gitStatus(target.projectId, target.targetKey) })
-        }
-      />
-    );
+  if (error) return <ErrorBanner error={error} onRetry={() => void ctx.refresh.manual()} />;
   if (!status?.repository)
     return (
       <EmptyState title="Not a Git repository">
@@ -236,13 +226,11 @@ export function SourceControl({
         v2={v2}
         tree={tree}
         history={history}
-        refreshing={refreshing}
+        refreshing={ctx.refresh.refreshing || ctx.status.isFetching}
+        autoRefresh={ctx.refresh.auto}
         onRun={(action) => run(action).then(() => undefined)}
-        onRefresh={() =>
-          void client.invalidateQueries({
-            queryKey: keys.gitStatus(target.projectId, target.targetKey),
-          })
-        }
+        onRefresh={() => void ctx.refresh.manual()}
+        onAutoRefreshChange={ctx.refresh.setAuto}
         onToggleTree={() => setTree(workspacePrefs.changesTree.write(!tree))}
         onToggleHistory={() => setHistory(workspacePrefs.historyOpen.write(!history))}
         onAllChanges={() =>

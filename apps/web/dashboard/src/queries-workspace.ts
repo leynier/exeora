@@ -28,6 +28,8 @@ export const workspaceKeys = {
     ["workspace", id, target, "reads", "file", path] as const,
   search: (id: string, target: string, input: SearchInput) =>
     ["workspace", id, target, "reads", "search", input] as const,
+  /** Every file diff of the working copy, for a refresh to cover at once. */
+  diffs: (id: string, target: string) => ["workspace", id, target, "diff"] as const,
   fileDiff: (id: string, target: string, path: string, area: DiffArea) =>
     ["workspace", id, target, "diff", path, area] as const,
 };

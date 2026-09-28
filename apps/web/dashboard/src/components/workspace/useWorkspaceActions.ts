@@ -58,7 +58,7 @@ export function useWorkspaceActions({
           client.setQueryData(keys.gitStatus(projectId, targetKey), result.status);
         }
         await Promise.all([
-          client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+          client.invalidateQueries({ queryKey: workspaceKeys.diffs(projectId, targetKey) }),
           client.invalidateQueries({ queryKey: workspaceKeys.reads(projectId, targetKey) }),
         ]);
         if (!options.quiet) toast(batchLabel(batch));

@@ -8,6 +8,7 @@ import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
 import type { WorkspaceContext } from "../components/workspace/context.js";
 import { DetailContent, detailHeading } from "../components/workspace/DetailContent.js";
+import { useAutoRefresh } from "../components/workspace/useAutoRefresh.js";
 import { useOpener } from "../components/workspace/useOpener.js";
 import { useWorkspaceActions } from "../components/workspace/useWorkspaceActions.js";
 import { viewPanel } from "../components/workspace/ViewPanel.js";
@@ -149,14 +150,11 @@ export function Workspace() {
     : [];
   const rootPath = home?.localPath ?? (home?.default ? (project?.localPath ?? "") : "");
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
-  // Every poll runs a status on the machine: only while the list is on screen
-  // and the CLI can answer it.
-  const status = useGitStatus(
-    projectId,
-    targetId,
-    ready,
-    (view === "source" || view === "explorer") && capabilities.data?.sourceControl !== false,
-  );
+  // Every poll runs a status on the machine: only while a list that shows it
+  // is on screen and the CLI can answer it. The git client polls on its own,
+  // status and open diff together, so this query only fetches for it once.
+  const canPoll = ready && capabilities.data?.sourceControl !== false;
+  const status = useGitStatus(projectId, targetId, ready, view === "explorer" && canPoll);
   // The branch the default location's root is really on, once its machine
   // has said. What another location's status says is about another root, so
   // until then, and from there, it is the one the project was added with.
@@ -171,8 +169,34 @@ export function Workspace() {
       ? otherRootLabel(home ?? { name: parsed.root ? (parsed.location ?? "") : "" })
       : rootLabel(rootBranch));
 
-  const actions = useWorkspaceActions({ projectId, workspace: targetId, targetKey });
   const opener = useOpener({ wide, targetKey, search, setSearch, status: status.data });
+  const target = useMemo(
+    () => ({ projectId, workspace: targetId, targetKey }),
+    [projectId, targetId, targetKey],
+  );
+  const base = useWorkspaceActions(target);
+  const refresh = useAutoRefresh({
+    target,
+    enabled: view === "source" && canPoll,
+    selected: opener.selected,
+    pending: base.pending,
+  });
+  // A poll that was in flight when an action started must not land after
+  // it, or the list would go back to before the change for a tick.
+  const { run: runAction } = base;
+  const { interrupt, resume } = refresh;
+  const run = useCallback<typeof runAction>(
+    async (batch, options) => {
+      await interrupt();
+      try {
+        return await runAction(batch, options);
+      } finally {
+        resume();
+      }
+    },
+    [interrupt, resume, runAction],
+  );
+  const actions = { ...base, run };
 
   // An address that names the default root the long way is put right, so the
   // terminal chips and the selector agree on what is on screen.
@@ -218,7 +242,7 @@ export function Workspace() {
   const ctx: WorkspaceContext | null = project
     ? {
         project,
-        target: { projectId, workspace: targetId, targetKey },
+        target,
         targetLabel,
         home,
         siblings,
@@ -227,6 +251,7 @@ export function Workspace() {
         status,
         capabilities: capabilities.data,
         actions,
+        refresh,
         open: opener.open,
         selected: opener.selected,
         setDirty: opener.setDirty,
