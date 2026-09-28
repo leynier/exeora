@@ -45,8 +45,10 @@ import Doc from "../../layouts/Doc.astro";
     client: the current branch in the toolbar, a commit composer above staged and unstaged files, and
     the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
     changes, delete individual untracked files, fetch, pull, and push. The branch control lists the
-    current branch, other local branches, and remotes you can check out. Choosing a branch that is
-    already checked out in another connected workspace switches the view to that workspace rather
+    current branch, other local branches, and remotes you can check out. <strong>Auto refresh</strong>
+    refreshes the status and selected diff every three seconds while Source Control is open; turn it
+    off to stop polling, or use <strong>Refresh</strong> for a one-off update. Choosing a branch that
+    is already checked out in another connected workspace switches the view to that workspace rather
     than running <code>git switch</code> in place. Type a name there to create a branch from HEAD,
     or delete a merged local branch.
   </p>

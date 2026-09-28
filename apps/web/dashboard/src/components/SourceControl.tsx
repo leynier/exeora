@@ -1,6 +1,6 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   type GitStatus,
@@ -39,6 +39,8 @@ export function SourceControl({
   status,
   loading,
   error,
+  autoRefresh,
+  onAutoRefreshChange,
   onSelectWorkspace,
 }: {
   projectId: string;
@@ -55,6 +57,8 @@ export function SourceControl({
   status?: GitStatus;
   loading: boolean;
   error: unknown;
+  autoRefresh: boolean;
+  onAutoRefreshChange: (enabled: boolean) => void;
   onSelectWorkspace: (slug: string | null) => void;
 }) {
   const client = useQueryClient();
@@ -88,6 +92,23 @@ export function SourceControl({
     [status],
   );
   const chosenFile = status?.files.find((file) => file.path === chosen?.path);
+  const refresh = useCallback(
+    () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
+        client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+      ]),
+    [client, projectId, targetKey],
+  );
+
+  // Refresh status and the selected diff together. The component only exists
+  // while Source Control is on screen, and actions pause the timer so their
+  // mutation response stays authoritative until the action completes.
+  useEffect(() => {
+    if (!autoRefresh || pending) return;
+    const timer = window.setInterval(() => void refresh(), 3_000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, pending, refresh]);
 
   // Several actions run one after another under one pending state, which is
   // how a bulk stage larger than the per-request path limit goes out.
@@ -119,13 +140,7 @@ export function SourceControl({
   };
 
   if (loading) return <Skeleton className="h-full w-full rounded-xl" />;
-  if (error)
-    return (
-      <ErrorBanner
-        error={error}
-        onRetry={() => client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) })}
-      />
-    );
+  if (error) return <ErrorBanner error={error} onRetry={() => void refresh()} />;
   if (!status?.repository)
     return (
       <EmptyState title="Not a Git repository">
@@ -196,13 +211,15 @@ export function SourceControl({
             {status.ahead > 0 ? `Push ${status.ahead}` : "Push"}
           </button>
           <button
-            className="btn"
+            className={`btn ${autoRefresh ? "btn-primary" : ""}`}
             disabled={pending}
             type="button"
-            onClick={() =>
-              void client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) })
-            }
+            aria-pressed={autoRefresh}
+            onClick={() => onAutoRefreshChange(!autoRefresh)}
           >
+            Auto refresh
+          </button>
+          <button className="btn" disabled={pending} type="button" onClick={() => void refresh()}>
             Refresh
           </button>
         </div>

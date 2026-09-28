@@ -31,6 +31,38 @@ test("opens workspace from the tab with custom project and workspace dropdowns",
   await expect(page.getByRole("button", { name: /feature-tree\.txt/ })).toBeVisible();
 });
 
+test("auto-refreshes Source Control and can pause it", async ({ page }) => {
+  let statusRequests = 0;
+  let diffRequests = 0;
+  await signedIn(page);
+  await mockApi(page, {
+    onRequest: (request) => {
+      if (request.method() !== "GET") return;
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith("/workspace/status")) statusRequests += 1;
+      if (path.endsWith("/workspace/diff")) diffRequests += 1;
+    },
+  });
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
+
+  const autoRefresh = page.getByRole("button", { name: "Auto refresh" });
+  await expect(autoRefresh).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => statusRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => diffRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
+
+  await autoRefresh.click();
+  await expect(autoRefresh).toHaveAttribute("aria-pressed", "false");
+  await page.waitForTimeout(200);
+  const paused = { status: statusRequests, diff: diffRequests };
+  await page.waitForTimeout(3_300);
+  expect(statusRequests).toBe(paused.status);
+  expect(diffRequests).toBe(paused.diff);
+
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => statusRequests).toBe(paused.status + 1);
+  await expect.poll(() => diffRequests).toBe(paused.diff + 1);
+});
+
 test("keeps source control and terminal bound to the selected workspace", async ({ page }) => {
   const requests: Request[] = [];
   await signedIn(page);
