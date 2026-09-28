@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { configureApiSession } from "../api.js";
 import "../index.css";
 import { type Bridge, CONNECT, createBridge, framingExtension } from "./bridge.js";
+import { keepInPageLinksHere } from "./links.js";
 import { Panel } from "./Panel.js";
 import { PANEL_PROTOCOL } from "./protocol.js";
 
@@ -16,6 +17,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
 const shell = framingExtension();
+keepInPageLinksHere(document);
 
 function start(bridge: Bridge) {
   // Only when something navigates the frame: the side panel closing takes the
@@ -75,7 +77,8 @@ function Handshake({ bridge }: { bridge: Bridge }) {
 function NotFramed() {
   return (
     <Notice text="This page is the side panel of Exeora for Chrome.">
-      <a className="btn" href="/dashboard/">
+      {/* Here rather than in a tab, which `panel.html`'s base would pick. */}
+      <a className="btn" href="/dashboard/" target="_self">
         Open the dashboard
       </a>
     </Notice>
