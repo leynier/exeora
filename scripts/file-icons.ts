@@ -139,9 +139,14 @@ for (const id of [...used].sort()) {
   const definition = manifest.iconDefinitions[id];
   if (!definition) throw new Error(`The theme names ${id} but does not define it.`);
   const svg = readFileSync(join(THEME, "dist", definition.iconPath), "utf8")
-    .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/\s*\n\s*/g, " ")
     .trim();
+  // Refused rather than cleaned: the icons are drawn as images, but nothing
+  // that is not plain drawing belongs in them, and a theme that ever ships
+  // one should be looked at, not quietly edited.
+  if (!/^<svg[\s>][\s\S]*<\/svg>$/.test(svg) || /<!--|<script|<foreignObject|\son\w+=/i.test(svg)) {
+    throw new Error(`${definition.iconPath} is not a plain SVG drawing.`);
+  }
   // One string per icon, id then markup, so each stays on a line of its own:
   // the formatter would put a long value under its key, doubling the file.
   svgs.push(`  ${JSON.stringify(`${id} ${svg}`)},`);
