@@ -19,6 +19,8 @@ import InstallCommands from "./InstallCommands.astro";
       <li aria-hidden="true">·</li>
       <li><strong class="text-foreground">25</strong> projects</li>
       <li aria-hidden="true">·</li>
+      <li><strong class="text-foreground">2</strong> Cloud instances</li>
+      <li aria-hidden="true">·</li>
       <li><strong class="text-foreground">24 hours</strong> of audit history</li>
     </ul>
 
@@ -29,20 +31,24 @@ import InstallCommands from "./InstallCommands.astro";
         href="/dashboard/"
         class="bg-accent text-on-accent hover:bg-foreground text-title-md w-full rounded-lg px-5 py-3 transition-colors duration-fast sm:w-auto"
       >
-        Connect a machine for free
+        Open the dashboard
       </a>
       <a
-        href={GITHUB_URL}
-        target="_blank"
-        rel="noopener"
+        href="/docs/"
         class="border-border text-foreground-muted hover:text-foreground hover:border-foreground-faint/30 text-title-md w-full rounded-lg border px-5 py-3 transition-colors duration-fast sm:w-auto"
       >
-        View the source
+        Read the docs
       </a>
     </div>
 
     <p class="text-body-md text-foreground-faint mt-8">
-      macOS, Linux and Windows · Self-hostable ·{" "}
+      macOS, Linux and Windows ·{" "}
+      <a href="/docs/cloud/" class="hover:text-foreground underline-offset-2 hover:underline">Or start on Exeora Cloud</a>
+      {" "}·{" "}
+      <a href={GITHUB_URL} target="_blank" rel="noopener" class="hover:text-foreground underline-offset-2 hover:underline"
+        >Source</a
+      >
+      {" "}·{" "}
       <a href={RELEASES_URL} target="_blank" rel="noopener" class="hover:text-foreground underline-offset-2 hover:underline"
         >Releases</a
       >

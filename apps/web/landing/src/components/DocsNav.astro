@@ -1,0 +1,45 @@
+---
+import { DOC_SECTIONS } from "../lib/docs.js";
+
+/**
+ * The documentation index, grouped. Drawn twice by `Doc.astro`: as the sticky
+ * sidebar on wide screens and inside the menu that replaces it on narrow ones,
+ * so both always list the same pages in the same order.
+ */
+
+interface Props {
+  current: string;
+}
+
+const { current } = Astro.props;
+---
+
+<div class="space-y-6">
+  {
+    DOC_SECTIONS.map((section) => (
+      <div>
+        <p class="text-label-md text-foreground-faint mb-2 px-2 font-mono uppercase">
+          {section.title}
+        </p>
+        <ul class="space-y-0.5">
+          {section.pages.map((page) => (
+            <li>
+              <a
+                href={page.href}
+                aria-current={page.href === current ? "page" : undefined}
+                class:list={[
+                  "text-body-md block rounded-md px-2 py-1.5 transition-colors duration-fast",
+                  page.href === current
+                    ? "bg-surface text-foreground"
+                    : "text-foreground-muted hover:text-foreground hover:bg-surface/60",
+                ]}
+              >
+                {page.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+</div>

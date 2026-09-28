@@ -1,0 +1,129 @@
+---
+import { CHROME_EXTENSION_URL } from "../lib/site.js";
+import Section from "./Section.astro";
+
+/**
+ * What surrounds the tools. The guarantees section says what Exeora refuses to
+ * do; this one says what it does for you beyond answering tool calls, one card
+ * per part of the product, each leading to the page that explains it.
+ *
+ * Exeora Cloud is drawn larger because it changes who can start: without it
+ * the first step is a machine of your own switched on.
+ */
+
+const cards = [
+  {
+    title: "GitHub, without tokens to paste",
+    body: "Pick a repository instead of a directory. Exeora clones, fetches and pushes with tokens that last an hour and reach that one repository.",
+    href: "/docs/github/",
+    icon: "M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21",
+  },
+  {
+    title: "Review what the agent did",
+    body: "Source Control in the dashboard: the diff of every change, then stage, commit, pull and push without leaving the browser.",
+    href: "/docs/workspace/",
+    icon: "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9",
+  },
+  {
+    title: "A terminal on any workspace",
+    body: "Open a shell on the machine or instance a workspace lives on, from the dashboard, under the same project policy.",
+    href: "/docs/workspace/#web-terminal",
+    icon: "M4 17l6-5-6-5M12 19h8",
+  },
+  {
+    title: "Right next to the pull request",
+    body: "Exeora for Chrome puts that workspace in the side panel, beside whatever tab you are reviewing.",
+    href: "/docs/extension/",
+    external: { href: CHROME_EXTENSION_URL, label: "Add to Chrome" },
+    icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM21.2 8H12M3.9 6.1 8.5 14M10.9 21.9 15.5 14",
+  },
+  {
+    title: "Your other MCP servers, once",
+    body: "List them in mcp.json on the machine. Exeora publishes their tools through the same URL, under the same project policy.",
+    href: "/docs/mcp-proxy/",
+    icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6",
+  },
+  {
+    title: "Instructions every client follows",
+    body: "One agent prompt and your project's Agent Skills, delivered to every client the same way, so Claude and Cursor work the same.",
+    href: "/docs/agent-prompt/",
+    icon: "M4 5h16M4 10h16M4 15h10M4 20h6",
+  },
+];
+---
+
+<Section
+  id="platform"
+  eyebrow="The platform"
+  title="Everything around the tool calls"
+  subtitle="Machines are one place a project can live. Exeora also runs it for you, clones it from GitHub, and shows you what your agents changed"
+  wide
+>
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <!-- Exeora Cloud, the widest card: it is the path with nothing to install. -->
+    <a
+      href="/docs/cloud/"
+      class="animate-fade-in-up opacity-0-initial group border-brand/30 bg-brand-subtle/20 hover:border-brand/50 relative flex flex-col overflow-hidden rounded-xl border p-6 transition-colors duration-mid sm:p-7 md:col-span-2 lg:row-span-3 lg:col-span-1"
+      style="animation-delay: 100ms"
+    >
+      <p class="text-label-md text-brand font-mono uppercase">Exeora Cloud</p>
+      <h3 class="text-headline-sm mt-3">No machine switched on? It still works.</h3>
+      <p class="text-body-md text-foreground-muted mt-3">
+        Put a project on an instance Exeora runs: a clone of the repository with the CLI already
+        connected, your tools installed by a script you write, and <code class="font-mono">gh</code>{" "}
+        signed in as you. It sleeps when idle and wakes on the next call, with its disk kept.
+      </p>
+      <pre
+        class="border-border bg-bg/80 mt-5 rounded-lg border px-4 py-3 font-mono text-[12px] whitespace-pre-wrap sm:text-[13px]"><span class="text-foreground-faint">$</span> exeora project add owner/repo --on cloud</pre>
+      <ul class="text-body-md text-foreground-muted mt-5 space-y-2">
+        <li class="flex gap-2"><span class="text-brand">✓</span> One instance per workspace</li>
+        <li class="flex gap-2"><span class="text-brand">✓</span> Same URL, same policy as your machines</li>
+        <li class="flex gap-2"><span class="text-brand">✓</span> 2 instances on the free plan</li>
+      </ul>
+      <span class="text-body-md text-foreground mt-auto inline-flex items-center gap-1 pt-6">
+        How Cloud works
+        <span class="transition-transform duration-fast group-hover:translate-x-0.5">→</span>
+      </span>
+    </a>
+
+    {
+      cards.map((card, index) => (
+        <article
+          class="animate-fade-in-up opacity-0-initial group border-border bg-surface hover:bg-surface-variant hover:border-foreground-faint/20 relative flex flex-col rounded-xl border p-6 transition-colors duration-mid"
+          style={`animation-delay: ${160 + index * 50}ms`}
+        >
+          <div class="bg-accent-subtle text-foreground flex size-9 items-center justify-center rounded-lg">
+            <svg
+              viewBox="0 0 24 24"
+              class="size-[18px]"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d={card.icon} />
+            </svg>
+          </div>
+          <h3 class="text-title-lg mt-4">
+            <a href={card.href} class="after:absolute after:inset-0">
+              {card.title}
+            </a>
+          </h3>
+          <p class="text-body-md text-foreground-muted mt-2 flex-1">{card.body}</p>
+          {card.external && (
+            <a
+              href={card.external.href}
+              target="_blank"
+              rel="noopener"
+              class="text-body-md text-foreground relative z-10 mt-4 inline-flex w-fit items-center gap-1 underline-offset-2 hover:underline"
+            >
+              {card.external.label} ↗
+            </a>
+          )}
+        </article>
+      ))
+    }
+  </div>
+</Section>

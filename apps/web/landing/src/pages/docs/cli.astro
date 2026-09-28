@@ -8,9 +8,9 @@ import Doc from "../../layouts/Doc.astro";
   canonicalPath="/docs/cli/"
 >
   <p>
-    Everything below <code>connect</code> is a piece you can run on its own.
+    Everything below <code>connect</code> is a piece you can run on its own.{" "}
     <code>connect</code> signs in and keeps the machine online; <code>project add</code> adds a
-    directory or a repository as a project. Commands that act on a project take
+    directory or a repository as a project. Commands that act on a project take{" "}
     <code>--on</code> to say which <a href="/docs/projects/">location</a> they mean, so the same
     commands serve this machine, another machine of yours, and Exeora Cloud.
   </p>
@@ -168,7 +168,7 @@ exeora project add owner/repo --on cloud
 exeora project add https://git.example.com/you/repo.git</pre>
 
   <p>
-    <code>project add</code> takes a directory on this machine, the address of a repository, or
+    <code>project add</code> takes a directory on this machine, the address of a repository, or{" "}
     <code>owner/repo</code> on GitHub. A directory is registered where it is; one that exists is
     read as a directory whatever else its name could mean. A repository is cloned into this
     machine's projects folder, or put on Exeora Cloud with <code>--on cloud</code>. With no

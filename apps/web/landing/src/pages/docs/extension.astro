@@ -1,0 +1,107 @@
+---
+import Doc from "../../layouts/Doc.astro";
+import { CHROME_EXTENSION_URL } from "../../lib/site.js";
+
+/**
+ * Exeora for Chrome, from the point of view of someone deciding whether to
+ * install it: what it shows, how it signs in, what it can reach, and how to
+ * take it away again. What it stores is also in the privacy policy, which is
+ * the page the Chrome Web Store links to.
+ */
+---
+
+<Doc
+  title="Chrome extension"
+  description="Review changes, commit and open terminals in your workspaces from Chrome's side panel."
+  canonicalPath="/docs/extension/"
+>
+  <p>
+    Exeora for Chrome puts the dashboard's Workspace screen in Chrome's side panel, next to whatever
+    tab you are on: the pull request you are reviewing, the preview you are testing, the issue you
+    are writing. It is the same screen, built from the same code, so what you can do in it is what{" "}
+    <a href="/docs/workspace/">Source Control and terminal</a> describes.
+  </p>
+
+  <h2 id="install">Install</h2>
+
+  <p>
+    Add <a href={CHROME_EXTENSION_URL} target="_blank" rel="noopener">Exeora</a> from the Chrome Web
+    Store, then pin it to the toolbar. Clicking its icon opens the side panel in that window; the
+    panel stays open as you switch tabs.
+  </p>
+
+  <h2 id="sign-in">Signing in</h2>
+
+  <p>
+    The panel asks you to sign in with Exeora. Chrome opens a window of its own on the Exeora
+    sign-in page, the same one the dashboard uses, and the first time on an account it also asks you
+    to authorize the extension. There is no password or key to paste: it is an OAuth sign-in with
+    PKCE, and the panel keeps the session it is given.
+  </p>
+
+  <p>
+    A restart does not sign you out. <strong>Sign out</strong> in the panel's header forgets the
+    session in the browser and revokes it on Exeora.
+  </p>
+
+  <h2 id="what-it-does">What the panel does</h2>
+
+  <ul>
+    <li>
+      Pick a project and one of its <a href="/docs/projects/">workspaces</a>, on any of your
+      machines or on <a href="/docs/cloud/">Exeora Cloud</a>.
+    </li>
+    <li>See what changed, read the diffs, stage, commit, pull and push.</li>
+    <li>Open terminals on the workspace, which keep running while you move between tabs.</li>
+    <li>
+      <strong>Dashboard</strong> in the header opens the workspace you are looking at in the full
+      dashboard, and anything the panel does not show (adding a project, a project's settings,
+      clients, activity) opens there too.
+    </li>
+  </ul>
+
+  <p>
+    Everything the panel does goes through the same checks as the dashboard. A project's{" "}
+    <a href="/docs/policy/">policy</a> applies to its terminals and Source Control exactly as it
+    does there, and the same actions appear in the activity log.
+  </p>
+
+  <h2 id="permissions">What it can reach</h2>
+
+  <p>
+    The extension asks Chrome for three permissions: the side panel, the identity window it signs in
+    through, and its own storage. Its only host permission is <code>exeora.dev</code>. It reads
+    nothing from the pages you visit and sends requests nowhere else.
+  </p>
+
+  <p>
+    It is not an MCP client and does not give an AI anything: your agents connect through a{" "}
+    <a href="/docs/clients/">client URL</a> as before. The panel is for you, to see and act on what
+    they did.
+  </p>
+
+  <h2 id="revoke">Revoking it</h2>
+
+  <p>
+    In the dashboard, <strong>Settings</strong> shows <strong>Exeora for Chrome</strong> once you
+    have approved it: when, and how many browsers are signed in. Revoking it there signs out every
+    side panel at once and forgets the approval, so the next sign-in asks for consent again.
+  </p>
+
+  <h2 id="self-hosted">On a self-hosted gateway</h2>
+
+  <p>
+    The extension signs in against one gateway, fixed when it is built, and a gateway only accepts
+    the extension ids it lists. The one in the Chrome Web Store talks to <code>exeora.dev</code>.
+    To use it with your own gateway, build it for that gateway and allow its id: see{" "}
+    <a href="/docs/self-hosting/#chrome-extension">Self-hosting</a>.
+  </p>
+
+  <h2 id="data">What is stored</h2>
+
+  <p>
+    In your browser, a refresh token in Chrome's extension storage and a short-lived access token
+    in memory. On Exeora, that you approved the extension and one session per signed-in browser.
+    The <a href="/privacy/#exeora-for-chrome">privacy policy</a> has the details.
+  </p>
+</Doc>
