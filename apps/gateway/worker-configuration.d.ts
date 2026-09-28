@@ -11,7 +11,7 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	AUDIT_STREAM: import("cloudflare:pipelines").Pipeline<import("cloudflare:pipelines").PipelineRecord>;
 	EXEORA_BASE_URL: "https://exeora.dev";
-	EXEORA_EXTENSION_IDS: "";
+	EXEORA_EXTENSION_IDS: "ccnfjfikieconnihndkiafbidcjdnpdc";
 	LATEST_CLI_VERSION: "0.16.0";
 	CLOUDFLARE_ACCOUNT_ID: "6df65be91ad130fd6aa8cb64ac017f22";
 	AUDIT_R2_BUCKET: "exeora-audit";
