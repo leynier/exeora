@@ -1,9 +1,8 @@
 /**
- * Exeora's own OAuth clients: the CLI and the dashboard.
+ * Exeora's own OAuth clients: the CLI, the dashboard and the Chrome extension.
  *
- * Both are *public* clients: one ships to users' machines, the other runs
- * in a browser, so neither can hold a secret and both authenticate with PKCE
- * alone.
+ * All are *public* clients: one ships to users' machines, the others run in a
+ * browser, so none can hold a secret and all authenticate with PKCE alone.
  *
  * `createClient()` always mints its own random client id and ignores any id
  * passed in, so a fixed well-known constant is not available. Each generated
@@ -29,6 +28,13 @@ interface ClientSpec {
   kvKey: string;
   clientName: string;
   redirectUris: string[];
+  /**
+   * Whether the registered redirects are replaced by these rather than only
+   * added to. The extension's follow a configured list of ids, and an id taken
+   * off that list must stop receiving codes, not linger as a registered
+   * redirect nobody can see.
+   */
+  exact?: boolean;
 }
 
 /** Loopback callback `exeora login` binds on a desktop. Port is free (RFC 8252). */
@@ -63,8 +69,62 @@ function dashboard(env: Env): ClientSpec {
   };
 }
 
+const EXTENSION_KV_KEY = "extension_client_id";
+
+/**
+ * The Chrome extension ids allowed to sign in, from `EXEORA_EXTENSION_IDS`.
+ *
+ * An id is what Chrome derives from the extension's key, and it is the only
+ * thing that decides who receives a code sent to its `chromiumapp.org`
+ * redirect: Chrome hands that navigation to the extension with that id and to
+ * nothing else. So naming the ids here is what makes the extension a
+ * first-party client, the way the dashboard's own origin makes it one.
+ */
+export function extensionIds(env: Pick<Env, "EXEORA_EXTENSION_IDS">): string[] {
+  return (env.EXEORA_EXTENSION_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => /^[a-p]{32}$/.test(id));
+}
+
+/** The origins the extension's pages load from, one per allowed id. */
+export function extensionOrigins(env: Pick<Env, "EXEORA_EXTENSION_IDS">): string[] {
+  return extensionIds(env).map((id) => `chrome-extension://${id}`);
+}
+
+/**
+ * The origin one of Exeora's own browser UIs runs on, or null for any other.
+ *
+ * The dashboard is served from the gateway's origin and the side panel from
+ * an allowed extension's. A terminal ticket is bound to the one that asked for
+ * it, and its socket is refused from anywhere else.
+ */
+export function firstPartyOrigin(
+  env: Pick<Env, "EXEORA_BASE_URL" | "EXEORA_EXTENSION_IDS">,
+  origin: string | undefined,
+): string | null {
+  if (!origin) return null;
+  if (origin === new URL(env.EXEORA_BASE_URL).origin) return origin;
+  return extensionOrigins(env).includes(origin) ? origin : null;
+}
+
+function extension(env: Env): ClientSpec {
+  return {
+    kvKey: EXTENSION_KV_KEY,
+    clientName: "Exeora for Chrome",
+    redirectUris: extensionIds(env).map((id) => `https://${id}.chromiumapp.org/`),
+    exact: true,
+  };
+}
+
 export const getCliClientId = (env: Env) => clientIdFor(env, cliSpec(env));
 export const getDashboardClientId = (env: Env) => clientIdFor(env, dashboard(env));
+
+/** Null when this gateway names no extension, which leaves it switched off. */
+export async function getExtensionClientId(env: Env): Promise<string | null> {
+  if (extensionIds(env).length === 0) return null;
+  return clientIdFor(env, extension(env));
+}
 
 /**
  * Whether this client is the dashboard, which is Exeora's own first-party UI.
@@ -79,6 +139,36 @@ export async function isDashboardClient(
 ): Promise<boolean> {
   const stored = await env.OAUTH_KV.get(DASHBOARD_KV_KEY);
   return stored !== null && stored === clientId;
+}
+
+/** Whether this client is the Chrome extension, read the same way as the dashboard's. */
+export async function isExtensionClient(
+  env: Pick<Env, "OAUTH_KV">,
+  clientId: string,
+): Promise<boolean> {
+  const stored = await env.OAUTH_KV.get(EXTENSION_KV_KEY);
+  return stored !== null && stored === clientId;
+}
+
+/**
+ * The extension's client id as registered, whatever the ids list says now.
+ * What revoking reads: grants made while an id was allowed stay revocable
+ * after it is taken off the list, including the last one.
+ */
+export async function storedExtensionClientId(env: Pick<Env, "OAUTH_KV">): Promise<string | null> {
+  return env.OAUTH_KV.get(EXTENSION_KV_KEY);
+}
+
+/**
+ * Exeora's own browser UIs: the dashboard and the extension's side panel. Both
+ * manage the account, because a code sent to either redirect can only land in
+ * Exeora's own code. Whether one is asked for consent is `skipsConsent`'s call.
+ */
+export async function isFirstPartyUiClient(
+  env: Pick<Env, "OAUTH_KV">,
+  clientId: string,
+): Promise<boolean> {
+  return (await isDashboardClient(env, clientId)) || (await isExtensionClient(env, clientId));
 }
 
 /** Whether this is the public client installed by the native executor. */
@@ -103,9 +193,10 @@ async function clientIdFor(env: Env, spec: ClientSpec): Promise<string> {
       // signs in, without minting a second client id.
       const registered = existing.redirectUris ?? [];
       const missing = spec.redirectUris.filter((uri) => !registered.includes(uri));
-      if (missing.length > 0) {
+      const stale = spec.exact ? registered.filter((uri) => !spec.redirectUris.includes(uri)) : [];
+      if (missing.length > 0 || stale.length > 0) {
         await env.OAUTH_PROVIDER.updateClient(stored, {
-          redirectUris: [...registered, ...missing],
+          redirectUris: spec.exact ? spec.redirectUris : [...registered, ...missing],
         });
       }
       return stored;

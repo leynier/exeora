@@ -1,0 +1,67 @@
+name: Release Chrome extension
+
+on:
+  push:
+    tags: ["ext-v*"]
+
+# Independent of deploy.yml, like the CLI: the gateway ships on every push to
+# main, the extension when a tag says so. A version that needs a gateway change
+# is tagged after that change has deployed, never before.
+concurrency:
+  group: release-extension
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  submit:
+    needs: check
+    runs-on: ubuntu-latest
+    # Holds the Chrome Web Store credentials, and can require an approval
+    # before anything is sent to the store.
+    environment: chrome-web-store
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # The manifest version is package.json's. A tag that disagrees would
+      # upload one version under another's name, and the store refuses a
+      # version it has already seen, so it is caught here instead.
+      - name: Check the tag against the version
+        run: |
+          version="$(jq -r .version apps/extension/package.json)"
+          if [ "$GITHUB_REF_NAME" != "ext-v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match apps/extension/package.json ($version)." >&2
+            exit 1
+          fi
+
+      # Without the manifest key: the store refuses it and assigns its own id,
+      # which EXEORA_EXTENSION_IDS in apps/gateway/wrangler.jsonc names.
+      - name: Package
+        run: bun run --cwd apps/extension zip
+        env:
+          EXEORA_EXTENSION_KEY: omit
+
+      # Uploaded and submitted for review. STAGED_PUBLISH leaves the approved
+      # version waiting for a click in the developer dashboard rather than
+      # reaching everyone the moment review passes.
+      - name: Submit to the Chrome Web Store
+        run: bun run --cwd apps/extension submit --chrome-zip ".output/exeora-${GITHUB_REF_NAME#ext-v}-chrome.zip"
+        env:
+          CHROME_API_VERSION: v2
+          CHROME_PUBLISH_TYPE: STAGED_PUBLISH
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
+          CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}

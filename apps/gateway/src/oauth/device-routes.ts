@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
+import { askForConsent } from "./consent.js";
 import {
   beginDeviceAuthorization,
   createDeviceGrant,
@@ -12,7 +13,6 @@ import { abandonParkedDeviceGrant } from "./device-continue.js";
 import { deviceCodePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization } from "./pending.js";
 import { configuredProviders } from "./providers/index.js";
-import { askForConsent } from "./routes.js";
 import { clearSession, getSessionUserId, setDeviceContinuation } from "./session.js";
 
 /**

@@ -4,7 +4,8 @@ import { auditDeletionStatement, deviceProjectDeletionStatement } from "../audit
 import { isMetadataDocumentClient, stillAuthorized } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import { moveDefaultLocationStatements } from "../locations-default.js";
-import { isCliClient, isDashboardClient } from "../oauth/clients.js";
+import { isCliClient, isFirstPartyUiClient } from "../oauth/clients.js";
+import { forgetExtensionConsent } from "../oauth/extension.js";
 
 /**
  * Shared account and grant operations used by both the owner's API and the
@@ -62,6 +63,7 @@ export async function deleteAccount(env: Env, userId: string): Promise<void> {
   }
 
   await revokeGrants(env, userId, () => true);
+  await forgetExtensionConsent(env, userId);
 
   // Read before the delete, since afterwards there is nothing left to read.
   const authorized = await database
@@ -278,7 +280,7 @@ export async function revokeGrants(
  * Clients are global objects: one registration can be shared by several
  * accounts. So this refuses every case that is knowably shared — a metadata
  * document, whose id is a URL published by the client's author; Exeora's own
- * CLI and dashboard; and any client another authorization still names, whoever
+ * CLI, dashboard and extension; and any client another authorization still names, whoever
  * it belongs to.
  *
  * Call this only after the rows that pointed at the client are gone, since that
@@ -289,7 +291,7 @@ export async function forgetOAuthClient(env: Env, clientId: string): Promise<voi
     if (isMetadataDocumentClient(clientId)) return;
     if (await stillAuthorized(env, clientId)) return;
 
-    if ((await isCliClient(env, clientId)) || (await isDashboardClient(env, clientId))) return;
+    if ((await isCliClient(env, clientId)) || (await isFirstPartyUiClient(env, clientId))) return;
 
     await env.OAUTH_PROVIDER.deleteClient(clientId);
   } catch {

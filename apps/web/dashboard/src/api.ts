@@ -7,6 +7,7 @@ import type {
   Client,
   CommandPolicy,
   Device,
+  ExtensionStatus,
   GitDiff,
   GitStatus,
   Project,
@@ -57,11 +58,28 @@ export function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/**
+ * Where requests go and what they carry. The dashboard is served by the
+ * gateway and keeps its token in the tab; the Chrome extension's side panel
+ * reuses these screens from another origin, with a token it refreshes itself.
+ */
+export interface ApiSession {
+  /** Prefixed to every path. Empty for the dashboard, which is same-origin. */
+  origin: string;
+  token: () => Promise<string | null>;
+}
+
+let session: ApiSession = { origin: "", token: async () => storedToken() };
+
+export function configureApiSession(next: ApiSession): void {
+  session = next;
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = storedToken();
+  const token = await session.token();
   if (!token) throw new Unauthorized("Not signed in.");
 
-  const response = await fetch(path, {
+  const response = await fetch(`${session.origin}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${token}` },
   });
@@ -202,6 +220,10 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId, projectIds, allProjects }),
     }),
+
+  extension: () => request<ExtensionStatus>("/api/extension"),
+  /** Signs every side panel out; the next sign-in asks for consent again. */
+  revokeExtension: () => request<{ ok: true }>("/api/extension", { method: "DELETE" }),
 
   revokeClient: (id: string) => request<{ ok: true }>(`/api/clients/${id}`, { method: "DELETE" }),
   /** Only accepted once the client is revoked; the server returns 409 if not. */

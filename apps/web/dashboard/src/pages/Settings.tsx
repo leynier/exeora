@@ -1,4 +1,5 @@
 import { DangerZone } from "../components/DangerZone.js";
+import { ExtensionCard } from "../components/ExtensionCard.js";
 import { GitHubCard } from "../components/GitHubCard.js";
 import { SupportCard } from "../components/SupportCard.js";
 import { Card, Divided, PageHeader, Row, SkeletonRows } from "../components/ui.js";
@@ -71,6 +72,8 @@ export function Settings() {
       </Card>
 
       <GitHubCard className="mb-6" />
+
+      <ExtensionCard className="mb-6" />
 
       <SupportCard className="mb-6" />
 

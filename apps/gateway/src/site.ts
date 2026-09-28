@@ -9,8 +9,10 @@ import { installers } from "./installers.js";
 import {
   CLI_SCOPES,
   DASHBOARD_SCOPES,
+  firstPartyOrigin,
   getCliClientId,
   getDashboardClientId,
+  getExtensionClientId,
 } from "./oauth/clients.js";
 import { deviceRoutes } from "./oauth/device-routes.js";
 import { oauthRoutes } from "./oauth/routes.js";
@@ -60,12 +62,30 @@ site.get("/oauth/dashboard-client", async (c) =>
   }),
 );
 
+/**
+ * The same, for the Chrome extension's side panel. It computes its own
+ * redirect with `chrome.identity.getRedirectURL()`, which is registered here
+ * only for the ids this gateway names; 404 when it names none.
+ */
+site.get("/oauth/extension-client", async (c) => {
+  const clientId = await getExtensionClientId(c.env);
+  if (!clientId) return c.json({ error: "extension_disabled" }, 404);
+  return c.json({
+    clientId,
+    authorizationEndpoint: new URL("/oauth/authorize", c.env.EXEORA_BASE_URL).toString(),
+    tokenEndpoint: new URL("/oauth/token", c.env.EXEORA_BASE_URL).toString(),
+    scopes: DASHBOARD_SCOPES,
+  });
+});
+
 site.get("/terminal/connect", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") {
     return c.text("Expected a WebSocket upgrade.", 426);
   }
-  const expectedOrigin = new URL(c.env.EXEORA_BASE_URL).origin;
-  if (c.req.header("Origin") !== expectedOrigin) return c.text("Invalid origin.", 403);
+  // The dashboard's origin or an allowed extension's. Which of them may use
+  // this ticket was decided when it was issued, and is checked with it below.
+  const expectedOrigin = firstPartyOrigin(c.env, c.req.header("Origin"));
+  if (!expectedOrigin) return c.text("Invalid origin.", 403);
   const projectId = c.req.query("projectId");
   const deviceId = c.req.query("deviceId");
   const workspaceId = c.req.query("workspaceId");

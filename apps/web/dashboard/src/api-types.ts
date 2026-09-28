@@ -423,3 +423,13 @@ export interface CloudScripts {
 
 /** What saving sends: everything above but the date, which is the gateway's. */
 export type CloudScriptsInput = Omit<CloudScripts, "updatedAt">;
+
+/** Exeora for Chrome on this account. */
+export interface ExtensionStatus {
+  /** Whether the gateway lets an extension sign in now. */
+  enabled: boolean;
+  /** When the account first approved it; null when it has not, or it was revoked. */
+  since: number | null;
+  /** Side panels holding a session right now, one per signed-in Chrome. */
+  sessions: number;
+}

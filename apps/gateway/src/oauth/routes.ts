@@ -2,25 +2,25 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   type AccountChoice,
-  accountAccess,
   accountChoice,
   rememberAccountAuthorization,
 } from "../account-access.js";
 import { rememberAuthorization } from "../clients.js";
 import { db, schema } from "../db/client.js";
-import { isDashboardClient } from "./clients.js";
+import { askForConsent } from "./consent.js";
 import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
 import {
   abandonParkedDeviceGrant,
   deviceCallbackSession,
   refuseUnboundDeviceGrant,
 } from "./device-continue.js";
-import { accountConsentPage, consentPage, deviceDonePage, errorPage, signInPage } from "./pages.js";
+import { refusedExtension, rememberExtensionConsent, skipsConsent } from "./extension.js";
+import { accountConsentPage, deviceDonePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { grantedScopes } from "./scopes.js";
 import { clearSession, getSessionUserId, setSession } from "./session.js";
-import { authScopeFromResource, resolveAccountTarget, resolveAuthTarget } from "./target.js";
+import { authScopeFromResource, resolveAccountTarget } from "./target.js";
 import { resolveUser } from "./users.js";
 
 /**
@@ -47,6 +47,8 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
   if ((await grantedScopes(c.env, authRequest)).length === 0) {
     return c.html(errorPage("This application did not request a scope it is allowed to use."), 400);
   }
+  const refused = await refusedExtension(c.env, authRequest);
+  if (refused) return c.html(errorPage(refused), 400);
 
   const providers = configuredProviders(c.env);
   if (providers.length === 0) {
@@ -63,7 +65,7 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
       .get();
 
     if (user) {
-      if (await isDashboardClient(c.env, authRequest.clientId)) {
+      if (await skipsConsent(c.env, authRequest, userId)) {
         const { redirectTo } = await complete(c.env, authRequest, userId);
         return c.redirect(redirectTo);
       }
@@ -180,7 +182,7 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
     const user = await resolveUser(db(c.env), provider.id, identity, c.env.ADMIN_EMAILS);
     await setSession(c, user.id);
 
-    if (await isDashboardClient(c.env, pending.authRequest.clientId)) {
+    if (await skipsConsent(c.env, pending.authRequest, user.id)) {
       // Claimed rather than left parked, so the entry cannot be replayed.
       const claimed = await claimAuthorization(c.env, state);
       if (!claimed) return c.html(errorPage("This sign-in has expired. Start again."), 400);
@@ -359,6 +361,7 @@ async function complete(
   const scope = authScopeFromResource(authRequest.resource);
   const scopes = await grantedScopes(env, authRequest);
   const identity = { clientName: client?.clientName, clientUri: client?.clientUri };
+  const extension = await rememberExtensionConsent(env, authRequest, userId);
 
   const projectId =
     scope?.kind === "project" ? await ownedProjectId(env, scope.projectId, userId) : null;
@@ -388,6 +391,8 @@ async function complete(
     request: authRequest,
     userId,
     scope: scopes,
+    // Each Chrome signed in is a session of its own; one must not end another.
+    ...(extension ? { revokeExistingGrants: false } : {}),
     // `projectId` is here because a grant summary does not carry the resource
     // it was issued for, and revoking one client's access to one project means
     // finding exactly the grants that named it. `projectIds` is the same fact
@@ -397,6 +402,7 @@ async function complete(
       approvedAt: Date.now(),
       projectId,
       ...(projectIds ? { projectIds } : {}),
+      ...(extension ? { extensionId: extension } : {}),
       clientName: client?.clientName ?? null,
     },
     // Everything a tool handler learns about the caller. Deliberately minimal:
@@ -409,43 +415,6 @@ async function complete(
       clientName: client?.clientName,
       scopes,
     },
-  });
-}
-
-/**
- * The screen that asks, chosen by what the client said it wants.
- *
- * Both branches resolve their own target, and both fall back to the plain
- * screen when they cannot: a resource naming a project that is not this user's
- * must not be labelled with anything, since naming it would leak that it
- * exists.
- */
-export async function askForConsent(
-  env: Env,
-  options: { authRequest: AuthRequest; userId: string; userEmail: string; state: string },
-) {
-  const { authRequest, userId, userEmail, state } = options;
-  const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId);
-  const scope = authScopeFromResource(authRequest.resource);
-  const common = {
-    client,
-    userEmail,
-    state,
-    scopes: await grantedScopes(env, authRequest),
-  };
-
-  if (scope?.kind === "account") {
-    const projects = await resolveAccountTarget(env, userId, authRequest.clientId);
-    const known = await accountAccess(env, { userId, clientId: authRequest.clientId });
-    // A client seen for the first time is offered everything, which is what
-    // most people mean; one that was narrowed before comes back narrowed.
-    const allProjects = known?.allProjects ?? !projects.some((project) => project.granted);
-    return accountConsentPage({ ...common, projects, allProjects });
-  }
-
-  return consentPage({
-    ...common,
-    target: await resolveAuthTarget(env, authRequest.resource, userId),
   });
 }
 

@@ -11,6 +11,7 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	AUDIT_STREAM: import("cloudflare:pipelines").Pipeline<import("cloudflare:pipelines").PipelineRecord>;
 	EXEORA_BASE_URL: "https://exeora.dev";
+	EXEORA_EXTENSION_IDS: "";
 	LATEST_CLI_VERSION: "0.16.0";
 	CLOUDFLARE_ACCOUNT_ID: "6df65be91ad130fd6aa8cb64ac017f22";
 	AUDIT_R2_BUCKET: "exeora-audit";
@@ -35,7 +36,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "EXEORA_BASE_URL" | "LATEST_CLI_VERSION" | "CLOUDFLARE_ACCOUNT_ID" | "AUDIT_R2_BUCKET" | "AUDIT_R2_WAREHOUSE" | "AUDIT_R2_TABLE" | "AUDIT_R2_LEGACY_TABLE" | "AUDIT_SCHEMA_VERSION" | "AUDIT_WAREHOUSE_START_DAY" | "CLOUD_SPRITE_PREFIX">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "EXEORA_BASE_URL" | "EXEORA_EXTENSION_IDS" | "LATEST_CLI_VERSION" | "CLOUDFLARE_ACCOUNT_ID" | "AUDIT_R2_BUCKET" | "AUDIT_R2_WAREHOUSE" | "AUDIT_R2_TABLE" | "AUDIT_R2_LEGACY_TABLE" | "AUDIT_SCHEMA_VERSION" | "AUDIT_WAREHOUSE_START_DAY" | "CLOUD_SPRITE_PREFIX">> {}
 }
 declare module "*.css" {
 	const value: string;

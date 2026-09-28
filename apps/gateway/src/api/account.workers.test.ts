@@ -25,11 +25,13 @@ const DASHBOARD_CLIENT = "first_party_dashboard";
 interface Recorded {
   revoked: string[];
   deleted: string[];
+  /** OAuth KV keys removed, such as the extension's remembered consent. */
+  forgotten: string[];
 }
 
 /** Stands in for the OAuth provider, whose grants and clients live in KV. */
 function provider(grants: Array<{ id: string; clientId: string; userId: string }>) {
-  const recorded: Recorded = { revoked: [], deleted: [] };
+  const recorded: Recorded = { revoked: [], deleted: [], forgotten: [] };
 
   const bindings = {
     OAUTH_PROVIDER: {
@@ -61,6 +63,13 @@ function provider(grants: Array<{ id: string; clientId: string; userId: string }
             ? DASHBOARD_CLIENT
             : null,
       put: async () => undefined,
+      list: async ({ prefix }: { prefix: string }) => ({
+        keys: [{ name: `${prefix}helnfgncjgikiojakjdfppmmflbdjamo` }],
+        list_complete: true,
+      }),
+      delete: async (key: string) => {
+        recorded.forgotten.push(key);
+      },
     },
   };
 
@@ -199,6 +208,10 @@ describe("deleting an account", () => {
 
     // Both of this account's, and neither of the neighbour's.
     expect(recorded.revoked.toSorted()).toEqual(["grant_a", "grant_b"]);
+    // And the extension asks again should the address sign up anew.
+    expect(recorded.forgotten).toEqual([
+      `extension_consent:${USER}:helnfgncjgikiojakjdfppmmflbdjamo`,
+    ]);
   });
 
   it("unregisters a client nobody else authorized", async () => {

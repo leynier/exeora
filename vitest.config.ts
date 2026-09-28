@@ -13,6 +13,7 @@ export default defineConfig({
             "apps/gateway/src/**/*.test.ts",
             "apps/web/landing/src/**/*.test.ts",
             "apps/web/dashboard/src/**/*.test.ts",
+            "apps/extension/lib/**/*.test.ts",
           ],
           exclude: [
             "**/node_modules/**",

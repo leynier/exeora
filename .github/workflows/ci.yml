@@ -112,6 +112,11 @@ jobs:
       - name: Build
         run: bun run --cwd apps/web build
 
+      # Built on every change, not only on release: it imports the dashboard's
+      # screens, so a change there can break it without touching its folder.
+      - name: Build the Chrome extension
+        run: bun run --cwd apps/extension build
+
       - name: Test
         run: bun run test
 

@@ -15,6 +15,8 @@ import {
   rootSelector,
 } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
+import { firstPartyOrigin } from "../oauth/clients.js";
+import { uiClientName } from "../props.js";
 import { callRelayWorkspace } from "../relay-client.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
@@ -98,7 +100,7 @@ workspace.post(
       workspaceSlug: target.recordedAs,
       tool: `source_control.${action.action}`,
       endpoint: "dashboard",
-      caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+      caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
     });
     try {
       const value = await dispatch(c.env, userId, projectId, target, action, c.req.raw.signal);
@@ -196,7 +198,11 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
   const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
   if (!target) return c.json({ error: "not_found" }, 404);
   const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, target.deviceId));
-  const origin = new URL(c.env.EXEORA_BASE_URL).origin;
+  // Bound to the UI that asked: the side panel's socket comes from the
+  // extension's origin, the dashboard's from the gateway's. A request from
+  // neither still gets the gateway's, which is what it always did.
+  const origin =
+    firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
   const ticket = await relay.createTerminalTicket(
     projectId,
     target.workspaceId,
@@ -216,7 +222,7 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
     workspaceSlug: target.recordedAs,
     tool: "terminal.open",
     endpoint: "dashboard",
-    caller: { clientId: undefined, clientName: "Exeora Dashboard", mcp: undefined },
+    caller: { clientId: undefined, clientName: uiClientName(c.executionCtx), mcp: undefined },
   });
   await finishAudit(c.env, audit, { status: "ok" });
   const url = new URL("/terminal/connect", c.env.EXEORA_BASE_URL);
