@@ -126,13 +126,13 @@ Connecting finishes in the browser that started it. The way back from GitHub is 
 
 ### AI Assist (optional)
 
-AI Assist lets an account link its own ChatGPT or Grok account and write commit messages and pull requests from the dashboard. It stays off until `AI_ASSIST_PROVIDERS` names at least one provider, and needs `CLOUD_CREDENTIALS_KEY` (above) to keep the tokens and keys under; with either missing the routes answer `ai_disabled` and the card is not drawn.
+AI Assist lets an account link its own ChatGPT or Grok account and write commit messages and pull requests from the dashboard. Which providers may be linked is the `AI_ASSIST_PROVIDERS` var in `apps/gateway/wrangler.jsonc`, which offers `openai,xai` as committed; it is a var rather than a secret because it only says what is offered, and a secret of the same name would be replaced by the var on deploy. To keep AI Assist off, empty or remove the var. It also needs `CLOUD_CREDENTIALS_KEY` (above) to keep the tokens and keys under; without it the routes answer `ai_disabled` and the card is not drawn. The rest is optional:
 
 ```bash
-bun run secret AI_ASSIST_PROVIDERS   # openai,xai
-bun run secret XAI_OAUTH_CLIENT_ID   # optional: the client id of xAI's device flow
-bun run secret AI_ASSIST_OAUTH       # optional: "off" to offer API keys only
+bun run secret XAI_OAUTH_CLIENT_ID   # the client id of xAI's device flow; unset offers Grok by API key only
 ```
+
+`AI_ASSIST_OAUTH=off`, as a var beside `AI_ASSIST_PROVIDERS`, keeps only the API keys and offers no device login for either provider; ChatGPT's needs nothing beyond the credentials key.
 
 Two things to know before switching it on. The subscription flows are not documented by either provider for third parties: ChatGPT is linked through the device-code sign-in of OpenAI's own Codex CLI, Grok through the device flow of xAI's `auth.x.ai`, and either may change or close them without notice. Set `AI_ASSIST_OAUTH=off` to offer API keys only, which the providers do document. And what a generation reads, the staged patch or a branch's commits and diff, is sent from the gateway to the provider the person chose and kept nowhere; only the fact of a generation is audited.
 
