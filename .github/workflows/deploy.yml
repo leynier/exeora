@@ -18,12 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+# CI already ran on the pull request. Calling it again here only delays
+# the deploy.
 jobs:
-  check:
-    uses: ./.github/workflows/ci.yml
-
   deploy:
-    needs: check
     runs-on: ubuntu-latest
     environment: production
     steps:

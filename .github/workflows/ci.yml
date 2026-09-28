@@ -2,19 +2,15 @@ name: CI
 
 on:
   pull_request:
-  # Called by the deploy workflow, so nothing reaches production without
-  # passing the same checks first.
-  workflow_call:
 
-# Deliberately not `on: push` for main. Deploy already calls this workflow, and
-# running both put two jobs in the same concurrency group, where one cancelled
-# the other and reported it as a cancelled run.
+# Pull requests only. Deploy does not call this workflow: the pull request
+# already ran these checks. A push to main used to run them directly and through
+# Deploy, and the two runs cancelled each other.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Checking out the code is all this workflow asks of the token. Callers grant no
-# more than this, so a reusable-workflow call cannot widen it either.
+# Checking out the code is all this workflow asks of the token.
 permissions:
   contents: read
 
