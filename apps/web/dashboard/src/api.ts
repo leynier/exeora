@@ -133,12 +133,20 @@ export const api = {
     request<WorkspaceCapabilities>(
       `/api/projects/${id}/workspace/capabilities${workspaceTarget(workspace)}`,
     ),
-  gitStatus: (id: string, workspace?: string) =>
-    request<GitStatus>(`/api/projects/${id}/workspace/status${workspaceTarget(workspace)}`),
-  gitDiff: (id: string, path: string, area: "working" | "staged", workspace?: string) => {
+  gitStatus: (id: string, workspace?: string, signal?: AbortSignal) =>
+    request<GitStatus>(`/api/projects/${id}/workspace/status${workspaceTarget(workspace)}`, {
+      signal,
+    }),
+  gitDiff: (
+    id: string,
+    path: string,
+    area: "working" | "staged",
+    workspace?: string,
+    signal?: AbortSignal,
+  ) => {
     const query = new URLSearchParams({ path, area });
     if (workspace) query.set("workspace", workspace);
-    return request<GitDiff>(`/api/projects/${id}/workspace/diff?${query}`);
+    return request<GitDiff>(`/api/projects/${id}/workspace/diff?${query}`, { signal });
   },
   workspaceAction: (id: string, action: WorkspaceAction, workspace?: string) =>
     request<WorkspaceMutationResult>(

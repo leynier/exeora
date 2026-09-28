@@ -1,6 +1,6 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type GitStatus,
@@ -78,10 +78,16 @@ export function SourceControl({
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
   const chosenArea = chosen?.area ?? "working";
+  const diffKey = useMemo(
+    () => ["workspace", projectId, targetKey, "diff", chosenPath, chosenArea] as const,
+    [projectId, targetKey, chosenPath, chosenArea],
+  );
+  const canLoadDiff = Boolean(chosen && status?.repository);
   const diff = useQuery({
-    queryKey: ["workspace", projectId, targetKey, "diff", chosenPath, chosenArea],
-    queryFn: () => api.gitDiff(projectId, chosenPath, chosenArea, workspace),
-    enabled: Boolean(chosen && status?.repository),
+    queryKey: diffKey,
+    queryFn: ({ signal }) => api.gitDiff(projectId, chosenPath, chosenArea, workspace, signal),
+    enabled: canLoadDiff,
+    refetchOnWindowFocus: false,
   });
   const staged = useMemo(
     () => status?.files.filter((file) => file.index !== "." && file.index !== "?") ?? [],
@@ -92,23 +98,69 @@ export function SourceControl({
     [status],
   );
   const chosenFile = status?.files.find((file) => file.path === chosen?.path);
+  const pollGeneration = useRef(0);
+  const pollController = useRef<AbortController | null>(null);
   const refresh = useCallback(
     () =>
       Promise.all([
-        client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
-        client.invalidateQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+        client.invalidateQueries(
+          { queryKey: keys.gitStatus(projectId, targetKey) },
+          { cancelRefetch: false },
+        ),
+        client.invalidateQueries(
+          { queryKey: ["workspace", projectId, targetKey, "diff"] },
+          { cancelRefetch: false },
+        ),
       ]),
     [client, projectId, targetKey],
   );
 
-  // Refresh status and the selected diff together. The component only exists
-  // while Source Control is on screen, and actions pause the timer so their
-  // mutation response stays authoritative until the action completes.
+  const poll = useCallback(async () => {
+    const generation = pollGeneration.current;
+    const controller = new AbortController();
+    pollController.current = controller;
+    try {
+      const [nextStatus, nextDiff] = await Promise.all([
+        api.gitStatus(projectId, workspace, controller.signal),
+        canLoadDiff
+          ? api.gitDiff(projectId, chosenPath, chosenArea, workspace, controller.signal)
+          : Promise.resolve(undefined),
+      ]);
+      if (controller.signal.aborted || generation !== pollGeneration.current) return;
+      client.setQueryData(keys.gitStatus(projectId, targetKey), nextStatus);
+      if (nextDiff) client.setQueryData(diffKey, nextDiff);
+      setSelected((current) => selectionAfterStatus(current, nextStatus));
+    } catch {
+      // Keep the last known status. The next visible tick retries, while the
+      // capabilities query owns the persistent offline/unavailable state.
+    } finally {
+      if (pollController.current === controller) pollController.current = null;
+    }
+  }, [canLoadDiff, chosenArea, chosenPath, client, diffKey, projectId, targetKey, workspace]);
+
+  // Refresh status and the selected diff together while this document is visible.
+  // Schedule the next poll only after the current one finishes so a slow cloud wake
+  // is allowed to land instead of being aborted by the next three-second tick.
   useEffect(() => {
     if (!autoRefresh || pending) return;
-    const timer = window.setInterval(() => void refresh(), 3_000);
-    return () => window.clearInterval(timer);
-  }, [autoRefresh, pending, refresh]);
+    let stopped = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        try {
+          if (!stopped && document.visibilityState !== "hidden") await poll();
+        } finally {
+          if (!stopped) schedule();
+        }
+      }, 3_000);
+    };
+    schedule();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      pollController.current?.abort();
+    };
+  }, [autoRefresh, pending, poll]);
 
   // Several actions run one after another under one pending state, which is
   // how a bulk stage larger than the per-request path limit goes out.
@@ -118,6 +170,15 @@ export function SourceControl({
     if (!action) return;
     setPending(true);
     try {
+      // A poll may already be in flight when an action starts. Invalidate its
+      // generation as well as aborting it, so even a transport that finishes
+      // after abort cannot write stale data over the action response.
+      pollGeneration.current += 1;
+      pollController.current?.abort();
+      await Promise.all([
+        client.cancelQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
+        client.cancelQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+      ]);
       let result = await api.workspaceAction(projectId, action, workspace);
       for (const next of batch.slice(1)) {
         result = await api.workspaceAction(projectId, next, workspace);

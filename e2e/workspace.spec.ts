@@ -50,6 +50,27 @@ test("auto-refreshes Source Control and can pause it", async ({ page }) => {
   await expect.poll(() => statusRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
   await expect.poll(() => diffRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
 
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden");
+  // Let a request that was already dispatched before the visibility change settle.
+  await page.waitForTimeout(500);
+  const hidden = { status: statusRequests, diff: diffRequests };
+  await page.waitForTimeout(3_300);
+  expect(statusRequests).toBe(hidden.status);
+  expect(diffRequests).toBe(hidden.diff);
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, "visibilityState");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => statusRequests, { timeout: 4_500 }).toBeGreaterThan(hidden.status);
+  await expect.poll(() => diffRequests, { timeout: 4_500 }).toBeGreaterThan(hidden.diff);
+
   await autoRefresh.click();
   await expect(autoRefresh).toHaveAttribute("aria-pressed", "false");
   await page.waitForTimeout(200);
@@ -61,6 +82,35 @@ test("auto-refreshes Source Control and can pause it", async ({ page }) => {
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect.poll(() => statusRequests).toBe(paused.status + 1);
   await expect.poll(() => diffRequests).toBe(paused.diff + 1);
+});
+
+test("cancels an in-flight auto refresh before a source control action", async ({ page }) => {
+  let statusRequests = 0;
+  await signedIn(page);
+  await mockApi(page, {
+    statusDelay: (requestNumber) => (requestNumber === 2 ? 1_500 : 0),
+    onRequest: (request) => {
+      if (
+        request.method() === "GET" &&
+        new URL(request.url()).pathname.endsWith("/workspace/status")
+      ) {
+        statusRequests += 1;
+      }
+    },
+  });
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
+  await expect.poll(() => statusRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
+
+  const mainFile = page.getByRole("button", { name: /main\.txt/ });
+  await mainFile.hover();
+  await page.getByRole("button", { name: "Stage", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Staged 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Auto refresh" }).click();
+
+  // If the stale poll were allowed to land after the action, Staged would snap
+  // back to zero when its delayed pre-action response arrives.
+  await page.waitForTimeout(1_700);
+  await expect(page.getByRole("heading", { name: "Staged 1" })).toBeVisible();
 });
 
 test("keeps source control and terminal bound to the selected workspace", async ({ page }) => {
