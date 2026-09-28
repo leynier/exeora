@@ -119,12 +119,15 @@ impl Gateway {
 
     /// A gateway that is not there: an address nothing listens on, which is
     /// what a machine without a network sees.
+    ///
+    /// Not a port that was bound and let go: tests run beside each other,
+    /// and another test's gateway took such a port between the two, so a
+    /// machine that was meant to be offline got that test's refusals. Port 1
+    /// is below anything a system hands out on its own, and nothing listens
+    /// on it.
     pub fn gone() -> Self {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
-        let url = format!("http://{}", listener.local_addr().expect("address"));
-        drop(listener);
         Self {
-            url,
+            url: "http://127.0.0.1:1".to_owned(),
             received: Arc::new(Mutex::new(Vec::new())),
         }
     }
