@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "@exeora/design/tokens.css";
 
+/* The shared primitives live in the design package, outside the files Tailwind
+   scans on its own. The extension imports this stylesheet, so the path is
+   relative to it rather than to either app. */
+@source "../../../../packages/design/react";
+
 /* The same self-hosted faces the landing uses, served from its public/ at the
    shared origin. Both are variable, so one file per family covers every
    weight; the landing carries the latin-ext subsets for the copy that needs
@@ -200,5 +205,69 @@
   *::after {
     animation: none !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* A markdown file shown as a page, inside the Explorer. */
+@layer components {
+  .markdown-preview {
+    @apply text-body-md text-foreground-muted max-w-3xl;
+  }
+  .markdown-preview h1,
+  .markdown-preview h2,
+  .markdown-preview h3,
+  .markdown-preview h4 {
+    @apply text-foreground mt-6 mb-2 font-semibold first:mt-0;
+  }
+  .markdown-preview h1 {
+    @apply text-headline-md;
+  }
+  .markdown-preview h2 {
+    @apply text-headline-sm;
+  }
+  .markdown-preview h3 {
+    @apply text-title-lg;
+  }
+  .markdown-preview p,
+  .markdown-preview ul,
+  .markdown-preview ol,
+  .markdown-preview blockquote,
+  .markdown-preview pre,
+  .markdown-preview table {
+    @apply my-3;
+  }
+  .markdown-preview ul {
+    @apply list-disc pl-6;
+  }
+  .markdown-preview ol {
+    @apply list-decimal pl-6;
+  }
+  .markdown-preview a {
+    @apply text-brand underline;
+  }
+  .markdown-preview code {
+    @apply bg-surface-variant rounded px-1 py-0.5 font-mono text-xs;
+  }
+  .markdown-preview pre {
+    @apply bg-surface-variant overflow-x-auto rounded-lg p-3;
+  }
+  .markdown-preview pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown-preview blockquote {
+    @apply border-border border-l-2 pl-3;
+  }
+  .markdown-preview table {
+    @apply w-full border-collapse text-left;
+  }
+  .markdown-preview th,
+  .markdown-preview td {
+    @apply border-border-subtle border px-2 py-1;
+  }
+  .markdown-preview img {
+    @apply max-w-full;
+  }
+  .markdown-preview hr {
+    @apply border-border-subtle my-6;
   }
 }

@@ -15,8 +15,21 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /mobile/,
       use: {
         ...devices["Desktop Chrome"],
+        launchOptions: executablePath ? { executablePath } : undefined,
+      },
+    },
+    // A phone's width, which is also Chrome's side panel: the specs that
+    // carry "mobile" in their name run only here.
+    {
+      name: "mobile",
+      testMatch: /mobile/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
         launchOptions: executablePath ? { executablePath } : undefined,
       },
     },

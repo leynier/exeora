@@ -31,6 +31,14 @@ pub const CLOUD_FEATURE: &str = "cloud-v1";
 /// Announced by a CLI that can clone a project it does not have; shared with
 /// the gateway through `packages/protocol/src/repository.ts`.
 pub const PROJECT_CLONE_FEATURE: &str = "project-clone-v1";
+/// The Source Control tab of the dashboard: status, diff, stage, commit,
+/// branches, fetch, pull, push. Shared with the gateway through
+/// `packages/protocol/src/workspace-features.ts`, as are the two below.
+pub const SOURCE_CONTROL_V1_FEATURE: &str = "source-control-v1";
+/// History, aggregate diffs, assistant context, amend, stash, sync, discard all.
+pub const SOURCE_CONTROL_V2_FEATURE: &str = "source-control-v2";
+/// The Explorer and search: tree, file reads and edits, search and replace.
+pub const WORKSPACE_V2_FEATURE: &str = "workspace-v2";
 pub const WAKE_PORT: u16 = 8080;
 /// A clock gap past this is a paused machine, and the socket is dead.
 pub const RESUME_GAP_MS: u64 = 5_000;

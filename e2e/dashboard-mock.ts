@@ -273,7 +273,15 @@ export async function mockApi(
     if (path.endsWith("/workspace/capabilities")) {
       await route.fulfill({
         status: 200,
-        json: { online: true, sourceControl: true, terminal: true, workspaceRouting: true },
+        json: {
+          online: true,
+          sourceControl: true,
+          sourceControlV2: false,
+          files: false,
+          search: false,
+          terminal: true,
+          workspaceRouting: true,
+        },
       });
       return;
     }

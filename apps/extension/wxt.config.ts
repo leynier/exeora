@@ -53,7 +53,15 @@ export default defineConfig({
     resolve: {
       // The dashboard's files resolve their packages from apps/web. One copy of
       // each is what makes hooks and context work across the two trees.
-      dedupe: ["react", "react-dom", "react-router", "@tanstack/react-query"],
+      dedupe: [
+        "react",
+        "react-dom",
+        "react-router",
+        "@tanstack/react-query",
+        // CodeMirror refuses a second copy of its state or view packages.
+        "@codemirror/state",
+        "@codemirror/view",
+      ],
     },
   }),
   // `exeora-<version>-chrome.zip`, the file the release workflow submits.

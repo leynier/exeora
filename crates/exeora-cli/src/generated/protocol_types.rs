@@ -669,7 +669,7 @@ pub mod error {
 ///                      "const": true
 ///                    },
 ///                    "value": {
-///                      "anyOf": [
+///                      "oneOf": [
 ///                        {
 ///                          "type": "object",
 ///                          "required": [
@@ -1285,6 +1285,856 @@ pub mod error {
 ///                            "localPath": {
 ///                              "type": "string",
 ///                              "minLength": 1
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "commits",
+///                            "head",
+///                            "kind",
+///                            "nextCursor",
+///                            "upstream"
+///                          ],
+///                          "properties": {
+///                            "commits": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "authorEmail",
+///                                  "authorName",
+///                                  "authoredAt",
+///                                  "committedAt",
+///                                  "oid",
+///                                  "parents",
+///                                  "refs",
+///                                  "shortOid",
+///                                  "subject"
+///                                ],
+///                                "properties": {
+///                                  "authorEmail": {
+///                                    "type": "string"
+///                                  },
+///                                  "authorName": {
+///                                    "type": "string"
+///                                  },
+///                                  "authoredAt": {
+///                                    "type": "string"
+///                                  },
+///                                  "committedAt": {
+///                                    "type": "string"
+///                                  },
+///                                  "oid": {
+///                                    "type": "string"
+///                                  },
+///                                  "parents": {
+///                                    "type": "array",
+///                                    "items": {
+///                                      "type": "string"
+///                                    }
+///                                  },
+///                                  "refs": {
+///                                    "type": "array",
+///                                    "items": {
+///                                      "type": "string"
+///                                    }
+///                                  },
+///                                  "shortOid": {
+///                                    "type": "string"
+///                                  },
+///                                  "subject": {
+///                                    "type": "string"
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "head": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "log"
+///                            },
+///                            "nextCursor": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "upstream": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "files",
+///                            "kind",
+///                            "message",
+///                            "oid"
+///                          ],
+///                          "properties": {
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "additions",
+///                                  "binary",
+///                                  "deletions",
+///                                  "path",
+///                                  "status"
+///                                ],
+///                                "properties": {
+///                                  "additions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "binary": {
+///                                    "type": "boolean"
+///                                  },
+///                                  "deletions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "oldPath": {
+///                                    "type": "string"
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "status": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "A",
+///                                      "M",
+///                                      "D",
+///                                      "R",
+///                                      "C",
+///                                      "T"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "commit_detail"
+///                            },
+///                            "message": {
+///                              "type": "string"
+///                            },
+///                            "oid": {
+///                              "type": "string"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "binary",
+///                            "kind",
+///                            "oid",
+///                            "patch",
+///                            "path",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "binary": {
+///                              "type": "boolean"
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "commit_diff"
+///                            },
+///                            "oid": {
+///                              "type": "string"
+///                            },
+///                            "patch": {
+///                              "type": "string"
+///                            },
+///                            "path": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "area",
+///                            "kind",
+///                            "patch",
+///                            "truncated",
+///                            "untrackedOmitted"
+///                          ],
+///                          "properties": {
+///                            "area": {
+///                              "type": "string",
+///                              "enum": [
+///                                "working",
+///                                "staged"
+///                              ]
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "diff_all"
+///                            },
+///                            "patch": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            },
+///                            "untrackedOmitted": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "base",
+///                            "files",
+///                            "head",
+///                            "kind",
+///                            "mergeBase",
+///                            "patch",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "base": {
+///                              "type": "string"
+///                            },
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "additions",
+///                                  "binary",
+///                                  "deletions",
+///                                  "path",
+///                                  "status"
+///                                ],
+///                                "properties": {
+///                                  "additions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "binary": {
+///                                    "type": "boolean"
+///                                  },
+///                                  "deletions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "oldPath": {
+///                                    "type": "string"
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "status": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "A",
+///                                      "M",
+///                                      "D",
+///                                      "R",
+///                                      "C",
+///                                      "T"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "head": {
+///                              "type": "string"
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "range_diff"
+///                            },
+///                            "mergeBase": {
+///                              "type": "string"
+///                            },
+///                            "patch": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "branch",
+///                            "files",
+///                            "kind",
+///                            "patch",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "branch": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "additions",
+///                                  "binary",
+///                                  "deletions",
+///                                  "path",
+///                                  "status"
+///                                ],
+///                                "properties": {
+///                                  "additions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "binary": {
+///                                    "type": "boolean"
+///                                  },
+///                                  "deletions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "oldPath": {
+///                                    "type": "string"
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "status": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "A",
+///                                      "M",
+///                                      "D",
+///                                      "R",
+///                                      "C",
+///                                      "T"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "staged_context"
+///                            },
+///                            "patch": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "base",
+///                            "commits",
+///                            "files",
+///                            "head",
+///                            "kind",
+///                            "mergeBase",
+///                            "patch",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "base": {
+///                              "type": "string"
+///                            },
+///                            "commits": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "author",
+///                                  "body",
+///                                  "oid",
+///                                  "subject"
+///                                ],
+///                                "properties": {
+///                                  "author": {
+///                                    "type": "string"
+///                                  },
+///                                  "body": {
+///                                    "type": "string"
+///                                  },
+///                                  "oid": {
+///                                    "type": "string"
+///                                  },
+///                                  "subject": {
+///                                    "type": "string"
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              },
+///                              "maxItems": 40
+///                            },
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "additions",
+///                                  "binary",
+///                                  "deletions",
+///                                  "path",
+///                                  "status"
+///                                ],
+///                                "properties": {
+///                                  "additions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "binary": {
+///                                    "type": "boolean"
+///                                  },
+///                                  "deletions": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "oldPath": {
+///                                    "type": "string"
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "status": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "A",
+///                                      "M",
+///                                      "D",
+///                                      "R",
+///                                      "C",
+///                                      "T"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "head": {
+///                              "type": "string"
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "range_context"
+///                            },
+///                            "mergeBase": {
+///                              "type": "string"
+///                            },
+///                            "patch": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "entries",
+///                            "kind"
+///                          ],
+///                          "properties": {
+///                            "entries": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "createdAt",
+///                                  "index",
+///                                  "message"
+///                                ],
+///                                "properties": {
+///                                  "createdAt": {
+///                                    "type": "string"
+///                                  },
+///                                  "index": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "message": {
+///                                    "type": "string"
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "stash_list"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "entries",
+///                            "kind",
+///                            "path",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "entries": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "ignored",
+///                                  "name",
+///                                  "path",
+///                                  "type"
+///                                ],
+///                                "properties": {
+///                                  "ignored": {
+///                                    "type": "boolean"
+///                                  },
+///                                  "name": {
+///                                    "type": "string"
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "size": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "type": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "file",
+///                                      "directory",
+///                                      "symlink"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "tree"
+///                            },
+///                            "path": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "binary",
+///                            "content",
+///                            "encoding",
+///                            "kind",
+///                            "mime",
+///                            "path",
+///                            "size",
+///                            "token",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "binary": {
+///                              "type": "boolean"
+///                            },
+///                            "content": {
+///                              "type": "string"
+///                            },
+///                            "encoding": {
+///                              "type": "string",
+///                              "enum": [
+///                                "text",
+///                                "base64"
+///                              ]
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "file"
+///                            },
+///                            "mime": {
+///                              "anyOf": [
+///                                {
+///                                  "type": "string"
+///                                },
+///                                {
+///                                  "type": "null"
+///                                }
+///                              ]
+///                            },
+///                            "path": {
+///                              "type": "string"
+///                            },
+///                            "size": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
+///                            "token": {
+///                              "type": "string"
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "kind",
+///                            "path",
+///                            "status",
+///                            "token"
+///                          ],
+///                          "properties": {
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "file_write"
+///                            },
+///                            "path": {
+///                              "type": "string"
+///                            },
+///                            "status": {
+///                              "type": "string",
+///                              "enum": [
+///                                "written",
+///                                "conflict"
+///                              ]
+///                            },
+///                            "token": {
+///                              "type": "string"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "files",
+///                            "filesSearched",
+///                            "filesSkipped",
+///                            "kind",
+///                            "totalMatches",
+///                            "truncated"
+///                          ],
+///                          "properties": {
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "matches",
+///                                  "path",
+///                                  "token",
+///                                  "truncated"
+///                                ],
+///                                "properties": {
+///                                  "matches": {
+///                                    "type": "array",
+///                                    "items": {
+///                                      "type": "object",
+///                                      "required": [
+///                                        "column",
+///                                        "length",
+///                                        "line",
+///                                        "preview",
+///                                        "previewOffset"
+///                                      ],
+///                                      "properties": {
+///                                        "column": {
+///                                          "type": "integer",
+///                                          "maximum": 9007199254740991.0,
+///                                          "minimum": 1.0
+///                                        },
+///                                        "length": {
+///                                          "type": "integer",
+///                                          "maximum": 9007199254740991.0,
+///                                          "minimum": 0.0
+///                                        },
+///                                        "line": {
+///                                          "type": "integer",
+///                                          "maximum": 9007199254740991.0,
+///                                          "minimum": 1.0
+///                                        },
+///                                        "preview": {
+///                                          "type": "string"
+///                                        },
+///                                        "previewOffset": {
+///                                          "type": "integer",
+///                                          "maximum": 9007199254740991.0,
+///                                          "minimum": 0.0
+///                                        }
+///                                      },
+///                                      "additionalProperties": false
+///                                    }
+///                                  },
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "token": {
+///                                    "type": "string"
+///                                  },
+///                                  "truncated": {
+///                                    "type": "boolean"
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "filesSearched": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
+///                            "filesSkipped": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "search"
+///                            },
+///                            "totalMatches": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
+///                            "truncated": {
+///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "files",
+///                            "kind",
+///                            "replaced",
+///                            "skipped"
+///                          ],
+///                          "properties": {
+///                            "files": {
+///                              "type": "array",
+///                              "items": {
+///                                "type": "object",
+///                                "required": [
+///                                  "path",
+///                                  "replaced",
+///                                  "status"
+///                                ],
+///                                "properties": {
+///                                  "path": {
+///                                    "type": "string"
+///                                  },
+///                                  "replaced": {
+///                                    "type": "integer",
+///                                    "maximum": 9007199254740991.0,
+///                                    "minimum": 0.0
+///                                  },
+///                                  "status": {
+///                                    "type": "string",
+///                                    "enum": [
+///                                      "ok",
+///                                      "conflict",
+///                                      "missing",
+///                                      "skipped"
+///                                    ]
+///                                  }
+///                                },
+///                                "additionalProperties": false
+///                              }
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "replace"
+///                            },
+///                            "replaced": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
+///                            },
+///                            "skipped": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 0.0
 ///                            }
 ///                          },
 ///                          "additionalProperties": false
@@ -2485,6 +3335,632 @@ pub mod error {
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "limit"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "log"
+///                    },
+///                    "cursor": {
+///                      "type": "string",
+///                      "maxLength": 64
+///                    },
+///                    "limit": {
+///                      "default": 30,
+///                      "type": "integer",
+///                      "maximum": 100.0,
+///                      "minimum": 1.0
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "oid"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "commit_detail"
+///                    },
+///                    "oid": {
+///                      "type": "string",
+///                      "pattern": "^[0-9a-f]{4,64}$"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "oid"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "commit_diff"
+///                    },
+///                    "oid": {
+///                      "type": "string",
+///                      "pattern": "^[0-9a-f]{4,64}$"
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "area"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "diff_all"
+///                    },
+///                    "area": {
+///                      "type": "string",
+///                      "enum": [
+///                        "working",
+///                        "staged"
+///                      ]
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "base"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "range_diff"
+///                    },
+///                    "base": {
+///                      "type": "string",
+///                      "maxLength": 512,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "staged_context"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "base"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "range_context"
+///                    },
+///                    "base": {
+///                      "type": "string",
+///                      "maxLength": 512,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "stash_list"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "amend"
+///                    },
+///                    "message": {
+///                      "type": "string",
+///                      "maxLength": 10000,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "includeUntracked"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "stash_push"
+///                    },
+///                    "includeUntracked": {
+///                      "default": true,
+///                      "type": "boolean"
+///                    },
+///                    "message": {
+///                      "type": "string",
+///                      "maxLength": 1000,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "index"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "stash_pop"
+///                    },
+///                    "index": {
+///                      "default": 0,
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 0.0
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "index"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "stash_drop"
+///                    },
+///                    "index": {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 0.0
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "sync"
+///                    },
+///                    "remote": {
+///                      "type": "string",
+///                      "maxLength": 512,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "discard_all"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "path",
+///                    "showIgnored"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "tree"
+///                    },
+///                    "path": {
+///                      "default": ".",
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    },
+///                    "showIgnored": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "encoding",
+///                    "path"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_read"
+///                    },
+///                    "encoding": {
+///                      "default": "text",
+///                      "type": "string",
+///                      "enum": [
+///                        "text",
+///                        "base64"
+///                      ]
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "content",
+///                    "create",
+///                    "path"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_write"
+///                    },
+///                    "content": {
+///                      "type": "string",
+///                      "maxLength": 1000000
+///                    },
+///                    "create": {
+///                      "default": true,
+///                      "type": "boolean"
+///                    },
+///                    "expectedToken": {
+///                      "type": "string",
+///                      "maxLength": 64
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "path",
+///                    "type"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_create"
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    },
+///                    "type": {
+///                      "type": "string",
+///                      "enum": [
+///                        "file",
+///                        "directory"
+///                      ]
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "from",
+///                    "overwrite",
+///                    "to"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_rename"
+///                    },
+///                    "from": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    },
+///                    "overwrite": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "to": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "overwrite",
+///                    "paths",
+///                    "to"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_move"
+///                    },
+///                    "overwrite": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "paths": {
+///                      "type": "array",
+///                      "items": {
+///                        "type": "string",
+///                        "maxLength": 4096,
+///                        "minLength": 1
+///                      },
+///                      "maxItems": 100,
+///                      "minItems": 1
+///                    },
+///                    "to": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "paths"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_delete"
+///                    },
+///                    "paths": {
+///                      "type": "array",
+///                      "items": {
+///                        "type": "string",
+///                        "maxLength": 4096,
+///                        "minLength": 1
+///                      },
+///                      "maxItems": 100,
+///                      "minItems": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "path"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "file_duplicate"
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "caseSensitive",
+///                    "includeIgnored",
+///                    "maxPerFile",
+///                    "maxResults",
+///                    "query",
+///                    "regex",
+///                    "wholeWord"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "search"
+///                    },
+///                    "caseSensitive": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "exclude": {
+///                      "type": "string",
+///                      "maxLength": 1000
+///                    },
+///                    "include": {
+///                      "type": "string",
+///                      "maxLength": 1000
+///                    },
+///                    "includeIgnored": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "maxPerFile": {
+///                      "default": 50,
+///                      "type": "integer",
+///                      "maximum": 100.0,
+///                      "minimum": 1.0
+///                    },
+///                    "maxResults": {
+///                      "default": 500,
+///                      "type": "integer",
+///                      "maximum": 2000.0,
+///                      "minimum": 1.0
+///                    },
+///                    "path": {
+///                      "type": "string",
+///                      "maxLength": 4096,
+///                      "minLength": 1
+///                    },
+///                    "query": {
+///                      "type": "string",
+///                      "maxLength": 1000,
+///                      "minLength": 1
+///                    },
+///                    "regex": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "wholeWord": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "caseSensitive",
+///                    "preserveCase",
+///                    "query",
+///                    "regex",
+///                    "replacement",
+///                    "targets",
+///                    "wholeWord"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "replace"
+///                    },
+///                    "caseSensitive": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "preserveCase": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "query": {
+///                      "type": "string",
+///                      "maxLength": 1000,
+///                      "minLength": 1
+///                    },
+///                    "regex": {
+///                      "default": false,
+///                      "type": "boolean"
+///                    },
+///                    "replacement": {
+///                      "type": "string",
+///                      "maxLength": 10000
+///                    },
+///                    "targets": {
+///                      "type": "array",
+///                      "items": {
+///                        "type": "object",
+///                        "required": [
+///                          "path",
+///                          "token"
+///                        ],
+///                        "properties": {
+///                          "lines": {
+///                            "type": "array",
+///                            "items": {
+///                              "type": "integer",
+///                              "maximum": 9007199254740991.0,
+///                              "minimum": 1.0
+///                            },
+///                            "maxItems": 100
+///                          },
+///                          "path": {
+///                            "type": "string",
+///                            "maxLength": 4096,
+///                            "minLength": 1
+///                          },
+///                          "token": {
+///                            "type": "string",
+///                            "maxLength": 64
+///                          }
+///                        },
+///                        "additionalProperties": false
+///                      },
+///                      "maxItems": 500,
+///                      "minItems": 1
+///                    },
+///                    "wholeWord": {
+///                      "default": false,
+///                      "type": "boolean"
 ///                    }
 ///                  },
 ///                  "additionalProperties": false
@@ -4908,7 +6384,7 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                  "const": true
 ///                },
 ///                "value": {
-///                  "anyOf": [
+///                  "oneOf": [
 ///                    {
 ///                      "type": "object",
 ///                      "required": [
@@ -5524,6 +7000,856 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        "localPath": {
 ///                          "type": "string",
 ///                          "minLength": 1
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "commits",
+///                        "head",
+///                        "kind",
+///                        "nextCursor",
+///                        "upstream"
+///                      ],
+///                      "properties": {
+///                        "commits": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "authorEmail",
+///                              "authorName",
+///                              "authoredAt",
+///                              "committedAt",
+///                              "oid",
+///                              "parents",
+///                              "refs",
+///                              "shortOid",
+///                              "subject"
+///                            ],
+///                            "properties": {
+///                              "authorEmail": {
+///                                "type": "string"
+///                              },
+///                              "authorName": {
+///                                "type": "string"
+///                              },
+///                              "authoredAt": {
+///                                "type": "string"
+///                              },
+///                              "committedAt": {
+///                                "type": "string"
+///                              },
+///                              "oid": {
+///                                "type": "string"
+///                              },
+///                              "parents": {
+///                                "type": "array",
+///                                "items": {
+///                                  "type": "string"
+///                                }
+///                              },
+///                              "refs": {
+///                                "type": "array",
+///                                "items": {
+///                                  "type": "string"
+///                                }
+///                              },
+///                              "shortOid": {
+///                                "type": "string"
+///                              },
+///                              "subject": {
+///                                "type": "string"
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "head": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "log"
+///                        },
+///                        "nextCursor": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "upstream": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "files",
+///                        "kind",
+///                        "message",
+///                        "oid"
+///                      ],
+///                      "properties": {
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "additions",
+///                              "binary",
+///                              "deletions",
+///                              "path",
+///                              "status"
+///                            ],
+///                            "properties": {
+///                              "additions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "binary": {
+///                                "type": "boolean"
+///                              },
+///                              "deletions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "oldPath": {
+///                                "type": "string"
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "status": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "A",
+///                                  "M",
+///                                  "D",
+///                                  "R",
+///                                  "C",
+///                                  "T"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "commit_detail"
+///                        },
+///                        "message": {
+///                          "type": "string"
+///                        },
+///                        "oid": {
+///                          "type": "string"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "binary",
+///                        "kind",
+///                        "oid",
+///                        "patch",
+///                        "path",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "binary": {
+///                          "type": "boolean"
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "commit_diff"
+///                        },
+///                        "oid": {
+///                          "type": "string"
+///                        },
+///                        "patch": {
+///                          "type": "string"
+///                        },
+///                        "path": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "area",
+///                        "kind",
+///                        "patch",
+///                        "truncated",
+///                        "untrackedOmitted"
+///                      ],
+///                      "properties": {
+///                        "area": {
+///                          "type": "string",
+///                          "enum": [
+///                            "working",
+///                            "staged"
+///                          ]
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "diff_all"
+///                        },
+///                        "patch": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        },
+///                        "untrackedOmitted": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "base",
+///                        "files",
+///                        "head",
+///                        "kind",
+///                        "mergeBase",
+///                        "patch",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "base": {
+///                          "type": "string"
+///                        },
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "additions",
+///                              "binary",
+///                              "deletions",
+///                              "path",
+///                              "status"
+///                            ],
+///                            "properties": {
+///                              "additions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "binary": {
+///                                "type": "boolean"
+///                              },
+///                              "deletions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "oldPath": {
+///                                "type": "string"
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "status": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "A",
+///                                  "M",
+///                                  "D",
+///                                  "R",
+///                                  "C",
+///                                  "T"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "head": {
+///                          "type": "string"
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "range_diff"
+///                        },
+///                        "mergeBase": {
+///                          "type": "string"
+///                        },
+///                        "patch": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "branch",
+///                        "files",
+///                        "kind",
+///                        "patch",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "branch": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "additions",
+///                              "binary",
+///                              "deletions",
+///                              "path",
+///                              "status"
+///                            ],
+///                            "properties": {
+///                              "additions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "binary": {
+///                                "type": "boolean"
+///                              },
+///                              "deletions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "oldPath": {
+///                                "type": "string"
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "status": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "A",
+///                                  "M",
+///                                  "D",
+///                                  "R",
+///                                  "C",
+///                                  "T"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "staged_context"
+///                        },
+///                        "patch": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "base",
+///                        "commits",
+///                        "files",
+///                        "head",
+///                        "kind",
+///                        "mergeBase",
+///                        "patch",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "base": {
+///                          "type": "string"
+///                        },
+///                        "commits": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "author",
+///                              "body",
+///                              "oid",
+///                              "subject"
+///                            ],
+///                            "properties": {
+///                              "author": {
+///                                "type": "string"
+///                              },
+///                              "body": {
+///                                "type": "string"
+///                              },
+///                              "oid": {
+///                                "type": "string"
+///                              },
+///                              "subject": {
+///                                "type": "string"
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          },
+///                          "maxItems": 40
+///                        },
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "additions",
+///                              "binary",
+///                              "deletions",
+///                              "path",
+///                              "status"
+///                            ],
+///                            "properties": {
+///                              "additions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "binary": {
+///                                "type": "boolean"
+///                              },
+///                              "deletions": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "oldPath": {
+///                                "type": "string"
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "status": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "A",
+///                                  "M",
+///                                  "D",
+///                                  "R",
+///                                  "C",
+///                                  "T"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "head": {
+///                          "type": "string"
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "range_context"
+///                        },
+///                        "mergeBase": {
+///                          "type": "string"
+///                        },
+///                        "patch": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "entries",
+///                        "kind"
+///                      ],
+///                      "properties": {
+///                        "entries": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "createdAt",
+///                              "index",
+///                              "message"
+///                            ],
+///                            "properties": {
+///                              "createdAt": {
+///                                "type": "string"
+///                              },
+///                              "index": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "message": {
+///                                "type": "string"
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "stash_list"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "entries",
+///                        "kind",
+///                        "path",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "entries": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "ignored",
+///                              "name",
+///                              "path",
+///                              "type"
+///                            ],
+///                            "properties": {
+///                              "ignored": {
+///                                "type": "boolean"
+///                              },
+///                              "name": {
+///                                "type": "string"
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "size": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "type": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "file",
+///                                  "directory",
+///                                  "symlink"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "tree"
+///                        },
+///                        "path": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "binary",
+///                        "content",
+///                        "encoding",
+///                        "kind",
+///                        "mime",
+///                        "path",
+///                        "size",
+///                        "token",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "binary": {
+///                          "type": "boolean"
+///                        },
+///                        "content": {
+///                          "type": "string"
+///                        },
+///                        "encoding": {
+///                          "type": "string",
+///                          "enum": [
+///                            "text",
+///                            "base64"
+///                          ]
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "file"
+///                        },
+///                        "mime": {
+///                          "anyOf": [
+///                            {
+///                              "type": "string"
+///                            },
+///                            {
+///                              "type": "null"
+///                            }
+///                          ]
+///                        },
+///                        "path": {
+///                          "type": "string"
+///                        },
+///                        "size": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
+///                        "token": {
+///                          "type": "string"
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "kind",
+///                        "path",
+///                        "status",
+///                        "token"
+///                      ],
+///                      "properties": {
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "file_write"
+///                        },
+///                        "path": {
+///                          "type": "string"
+///                        },
+///                        "status": {
+///                          "type": "string",
+///                          "enum": [
+///                            "written",
+///                            "conflict"
+///                          ]
+///                        },
+///                        "token": {
+///                          "type": "string"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "files",
+///                        "filesSearched",
+///                        "filesSkipped",
+///                        "kind",
+///                        "totalMatches",
+///                        "truncated"
+///                      ],
+///                      "properties": {
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "matches",
+///                              "path",
+///                              "token",
+///                              "truncated"
+///                            ],
+///                            "properties": {
+///                              "matches": {
+///                                "type": "array",
+///                                "items": {
+///                                  "type": "object",
+///                                  "required": [
+///                                    "column",
+///                                    "length",
+///                                    "line",
+///                                    "preview",
+///                                    "previewOffset"
+///                                  ],
+///                                  "properties": {
+///                                    "column": {
+///                                      "type": "integer",
+///                                      "maximum": 9007199254740991.0,
+///                                      "minimum": 1.0
+///                                    },
+///                                    "length": {
+///                                      "type": "integer",
+///                                      "maximum": 9007199254740991.0,
+///                                      "minimum": 0.0
+///                                    },
+///                                    "line": {
+///                                      "type": "integer",
+///                                      "maximum": 9007199254740991.0,
+///                                      "minimum": 1.0
+///                                    },
+///                                    "preview": {
+///                                      "type": "string"
+///                                    },
+///                                    "previewOffset": {
+///                                      "type": "integer",
+///                                      "maximum": 9007199254740991.0,
+///                                      "minimum": 0.0
+///                                    }
+///                                  },
+///                                  "additionalProperties": false
+///                                }
+///                              },
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "token": {
+///                                "type": "string"
+///                              },
+///                              "truncated": {
+///                                "type": "boolean"
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "filesSearched": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
+///                        "filesSkipped": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "search"
+///                        },
+///                        "totalMatches": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
+///                        "truncated": {
+///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "files",
+///                        "kind",
+///                        "replaced",
+///                        "skipped"
+///                      ],
+///                      "properties": {
+///                        "files": {
+///                          "type": "array",
+///                          "items": {
+///                            "type": "object",
+///                            "required": [
+///                              "path",
+///                              "replaced",
+///                              "status"
+///                            ],
+///                            "properties": {
+///                              "path": {
+///                                "type": "string"
+///                              },
+///                              "replaced": {
+///                                "type": "integer",
+///                                "maximum": 9007199254740991.0,
+///                                "minimum": 0.0
+///                              },
+///                              "status": {
+///                                "type": "string",
+///                                "enum": [
+///                                  "ok",
+///                                  "conflict",
+///                                  "missing",
+///                                  "skipped"
+///                                ]
+///                              }
+///                            },
+///                            "additionalProperties": false
+///                          }
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "replace"
+///                        },
+///                        "replaced": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
+///                        },
+///                        "skipped": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 0.0
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
@@ -6458,7 +8784,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///
 /// ```json
 ///{
-///  "anyOf": [
+///  "oneOf": [
 ///    {
 ///      "type": "object",
 ///      "required": [
@@ -7077,6 +9403,856 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "commits",
+///        "head",
+///        "kind",
+///        "nextCursor",
+///        "upstream"
+///      ],
+///      "properties": {
+///        "commits": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "authorEmail",
+///              "authorName",
+///              "authoredAt",
+///              "committedAt",
+///              "oid",
+///              "parents",
+///              "refs",
+///              "shortOid",
+///              "subject"
+///            ],
+///            "properties": {
+///              "authorEmail": {
+///                "type": "string"
+///              },
+///              "authorName": {
+///                "type": "string"
+///              },
+///              "authoredAt": {
+///                "type": "string"
+///              },
+///              "committedAt": {
+///                "type": "string"
+///              },
+///              "oid": {
+///                "type": "string"
+///              },
+///              "parents": {
+///                "type": "array",
+///                "items": {
+///                  "type": "string"
+///                }
+///              },
+///              "refs": {
+///                "type": "array",
+///                "items": {
+///                  "type": "string"
+///                }
+///              },
+///              "shortOid": {
+///                "type": "string"
+///              },
+///              "subject": {
+///                "type": "string"
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "head": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "log"
+///        },
+///        "nextCursor": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "upstream": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "files",
+///        "kind",
+///        "message",
+///        "oid"
+///      ],
+///      "properties": {
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "additions",
+///              "binary",
+///              "deletions",
+///              "path",
+///              "status"
+///            ],
+///            "properties": {
+///              "additions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "binary": {
+///                "type": "boolean"
+///              },
+///              "deletions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "oldPath": {
+///                "type": "string"
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "A",
+///                  "M",
+///                  "D",
+///                  "R",
+///                  "C",
+///                  "T"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "commit_detail"
+///        },
+///        "message": {
+///          "type": "string"
+///        },
+///        "oid": {
+///          "type": "string"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "binary",
+///        "kind",
+///        "oid",
+///        "patch",
+///        "path",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "binary": {
+///          "type": "boolean"
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "commit_diff"
+///        },
+///        "oid": {
+///          "type": "string"
+///        },
+///        "patch": {
+///          "type": "string"
+///        },
+///        "path": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "area",
+///        "kind",
+///        "patch",
+///        "truncated",
+///        "untrackedOmitted"
+///      ],
+///      "properties": {
+///        "area": {
+///          "type": "string",
+///          "enum": [
+///            "working",
+///            "staged"
+///          ]
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "diff_all"
+///        },
+///        "patch": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        },
+///        "untrackedOmitted": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "base",
+///        "files",
+///        "head",
+///        "kind",
+///        "mergeBase",
+///        "patch",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "base": {
+///          "type": "string"
+///        },
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "additions",
+///              "binary",
+///              "deletions",
+///              "path",
+///              "status"
+///            ],
+///            "properties": {
+///              "additions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "binary": {
+///                "type": "boolean"
+///              },
+///              "deletions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "oldPath": {
+///                "type": "string"
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "A",
+///                  "M",
+///                  "D",
+///                  "R",
+///                  "C",
+///                  "T"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "head": {
+///          "type": "string"
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "range_diff"
+///        },
+///        "mergeBase": {
+///          "type": "string"
+///        },
+///        "patch": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "branch",
+///        "files",
+///        "kind",
+///        "patch",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "branch": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "additions",
+///              "binary",
+///              "deletions",
+///              "path",
+///              "status"
+///            ],
+///            "properties": {
+///              "additions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "binary": {
+///                "type": "boolean"
+///              },
+///              "deletions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "oldPath": {
+///                "type": "string"
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "A",
+///                  "M",
+///                  "D",
+///                  "R",
+///                  "C",
+///                  "T"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "staged_context"
+///        },
+///        "patch": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "base",
+///        "commits",
+///        "files",
+///        "head",
+///        "kind",
+///        "mergeBase",
+///        "patch",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "base": {
+///          "type": "string"
+///        },
+///        "commits": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "author",
+///              "body",
+///              "oid",
+///              "subject"
+///            ],
+///            "properties": {
+///              "author": {
+///                "type": "string"
+///              },
+///              "body": {
+///                "type": "string"
+///              },
+///              "oid": {
+///                "type": "string"
+///              },
+///              "subject": {
+///                "type": "string"
+///              }
+///            },
+///            "additionalProperties": false
+///          },
+///          "maxItems": 40
+///        },
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "additions",
+///              "binary",
+///              "deletions",
+///              "path",
+///              "status"
+///            ],
+///            "properties": {
+///              "additions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "binary": {
+///                "type": "boolean"
+///              },
+///              "deletions": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "oldPath": {
+///                "type": "string"
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "A",
+///                  "M",
+///                  "D",
+///                  "R",
+///                  "C",
+///                  "T"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "head": {
+///          "type": "string"
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "range_context"
+///        },
+///        "mergeBase": {
+///          "type": "string"
+///        },
+///        "patch": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "entries",
+///        "kind"
+///      ],
+///      "properties": {
+///        "entries": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "createdAt",
+///              "index",
+///              "message"
+///            ],
+///            "properties": {
+///              "createdAt": {
+///                "type": "string"
+///              },
+///              "index": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "message": {
+///                "type": "string"
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "stash_list"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "entries",
+///        "kind",
+///        "path",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "entries": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "ignored",
+///              "name",
+///              "path",
+///              "type"
+///            ],
+///            "properties": {
+///              "ignored": {
+///                "type": "boolean"
+///              },
+///              "name": {
+///                "type": "string"
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "size": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "type": {
+///                "type": "string",
+///                "enum": [
+///                  "file",
+///                  "directory",
+///                  "symlink"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "tree"
+///        },
+///        "path": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "binary",
+///        "content",
+///        "encoding",
+///        "kind",
+///        "mime",
+///        "path",
+///        "size",
+///        "token",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "binary": {
+///          "type": "boolean"
+///        },
+///        "content": {
+///          "type": "string"
+///        },
+///        "encoding": {
+///          "type": "string",
+///          "enum": [
+///            "text",
+///            "base64"
+///          ]
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "file"
+///        },
+///        "mime": {
+///          "anyOf": [
+///            {
+///              "type": "string"
+///            },
+///            {
+///              "type": "null"
+///            }
+///          ]
+///        },
+///        "path": {
+///          "type": "string"
+///        },
+///        "size": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        "token": {
+///          "type": "string"
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "kind",
+///        "path",
+///        "status",
+///        "token"
+///      ],
+///      "properties": {
+///        "kind": {
+///          "type": "string",
+///          "const": "file_write"
+///        },
+///        "path": {
+///          "type": "string"
+///        },
+///        "status": {
+///          "type": "string",
+///          "enum": [
+///            "written",
+///            "conflict"
+///          ]
+///        },
+///        "token": {
+///          "type": "string"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "files",
+///        "filesSearched",
+///        "filesSkipped",
+///        "kind",
+///        "totalMatches",
+///        "truncated"
+///      ],
+///      "properties": {
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "matches",
+///              "path",
+///              "token",
+///              "truncated"
+///            ],
+///            "properties": {
+///              "matches": {
+///                "type": "array",
+///                "items": {
+///                  "type": "object",
+///                  "required": [
+///                    "column",
+///                    "length",
+///                    "line",
+///                    "preview",
+///                    "previewOffset"
+///                  ],
+///                  "properties": {
+///                    "column": {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 1.0
+///                    },
+///                    "length": {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 0.0
+///                    },
+///                    "line": {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 1.0
+///                    },
+///                    "preview": {
+///                      "type": "string"
+///                    },
+///                    "previewOffset": {
+///                      "type": "integer",
+///                      "maximum": 9007199254740991.0,
+///                      "minimum": 0.0
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                }
+///              },
+///              "path": {
+///                "type": "string"
+///              },
+///              "token": {
+///                "type": "string"
+///              },
+///              "truncated": {
+///                "type": "boolean"
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "filesSearched": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        "filesSkipped": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "search"
+///        },
+///        "totalMatches": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        "truncated": {
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "files",
+///        "kind",
+///        "replaced",
+///        "skipped"
+///      ],
+///      "properties": {
+///        "files": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "path",
+///              "replaced",
+///              "status"
+///            ],
+///            "properties": {
+///              "path": {
+///                "type": "string"
+///              },
+///              "replaced": {
+///                "type": "integer",
+///                "maximum": 9007199254740991.0,
+///                "minimum": 0.0
+///              },
+///              "status": {
+///                "type": "string",
+///                "enum": [
+///                  "ok",
+///                  "conflict",
+///                  "missing",
+///                  "skipped"
+///                ]
+///              }
+///            },
+///            "additionalProperties": false
+///          }
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "replace"
+///        },
+///        "replaced": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        },
+///        "skipped": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -7132,6 +10308,108 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         branch: ::std::option::Option<::std::string::String>,
         #[serde(rename = "localPath")]
         local_path: ExeoraProtocolTypesExecutorMessageResultVariant0ValueLocalPath,
+    },
+    #[serde(rename = "log")]
+    Log {
+        commits: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueCommitsItem>,
+        head: ::std::option::Option<::std::string::String>,
+        #[serde(rename = "nextCursor")]
+        next_cursor: ::std::option::Option<::std::string::String>,
+        upstream: ::std::option::Option<::std::string::String>,
+    },
+    #[serde(rename = "commit_detail")]
+    CommitDetail {
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        message: ::std::string::String,
+        oid: ::std::string::String,
+    },
+    #[serde(rename = "commit_diff")]
+    CommitDiff {
+        binary: bool,
+        oid: ::std::string::String,
+        patch: ::std::string::String,
+        path: ::std::option::Option<::std::string::String>,
+        truncated: bool,
+    },
+    #[serde(rename = "diff_all")]
+    DiffAll {
+        area: ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea,
+        patch: ::std::string::String,
+        truncated: bool,
+        #[serde(rename = "untrackedOmitted")]
+        untracked_omitted: bool,
+    },
+    #[serde(rename = "range_diff")]
+    RangeDiff {
+        base: ::std::string::String,
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        head: ::std::string::String,
+        #[serde(rename = "mergeBase")]
+        merge_base: ::std::string::String,
+        patch: ::std::string::String,
+        truncated: bool,
+    },
+    #[serde(rename = "staged_context")]
+    StagedContext {
+        branch: ::std::option::Option<::std::string::String>,
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        patch: ::std::string::String,
+        truncated: bool,
+    },
+    #[serde(rename = "range_context")]
+    RangeContext {
+        base: ::std::string::String,
+        commits: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueCommitsItem>,
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        head: ::std::string::String,
+        #[serde(rename = "mergeBase")]
+        merge_base: ::std::string::String,
+        patch: ::std::string::String,
+        truncated: bool,
+    },
+    #[serde(rename = "stash_list")]
+    StashList {
+        entries: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItem>,
+    },
+    #[serde(rename = "tree")]
+    Tree {
+        entries: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItem>,
+        path: ::std::string::String,
+        truncated: bool,
+    },
+    #[serde(rename = "file")]
+    File {
+        binary: bool,
+        content: ::std::string::String,
+        encoding: ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding,
+        mime: ::std::option::Option<::std::string::String>,
+        path: ::std::string::String,
+        size: i64,
+        token: ::std::string::String,
+        truncated: bool,
+    },
+    #[serde(rename = "file_write")]
+    FileWrite {
+        path: ::std::string::String,
+        status: ExeoraProtocolTypesExecutorMessageResultVariant0ValueStatus,
+        token: ::std::string::String,
+    },
+    #[serde(rename = "search")]
+    Search {
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        #[serde(rename = "filesSearched")]
+        files_searched: i64,
+        #[serde(rename = "filesSkipped")]
+        files_skipped: i64,
+        #[serde(rename = "totalMatches")]
+        total_matches: i64,
+        truncated: bool,
+    },
+    #[serde(rename = "replace")]
+    Replace {
+        files: ::std::vec::Vec<ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem>,
+        replaced: i64,
+        skipped: i64,
     },
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueArea`
@@ -7276,6 +10554,279 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueBranchesItem {
     #[serde(rename = "shortOid")]
     pub short_oid: ::std::string::String,
     pub upstream: ::std::option::Option<::std::string::String>,
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueCommitsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "authorEmail",
+///    "authorName",
+///    "authoredAt",
+///    "committedAt",
+///    "oid",
+///    "parents",
+///    "refs",
+///    "shortOid",
+///    "subject"
+///  ],
+///  "properties": {
+///    "authorEmail": {
+///      "type": "string"
+///    },
+///    "authorName": {
+///      "type": "string"
+///    },
+///    "authoredAt": {
+///      "type": "string"
+///    },
+///    "committedAt": {
+///      "type": "string"
+///    },
+///    "oid": {
+///      "type": "string"
+///    },
+///    "parents": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
+///    },
+///    "refs": {
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      }
+///    },
+///    "shortOid": {
+///      "type": "string"
+///    },
+///    "subject": {
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueCommitsItem {
+    #[serde(rename = "authorEmail")]
+    pub author_email: ::std::string::String,
+    #[serde(rename = "authorName")]
+    pub author_name: ::std::string::String,
+    #[serde(rename = "authoredAt")]
+    pub authored_at: ::std::string::String,
+    #[serde(rename = "committedAt")]
+    pub committed_at: ::std::string::String,
+    pub oid: ::std::string::String,
+    pub parents: ::std::vec::Vec<::std::string::String>,
+    pub refs: ::std::vec::Vec<::std::string::String>,
+    #[serde(rename = "shortOid")]
+    pub short_oid: ::std::string::String,
+    pub subject: ::std::string::String,
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "text",
+///    "base64"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding {
+    #[serde(rename = "text")]
+    Text,
+    #[serde(rename = "base64")]
+    Base64,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Text => f.write_str("text"),
+            Self::Base64 => f.write_str("base64"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "text" => Ok(Self::Text),
+            "base64" => Ok(Self::Base64),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEncoding
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "createdAt",
+///    "index",
+///    "message"
+///  ],
+///  "properties": {
+///    "createdAt": {
+///      "type": "string"
+///    },
+///    "index": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 0.0
+///    },
+///    "message": {
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItem {
+    #[serde(rename = "createdAt")]
+    pub created_at: ::std::string::String,
+    pub index: i64,
+    pub message: ::std::string::String,
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "file",
+///    "directory",
+///    "symlink"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType {
+    #[serde(rename = "file")]
+    File,
+    #[serde(rename = "directory")]
+    Directory,
+    #[serde(rename = "symlink")]
+    Symlink,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::File => f.write_str("file"),
+            Self::Directory => f.write_str("directory"),
+            Self::Symlink => f.write_str("symlink"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "file" => Ok(Self::File),
+            "directory" => Ok(Self::Directory),
+            "symlink" => Ok(Self::Symlink),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueEntriesItemType
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItem`
 ///
@@ -7519,6 +11070,59 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemMatchesItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "column",
+///    "length",
+///    "line",
+///    "preview",
+///    "previewOffset"
+///  ],
+///  "properties": {
+///    "column": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 1.0
+///    },
+///    "length": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 0.0
+///    },
+///    "line": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 1.0
+///    },
+///    "preview": {
+///      "type": "string"
+///    },
+///    "previewOffset": {
+///      "type": "integer",
+///      "maximum": 9007199254740991.0,
+///      "minimum": 0.0
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemMatchesItem {
+    pub column: ::std::num::NonZeroU64,
+    pub length: i64,
+    pub line: ::std::num::NonZeroU64,
+    pub preview: ::std::string::String,
+    #[serde(rename = "previewOffset")]
+    pub preview_offset: i64,
+}
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemOriginalPath`
 ///
 /// <details><summary>JSON schema</summary>
@@ -7692,6 +11296,98 @@ impl<'de> ::serde::Deserialize<'de>
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "A",
+///    "M",
+///    "D",
+///    "R",
+///    "C",
+///    "T"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus {
+    A,
+    M,
+    D,
+    R,
+    C,
+    T,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::A => f.write_str("A"),
+            Self::M => f.write_str("M"),
+            Self::D => f.write_str("D"),
+            Self::R => f.write_str("R"),
+            Self::C => f.write_str("C"),
+            Self::T => f.write_str("T"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "A" => Ok(Self::A),
+            "M" => Ok(Self::M),
+            "D" => Ok(Self::D),
+            "R" => Ok(Self::R),
+            "C" => Ok(Self::C),
+            "T" => Ok(Self::T),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemStatus
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueFilesItemWorktree`
@@ -12097,6 +15793,632 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///                }
 ///              },
 ///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "limit"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "log"
+///                },
+///                "cursor": {
+///                  "type": "string",
+///                  "maxLength": 64
+///                },
+///                "limit": {
+///                  "default": 30,
+///                  "type": "integer",
+///                  "maximum": 100.0,
+///                  "minimum": 1.0
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "oid"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "commit_detail"
+///                },
+///                "oid": {
+///                  "type": "string",
+///                  "pattern": "^[0-9a-f]{4,64}$"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "oid"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "commit_diff"
+///                },
+///                "oid": {
+///                  "type": "string",
+///                  "pattern": "^[0-9a-f]{4,64}$"
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "area"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "diff_all"
+///                },
+///                "area": {
+///                  "type": "string",
+///                  "enum": [
+///                    "working",
+///                    "staged"
+///                  ]
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "base"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "range_diff"
+///                },
+///                "base": {
+///                  "type": "string",
+///                  "maxLength": 512,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "staged_context"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "base"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "range_context"
+///                },
+///                "base": {
+///                  "type": "string",
+///                  "maxLength": 512,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "stash_list"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "amend"
+///                },
+///                "message": {
+///                  "type": "string",
+///                  "maxLength": 10000,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "includeUntracked"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "stash_push"
+///                },
+///                "includeUntracked": {
+///                  "default": true,
+///                  "type": "boolean"
+///                },
+///                "message": {
+///                  "type": "string",
+///                  "maxLength": 1000,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "index"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "stash_pop"
+///                },
+///                "index": {
+///                  "default": 0,
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": 0.0
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "index"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "stash_drop"
+///                },
+///                "index": {
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": 0.0
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "sync"
+///                },
+///                "remote": {
+///                  "type": "string",
+///                  "maxLength": 512,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "discard_all"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "path",
+///                "showIgnored"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "tree"
+///                },
+///                "path": {
+///                  "default": ".",
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                },
+///                "showIgnored": {
+///                  "default": false,
+///                  "type": "boolean"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "encoding",
+///                "path"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_read"
+///                },
+///                "encoding": {
+///                  "default": "text",
+///                  "type": "string",
+///                  "enum": [
+///                    "text",
+///                    "base64"
+///                  ]
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "content",
+///                "create",
+///                "path"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_write"
+///                },
+///                "content": {
+///                  "type": "string",
+///                  "maxLength": 1000000
+///                },
+///                "create": {
+///                  "default": true,
+///                  "type": "boolean"
+///                },
+///                "expectedToken": {
+///                  "type": "string",
+///                  "maxLength": 64
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "path",
+///                "type"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_create"
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                },
+///                "type": {
+///                  "type": "string",
+///                  "enum": [
+///                    "file",
+///                    "directory"
+///                  ]
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "from",
+///                "overwrite",
+///                "to"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_rename"
+///                },
+///                "from": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                },
+///                "overwrite": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "to": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "overwrite",
+///                "paths",
+///                "to"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_move"
+///                },
+///                "overwrite": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "paths": {
+///                  "type": "array",
+///                  "items": {
+///                    "type": "string",
+///                    "maxLength": 4096,
+///                    "minLength": 1
+///                  },
+///                  "maxItems": 100,
+///                  "minItems": 1
+///                },
+///                "to": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "paths"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_delete"
+///                },
+///                "paths": {
+///                  "type": "array",
+///                  "items": {
+///                    "type": "string",
+///                    "maxLength": 4096,
+///                    "minLength": 1
+///                  },
+///                  "maxItems": 100,
+///                  "minItems": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "path"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "file_duplicate"
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "caseSensitive",
+///                "includeIgnored",
+///                "maxPerFile",
+///                "maxResults",
+///                "query",
+///                "regex",
+///                "wholeWord"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "search"
+///                },
+///                "caseSensitive": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "exclude": {
+///                  "type": "string",
+///                  "maxLength": 1000
+///                },
+///                "include": {
+///                  "type": "string",
+///                  "maxLength": 1000
+///                },
+///                "includeIgnored": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "maxPerFile": {
+///                  "default": 50,
+///                  "type": "integer",
+///                  "maximum": 100.0,
+///                  "minimum": 1.0
+///                },
+///                "maxResults": {
+///                  "default": 500,
+///                  "type": "integer",
+///                  "maximum": 2000.0,
+///                  "minimum": 1.0
+///                },
+///                "path": {
+///                  "type": "string",
+///                  "maxLength": 4096,
+///                  "minLength": 1
+///                },
+///                "query": {
+///                  "type": "string",
+///                  "maxLength": 1000,
+///                  "minLength": 1
+///                },
+///                "regex": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "wholeWord": {
+///                  "default": false,
+///                  "type": "boolean"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
+///                "action",
+///                "caseSensitive",
+///                "preserveCase",
+///                "query",
+///                "regex",
+///                "replacement",
+///                "targets",
+///                "wholeWord"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "replace"
+///                },
+///                "caseSensitive": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "preserveCase": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "query": {
+///                  "type": "string",
+///                  "maxLength": 1000,
+///                  "minLength": 1
+///                },
+///                "regex": {
+///                  "default": false,
+///                  "type": "boolean"
+///                },
+///                "replacement": {
+///                  "type": "string",
+///                  "maxLength": 10000
+///                },
+///                "targets": {
+///                  "type": "array",
+///                  "items": {
+///                    "type": "object",
+///                    "required": [
+///                      "path",
+///                      "token"
+///                    ],
+///                    "properties": {
+///                      "lines": {
+///                        "type": "array",
+///                        "items": {
+///                          "type": "integer",
+///                          "maximum": 9007199254740991.0,
+///                          "minimum": 1.0
+///                        },
+///                        "maxItems": 100
+///                      },
+///                      "path": {
+///                        "type": "string",
+///                        "maxLength": 4096,
+///                        "minLength": 1
+///                      },
+///                      "token": {
+///                        "type": "string",
+///                        "maxLength": 64
+///                      }
+///                    },
+///                    "additionalProperties": false
+///                  },
+///                  "maxItems": 500,
+///                  "minItems": 1
+///                },
+///                "wholeWord": {
+///                  "default": false,
+///                  "type": "boolean"
+///                }
+///              },
+///              "additionalProperties": false
 ///            }
 ///          ]
 ///        },
@@ -13044,6 +17366,632 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///        }
 ///      },
 ///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "limit"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "log"
+///        },
+///        "cursor": {
+///          "type": "string",
+///          "maxLength": 64
+///        },
+///        "limit": {
+///          "default": 30,
+///          "type": "integer",
+///          "maximum": 100.0,
+///          "minimum": 1.0
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "oid"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "commit_detail"
+///        },
+///        "oid": {
+///          "type": "string",
+///          "pattern": "^[0-9a-f]{4,64}$"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "oid"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "commit_diff"
+///        },
+///        "oid": {
+///          "type": "string",
+///          "pattern": "^[0-9a-f]{4,64}$"
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "area"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "diff_all"
+///        },
+///        "area": {
+///          "type": "string",
+///          "enum": [
+///            "working",
+///            "staged"
+///          ]
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "base"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "range_diff"
+///        },
+///        "base": {
+///          "type": "string",
+///          "maxLength": 512,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "staged_context"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "base"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "range_context"
+///        },
+///        "base": {
+///          "type": "string",
+///          "maxLength": 512,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "stash_list"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "amend"
+///        },
+///        "message": {
+///          "type": "string",
+///          "maxLength": 10000,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "includeUntracked"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "stash_push"
+///        },
+///        "includeUntracked": {
+///          "default": true,
+///          "type": "boolean"
+///        },
+///        "message": {
+///          "type": "string",
+///          "maxLength": 1000,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "index"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "stash_pop"
+///        },
+///        "index": {
+///          "default": 0,
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "index"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "stash_drop"
+///        },
+///        "index": {
+///          "type": "integer",
+///          "maximum": 9007199254740991.0,
+///          "minimum": 0.0
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "sync"
+///        },
+///        "remote": {
+///          "type": "string",
+///          "maxLength": 512,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "discard_all"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "path",
+///        "showIgnored"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "tree"
+///        },
+///        "path": {
+///          "default": ".",
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        "showIgnored": {
+///          "default": false,
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "encoding",
+///        "path"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_read"
+///        },
+///        "encoding": {
+///          "default": "text",
+///          "type": "string",
+///          "enum": [
+///            "text",
+///            "base64"
+///          ]
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "content",
+///        "create",
+///        "path"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_write"
+///        },
+///        "content": {
+///          "type": "string",
+///          "maxLength": 1000000
+///        },
+///        "create": {
+///          "default": true,
+///          "type": "boolean"
+///        },
+///        "expectedToken": {
+///          "type": "string",
+///          "maxLength": 64
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "path",
+///        "type"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_create"
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        "type": {
+///          "type": "string",
+///          "enum": [
+///            "file",
+///            "directory"
+///          ]
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "from",
+///        "overwrite",
+///        "to"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_rename"
+///        },
+///        "from": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        "overwrite": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "to": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "overwrite",
+///        "paths",
+///        "to"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_move"
+///        },
+///        "overwrite": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "paths": {
+///          "type": "array",
+///          "items": {
+///            "type": "string",
+///            "maxLength": 4096,
+///            "minLength": 1
+///          },
+///          "maxItems": 100,
+///          "minItems": 1
+///        },
+///        "to": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "paths"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_delete"
+///        },
+///        "paths": {
+///          "type": "array",
+///          "items": {
+///            "type": "string",
+///            "maxLength": 4096,
+///            "minLength": 1
+///          },
+///          "maxItems": 100,
+///          "minItems": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "path"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "file_duplicate"
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "caseSensitive",
+///        "includeIgnored",
+///        "maxPerFile",
+///        "maxResults",
+///        "query",
+///        "regex",
+///        "wholeWord"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "search"
+///        },
+///        "caseSensitive": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "exclude": {
+///          "type": "string",
+///          "maxLength": 1000
+///        },
+///        "include": {
+///          "type": "string",
+///          "maxLength": 1000
+///        },
+///        "includeIgnored": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "maxPerFile": {
+///          "default": 50,
+///          "type": "integer",
+///          "maximum": 100.0,
+///          "minimum": 1.0
+///        },
+///        "maxResults": {
+///          "default": 500,
+///          "type": "integer",
+///          "maximum": 2000.0,
+///          "minimum": 1.0
+///        },
+///        "path": {
+///          "type": "string",
+///          "maxLength": 4096,
+///          "minLength": 1
+///        },
+///        "query": {
+///          "type": "string",
+///          "maxLength": 1000,
+///          "minLength": 1
+///        },
+///        "regex": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "wholeWord": {
+///          "default": false,
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "action",
+///        "caseSensitive",
+///        "preserveCase",
+///        "query",
+///        "regex",
+///        "replacement",
+///        "targets",
+///        "wholeWord"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "replace"
+///        },
+///        "caseSensitive": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "preserveCase": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "query": {
+///          "type": "string",
+///          "maxLength": 1000,
+///          "minLength": 1
+///        },
+///        "regex": {
+///          "default": false,
+///          "type": "boolean"
+///        },
+///        "replacement": {
+///          "type": "string",
+///          "maxLength": 10000
+///        },
+///        "targets": {
+///          "type": "array",
+///          "items": {
+///            "type": "object",
+///            "required": [
+///              "path",
+///              "token"
+///            ],
+///            "properties": {
+///              "lines": {
+///                "type": "array",
+///                "items": {
+///                  "type": "integer",
+///                  "maximum": 9007199254740991.0,
+///                  "minimum": 1.0
+///                },
+///                "maxItems": 100
+///              },
+///              "path": {
+///                "type": "string",
+///                "maxLength": 4096,
+///                "minLength": 1
+///              },
+///              "token": {
+///                "type": "string",
+///                "maxLength": 64
+///              }
+///            },
+///            "additionalProperties": false
+///          },
+///          "maxItems": 500,
+///          "minItems": 1
+///        },
+///        "wholeWord": {
+///          "default": false,
+///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
 ///    }
 ///  ]
 ///}
@@ -13141,6 +18089,144 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
     ProjectPrepare {
         repository: ExeoraProtocolTypesRelayMessageActionRepository,
     },
+    #[serde(rename = "log")]
+    Log {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        cursor: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionCursor>,
+        limit: ::std::num::NonZeroU64,
+    },
+    #[serde(rename = "commit_detail")]
+    CommitDetail {
+        oid: ExeoraProtocolTypesRelayMessageActionOid,
+    },
+    #[serde(rename = "commit_diff")]
+    CommitDiff {
+        oid: ExeoraProtocolTypesRelayMessageActionOid,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        path: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionPath>,
+    },
+    #[serde(rename = "diff_all")]
+    DiffAll {
+        area: ExeoraProtocolTypesRelayMessageActionArea,
+    },
+    #[serde(rename = "range_diff")]
+    RangeDiff {
+        base: ExeoraProtocolTypesRelayMessageActionBase,
+    },
+    #[serde(rename = "staged_context")]
+    StagedContext,
+    #[serde(rename = "range_context")]
+    RangeContext {
+        base: ExeoraProtocolTypesRelayMessageActionBase,
+    },
+    #[serde(rename = "stash_list")]
+    StashList,
+    #[serde(rename = "amend")]
+    Amend {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        message: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionMessage>,
+    },
+    #[serde(rename = "stash_push")]
+    StashPush {
+        #[serde(rename = "includeUntracked")]
+        include_untracked: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        message: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionMessage>,
+    },
+    #[serde(rename = "stash_pop")]
+    StashPop { index: i64 },
+    #[serde(rename = "stash_drop")]
+    StashDrop { index: i64 },
+    #[serde(rename = "sync")]
+    Sync {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        remote: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionRemote>,
+    },
+    #[serde(rename = "discard_all")]
+    DiscardAll,
+    #[serde(rename = "tree")]
+    Tree {
+        path: ExeoraProtocolTypesRelayMessageActionPath,
+        #[serde(rename = "showIgnored")]
+        show_ignored: bool,
+    },
+    #[serde(rename = "file_read")]
+    FileRead {
+        encoding: ExeoraProtocolTypesRelayMessageActionEncoding,
+        path: ExeoraProtocolTypesRelayMessageActionPath,
+    },
+    #[serde(rename = "file_write")]
+    FileWrite {
+        content: ExeoraProtocolTypesRelayMessageActionContent,
+        create: bool,
+        #[serde(
+            rename = "expectedToken",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        expected_token: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionExpectedToken>,
+        path: ExeoraProtocolTypesRelayMessageActionPath,
+    },
+    #[serde(rename = "file_create")]
+    FileCreate {
+        path: ExeoraProtocolTypesRelayMessageActionPath,
+        #[serde(rename = "type")]
+        type_: ExeoraProtocolTypesRelayMessageActionType,
+    },
+    #[serde(rename = "file_rename")]
+    FileRename {
+        from: ExeoraProtocolTypesRelayMessageActionFrom,
+        overwrite: bool,
+        to: ExeoraProtocolTypesRelayMessageActionTo,
+    },
+    #[serde(rename = "file_move")]
+    FileMove {
+        overwrite: bool,
+        paths: ::std::vec::Vec<ExeoraProtocolTypesRelayMessageActionPathsItem>,
+        to: ExeoraProtocolTypesRelayMessageActionTo,
+    },
+    #[serde(rename = "file_delete")]
+    FileDelete {
+        paths: ::std::vec::Vec<ExeoraProtocolTypesRelayMessageActionPathsItem>,
+    },
+    #[serde(rename = "file_duplicate")]
+    FileDuplicate {
+        path: ExeoraProtocolTypesRelayMessageActionPath,
+    },
+    #[serde(rename = "search")]
+    Search {
+        #[serde(rename = "caseSensitive")]
+        case_sensitive: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        exclude: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionExclude>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        include: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionInclude>,
+        #[serde(rename = "includeIgnored")]
+        include_ignored: bool,
+        #[serde(rename = "maxPerFile")]
+        max_per_file: ::std::num::NonZeroU64,
+        #[serde(rename = "maxResults")]
+        max_results: ::std::num::NonZeroU64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        path: ::std::option::Option<ExeoraProtocolTypesRelayMessageActionPath>,
+        query: ExeoraProtocolTypesRelayMessageActionQuery,
+        regex: bool,
+        #[serde(rename = "wholeWord")]
+        whole_word: bool,
+    },
+    #[serde(rename = "replace")]
+    Replace {
+        #[serde(rename = "caseSensitive")]
+        case_sensitive: bool,
+        #[serde(rename = "preserveCase")]
+        preserve_case: bool,
+        query: ExeoraProtocolTypesRelayMessageActionQuery,
+        regex: bool,
+        replacement: ExeoraProtocolTypesRelayMessageActionReplacement,
+        targets: ::std::vec::Vec<ExeoraProtocolTypesRelayMessageActionTargetsItem>,
+        #[serde(rename = "wholeWord")]
+        whole_word: bool,
+    },
 }
 ///`ExeoraProtocolTypesRelayMessageActionArea`
 ///
@@ -13212,6 +18298,78 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
         value: ::std::string::String,
     ) -> ::std::result::Result<Self, self::error::ConversionError> {
         value.parse()
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionBase`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 512,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionBase(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionBase {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionBase> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionBase) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionBase {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 512usize {
+            return Err("longer than 512 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionBase {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionBase {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionBase {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
     }
 }
 ///`ExeoraProtocolTypesRelayMessageActionBranch`
@@ -13290,6 +18448,378 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionBra
             })
     }
 }
+///`ExeoraProtocolTypesRelayMessageActionContent`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 1000000
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionContent(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionContent {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionContent> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionContent) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionContent {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1000000usize {
+            return Err("longer than 1000000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionContent {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionContent
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionContent
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionContent {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionCursor`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionCursor(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionCursor {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionCursor> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionCursor) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionCursor {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionCursor {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionCursor
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionCursor
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionCursor {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionEncoding`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "default": "text",
+///  "type": "string",
+///  "enum": [
+///    "text",
+///    "base64"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesRelayMessageActionEncoding {
+    #[serde(rename = "text")]
+    Text,
+    #[serde(rename = "base64")]
+    Base64,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageActionEncoding {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Text => f.write_str("text"),
+            Self::Base64 => f.write_str("base64"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionEncoding {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "text" => Ok(Self::Text),
+            "base64" => Ok(Self::Base64),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionEncoding {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionEncoding
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionEncoding
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::default::Default for ExeoraProtocolTypesRelayMessageActionEncoding {
+    fn default() -> Self {
+        ExeoraProtocolTypesRelayMessageActionEncoding::Text
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionExclude`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 1000
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionExclude(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionExclude {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionExclude> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionExclude) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionExclude {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1000usize {
+            return Err("longer than 1000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionExclude {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionExclude
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionExclude
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionExclude {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionExpectedToken`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionExpectedToken(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionExpectedToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionExpectedToken>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionExpectedToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionExpectedToken {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionExpectedToken {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionExpectedToken
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionExpectedToken
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionExpectedToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ExeoraProtocolTypesRelayMessageActionFrom`
 ///
 /// <details><summary>JSON schema</summary>
@@ -13351,6 +18881,78 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionFrom {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionInclude`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 1000
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionInclude(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionInclude {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionInclude> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionInclude) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionInclude {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1000usize {
+            return Err("longer than 1000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionInclude {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionInclude
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionInclude
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionInclude {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13499,6 +19101,76 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelay
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionName {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionOid`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "pattern": "^[0-9a-f]{4,64}$"
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionOid(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionOid {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionOid> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionOid) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionOid {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+            ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{4,64}$").unwrap());
+        if PATTERN.find(value).is_none() {
+            return Err("doesn't match pattern \"^[0-9a-f]{4,64}$\"".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionOid {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionOid {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionOid {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionOid {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -13660,6 +19332,80 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionPat
             })
     }
 }
+///`ExeoraProtocolTypesRelayMessageActionQuery`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 1000,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionQuery(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionQuery {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionQuery> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionQuery) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionQuery {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 1000usize {
+            return Err("longer than 1000 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionQuery {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionQuery
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionQuery {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionQuery {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
 ///`ExeoraProtocolTypesRelayMessageActionRemote`
 ///
 /// <details><summary>JSON schema</summary>
@@ -13803,6 +19549,80 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionRemoteBranch {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionReplacement`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 10000
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionReplacement(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionReplacement {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionReplacement>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionReplacement) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionReplacement {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 10000usize {
+            return Err("longer than 10000 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionReplacement {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionReplacement
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionReplacement
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionReplacement {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
         D: ::serde::Deserializer<'de>,
@@ -14435,6 +20255,345 @@ impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionSta
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionTargetsItem`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "object",
+///  "required": [
+///    "path",
+///    "token"
+///  ],
+///  "properties": {
+///    "lines": {
+///      "type": "array",
+///      "items": {
+///        "type": "integer",
+///        "maximum": 9007199254740991.0,
+///        "minimum": 1.0
+///      },
+///      "maxItems": 100
+///    },
+///    "path": {
+///      "type": "string",
+///      "maxLength": 4096,
+///      "minLength": 1
+///    },
+///    "token": {
+///      "type": "string",
+///      "maxLength": 64
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ExeoraProtocolTypesRelayMessageActionTargetsItem {
+    #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+    pub lines: ::std::vec::Vec<::std::num::NonZeroU64>,
+    pub path: ExeoraProtocolTypesRelayMessageActionTargetsItemPath,
+    pub token: ExeoraProtocolTypesRelayMessageActionTargetsItemToken,
+}
+///`ExeoraProtocolTypesRelayMessageActionTargetsItemPath`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 4096,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionTargetsItemPath(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionTargetsItemPath {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionTargetsItemPath>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionTargetsItemPath) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionTargetsItemPath {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionTargetsItemPath {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionTargetsItemPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionTargetsItemPath
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionTargetsItemPath {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionTargetsItemToken`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 64
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionTargetsItemToken(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionTargetsItemToken {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionTargetsItemToken>
+    for ::std::string::String
+{
+    fn from(value: ExeoraProtocolTypesRelayMessageActionTargetsItemToken) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionTargetsItemToken {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 64usize {
+            return Err("longer than 64 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionTargetsItemToken {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionTargetsItemToken
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String>
+    for ExeoraProtocolTypesRelayMessageActionTargetsItemToken
+{
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionTargetsItemToken {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionTo`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "maxLength": 4096,
+///  "minLength": 1
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct ExeoraProtocolTypesRelayMessageActionTo(::std::string::String);
+impl ::std::ops::Deref for ExeoraProtocolTypesRelayMessageActionTo {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<ExeoraProtocolTypesRelayMessageActionTo> for ::std::string::String {
+    fn from(value: ExeoraProtocolTypesRelayMessageActionTo) -> Self {
+        value.0
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionTo {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        if value.chars().count() > 4096usize {
+            return Err("longer than 4096 characters".into());
+        }
+        if value.chars().count() < 1usize {
+            return Err("shorter than 1 characters".into());
+        }
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionTo {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionTo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionTo {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for ExeoraProtocolTypesRelayMessageActionTo {
+    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    where
+        D: ::serde::Deserializer<'de>,
+    {
+        ::std::string::String::deserialize(deserializer)?
+            .parse()
+            .map_err(|e: self::error::ConversionError| {
+                <D::Error as ::serde::de::Error>::custom(e.to_string())
+            })
+    }
+}
+///`ExeoraProtocolTypesRelayMessageActionType`
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "type": "string",
+///  "enum": [
+///    "file",
+///    "directory"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum ExeoraProtocolTypesRelayMessageActionType {
+    #[serde(rename = "file")]
+    File,
+    #[serde(rename = "directory")]
+    Directory,
+}
+impl ::std::fmt::Display for ExeoraProtocolTypesRelayMessageActionType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::File => f.write_str("file"),
+            Self::Directory => f.write_str("directory"),
+        }
+    }
+}
+impl ::std::str::FromStr for ExeoraProtocolTypesRelayMessageActionType {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "file" => Ok(Self::File),
+            "directory" => Ok(Self::Directory),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for ExeoraProtocolTypesRelayMessageActionType {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for ExeoraProtocolTypesRelayMessageActionType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesRelayMessageActionType {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
     }
 }
 ///`ExeoraProtocolTypesRelayMessageClient`

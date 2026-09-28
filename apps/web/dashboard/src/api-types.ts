@@ -139,6 +139,12 @@ export interface Workspace {
 export interface WorkspaceCapabilities {
   online: boolean;
   sourceControl: boolean;
+  /** History, stash, amend and the aggregated diffs: a CLI announcing `source-control-v2`. */
+  sourceControlV2?: boolean;
+  /** The Explorer's tree, reads and edits: a CLI announcing `workspace-v2`. */
+  files?: boolean;
+  /** Search and replace across the workspace: the same feature as `files`. */
+  search?: boolean;
   terminal: boolean;
   workspaceRouting: boolean;
 }
@@ -193,7 +199,9 @@ export interface GitDiff {
   truncated: boolean;
 }
 
-export type WorkspaceAction =
+import type { WorkspaceActionV2 } from "./api-types-workspace.js";
+
+export type WorkspaceActionV1 =
   | { action: "stage" | "unstage" | "discard" | "delete_untracked"; paths: string[] }
   | { action: "commit"; message: string }
   | { action: "fetch"; remote?: string; all?: boolean }
@@ -203,6 +211,9 @@ export type WorkspaceAction =
   | { action: "branch_switch"; name: string }
   | { action: "branch_track"; name: string; remoteBranch: string }
   | { action: "branch_delete"; name: string };
+
+/** Everything `…/workspace/actions` takes: the v1 set, and what a v2 CLI adds. */
+export type WorkspaceAction = WorkspaceActionV1 | WorkspaceActionV2;
 
 export interface WorkspaceMutationResult {
   kind: "mutation";

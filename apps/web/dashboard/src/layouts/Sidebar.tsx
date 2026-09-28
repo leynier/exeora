@@ -1,8 +1,9 @@
-import type { CSSProperties, PointerEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import { ResizeHandle } from "@exeora/design/react";
+import type { CSSProperties, ReactNode } from "react";
+import { useState } from "react";
 import { NavLink } from "react-router";
 import type { NavIconName, ShellLink } from "./nav.js";
-import { clampSidebarWidth, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./sidebarPrefs.js";
+import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "./sidebarPrefs.js";
 
 /**
  * The left-hand navigation.
@@ -137,7 +138,15 @@ export function Sidebar({
       </div>
 
       {!collapsed && (
-        <ResizeHandle width={width} onWidthChange={onWidthChange} onResizingChange={setResizing} />
+        <ResizeHandle
+          value={width}
+          min={MIN_SIDEBAR_WIDTH}
+          max={MAX_SIDEBAR_WIDTH}
+          label="Resize sidebar"
+          className="hidden lg:block"
+          onChange={onWidthChange}
+          onResizingChange={setResizing}
+        />
       )}
     </aside>
   );
@@ -173,77 +182,6 @@ function InsideCard({
         <p className="text-title-md mt-0.5 truncate">{inside.name}</p>
       </div>
     </div>
-  );
-}
-
-function ResizeHandle({
-  width,
-  onWidthChange,
-  onResizingChange,
-}: {
-  width: number;
-  onWidthChange: (width: number) => void;
-  onResizingChange: (resizing: boolean) => void;
-}) {
-  const drag = useRef<{ x: number; width: number } | null>(null);
-
-  const finish = (event: PointerEvent<HTMLHRElement>) => {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    drag.current = null;
-    onResizingChange(false);
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-  };
-
-  return (
-    <hr
-      aria-orientation="vertical"
-      aria-label="Resize sidebar"
-      aria-valuemin={MIN_SIDEBAR_WIDTH}
-      aria-valuemax={MAX_SIDEBAR_WIDTH}
-      aria-valuenow={width}
-      tabIndex={0}
-      className="hover:bg-foreground-faint/30 active:bg-foreground-faint/50 absolute inset-y-0 right-0 m-0 hidden h-auto w-2 cursor-col-resize border-0 touch-none lg:block"
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        drag.current = { x: event.clientX, width };
-        event.currentTarget.setPointerCapture(event.pointerId);
-        onResizingChange(true);
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-      }}
-      onPointerMove={(event) => {
-        const origin = drag.current;
-        if (!origin || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        onWidthChange(clampSidebarWidth(origin.width + event.clientX - origin.x));
-      }}
-      onPointerUp={finish}
-      onPointerCancel={finish}
-      onLostPointerCapture={() => {
-        drag.current = null;
-        onResizingChange(false);
-        document.body.style.removeProperty("cursor");
-        document.body.style.removeProperty("user-select");
-      }}
-      onKeyDown={(event) => {
-        const step = event.shiftKey ? 32 : 16;
-        if (event.key === "ArrowLeft") {
-          event.preventDefault();
-          onWidthChange(clampSidebarWidth(width - step));
-        } else if (event.key === "ArrowRight") {
-          event.preventDefault();
-          onWidthChange(clampSidebarWidth(width + step));
-        } else if (event.key === "Home") {
-          event.preventDefault();
-          onWidthChange(MIN_SIDEBAR_WIDTH);
-        } else if (event.key === "End") {
-          event.preventDefault();
-          onWidthChange(MAX_SIDEBAR_WIDTH);
-        }
-      }}
-    />
   );
 }
 

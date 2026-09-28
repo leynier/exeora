@@ -56,6 +56,9 @@ describe("workspace ownership and availability", () => {
     expect(await owner.json()).toEqual({
       online: false,
       sourceControl: false,
+      sourceControlV2: false,
+      files: false,
+      search: false,
       terminal: false,
       workspaceRouting: false,
     });

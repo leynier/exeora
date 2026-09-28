@@ -1,0 +1,70 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="AI Assist"
+  description="Link your own ChatGPT or Grok account to write commit messages and pull requests from the dashboard."
+  canonicalPath="/docs/ai-assist/"
+>
+  <p>
+    AI Assist writes commit messages and pull request descriptions from what is on the machine: the
+    staged patch, or the commits and diff a branch adds over its base. It uses an account of your
+    own, ChatGPT or Grok, linked once in <strong>Settings</strong>. Exeora runs no model of its own
+    and bills nothing for it.
+  </p>
+
+  <h2 id="linking">Linking an account</h2>
+
+  <p>
+    Each provider is linked one of two ways. <strong>Link subscription</strong> shows a code and a
+    page on the provider's site; sign in there, enter the code, and the provider hands the gateway
+    a token for your plan. <strong>Use an API key</strong> takes a key from the provider's platform,
+    checks it with the provider, and keeps it. Both are stored encrypted, the same way as the token
+    GitHub gives, and are deleted when you unlink.
+  </p>
+
+  <p>
+    The subscription flows reuse the sign-in the providers built for their own command-line tools.
+    Neither OpenAI nor xAI documents them for a product like this, and either may change or close
+    them without notice; if that happens, an API key still works, and the card says so. Requests
+    made through a subscription are governed by the provider's terms for your account, not by
+    anything Exeora can promise. A self-hosted gateway can leave the subscription flows off and
+    offer keys only.
+  </p>
+
+  <h2 id="settings">Provider, model and instructions</h2>
+
+  <p>
+    With more than one provider linked, one is the default and the button beside a field offers the
+    other for that time. Each operation, commit messages and pull requests, can name its own provider
+    and model, and carry instructions of its own: conventions to follow, a language to write in.
+    They are added to what Exeora asks for, which is a short, imperative subject and a body that says
+    why.
+  </p>
+
+  <h2 id="using">Using it</h2>
+
+  <ul>
+    <li><strong>Commit messages.</strong> The button beside the message in Source Control, once something is staged. The answer lands in the field only if the field is as it was when you asked; words you typed meanwhile stay, and a note says the generated text was set aside.</li>
+    <li><strong>Pull requests.</strong> The button beside the title in the Pull Request view writes the title and the description from the commits and patch against the chosen base.</li>
+    <li><strong>Ship changes.</strong> The whole trip from a working tree to an open pull request, described <a href="/docs/pull-request/#ship">with pull requests</a>.</li>
+  </ul>
+
+  <p>
+    A generation can be stopped with the same button. It has a minute to answer; a provider that
+    does not, or that refuses the token, is reported in words, and a token the provider no longer
+    accepts asks you to link again.
+  </p>
+
+  <h2 id="data">What leaves the machine</h2>
+
+  <p>
+    What the assistant reads is read from the machine that holds the workspace, passed through the
+    gateway to the provider you chose, and kept nowhere: the branch, the staged files with their
+    line counts and the staged patch, or the commits with their messages, the changed files and
+    the patch against the base, each cut at a fixed size. Every generation appears in the audit
+    stream as <code>ai.commit_message</code> or <code>ai.pull_request</code>, with the project and
+    workspace and never the content. The provider keeps what its own terms say it keeps.
+  </p>
+</Doc>

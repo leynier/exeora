@@ -1,11 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
-import { CloudMachineNotice } from "../components/CloudMachineNotice.js";
+import { Files, GitBranch, GitPullRequest, Search, SquareTerminal } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo } from "react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { NoRoot } from "../components/NoRoot.js";
-import { SourceControl } from "../components/SourceControl.js";
+import { useTerminals } from "../components/Terminals.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
-import { WorkspaceTerminals } from "../components/WorkspaceTerminals.js";
+import type { WorkspaceContext } from "../components/workspace/context.js";
+import { DetailContent, detailHeading } from "../components/workspace/DetailContent.js";
+import { useAutoRefresh } from "../components/workspace/useAutoRefresh.js";
+import { useOpener } from "../components/workspace/useOpener.js";
+import { useWorkspaceActions } from "../components/workspace/useWorkspaceActions.js";
+import { viewPanel } from "../components/workspace/ViewPanel.js";
+import { WorkspaceMain } from "../components/workspace/WorkspaceMain.js";
+import { type ShellView, WorkspaceShell } from "../components/workspace/WorkspaceShell.js";
+import {
+  parseView,
+  viewParam,
+  type WorkspaceView,
+} from "../components/workspace/workspaceLayout.js";
+import { useWide } from "../hooks/useBreakpoint.js";
+import { useWorkspaceShortcuts } from "../hooks/useWorkspaceShortcuts.js";
 import {
   cloudLocation,
   defaultBranchOf,
@@ -73,14 +88,23 @@ export function Workspace() {
   const projectId = search.get("project") ?? "";
   const asked = search.get("workspace");
   const workspaces = useWorkspaces(projectId || undefined);
-  const tab = search.get("view") === "terminal" ? "terminal" : "source";
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const setTab = (value: "source" | "terminal") => {
-    const params = new URLSearchParams(search);
-    if (value === "terminal") params.set("view", "terminal");
-    else params.delete("view");
-    setSearch(params, { replace: true });
-  };
+  const navigate = useNavigate();
+  const wide = useWide();
+  const { workspaceFills } = useTerminals();
+  const view = parseView(search.get("view"));
+  const setView = useCallback(
+    (value: WorkspaceView) => {
+      const params = new URLSearchParams(search);
+      const param = viewParam(value);
+      if (param) params.set("view", param);
+      else params.delete("view");
+      // A detail belongs to the view it was opened from.
+      params.delete("detail");
+      setSearch(params, { replace: true });
+    },
+    [search, setSearch],
+  );
+  useWorkspaceShortcuts({ enabled: wide, onView: setView });
 
   const project = projects.data?.find((item) => item.id === projectId);
   // One selector per working copy: the root of the default location is null
@@ -126,9 +150,11 @@ export function Workspace() {
     : [];
   const rootPath = home?.localPath ?? (home?.default ? (project?.localPath ?? "") : "");
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
-  // SourceControl owns polling so status and the selected diff refresh together.
-  // This query still fetches once here before the component can mount.
-  const status = useGitStatus(projectId, targetId, ready, false);
+  // Every poll runs a status on the machine: only while a list that shows it
+  // is on screen and the CLI can answer it. The git client polls on its own,
+  // status and open diff together, so this query only fetches for it once.
+  const canPoll = ready && capabilities.data?.sourceControl !== false;
+  const status = useGitStatus(projectId, targetId, ready, view === "explorer" && canPoll);
   // The branch the default location's root is really on, once its machine
   // has said. What another location's status says is about another root, so
   // until then, and from there, it is the one the project was added with.
@@ -142,6 +168,35 @@ export function Workspace() {
     (otherRoot
       ? otherRootLabel(home ?? { name: parsed.root ? (parsed.location ?? "") : "" })
       : rootLabel(rootBranch));
+
+  const opener = useOpener({ wide, targetKey, search, setSearch, status: status.data });
+  const target = useMemo(
+    () => ({ projectId, workspace: targetId, targetKey }),
+    [projectId, targetId, targetKey],
+  );
+  const base = useWorkspaceActions(target);
+  const refresh = useAutoRefresh({
+    target,
+    enabled: view === "source" && canPoll,
+    selected: opener.selected,
+    pending: base.pending,
+  });
+  // A poll that was in flight when an action started must not land after
+  // it, or the list would go back to before the change for a tick.
+  const { run: runAction } = base;
+  const { interrupt, resume } = refresh;
+  const run = useCallback<typeof runAction>(
+    async (batch, options) => {
+      await interrupt();
+      try {
+        return await runAction(batch, options);
+      } finally {
+        resume();
+      }
+    },
+    [interrupt, resume, runAction],
+  );
+  const actions = { ...base, run };
 
   // An address that names the default root the long way is put right, so the
   // terminal chips and the selector agree on what is on screen.
@@ -174,7 +229,8 @@ export function Workspace() {
     const params = new URLSearchParams();
     if (nextProject) params.set("project", nextProject);
     if (nextWorkspace) params.set("workspace", nextWorkspace);
-    if (tab === "terminal") params.set("view", "terminal");
+    const param = viewParam(view);
+    if (param) params.set("view", param);
     setSearch(params, { replace: true });
     if (nextProject) writeLast({ projectId: nextProject, workspace: nextWorkspace });
   };
@@ -183,28 +239,116 @@ export function Workspace() {
     return <Skeleton className="h-full w-full rounded-xl" />;
   }
 
+  const ctx: WorkspaceContext | null = project
+    ? {
+        project,
+        target,
+        targetLabel,
+        home,
+        siblings,
+        root: { path: rootPath, selector: home?.default === false ? `main@${home.slug}` : null },
+        rootPath,
+        status,
+        capabilities: capabilities.data,
+        actions,
+        refresh,
+        open: opener.open,
+        selected: opener.selected,
+        setDirty: opener.setDirty,
+        dirtyPaths: opener.dirtyPaths,
+        wide,
+        onSelectWorkspace: (slug) => select(projectId, slug),
+      }
+    : null;
+
+  /**
+   * What stands in for every view: the project has no root to open, or the
+   * workspace asked for is not there. The views stay in the frame so the
+   * terminal and the git client say the same thing under the same buttons.
+   */
+  const blocked: ReactNode | null = !project ? null : noRoot ? (
+    <NoRoot project={project} />
+  ) : workspaces.isLoading ? (
+    <Skeleton className="h-full w-full" />
+  ) : workspaces.isError ? (
+    <ErrorBanner error={workspaces.error} onRetry={() => workspaces.refetch()} />
+  ) : !targetReady ? (
+    <EmptyState title="That workspace is unavailable">
+      {otherRoot
+        ? home
+          ? home.state === "removed"
+            ? `${home.name} was removed, so its copy of the project cannot be opened.`
+            : `${home.name} holds no copy of the project yet. The first workspace made there clones it.`
+          : `This project does not live on ${parsed.root ? parsed.location : ""}.`
+        : `Workspace ${workspaceSlug} is no longer connected.`}{" "}
+      <button type="button" className="underline" onClick={() => select(project.id, null)}>
+        Open {rootLabel(defaultBranchOf(project))}
+      </button>
+      .
+    </EmptyState>
+  ) : null;
+
+  const shown =
+    blocked || !ctx ? { panel: null, layout: "full" as const } : viewPanel(view, ctx, capabilities);
+  const views: ShellView[] = [
+    { id: "explorer", label: "Explorer", icon: Files },
+    { id: "search", label: "Search", icon: Search },
+    {
+      id: "source",
+      label: "Source Control",
+      short: "Git",
+      icon: GitBranch,
+      badge: status.data?.files.length ? status.data.files.length : undefined,
+    },
+    { id: "pr", label: "Pull Request", short: "PR", icon: GitPullRequest },
+    { id: "terminal", label: "Terminal", icon: SquareTerminal },
+  ];
+
+  const back = () => {
+    // The detail was pushed, so Back pops it when there is somewhere to pop
+    // to; a link opened straight onto a detail has nothing behind it.
+    const state = window.history.state as { idx?: number } | null;
+    if (state && typeof state.idx === "number" && state.idx > 0) navigate(-1);
+    else {
+      const params = new URLSearchParams(search);
+      params.delete("detail");
+      setSearch(params, { replace: true });
+    }
+  };
+
+  const detail = ctx && !blocked && opener.detail ? opener.detail : null;
+  const heading = detail ? detailHeading(detail) : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-headline-md">Workspace</h1>
-          <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
-            {project
-              ? [
-                  home?.name,
-                  home?.kind === "cloud"
-                    ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
-                    : (selectedWorkspace?.localPath ??
-                      home?.localPath ??
-                      // The path a project that lives nowhere still carries is
-                      // of a machine that is gone.
-                      (project.nowhere ? repositoryLabel(project.repoUrl) : project.localPath)),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : "Choose a project to open its git client."}
-          </p>
-        </div>
+      <header
+        className={
+          wide
+            ? "mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3"
+            : "mb-2 flex shrink-0 items-center gap-2"
+        }
+      >
+        {wide ? (
+          <div className="min-w-0">
+            <h1 className="text-headline-md">Workspace</h1>
+            <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
+              {project
+                ? [
+                    home?.name,
+                    home?.kind === "cloud"
+                      ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
+                      : (selectedWorkspace?.localPath ??
+                        home?.localPath ??
+                        // The path a project that lives nowhere still carries is
+                        // of a machine that is gone.
+                        (project.nowhere ? repositoryLabel(project.repoUrl) : project.localPath)),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Choose a project to open its git client."}
+            </p>
+          </div>
+        ) : null}
         <WorkspaceRootSelector
           projects={projects.data ?? []}
           projectId={project?.id ?? ""}
@@ -214,12 +358,13 @@ export function Workspace() {
               : []
           }
           selectedSlug={workspaceSlug}
+          compact={!wide}
           onSelectProject={(id) => select(id, null)}
           onSelectWorkspace={(slug) => select(projectId, slug)}
         />
       </header>
 
-      {!project ? (
+      {!project || !ctx ? (
         <div className="border-border bg-surface flex-1 rounded-xl border">
           <EmptyState title={projects.data?.length ? "Select a project" : "No projects yet"}>
             {projects.data?.length ? (
@@ -237,108 +382,34 @@ export function Workspace() {
         </div>
       ) : (
         <>
-          <div className="border-border mb-3 flex shrink-0 items-center gap-1 border-b">
-            {(["source", "terminal"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTab(value)}
-                className={`text-title-md border-b-2 px-4 py-2.5 ${
-                  tab === value
-                    ? "border-brand text-foreground"
-                    : "text-foreground-faint border-transparent"
-                }`}
-              >
-                {value === "source" ? "Source Control" : "Terminal"}
-              </button>
-            ))}
-          </div>
-          <WorkspaceTerminals
-            projectId={projectId}
-            workspaceId={targetId}
-            workspaceSlug={workspaceSlug}
-            targetLabel={targetLabel}
-            available={capabilities.data?.terminal === true}
-            visible={tab === "terminal" && !noRoot}
-          />
-          {/* Under both tabs: with no root there is no git client to show
-              and no machine to open a shell on. */}
-          {noRoot ? (
-            <div className="border-border bg-surface flex-1 rounded-xl border">
-              <NoRoot project={project} />
-            </div>
-          ) : tab === "terminal" ? null : workspaces.isLoading ? (
-            <Skeleton className="h-full w-full rounded-xl" />
-          ) : workspaces.isError ? (
-            <ErrorBanner error={workspaces.error} onRetry={() => workspaces.refetch()} />
-          ) : !targetReady ? (
-            <div className="border-border bg-surface flex-1 rounded-xl border">
-              <EmptyState title="That workspace is unavailable">
-                {otherRoot
-                  ? home
-                    ? home.state === "removed"
-                      ? `${home.name} was removed, so its copy of the project cannot be opened.`
-                      : `${home.name} holds no copy of the project yet. The first workspace made there clones it.`
-                    : `This project does not live on ${parsed.root ? parsed.location : ""}.`
-                  : `Workspace ${workspaceSlug} is no longer connected.`}{" "}
-                <button
-                  type="button"
-                  className="underline"
-                  onClick={() => select(project.id, null)}
-                >
-                  Open {rootLabel(defaultBranchOf(project))}
-                </button>
-                .
-              </EmptyState>
-            </div>
-          ) : capabilities.isError ? (
-            <ErrorBanner error={capabilities.error} onRetry={() => capabilities.refetch()} />
-          ) : capabilities.data && !capabilities.data.sourceControl ? (
-            <div className="border-border bg-surface flex-1 rounded-xl border">
-              {home?.kind === "cloud" && !capabilities.data.online ? (
-                <CloudMachineNotice projectId={project.id} workspaceId={targetId ?? null} />
-              ) : (
-                <EmptyState
-                  title={
-                    capabilities.data.online
-                      ? "CLI update required"
-                      : `${home?.name ?? "The machine"} is offline`
+          <WorkspaceShell
+            views={views}
+            view={view}
+            onViewChange={setView}
+            layout={blocked ? "full" : shown.layout}
+            panel={blocked ?? shown.panel}
+            main={<WorkspaceMain ctx={ctx} opener={opener} />}
+            detail={
+              detail && heading
+                ? {
+                    title: heading.title,
+                    subtitle: heading.subtitle,
+                    content: <DetailContent ctx={ctx} detail={detail} />,
                   }
-                >
-                  {capabilities.data.online ? (
-                    `Update the Exeora CLI on ${home?.name ?? "the machine"} to enable Source Control.`
-                  ) : (
-                    <>
-                      Run <code className="font-mono">exeora connect</code> on{" "}
-                      {home?.name ?? "the machine that holds this workspace"}. This view opens on
-                      its own once it is back.
-                    </>
-                  )}
-                </EmptyState>
-              )}
-            </div>
-          ) : (
-            <SourceControl
-              key={targetKey}
-              projectId={projectId}
-              workspace={targetId}
-              workspaces={siblings}
-              root={{
-                path: rootPath,
-                selector: home?.default === false ? `main@${home.slug}` : null,
-              }}
-              project={project}
-              where={home}
-              targetKey={targetKey}
-              targetLabel={targetLabel}
-              status={status.data}
-              loading={status.isLoading}
-              error={status.error}
-              autoRefresh={autoRefresh}
-              onAutoRefreshChange={setAutoRefresh}
-              onSelectWorkspace={(slug) => select(projectId, slug)}
-            />
-          )}
+                : null
+            }
+            onBack={back}
+            strip={workspaceFills && view === "terminal"}
+          />
+          <ConfirmDialog
+            open={actions.confirm !== null}
+            title={actions.confirm?.title ?? "Confirm action"}
+            body={actions.confirm?.body ?? ""}
+            confirmLabel={actions.confirm?.label ?? "Confirm"}
+            pending={actions.pending}
+            onConfirm={() => actions.confirm && void actions.run(actions.confirm.action)}
+            onCancel={() => actions.setConfirm(null)}
+          />
         </>
       )}
     </div>
