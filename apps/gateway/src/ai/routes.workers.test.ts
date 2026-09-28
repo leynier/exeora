@@ -290,8 +290,8 @@ describe("linking Grok by device code", () => {
         return Response.json({
           device_code: "dc_1",
           user_code: "WXYZ-9876",
-          verification_uri: "https://auth.x.ai/device",
-          verification_uri_complete: "https://auth.x.ai/device?code=WXYZ-9876",
+          verification_uri: "https://accounts.x.ai/oauth2/device",
+          verification_uri_complete: "https://accounts.x.ai/oauth2/device?user_code=WXYZ-9876",
           interval: 7,
           expires_in: 600,
         });
@@ -321,7 +321,7 @@ describe("linking Grok by device code", () => {
     });
     expect(await started.json()).toMatchObject({
       userCode: "WXYZ-9876",
-      verificationUrl: "https://auth.x.ai/device?code=WXYZ-9876",
+      verificationUrl: "https://accounts.x.ai/oauth2/device?user_code=WXYZ-9876",
       interval: 7,
     });
     const poll = () =>
@@ -333,6 +333,31 @@ describe("linking Grok by device code", () => {
     });
     const row = await storedRow("xai");
     expect(await decryptSecret(CREDENTIALS_KEY, row?.accessCiphertext ?? "")).toBe("xai_at_1");
+  });
+
+  it("refuses a login whose sign-in page is not on x.ai", async () => {
+    // The person is sent to that page with a code in hand; it must be xAI's.
+    provider((asked) => {
+      if (asked.url.endsWith("openid-configuration")) {
+        return Response.json({
+          issuer: "https://auth.x.ai",
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
+          token_endpoint: "https://auth.x.ai/oauth2/token",
+        });
+      }
+      return Response.json({
+        device_code: "dc_6",
+        user_code: "ELSE",
+        verification_uri: "https://accounts.example.net/device",
+      });
+    });
+    const started = await call("/api/ai/providers/xai/device", {
+      method: "POST",
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(started.status).toBe(502);
+    expect(await loginRow("xai")).toBeUndefined();
   });
 
   it("refuses a discovery document that names endpoints elsewhere", async () => {

@@ -82,8 +82,9 @@ export const xai: AiProvider = {
       typeof body.device_code !== "string" ||
       typeof body.user_code !== "string" ||
       typeof verificationUrl !== "string" ||
-      // The person is sent there to sign in: nowhere but the issuer's own site.
-      !issuerUrl(verificationUrl)
+      // The person is sent there to sign in: nowhere but xAI's own sites
+      // (`accounts.x.ai`, which is not the issuer's host).
+      !xaiSite(verificationUrl)
     ) {
       throw new AiError("unavailable", `${LABEL} did not start a device login. Try again.`);
     }
@@ -250,14 +251,27 @@ async function discover(fetcher: typeof fetch): Promise<Endpoints> {
 
 /** Whether a URL is https on the issuer's host; as the issuer itself, whether it is the issuer. */
 function issuerUrl(value: string, exact = false): boolean {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (url.origin !== OIDC_ISSUER) return false;
+  const url = parsed(value);
+  if (!url || url.origin !== OIDC_ISSUER) return false;
   return !exact || url.href.replace(/\/$/, "") === OIDC_ISSUER;
+}
+
+/** Whether a URL is https on `x.ai` or one of its subdomains. */
+function xaiSite(value: string): boolean {
+  const url = parsed(value);
+  return (
+    url !== null &&
+    url.protocol === "https:" &&
+    (url.hostname === "x.ai" || url.hostname.endsWith(".x.ai"))
+  );
+}
+
+function parsed(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
 }
 
 async function discoverModels(fetcher: typeof fetch, credential: Credential) {

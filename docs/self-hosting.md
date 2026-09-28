@@ -129,8 +129,10 @@ Connecting finishes in the browser that started it. The way back from GitHub is 
 AI Assist lets an account link its own ChatGPT or Grok account and write commit messages and pull requests from the dashboard. Which providers may be linked is the `AI_ASSIST_PROVIDERS` var in `apps/gateway/wrangler.jsonc`, which offers `openai,xai` as committed; it is a var rather than a secret because it only says what is offered, and a secret of the same name would be replaced by the var on deploy. To keep AI Assist off, empty or remove the var. It also needs `CLOUD_CREDENTIALS_KEY` (above) to keep the tokens and keys under; without it the routes answer `ai_disabled` and the card is not drawn. The rest is optional:
 
 ```bash
-bun run secret XAI_OAUTH_CLIENT_ID   # the client id of xAI's device flow; unset offers Grok by API key only
+bun run secret XAI_OAUTH_CLIENT_ID   # the OAuth client xAI knows the gateway as; unset offers Grok by API key only
 ```
+
+That client id is public by design of the device flow, so it can equally be a var beside `AI_ASSIST_PROVIDERS`. xAI's own CLI and the other tools that link a SuperGrok or X Premium subscription share one client of xAI's for coding agents, whose consent page names Grok Build; whether to reuse it is your call, as the flow is not documented for third parties. The sign-in page it sends the person to is on `accounts.x.ai`, while the endpoints stay on `auth.x.ai`.
 
 `AI_ASSIST_OAUTH=off`, as a var beside `AI_ASSIST_PROVIDERS`, keeps only the API keys and offers no device login for either provider; ChatGPT's needs nothing beyond the credentials key.
 
