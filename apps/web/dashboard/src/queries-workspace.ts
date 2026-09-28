@@ -17,6 +17,8 @@ export const workspaceKeys = {
     ["workspace", id, target, "reads", "commit", oid] as const,
   commitDiff: (id: string, target: string, oid: string, path: string | null) =>
     ["workspace", id, target, "reads", "commit_diff", oid, path] as const,
+  /** The whole tree's diffs of both areas, for a refresh to cover at once. */
+  diffAlls: (id: string, target: string) => ["workspace", id, target, "reads", "diff_all"] as const,
   diffAll: (id: string, target: string, area: DiffArea) =>
     ["workspace", id, target, "reads", "diff_all", area] as const,
   rangeDiff: (id: string, target: string, base: string) =>
@@ -76,11 +78,14 @@ export const useCommitDiff = (target: Target, oid: string, path: string | null) 
     staleTime: Number.POSITIVE_INFINITY,
   });
 
+// The patches on screen move with the status, by the git client's own
+// refresh, never alone on a focus: the list and the patch would disagree.
 export const useDiffAll = (target: Target, area: DiffArea) =>
   useQuery({
     queryKey: workspaceKeys.diffAll(target.projectId, target.targetKey, area),
     queryFn: ({ signal }) =>
       workspaceRead(target.projectId, { action: "diff_all", area }, target.workspace, signal),
+    refetchOnWindowFocus: false,
   });
 
 export const useRangeDiff = (target: Target, base: string, enabled = true) =>
@@ -94,8 +99,9 @@ export const useRangeDiff = (target: Target, base: string, enabled = true) =>
 export const useFileDiff = (target: Target, path: string, area: DiffArea, enabled = true) =>
   useQuery({
     queryKey: workspaceKeys.fileDiff(target.projectId, target.targetKey, path, area),
-    queryFn: () => api.gitDiff(target.projectId, path, area, target.workspace),
+    queryFn: ({ signal }) => api.gitDiff(target.projectId, path, area, target.workspace, signal),
     enabled,
+    refetchOnWindowFocus: false,
   });
 
 export const useStashes = (target: Target, enabled: boolean) =>
