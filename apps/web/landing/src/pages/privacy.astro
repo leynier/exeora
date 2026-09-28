@@ -14,7 +14,7 @@ import Legal from "../layouts/Legal.astro";
   title="Privacy"
   description="What Exeora stores, what it deliberately does not, and how to have it removed."
   canonicalPath="/privacy/"
-  updated="26 September 2026"
+  updated="27 September 2026"
 >
   <p>
     Exeora is operated by Leynier Gutiérrez González, an individual based in Mexico, who is the data
@@ -93,6 +93,33 @@ import Legal from "../layouts/Legal.astro";
       <strong>The activity log.</strong> Which tool was attempted, whether its outcome is known, whether it succeeded, how long it took, an error code when it failed, and which client asked. Never the arguments, never the output. An intent and its outcome are stored separately and shown as one execution. Free Activity shows the last 24 hours; physical cleanup is described below.
     </li>
   </ul>
+
+  <h2>Exeora for Chrome</h2>
+  <p>
+    The Chrome extension shows the dashboard's Workspace screen in Chrome's side panel. It collects
+    nothing beyond what the dashboard does, and it reads nothing from the pages you visit: its only
+    host permission is exeora.dev, and it sends requests nowhere else.
+  </p>
+  <ul>
+    <li>
+      <strong>In your browser.</strong> The extension keeps the session it was given when you signed
+      in: a refresh token in Chrome's extension storage, so a restart does not sign you out, and an
+      access token that lasts an hour in memory. Signing out of the panel deletes both and revokes
+      the session on Exeora.
+    </li>
+    <li>
+      <strong>On Exeora.</strong> That you approved the extension, when, and for which extension
+      id, and one session for each browser signed in. Revoking the extension from Settings in the
+      dashboard ends every session and forgets the approval.
+    </li>
+  </ul>
+  <p>
+    What you see and do in the panel (changes, diffs, commits, terminals) passes through Exeora the
+    same way it does from the dashboard, and is not stored beyond the activity log described above.
+    Data the extension handles is used only to provide the side panel, is not sold or transferred to
+    anyone, and is not used for advertising, creditworthiness or any purpose unrelated to it, in
+    line with the Chrome Web Store User Data Policy, including its Limited Use requirements.
+  </p>
 
   <h2>Why</h2>
   <p>
