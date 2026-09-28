@@ -33,9 +33,22 @@ const ENTITIES: Record<string, string> = {
   "#39": "'",
 };
 
+/**
+ * The text of a heading's markup, for slugs and labels; never inserted as HTML.
+ *
+ * Tags are stripped until none are left, since one pass over `<<b>b>` leaves a
+ * `<b>` behind.
+ */
 export function headingText(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, "")
+  let text = html;
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, "");
+  } while (text !== previous);
+
+  return text
+    .replace(/[<>]/g, "")
     .replace(/&(#?\w+);/g, (match, name: string) => ENTITIES[name] ?? match)
     .replace(/\s+/g, " ")
     .trim();

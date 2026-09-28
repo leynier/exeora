@@ -20,6 +20,11 @@ describe("headingText", () => {
     );
     expect(headingText("A &amp; B")).toBe("A & B");
   });
+
+  it("leaves no tag behind when tags are nested inside tags", () => {
+    expect(headingText("<scr<script>ipt>alert(1)</script>")).not.toMatch(/[<>]/);
+    expect(headingText("a <<b>b> c")).toBe("a b c");
+  });
 });
 
 describe("outlineHtml", () => {
