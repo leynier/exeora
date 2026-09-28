@@ -228,7 +228,7 @@ Free while Pro is in development: **10** live machines, **25** projects, **2** E
 | `packages/design` | Design tokens |
 | `apps/gateway` | Cloudflare Worker (OAuth, MCP, relay, API, static site) |
 | `apps/web` | Landing, docs and dashboard sources |
-| `apps/extension` | Exeora for Chrome, the dashboard's Workspace screen in the side panel |
+| `apps/extension` | Exeora for Chrome, a shell that frames the dashboard's Workspace screen in the side panel |
 | `e2e` | Playwright tests for the landing, docs and dashboard |
 
 ## Contributing

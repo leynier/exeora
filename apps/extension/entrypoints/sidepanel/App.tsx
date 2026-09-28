@@ -27,15 +27,7 @@ export function App() {
 
   if (status === "loading") return null;
   if (status === "signed-out") return <SignIn onSignedIn={() => setStatus("signed-in")} />;
-  return (
-    <Panel
-      onUnauthorized={async () => {
-        // An access token the gateway refused before it expired: revoked with
-        // its grant, most likely. A refresh says whether the session is over.
-        const token = await auth.token({ force: true }).catch(() => undefined);
-        if (token === null) setStatus("signed-out");
-        return token !== null && token !== undefined;
-      }}
-    />
-  );
+  // A session the gateway refuses on refresh is cleared from storage, which
+  // brings this back to the sign-in screen through the listener above.
+  return <Panel />;
 }

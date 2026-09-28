@@ -1,9 +1,7 @@
 @import "../../../web/dashboard/src/index.css";
 
-/* The dashboard's components live outside this package, and Tailwind only
-   generates the classes it finds in the files it scans. */
-@source "../../../web/dashboard/src";
-@source "../../lib";
+/* Only the shell's own screens: the panel itself is the gateway's page, styled
+   there. */
 @source "./";
 
 /* Chrome gives every extension page a body font and size of its own, which

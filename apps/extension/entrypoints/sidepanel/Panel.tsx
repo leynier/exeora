@@ -1,127 +1,106 @@
-import { Unauthorized } from "@dashboard/api.js";
-import { GlobalTerminals, TerminalsProvider } from "@dashboard/components/Terminals.js";
-import { ToastProvider } from "@dashboard/components/toast.js";
-import { Workspace } from "@dashboard/pages/Workspace.js";
-import { useMe } from "@dashboard/queries.js";
-import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
-import { auth, openDashboard } from "../../lib/session.js";
+import { PANEL_PATH } from "../../../web/dashboard/src/panel/protocol.js";
+import { createShell } from "../../lib/bridge.js";
+import { auth, GATEWAY, openTab } from "../../lib/session.js";
+
+/** Long enough for a cold load on a slow network, short enough to say something. */
+const LOAD_TIMEOUT_MS = 20_000;
 
 /**
- * The signed-in side panel: the dashboard's Workspace screen under a header of
- * its own.
+ * The signed-in side panel: the gateway's `/dashboard/panel`, framed.
  *
- * The router lives in memory, since a side panel has no address bar. Any link
- * the borrowed screens make to somewhere other than the workspace (adding a
- * project, a project's page) opens that place in the full dashboard instead.
+ * Everything on it is served by the gateway, so it changes with every deploy
+ * and never needs a new version of the extension. What it cannot do from a
+ * web page (hold the session, open a tab, sign out) it asks this shell for
+ * through `lib/bridge.ts`.
  */
-export function Panel({ onUnauthorized }: { onUnauthorized: () => Promise<boolean> }) {
-  const [client] = useState(() => {
-    let retrying = false;
-    const queryClient: QueryClient = new QueryClient({
-      queryCache: new QueryCache({
-        onError: (error) => {
-          if (!(error instanceof Unauthorized) || retrying) return;
-          retrying = true;
-          void onUnauthorized()
-            .then((renewed) => (renewed ? queryClient.invalidateQueries() : undefined))
-            .finally(() => {
-              retrying = false;
-            });
-        },
-      }),
-      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } },
-    });
-    return queryClient;
-  });
+export function Panel() {
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  // Bumped to remount the frame, which loads the panel again.
+  const [attempt, setAttempt] = useState(0);
+  const reload = () => {
+    setState("loading");
+    setAttempt((value) => value + 1);
+  };
+
+  useEffect(() => {
+    if (state !== "loading") return;
+    const timer = setTimeout(() => setState("failed"), LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [state]);
 
   return (
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/workspace"]}>
-        <ToastProvider>
-          <TerminalsProvider>
-            <Shell />
-          </TerminalsProvider>
-        </ToastProvider>
-      </MemoryRouter>
-    </QueryClientProvider>
-  );
-}
-
-function Shell() {
-  return (
-    <div className="flex h-full flex-col">
-      <Header />
-      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
-        <Routes>
-          <Route path="/workspace" element={<Workspace />} />
-          <Route path="*" element={<ElsewhereInDashboard />} />
-        </Routes>
-      </main>
-      <GlobalTerminals />
+    <div className="relative h-full">
+      <Frame
+        key={attempt}
+        visible={state === "ready"}
+        onReady={() => setState("ready")}
+        // The panel's document went away: a link took the frame elsewhere, or
+        // it crashed. Whatever is there now gets no answers; load the panel.
+        onDisconnect={reload}
+      />
+      {state === "ready" ? null : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
+          {state === "loading" ? (
+            <p className="text-body-md text-foreground-muted">Loading…</p>
+          ) : (
+            <>
+              <p className="text-body-md text-foreground-muted">
+                Could not load Exeora from {new URL(GATEWAY).host}.
+              </p>
+              <button type="button" className="btn" onClick={reload}>
+                Try again
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function Header() {
-  const me = useMe();
-  const location = useLocation();
-  const [signingOut, setSigningOut] = useState(false);
-
-  return (
-    <header className="border-border-subtle flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
-      <div className="flex min-w-0 items-center gap-2">
-        {me.data?.avatarUrl ? (
-          <img
-            src={me.data.avatarUrl}
-            alt=""
-            width={24}
-            height={24}
-            className="border-border size-6 shrink-0 rounded-full border"
-          />
-        ) : null}
-        <span className="text-body-md text-foreground-muted truncate">{me.data?.email ?? ""}</span>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          className="btn"
-          title="Open this workspace in the dashboard"
-          onClick={() => openDashboard(`${location.pathname}${location.search}`)}
-        >
-          Dashboard
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={signingOut}
-          onClick={() => {
-            setSigningOut(true);
-            // The panel follows storage, so it switches to the sign-in screen
-            // as soon as the session is gone.
-            void auth.signOut();
-          }}
-        >
-          Sign out
-        </button>
-      </div>
-    </header>
-  );
-}
-
-/** Opens the dashboard where a borrowed link pointed, then comes back. */
-function ElsewhereInDashboard() {
-  const location = useLocation();
-  const target = `${location.pathname}${location.search}`;
-  // Once per target: StrictMode runs effects twice in development.
-  const opened = useRef<string | null>(null);
+/** One load of the panel, and the shell that answers it. */
+function Frame({
+  visible,
+  onReady,
+  onDisconnect,
+}: {
+  visible: boolean;
+  onReady: () => void;
+  onDisconnect: () => void;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  // Read through refs so the shell is made once per frame, not per render.
+  const callbacks = useRef({ onReady, onDisconnect });
+  callbacks.current = { onReady, onDisconnect };
 
   useEffect(() => {
-    if (opened.current === target) return;
-    opened.current = target;
-    openDashboard(target);
-  }, [target]);
+    const shell = createShell({
+      gateway: GATEWAY,
+      frame: () => frame.current?.contentWindow ?? null,
+      token: (options) => auth.token(options),
+      openTab,
+      // The app follows storage, so it replaces this frame with the sign-in
+      // screen as soon as the session is gone.
+      signOut: () => auth.signOut(),
+      onReady: () => callbacks.current.onReady(),
+      onDisconnect: () => callbacks.current.onDisconnect(),
+    });
+    window.addEventListener("message", shell.onMessage);
+    return () => {
+      window.removeEventListener("message", shell.onMessage);
+      shell.dispose();
+    };
+  }, []);
 
-  return <Navigate to="/workspace" replace />;
+  return (
+    <iframe
+      ref={frame}
+      src={`${GATEWAY}${PANEL_PATH}`}
+      title="Exeora"
+      // The workspace's copy buttons and the terminal's paste.
+      allow="clipboard-read; clipboard-write"
+      className={`block size-full border-0 ${visible ? "" : "invisible"}`}
+    />
+  );
 }
