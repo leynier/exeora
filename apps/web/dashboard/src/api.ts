@@ -162,6 +162,12 @@ export const api = {
       `/api/projects/${id}/terminal-ticket${workspaceTarget(workspace)}`,
       { method: "POST" },
     ),
+  /** A one-use ticket to watch, live, the calls agents make on a root or workspace. */
+  logsTicket: (id: string, workspace?: string) =>
+    request<{ url: string; expiresInMs: number }>(
+      `/api/projects/${id}/logs-ticket${workspaceTarget(workspace)}`,
+      { method: "POST" },
+    ),
   terminals: () =>
     request<{ items: import("./workspacePaths.js").ListedTerminal[] }>("/api/terminals"),
   closeTerminal: (id: string, workspace?: string) =>

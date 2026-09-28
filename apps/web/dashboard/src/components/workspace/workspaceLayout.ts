@@ -8,7 +8,7 @@
  * and survive a reload through session storage, per workspace.
  */
 
-export const WORKSPACE_VIEWS = ["explorer", "search", "source", "pr", "terminal"] as const;
+export const WORKSPACE_VIEWS = ["explorer", "search", "source", "pr", "terminal", "logs"] as const;
 export type WorkspaceView = (typeof WORKSPACE_VIEWS)[number];
 
 export const DEFAULT_VIEW: WorkspaceView = "source";

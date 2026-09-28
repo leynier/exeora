@@ -8,6 +8,7 @@ import type {
 } from "../../api.js";
 import type { Target } from "../../queries-workspace.js";
 import type { LocationRoot } from "../../workspacePaths.js";
+import type { WorkspaceLogs } from "../logs/useWorkspaceLogs.js";
 import type { AutoRefresh } from "./useAutoRefresh.js";
 import type { useWorkspaceActions } from "./useWorkspaceActions.js";
 import type { Detail } from "./workspaceLayout.js";
@@ -30,6 +31,8 @@ export type WorkspaceContext = {
   status: UseQueryResult<GitStatus>;
   capabilities: WorkspaceCapabilities | undefined;
   actions: ReturnType<typeof useWorkspaceActions>;
+  /** The live log of calls on this root or workspace, kept while other views are shown. */
+  logs: WorkspaceLogs;
   /** The git client's polling: on or off, and a refresh by hand. */
   refresh: AutoRefresh;
   /** Opens a detail beside the list on a wide screen, over it on a narrow one. */

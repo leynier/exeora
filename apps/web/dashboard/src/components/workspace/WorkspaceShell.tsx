@@ -30,8 +30,8 @@ export type ShellDetail = {
  * the same views are a bar along the bottom, the list fills the screen, and
  * what is picked from it is pushed over the list with Back.
  *
- * A view that has no list and detail, such as the terminal or a git client
- * that lays itself out, asks for `layout: "full"` and gets the whole width.
+ * A view that has no list and detail, such as the terminal or the logs, asks
+ * for `layout: "full"` and gets the whole width beside the column of views.
  */
 export function WorkspaceShell({
   views,
@@ -42,7 +42,6 @@ export function WorkspaceShell({
   main,
   detail,
   onBack,
-  strip = false,
 }: {
   views: readonly ShellView[];
   view: WorkspaceView;
@@ -55,45 +54,10 @@ export function WorkspaceShell({
   /** What the narrow layout has pushed over the panel. */
   detail?: ShellDetail | null | undefined;
   onBack: () => void;
-  /**
-   * Only the row of views, for when a terminal has taken the rest of the
-   * screen and the frame would otherwise be an empty box above it.
-   */
-  strip?: boolean;
 }) {
   const wide = useWide();
   const [width, setWidth] = useState(workspacePrefs.panelWidth.read);
   const [resizing, setResizing] = useState(false);
-
-  if (strip) {
-    return (
-      <nav
-        aria-label="Workspace views"
-        className="border-border-subtle flex shrink-0 gap-1 border-b"
-      >
-        {views.map((item) => {
-          const Icon = item.icon;
-          const current = item.id === view;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={current ? "page" : undefined}
-              className={`text-title-md flex items-center gap-1.5 border-b-2 px-3 py-2 ${
-                current
-                  ? "border-brand text-foreground"
-                  : "text-foreground-faint border-transparent"
-              }`}
-              onClick={() => onViewChange(item.id)}
-            >
-              <Icon aria-hidden="true" className="size-4" />
-              <span className="max-sm:sr-only">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-    );
-  }
 
   if (!wide) {
     return (

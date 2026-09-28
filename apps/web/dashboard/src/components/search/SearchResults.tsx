@@ -1,4 +1,4 @@
-import { IconButton, TreeView } from "@exeora/design/react";
+import { FileIcon, IconButton, TreeView } from "@exeora/design/react";
 import { Replace } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { SearchResult } from "../../api-types-workspace.js";
@@ -86,6 +86,7 @@ export function SearchResults({
           if (data.kind === "dir") {
             return (
               <span className="text-foreground-muted flex min-w-0 flex-1 items-center gap-2 py-1 font-mono text-xs">
+                <FileIcon name={data.path} kind="directory" open={row.expanded} />
                 <span className="min-w-0 truncate">{row.node.label}</span>
                 <span className="text-foreground-faint ml-auto shrink-0 tabular-nums">
                   {data.count}
@@ -97,6 +98,7 @@ export function SearchResults({
             const blocked = ctx.dirtyPaths.has(data.path);
             return (
               <span className="group flex min-w-0 flex-1 items-center gap-2 py-1 font-mono text-xs">
+                <FileIcon name={data.path} />
                 <span className="text-foreground min-w-0 truncate" title={data.path}>
                   {row.node.label}
                 </span>

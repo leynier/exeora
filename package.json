@@ -18,6 +18,7 @@
     "test:e2e": "bun run --cwd apps/web build && playwright test",
     "ci": "bun run check && bun run check:file-length && bun run typecheck && bun run --cwd apps/web build && bun run --cwd apps/extension build && bun run test",
     "brand": "bun run scripts/brand-assets.ts",
+    "icons": "bun run scripts/file-icons.ts",
     "dev": "bun run --cwd apps/web build && bun run --cwd apps/gateway dev",
     "ext:dev": "bun run --cwd apps/extension dev",
     "ext:build": "bun run --cwd apps/extension build",
@@ -36,6 +37,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "latest",
     "fflate": "^0.8.3",
+    "material-icon-theme": "5.38.1",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
     "zod": "4.4.3"

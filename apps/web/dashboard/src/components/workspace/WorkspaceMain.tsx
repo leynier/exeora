@@ -1,4 +1,4 @@
-import { type TabItem, Tabs } from "@exeora/design/react";
+import { FileIcon, type TabItem, Tabs } from "@exeora/design/react";
 import { FileCode, FileDiff, GitCommitHorizontal } from "lucide-react";
 import { EmptyState } from "../ui.js";
 import type { WorkspaceContext } from "./context.js";
@@ -24,6 +24,7 @@ export function WorkspaceMain({
     id: tab.id,
     label: detailTitle(tab.detail),
     icon: iconFor(tab.detail),
+    leading: tab.detail.kind === "file" ? <FileIcon name={tab.detail.path} size="sm" /> : undefined,
     closable: true,
     preview: !tab.pinned,
     badge: tab.dirty ? "●" : undefined,

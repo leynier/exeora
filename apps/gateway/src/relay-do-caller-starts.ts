@@ -9,6 +9,13 @@ import {
   settleCaller,
   type ToolCallerState,
 } from "./relay-do-callers.js";
+import {
+  describeClient,
+  type LoggedCall,
+  logStart,
+  summarizeCall,
+  summarizeMcpCall,
+} from "./relay-do-logs.js";
 import type { CallerRequest } from "./relay-internal.js";
 
 type ApprovalStart = Extract<CallerRequest, { type: "approval.start" }>;
@@ -196,7 +203,13 @@ export function handleMcpCallerMessage(
     );
   } catch {
     settleCaller(socket, offline("The connection to the device failed."));
+    return;
   }
+  logDispatched(ctx, socket, state, message, {
+    kind: "mcp",
+    tool: `${message.server}/${message.tool}`,
+    summary: summarizeMcpCall(message.arguments),
+  });
 }
 
 type ToolStart = Extract<CallerRequest, { type: "tool.start" }>;
@@ -255,5 +268,35 @@ export function handleToolCallerMessage(
     );
   } catch {
     settleCaller(socket, offline("The connection to the device failed."));
+    return;
   }
+  logDispatched(ctx, socket, state, message, {
+    kind: "tool",
+    tool: message.tool,
+    summary: summarizeCall(message.tool, message.arguments),
+  });
+}
+
+/** Keeps what the Logs view needs on the caller, and shows the call starting. */
+function logDispatched(
+  ctx: DurableObjectState,
+  socket: WebSocket,
+  state: ToolCallerState,
+  message: ToolStart | McpStart,
+  call: Pick<LoggedCall, "kind" | "tool" | "summary">,
+): void {
+  const client = describeClient(message.client);
+  const log: LoggedCall = {
+    ...call,
+    projectId: message.projectId,
+    ...(message.workspaceId ? { workspaceId: message.workspaceId } : {}),
+    ...(client ? { client } : {}),
+    startedAt: Date.now(),
+  };
+  socket.serializeAttachment({
+    ...state,
+    issuedAt: message.issuedAt,
+    log,
+  } satisfies ToolCallerState);
+  logStart(ctx, message.requestId, log);
 }

@@ -1,9 +1,5 @@
 import { Unauthorized } from "@dashboard/api.js";
-import {
-  GlobalTerminals,
-  TerminalsProvider,
-  useTerminals,
-} from "@dashboard/components/Terminals.js";
+import { GlobalTerminals, TerminalsProvider } from "@dashboard/components/Terminals.js";
 import { ToastProvider } from "@dashboard/components/toast.js";
 import { Workspace } from "@dashboard/pages/Workspace.js";
 import { useMe } from "@dashboard/queries.js";
@@ -54,18 +50,10 @@ export function Panel({ onUnauthorized }: { onUnauthorized: () => Promise<boolea
 }
 
 function Shell() {
-  const { workspaceFills } = useTerminals();
-
   return (
     <div className="flex h-full flex-col">
       <Header />
-      <main
-        className={
-          workspaceFills
-            ? "flex min-h-0 w-full shrink-0 flex-col overflow-hidden px-3 pt-3"
-            : "flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3"
-        }
-      >
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
         <Routes>
           <Route path="/workspace" element={<Workspace />} />
           <Route path="*" element={<ElsewhereInDashboard />} />

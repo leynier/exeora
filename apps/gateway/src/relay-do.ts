@@ -24,6 +24,7 @@ import {
   attachmentOf,
   callerSocket,
   callerTag,
+  cancelCaller,
   type ExecutorSocketState,
   executorSocket,
   failCallers,
@@ -32,7 +33,6 @@ import {
   offline,
   resolveTerminalApproval,
   type SocketState,
-  sendCancel,
   settleApproval,
   settleCaller,
   type TerminalCallerState,
@@ -47,6 +47,7 @@ import {
   storeCloudConfig,
 } from "./relay-do-cloud.js";
 import { type HookRequest, handleHello, requestHookRun } from "./relay-do-hello.js";
+import { acceptLogsSocket, closeLogSockets } from "./relay-do-logs.js";
 import {
   acceptTerminalSocket,
   closeTerminalTarget,
@@ -131,6 +132,8 @@ export class DeviceRelay extends DurableObject<Env> {
       server.serializeAttachment({ role, id, settled: false } satisfies SocketState);
     } else if (url.pathname === "/caller/terminal") {
       return acceptTerminalSocket(this.ctx, url, client, server);
+    } else if (url.pathname === "/caller/logs") {
+      return acceptLogsSocket(this.ctx, url, client, server);
     } else {
       const deviceId = url.searchParams.get("deviceId") ?? "";
       this.ctx.acceptWebSocket(server, ["executor"]);
@@ -146,7 +149,8 @@ export class DeviceRelay extends DurableObject<Env> {
   override async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string") return;
     const state = attachmentOf(socket);
-    if (!state) return;
+    // A tab watching the logs only listens; its heartbeat never wakes this.
+    if (!state || state.role === "logs") return;
 
     if (state.role !== "executor") {
       await this.handleCallerMessage(socket, state, raw);
@@ -210,7 +214,7 @@ export class DeviceRelay extends DurableObject<Env> {
           this.ctx.getWebSockets("tool").length,
           message.result.ok ? "ok" : "error",
         );
-        settleCaller(caller, { type: "tool.result", result: message.result });
+        settleCaller(caller, { type: "tool.result", result: message.result }, this.ctx);
         return;
       }
 
@@ -234,14 +238,14 @@ export class DeviceRelay extends DurableObject<Env> {
 
   override async webSocketClose(socket: WebSocket): Promise<void> {
     const state = attachmentOf(socket);
-    if (!state) return;
+    if (!state || state.role === "logs") return;
     if (state.role === "executor") {
       // biome-ignore format: keep DeviceRelay under the file-length budget
       await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The device disconnected while the call was in flight.");
       return;
     }
     if (!state.settled) {
-      if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
+      if (state.role === "tool" || state.role === "workspace") cancelCaller(this.ctx, state);
       else if (state.role === "terminal") await persistDetachedTerminal(this.ctx, socket, state);
       else resolveTerminalApproval(this.ctx, state.id);
     } else if (state.role === "terminal") await scheduleWorkspaceAlarm(this.ctx);
@@ -255,7 +259,7 @@ export class DeviceRelay extends DurableObject<Env> {
       // biome-ignore format: keep DeviceRelay under the file-length budget
       await dropExecutor(this.ctx, this.env, state.deviceId, hasOtherExecutor(this.ctx, socket), "The connection to the device failed.");
     } else if ((state?.role === "tool" || state?.role === "workspace") && !state.settled)
-      sendCancel(this.ctx, state.id);
+      cancelCaller(this.ctx, state);
     else if (state?.role === "terminal" && !state.settled)
       await persistDetachedTerminal(this.ctx, socket, state);
     else if (state?.role === "approval" && !state.settled)
@@ -321,6 +325,16 @@ export class DeviceRelay extends DurableObject<Env> {
     return issueTerminalTicket(this.ctx, projectId, workspaceId, workspaceSlug, origin);
   }
 
+  /** A ticket to watch the calls on a root or workspace. Never wakes the machine. */
+  async createLogsTicket(
+    projectId: string,
+    workspaceId: string | undefined,
+    workspaceSlug: string | undefined,
+    origin: string,
+  ): Promise<string | null> {
+    return issueTerminalTicket(this.ctx, projectId, workspaceId, workspaceSlug, origin, "logs");
+  }
+
   /** What the helpers beside this file are handed: the object's own state. */
   private relay() {
     return { ctx: this.ctx, env: this.env, cloud: this.cloud };
@@ -347,8 +361,10 @@ export class DeviceRelay extends DurableObject<Env> {
     workspaceId: string | undefined,
     workspaceSlug: string | undefined,
     origin: string,
+    kind: "terminal" | "logs" = "terminal",
   ): Promise<boolean> {
-    return consumeTerminalTicket(this.ctx, token, projectId, workspaceId, workspaceSlug, origin);
+    // biome-ignore format: keep DeviceRelay under the file-length budget
+    return consumeTerminalTicket(this.ctx, token, projectId, workspaceId, workspaceSlug, origin, kind);
   }
 
   async listTerminals() {
@@ -394,6 +410,7 @@ export class DeviceRelay extends DurableObject<Env> {
       socket.close(1008, "device revoked");
     }
     failCallers(this.ctx, "This device was revoked.");
+    closeLogSockets(this.ctx, "device revoked");
     await forgetAllStoredTerminals(this.ctx);
     await clearMcpCatalogs(this.ctx);
     await storeCloudConfig(this.ctx, this.cloud, null);
@@ -415,7 +432,7 @@ export class DeviceRelay extends DurableObject<Env> {
 
     if (message.type === "cancel") {
       socket.serializeAttachment({ ...state, settled: true } satisfies SocketState);
-      if (state.role === "tool" || state.role === "workspace") sendCancel(this.ctx, state.id);
+      if (state.role === "tool" || state.role === "workspace") cancelCaller(this.ctx, state);
       else resolveTerminalApproval(this.ctx, state.id);
       socket.close(1000, "cancelled");
       return;

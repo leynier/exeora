@@ -1,9 +1,9 @@
-import { Files, GitBranch, GitPullRequest, Search, SquareTerminal } from "lucide-react";
+import { Files, GitBranch, GitPullRequest, ScrollText, Search, SquareTerminal } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { useWorkspaceLogs } from "../components/logs/useWorkspaceLogs.js";
 import { NoRoot } from "../components/NoRoot.js";
-import { useTerminals } from "../components/Terminals.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
 import type { WorkspaceContext } from "../components/workspace/context.js";
@@ -90,7 +90,6 @@ export function Workspace() {
   const workspaces = useWorkspaces(projectId || undefined);
   const navigate = useNavigate();
   const wide = useWide();
-  const { workspaceFills } = useTerminals();
   const view = parseView(search.get("view"));
   const setView = useCallback(
     (value: WorkspaceView) => {
@@ -197,6 +196,12 @@ export function Workspace() {
     [interrupt, resume, runAction],
   );
   const actions = { ...base, run };
+  const logs = useWorkspaceLogs({
+    projectId,
+    workspace: targetId,
+    targetKey,
+    active: view === "logs" && ready,
+  });
 
   // An address that names the default root the long way is put right, so the
   // terminal chips and the selector agree on what is on screen.
@@ -251,6 +256,7 @@ export function Workspace() {
         status,
         capabilities: capabilities.data,
         actions,
+        logs,
         refresh,
         open: opener.open,
         selected: opener.selected,
@@ -302,6 +308,7 @@ export function Workspace() {
     },
     { id: "pr", label: "Pull Request", short: "PR", icon: GitPullRequest },
     { id: "terminal", label: "Terminal", icon: SquareTerminal },
+    { id: "logs", label: "Logs", icon: ScrollText },
   ];
 
   const back = () => {
@@ -399,7 +406,6 @@ export function Workspace() {
                 : null
             }
             onBack={back}
-            strip={workspaceFills && view === "terminal"}
           />
           <ConfirmDialog
             open={actions.confirm !== null}

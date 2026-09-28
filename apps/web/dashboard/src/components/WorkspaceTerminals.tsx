@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { terminalSessionKey } from "../workspacePaths.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { useTerminals } from "./Terminals.js";
+import { TerminalSlot, useTerminals } from "./Terminals.js";
 
 export function WorkspaceTerminals({
   projectId,
@@ -23,7 +23,8 @@ export function WorkspaceTerminals({
   const currentKey = terminalSessionKey(projectId, workspaceId);
   const currentOpen = sessions.some((session) => session.key === currentKey);
 
-  if (!visible || currentOpen) return null;
+  if (!visible) return null;
+  if (currentOpen) return <TerminalSlot />;
 
   return (
     <>
