@@ -110,3 +110,28 @@ describe("revalidation", () => {
     expect((await get("/dashboard/", { "If-None-Match": etag })).status).toBe(304);
   });
 });
+
+describe("the extension's side panel", () => {
+  it("serves the panel page rather than the dashboard shell", async () => {
+    const response = await get("/dashboard/panel");
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("<title>Exeora</title>");
+    expect(html).not.toContain("<title>Dashboard");
+  });
+
+  it("lets only the allowed extensions frame it", async () => {
+    // It hands whatever frames it the questions that get an access token
+    // back, so a website must not be able to frame it at all.
+    const response = await get("/dashboard/panel");
+    expect(response.headers.get("content-security-policy")).toBe(
+      `frame-ancestors chrome-extension://${env.EXEORA_EXTENSION_IDS}`,
+    );
+  });
+
+  it("is framable by nothing when the gateway allows no extension", async () => {
+    const off = { ...env, EXEORA_EXTENSION_IDS: "" } as unknown as Env;
+    const response = await serveAssets(new Request(`${ORIGIN}/dashboard/panel`), off);
+    expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+  });
+});

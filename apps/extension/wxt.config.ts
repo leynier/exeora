@@ -5,12 +5,13 @@ import { defineConfig } from "wxt";
 /**
  * Exeora for Chrome.
  *
- * The side panel is the dashboard's Workspace screen, imported from
- * `apps/web/dashboard` rather than copied, so a fix there is a fix here. What
- * the extension adds is how it signs in and where its requests go.
+ * A thin shell: it signs in, keeps the session and frames the side panel the
+ * gateway serves at `/dashboard/panel` (see
+ * `apps/web/dashboard/src/panel/protocol.ts`). The panel's screens ship with
+ * every gateway deploy; a new version of this is only needed for what lives
+ * here: the manifest, signing in, and the bridge the panel talks to.
  */
 
-const dashboard = fileURLToPath(new URL("../web/dashboard/src", import.meta.url));
 const fonts = fileURLToPath(new URL("../web/landing/public/fonts", import.meta.url));
 
 /**
@@ -34,15 +35,13 @@ function gatewayUrl(mode: string): string {
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
-  // Also written into the generated tsconfig, so the editor resolves it too.
-  alias: { "@dashboard": dashboard },
   manifest: ({ mode }) => ({
     name: "Exeora",
     description:
       "Review, commit and open terminals in your Exeora workspaces from Chrome's side panel.",
     permissions: ["sidePanel", "identity", "storage"],
-    // Only the gateway: the panel calls its API and opens terminals on it, and
-    // reads nothing from the pages it sits next to.
+    // Only the gateway: the shell signs in against it and frames its panel,
+    // and reads nothing from the pages it sits next to.
     host_permissions: [`${gatewayUrl(mode)}/*`],
     action: { default_title: "Open Exeora" },
     ...(process.env.EXEORA_EXTENSION_KEY === "omit" ? {} : { key: KEY }),
@@ -50,25 +49,13 @@ export default defineConfig({
   vite: ({ mode }) => ({
     plugins: [tailwind()],
     define: { "import.meta.env.EXEORA_GATEWAY_URL": JSON.stringify(gatewayUrl(mode)) },
-    resolve: {
-      // The dashboard's files resolve their packages from apps/web. One copy of
-      // each is what makes hooks and context work across the two trees.
-      dedupe: [
-        "react",
-        "react-dom",
-        "react-router",
-        "@tanstack/react-query",
-        // CodeMirror refuses a second copy of its state or view packages.
-        "@codemirror/state",
-        "@codemirror/view",
-      ],
-    },
   }),
   // `exeora-<version>-chrome.zip`, the file the release workflow submits.
   zip: { name: "exeora" },
   hooks: {
-    // The dashboard's stylesheet loads its faces from `/fonts/`, which on the
-    // gateway is the landing's public folder. Here it is the extension's root.
+    // The sign-in screen uses the dashboard's stylesheet, which loads its faces
+    // from `/fonts/`: the landing's public folder on the gateway, and the
+    // extension's root here.
     "build:publicAssets": (_wxt, files) => {
       for (const name of ["inter-latin.woff2", "jetbrains-mono-latin.woff2"]) {
         files.push({ absoluteSrc: `${fonts}/${name}`, relativeDest: `fonts/${name}` });

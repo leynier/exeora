@@ -1,4 +1,5 @@
 import "./env.js";
+import { extensionOrigins } from "./oauth/clients.js";
 
 /**
  * Serves the two static builds that make up the site.
@@ -18,11 +19,19 @@ import "./env.js";
 
 const DASHBOARD_PREFIX = "/dashboard";
 
-// Narrowed to the one binding this needs, rather than the whole Env: the
+/** Exeora for Chrome's side panel, which the extension frames from here. */
+const PANEL_PATHS = new Set([`${DASHBOARD_PREFIX}/panel`, `${DASHBOARD_PREFIX}/panel.html`]);
+
+// Narrowed to the bindings this needs, rather than the whole Env: the
 // OAUTH_PROVIDER field is injected at runtime and absent from the generated
 // bindings type, so asking for all of Env would make this untestable.
-export async function serveAssets(request: Request, env: Pick<Env, "ASSETS">): Promise<Response> {
+export async function serveAssets(
+  request: Request,
+  env: Pick<Env, "ASSETS" | "EXEORA_EXTENSION_IDS">,
+): Promise<Response> {
   const url = new URL(request.url);
+
+  if (PANEL_PATHS.has(url.pathname)) return framedByExtension(await env.ASSETS.fetch(request), env);
 
   if (url.pathname === DASHBOARD_PREFIX) {
     return Response.redirect(`${url.origin}${DASHBOARD_PREFIX}/`, 308);
@@ -72,4 +81,21 @@ export async function serveAssets(request: Request, env: Pick<Env, "ASSETS">): P
   // a redirect is not a page.
   const page = await env.ASSETS.fetch(new Request(`${url.origin}/404`));
   return page.ok ? new Response(page.body, { status: 404, headers: page.headers }) : asset;
+}
+
+/**
+ * The side panel page, framable only by the extension ids this gateway allows.
+ *
+ * The panel asks whatever frames it for an access token, so the page itself
+ * must refuse every other parent. With the header, a page framed at all is
+ * framed by one of Exeora's own extensions; with no id allowed, by nothing.
+ */
+function framedByExtension(asset: Response, env: Pick<Env, "EXEORA_EXTENSION_IDS">): Response {
+  const origins = extensionOrigins(env);
+  const response = new Response(asset.body, asset);
+  response.headers.set(
+    "Content-Security-Policy",
+    `frame-ancestors ${origins.length > 0 ? origins.join(" ") : "'none'"}`,
+  );
+  return response;
 }
