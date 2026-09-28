@@ -1,4 +1,6 @@
 import {
+  type ByeMessage,
+  type ConnectMessage,
   isShellMessage,
   type PanelMessage,
   type PanelRequest,
@@ -8,21 +10,18 @@ import {
 /**
  * The panel's end of the conversation with the extension that frames it.
  *
- * Every request is answered by the shell with the same id, or times out. Only
- * the frame's own parent is listened to, and only from the origin the page was
- * framed by, which the gateway's `frame-ancestors` already limits to the
- * extension ids it allows.
+ * It opens a `MessageChannel` and hands one port to the shell; every request
+ * then goes over the other and is answered with the same id, or times out.
+ * The port is the whole of the trust: only the document that opened it can
+ * ask anything, and the shell stops answering when that document goes away.
  */
 
 export interface BridgeDeps {
-  /** The window that frames this page. */
-  parent: { postMessage(message: unknown, targetOrigin: string): void };
-  /** Its origin: `chrome-extension://<id>`. Replies from anywhere else are ignored. */
-  parentOrigin: string;
-  /** Subscribes to this window's messages; returns the unsubscribe. */
-  listen: (
-    handler: (event: Pick<MessageEvent, "data" | "origin" | "source">) => void,
-  ) => () => void;
+  /**
+   * Hands the shell its port, in a `connect` message to the window that
+   * frames this page, at the origin it was framed by. Called once.
+   */
+  connect: (port: MessagePort) => void;
 }
 
 type Kind = PanelRequest["kind"];
@@ -48,8 +47,9 @@ export function createBridge(deps: BridgeDeps) {
     }
   >();
 
-  const stop = deps.listen((event) => {
-    if (event.origin !== deps.parentOrigin || event.source !== deps.parent) return;
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  port.onmessage = (event: MessageEvent) => {
     if (!isShellMessage(event.data)) return;
     const waiting = pending.get(event.data.id);
     if (!waiting) return;
@@ -57,7 +57,8 @@ export function createBridge(deps: BridgeDeps) {
     clearTimeout(waiting.timer);
     if (event.data.ok) waiting.resolve(event.data.result);
     else waiting.reject(new BridgeError(event.data.error));
-  });
+  };
+  deps.connect(channel.port2);
 
   return {
     request<K extends Kind>(request: Extract<PanelRequest, { kind: K }>): Promise<PanelResults[K]> {
@@ -69,12 +70,18 @@ export function createBridge(deps: BridgeDeps) {
         }, TIMEOUTS[request.kind]);
         pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
         const message: PanelMessage = { exeora: "panel", id, request };
-        deps.parent.postMessage(message, deps.parentOrigin);
+        port.postMessage(message);
       });
     },
 
+    /** Tells the shell this document is going away, so it loads the panel again. */
+    leave() {
+      const bye: ByeMessage = { exeora: "panel", kind: "bye" };
+      port.postMessage(bye);
+    },
+
     close() {
-      stop();
+      port.close();
       for (const [id, waiting] of pending) {
         clearTimeout(waiting.timer);
         waiting.reject(new BridgeError("The panel closed."));
@@ -85,6 +92,9 @@ export function createBridge(deps: BridgeDeps) {
 }
 
 export type Bridge = ReturnType<typeof createBridge>;
+
+/** What the panel posts to the window framing it, with the shell's port. */
+export const CONNECT: ConnectMessage = { exeora: "panel", kind: "connect" };
 
 /**
  * The extension this page is framed by, or null when it is not framed by one:

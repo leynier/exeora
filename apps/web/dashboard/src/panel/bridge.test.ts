@@ -1,86 +1,81 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBridge, framingExtension } from "./bridge.js";
+import { type Bridge, createBridge, framingExtension } from "./bridge.js";
 import type { PanelMessage } from "./protocol.js";
 
 const SHELL = "chrome-extension://helnfgncjgikiojakjdfppmmflbdjamo";
 
-type Handler = (event: { data: unknown; origin: string; source: unknown }) => void;
-
-/** A parent window that records what the panel sent, and a way to answer it. */
+/** A shell holding the port the panel handed it, answering whatever the test says. */
 function world() {
-  const sent: PanelMessage[] = [];
-  const targets: string[] = [];
-  let handler: Handler | undefined;
-  const parent = {
-    postMessage(message: unknown, targetOrigin: string) {
-      sent.push(message as PanelMessage);
-      targets.push(targetOrigin);
-    },
-  };
+  const received: PanelMessage[] = [];
+  let shellPort: MessagePort | undefined;
   const bridge = createBridge({
-    parent,
-    parentOrigin: SHELL,
-    listen: (next) => {
-      handler = next as Handler;
-      return () => {
-        handler = undefined;
-      };
+    connect: (port) => {
+      shellPort = port;
+      port.onmessage = (event: MessageEvent) => received.push(event.data as PanelMessage);
     },
   });
-  const deliver = (data: unknown, origin = SHELL, source: unknown = parent) =>
-    handler?.({ data, origin, source });
-  return { bridge, sent, targets, deliver, parent, listening: () => handler !== undefined };
+  if (!shellPort) throw new Error("the bridge did not connect");
+  const port = shellPort;
+  const answer = (data: unknown) => port.postMessage(data);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+  open.push({ bridge, port });
+  return { bridge, received, answer, settle, port };
 }
+
+const open: Array<{ bridge: Bridge; port: MessagePort }> = [];
 
 afterEach(() => {
   vi.useRealTimers();
+  for (const { bridge, port } of open.splice(0)) {
+    bridge.close();
+    port.close();
+  }
 });
 
 describe("the panel's bridge", () => {
-  it("asks the parent, and only at the extension's origin", async () => {
-    const { bridge, sent, targets, deliver } = world();
+  it("hands the shell a port once, and asks over it", async () => {
+    const { bridge, received, answer, settle } = world();
     const token = bridge.request({ kind: "token" });
+    await settle();
 
-    expect(sent).toEqual([{ exeora: "panel", id: 1, request: { kind: "token" } }]);
-    expect(targets).toEqual([SHELL]);
-
-    deliver({ exeora: "shell", id: 1, ok: true, result: { token: "abc" } });
+    expect(received).toEqual([{ exeora: "panel", id: 1, request: { kind: "token" } }]);
+    answer({ exeora: "shell", id: 1, ok: true, result: { token: "abc" } });
     await expect(token).resolves.toEqual({ token: "abc" });
   });
 
   it("matches answers to questions by id", async () => {
-    const { bridge, deliver } = world();
+    const { bridge, answer, settle } = world();
     const first = bridge.request({ kind: "token" });
     const second = bridge.request({ kind: "token", force: true });
+    await settle();
 
-    deliver({ exeora: "shell", id: 2, ok: true, result: { token: "two" } });
-    deliver({ exeora: "shell", id: 1, ok: true, result: { token: "one" } });
+    answer({ exeora: "shell", id: 2, ok: true, result: { token: "two" } });
+    answer({ exeora: "shell", id: 1, ok: true, result: { token: "one" } });
 
     await expect(first).resolves.toEqual({ token: "one" });
     await expect(second).resolves.toEqual({ token: "two" });
   });
 
-  it("ignores a reply from another origin or another window", async () => {
-    vi.useFakeTimers();
-    const { bridge, deliver } = world();
+  it("ignores what is not an answer", async () => {
+    const { bridge, answer, settle } = world();
     const token = bridge.request({ kind: "token" });
     const settled = vi.fn();
     token.then(settled, settled);
 
-    deliver({ exeora: "shell", id: 1, ok: true, result: { token: "evil" } }, "https://evil.test");
-    deliver({ exeora: "shell", id: 1, ok: true, result: { token: "evil" } }, SHELL, {});
-    await Promise.resolve();
+    answer({ id: 1, ok: true, result: { token: "not the shell" } });
+    await settle();
     expect(settled).not.toHaveBeenCalled();
 
-    deliver({ exeora: "shell", id: 1, ok: true, result: { token: "good" } });
+    answer({ exeora: "shell", id: 1, ok: true, result: { token: "good" } });
     await expect(token).resolves.toEqual({ token: "good" });
   });
 
   it("rejects with the shell's sentence", async () => {
-    const { bridge, deliver } = world();
-    const open = bridge.request({ kind: "open", path: "/projects" });
-    deliver({ exeora: "shell", id: 1, ok: false, error: "No." });
-    await expect(open).rejects.toThrow("No.");
+    const { bridge, answer, settle } = world();
+    const opened = bridge.request({ kind: "open", path: "/projects" });
+    await settle();
+    answer({ exeora: "shell", id: 1, ok: false, error: "No." });
+    await expect(opened).rejects.toThrow("No.");
   });
 
   it("gives up on a shell that never answers", async () => {
@@ -91,11 +86,17 @@ describe("the panel's bridge", () => {
     await expect(ready).rejects.toThrow("did not answer");
   });
 
-  it("stops listening and fails what is pending when closed", async () => {
-    const { bridge, listening } = world();
+  it("says bye over the port when its document leaves", async () => {
+    const { bridge, received, settle } = world();
+    bridge.leave();
+    await settle();
+    expect(received).toEqual([{ exeora: "panel", kind: "bye" }]);
+  });
+
+  it("fails what is pending when closed", async () => {
+    const { bridge } = world();
     const token = bridge.request({ kind: "token" });
     bridge.close();
-    expect(listening()).toBe(false);
     await expect(token).rejects.toThrow("closed");
   });
 });

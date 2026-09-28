@@ -2,7 +2,7 @@ import { type ReactNode, StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { configureApiSession } from "../api.js";
 import "../index.css";
-import { type Bridge, createBridge, framingExtension } from "./bridge.js";
+import { type Bridge, CONNECT, createBridge, framingExtension } from "./bridge.js";
 import { Panel } from "./Panel.js";
 import { PANEL_PROTOCOL } from "./protocol.js";
 
@@ -18,6 +18,9 @@ if (!root) throw new Error("missing #root");
 const shell = framingExtension();
 
 function start(bridge: Bridge) {
+  // Only when something navigates the frame: the side panel closing takes the
+  // shell with it.
+  window.addEventListener("pagehide", () => bridge.leave());
   // Same origin as the API: only the token comes from the extension.
   configureApiSession({
     origin: "",
@@ -29,12 +32,7 @@ function start(bridge: Bridge) {
 const bridge = shell
   ? start(
       createBridge({
-        parent: window.parent,
-        parentOrigin: shell,
-        listen: (handler) => {
-          window.addEventListener("message", handler);
-          return () => window.removeEventListener("message", handler);
-        },
+        connect: (port) => window.parent.postMessage(CONNECT, shell, [port]),
       }),
     )
   : null;

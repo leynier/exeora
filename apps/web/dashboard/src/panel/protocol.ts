@@ -8,6 +8,14 @@
  * version in the Chrome Web Store. What only the extension can do, the panel
  * asks for over `postMessage`.
  *
+ * The conversation runs over a `MessageChannel` the panel's document opens
+ * once, handing one port to the shell in a `connect` message, the only one
+ * sent through the window. A link that takes the frame somewhere else takes
+ * the port with it: the panel says `bye` on its way out (Chrome does not fire
+ * the port's `close` for a navigation), the shell stops answering and loads
+ * the panel again. So a document that is not this panel never gets a token, even
+ * one on the gateway's own origin.
+ *
  * The two ship separately: the gateway on every push to main, the extension
  * when a tag says so. So a change here stays compatible with every shell
  * already installed. A new request is added rather than an old one changed,
@@ -34,20 +42,44 @@ export interface PanelResults {
   signOut: Record<string, never>;
 }
 
-/** Panel to shell. */
+/** Panel to shell, through the window, carrying the port everything else uses. */
+export interface ConnectMessage {
+  exeora: "panel";
+  kind: "connect";
+}
+
+/** Panel to shell, over the port, as its document goes away. */
+export interface ByeMessage {
+  exeora: "panel";
+  kind: "bye";
+}
+
+/** Panel to shell, over the port. */
 export interface PanelMessage {
   exeora: "panel";
   id: number;
   request: PanelRequest;
 }
 
-/** Shell to panel, answering the message with the same id. */
+/** Shell to panel, over the port, answering the message with the same id. */
 export type ShellMessage =
   | { exeora: "shell"; id: number; ok: true; result: PanelResults[PanelRequest["kind"]] }
   | { exeora: "shell"; id: number; ok: false; error: string };
 
 /** Where the panel is served, relative to the gateway's origin. */
 export const PANEL_PATH = "/dashboard/panel";
+
+export function isConnectMessage(data: unknown): data is ConnectMessage {
+  if (typeof data !== "object" || data === null) return false;
+  const message = data as Partial<ConnectMessage>;
+  return message.exeora === "panel" && message.kind === "connect";
+}
+
+export function isByeMessage(data: unknown): data is ByeMessage {
+  if (typeof data !== "object" || data === null) return false;
+  const message = data as Partial<ByeMessage>;
+  return message.exeora === "panel" && message.kind === "bye";
+}
 
 export function isPanelMessage(data: unknown): data is PanelMessage {
   if (typeof data !== "object" || data === null) return false;

@@ -199,9 +199,10 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
   const target = await ownedTarget(c.env, userId, projectId, c.req.valid("query").workspace);
   if (!target) return c.json({ error: "not_found" }, 404);
   const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, target.deviceId));
-  // Bound to the UI that asked: the side panel's socket comes from the
-  // extension's origin, the dashboard's from the gateway's. A request from
-  // neither still gets the gateway's, which is what it always did.
+  // Bound to the UI that asked: the dashboard's socket, and the side panel's
+  // now that the extension frames it from here, come from the gateway's
+  // origin; a side panel from before that, bundled in the extension, from the
+  // extension's. A request from neither still gets the gateway's.
   const origin =
     firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
   const ticket = await relay.createTerminalTicket(

@@ -15,25 +15,13 @@ const LOAD_TIMEOUT_MS = 20_000;
  * through `lib/bridge.ts`.
  */
 export function Panel() {
-  const frame = useRef<HTMLIFrameElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
-  // Bumped to remount the frame, which reloads it.
+  // Bumped to remount the frame, which loads the panel again.
   const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    const handle = createShell({
-      gateway: GATEWAY,
-      frame: () => frame.current?.contentWindow ?? null,
-      token: (options) => auth.token(options),
-      openTab,
-      // The app follows storage, so it replaces this frame with the sign-in
-      // screen as soon as the session is gone.
-      signOut: () => auth.signOut(),
-      onReady: () => setState("ready"),
-    });
-    window.addEventListener("message", handle);
-    return () => window.removeEventListener("message", handle);
-  }, []);
+  const reload = () => {
+    setState("loading");
+    setAttempt((value) => value + 1);
+  };
 
   useEffect(() => {
     if (state !== "loading") return;
@@ -43,14 +31,13 @@ export function Panel() {
 
   return (
     <div className="relative h-full">
-      <iframe
+      <Frame
         key={attempt}
-        ref={frame}
-        src={`${GATEWAY}${PANEL_PATH}`}
-        title="Exeora"
-        // The workspace's copy buttons and the terminal's paste.
-        allow="clipboard-read; clipboard-write"
-        className={`block size-full border-0 ${state === "ready" ? "" : "invisible"}`}
+        visible={state === "ready"}
+        onReady={() => setState("ready")}
+        // The panel's document went away: a link took the frame elsewhere, or
+        // it crashed. Whatever is there now gets no answers; load the panel.
+        onDisconnect={reload}
       />
       {state === "ready" ? null : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
@@ -61,14 +48,7 @@ export function Panel() {
               <p className="text-body-md text-foreground-muted">
                 Could not load Exeora from {new URL(GATEWAY).host}.
               </p>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setState("loading");
-                  setAttempt((value) => value + 1);
-                }}
-              >
+              <button type="button" className="btn" onClick={reload}>
                 Try again
               </button>
             </>
@@ -76,5 +56,51 @@ export function Panel() {
         </div>
       )}
     </div>
+  );
+}
+
+/** One load of the panel, and the shell that answers it. */
+function Frame({
+  visible,
+  onReady,
+  onDisconnect,
+}: {
+  visible: boolean;
+  onReady: () => void;
+  onDisconnect: () => void;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  // Read through refs so the shell is made once per frame, not per render.
+  const callbacks = useRef({ onReady, onDisconnect });
+  callbacks.current = { onReady, onDisconnect };
+
+  useEffect(() => {
+    const shell = createShell({
+      gateway: GATEWAY,
+      frame: () => frame.current?.contentWindow ?? null,
+      token: (options) => auth.token(options),
+      openTab,
+      // The app follows storage, so it replaces this frame with the sign-in
+      // screen as soon as the session is gone.
+      signOut: () => auth.signOut(),
+      onReady: () => callbacks.current.onReady(),
+      onDisconnect: () => callbacks.current.onDisconnect(),
+    });
+    window.addEventListener("message", shell.onMessage);
+    return () => {
+      window.removeEventListener("message", shell.onMessage);
+      shell.dispose();
+    };
+  }, []);
+
+  return (
+    <iframe
+      ref={frame}
+      src={`${GATEWAY}${PANEL_PATH}`}
+      title="Exeora"
+      // The workspace's copy buttons and the terminal's paste.
+      allow="clipboard-read; clipboard-write"
+      className={`block size-full border-0 ${visible ? "" : "invisible"}`}
+    />
   );
 }

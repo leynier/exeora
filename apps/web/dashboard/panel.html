@@ -7,6 +7,13 @@
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0d0f11" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!--
+      A link in a README or a pull request would otherwise navigate this frame,
+      and most of the sites they point to refuse to be framed. The router's own
+      links only read their `target` prop, so moving around the panel stays in
+      the panel.
+    -->
+    <base target="_blank" />
     <title>Exeora</title>
   </head>
   <body>
