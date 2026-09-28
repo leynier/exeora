@@ -18,8 +18,9 @@ concurrency:
 permissions:
   contents: read
 
-# CI already ran on the pull request. Calling it again here only delays
-# the deploy.
+# Deploy does not run ci.yml. A pull request runs those checks on the pull
+# request SHA. A direct push to main and workflow_dispatch apply migrations
+# and deploy that commit with no CI.
 jobs:
   deploy:
     runs-on: ubuntu-latest

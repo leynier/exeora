@@ -173,7 +173,7 @@ bun run deploy
 
 ### Continuous deploy (this repository)
 
-Every push to `main` applies the D1 migrations, builds the site and deploys the Worker (`.github/workflows/deploy.yml`). The same checks already ran on the pull request (`.github/workflows/ci.yml`). `workflow_dispatch` deploys the current `main` by hand.
+Every push to `main` applies the D1 migrations, builds the site and deploys the Worker (`.github/workflows/deploy.yml`). That workflow does not run CI. A pull request runs `.github/workflows/ci.yml` on the pull request SHA. A direct push to `main` and `workflow_dispatch` migrate and deploy with no CI.
 
 Repository secrets under Settings → Secrets and variables → Actions:
 

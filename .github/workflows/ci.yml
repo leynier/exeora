@@ -2,15 +2,19 @@ name: CI
 
 on:
   pull_request:
+  # release-cli.yml and release-extension.yml call this before publishing.
+  # Deploy does not.
+  workflow_call:
 
-# Pull requests only. Deploy does not call this workflow: the pull request
-# already ran these checks. A push to main used to run them directly and through
-# Deploy, and the two runs cancelled each other.
+# Not on push to main. Pull requests run this file, and the release workflows
+# call it. Deploy does not: a direct push deploys with no CI. Running this file
+# both on push and from Deploy used to cancel one of the two runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Checking out the code is all this workflow asks of the token.
+# Checking out the code is all this workflow asks of the token. Callers grant no
+# more than this, so a reusable-workflow call cannot widen it either.
 permissions:
   contents: read
 
