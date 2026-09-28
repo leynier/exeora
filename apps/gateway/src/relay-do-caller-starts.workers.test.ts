@@ -3,6 +3,7 @@ import {
   decodeRelayMessage,
   type ExecutorCapabilities,
   encodeMessage,
+  WorkspaceAction,
 } from "@exeora/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 import { callRelayWorkspace } from "./relay-client.js";
@@ -171,6 +172,69 @@ describe("workspace relay", () => {
     );
 
     expect(error.code).toBe("FORBIDDEN");
+  });
+
+  it("gates each action on the feature its tab needs, naming the tab", async () => {
+    const executor = await attachFakeExecutor({ capabilities: WORKSPACE_CAPABILITIES });
+    const refused = async (action: Parameters<typeof callRelayWorkspace>[1]["action"]) =>
+      failureOf(() =>
+        callRelayWorkspace(relay(), {
+          requestId: `req_${action.action}`,
+          projectId: "prj_test",
+          action,
+        }),
+      );
+    const history = (await refused(WorkspaceAction.parse({ action: "log" }))) as {
+      code?: string;
+      message?: string;
+    };
+    expect(history.code).toBe("FORBIDDEN");
+    expect(history.message).toBe("Update the Exeora CLI on this machine to use Source Control.");
+    const explorer = (await refused(WorkspaceAction.parse({ action: "tree" }))) as {
+      message?: string;
+    };
+    expect(explorer.message).toBe("Update the Exeora CLI on this machine to use Explorer.");
+    const search = (await refused(WorkspaceAction.parse({ action: "search", query: "x" }))) as {
+      message?: string;
+    };
+    expect(search.message).toBe("Update the Exeora CLI on this machine to use Search.");
+    // Nothing reached the machine, and v1 still does.
+    expect(executor.workspaceSeen).toEqual([]);
+    await callRelayWorkspace(relay(), {
+      requestId: "req_v1_still",
+      projectId: "prj_test",
+      action: { action: "status" },
+    });
+    expect(executor.workspaceSeen).toHaveLength(1);
+    executor.socket.close(1000, "done");
+  });
+
+  it("dispatches v2 and Explorer work to a CLI that announced them", async () => {
+    const executor = await attachFakeExecutor({
+      capabilities: {
+        ...WORKSPACE_CAPABILITIES,
+        features: ["source-control-v1", "source-control-v2", "workspace-v2"],
+      },
+      workspaceFrame: (requestId) => ({
+        type: "workspace.result",
+        requestId,
+        durationMs: 1,
+        result: {
+          ok: true,
+          value: { kind: "stash_list", entries: [] },
+        },
+      }),
+    });
+    const value = await callRelayWorkspace(relay(), {
+      requestId: "req_stash_list",
+      projectId: "prj_test",
+      action: { action: "stash_list" },
+    });
+    expect(value).toEqual({ kind: "stash_list", entries: [] });
+    expect(executor.workspaceSeen).toEqual([
+      { requestId: "req_stash_list", action: { action: "stash_list" } },
+    ]);
+    executor.socket.close(1000, "done");
   });
 
   it("issues short-lived, origin-bound, one-time terminal tickets", async () => {

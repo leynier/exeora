@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { RepositoryRef } from "./repository.js";
+import { FILE_MUTATION_ACTIONS, FILE_READ_ACTIONS, FILE_VALUES } from "./workspace-files.js";
+import { GIT_V2_MUTATION_ACTIONS, GIT_V2_READ_ACTIONS, GIT_V2_VALUES } from "./workspace-git-v2.js";
+import { SEARCH_MUTATION_ACTIONS, SEARCH_READ_ACTIONS, SEARCH_VALUES } from "./workspace-search.js";
 
 const path = z.string().min(1).max(4_096);
 const paths = z.array(path).min(1).max(1_000);
@@ -69,9 +72,13 @@ export const GitDiff = z.object({
 
 export type GitDiff = z.infer<typeof GitDiff>;
 
-export const WorkspaceAction = z.discriminatedUnion("action", [
+/** The v1 reads the dashboard has always had; `unpublished` is the gateway's. */
+export const WORKSPACE_V1_READ_ACTIONS = [
   z.object({ action: z.literal("status") }),
   z.object({ action: z.literal("diff"), path, area: z.enum(["working", "staged"]) }),
+] as const;
+
+const WORKSPACE_V1_MUTATION_ACTIONS = [
   /**
    * What the remote does not have. Asked by the gateway before it destroys a
    * cloud machine, whose checkout is the only copy of anything unpublished;
@@ -124,6 +131,22 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
    * `PROJECT_CLONE_FEATURE`.
    */
   z.object({ action: z.literal("project_prepare"), repository: RepositoryRef }),
+] as const;
+
+/**
+ * Every action a `workspace.call` can carry. Which CLI feature each one needs
+ * is in `workspace-features.ts`; the source-control-v2, Explorer and search
+ * parts are defined in their own files and assembled here.
+ */
+export const WorkspaceAction = z.discriminatedUnion("action", [
+  ...WORKSPACE_V1_READ_ACTIONS,
+  ...WORKSPACE_V1_MUTATION_ACTIONS,
+  ...GIT_V2_READ_ACTIONS,
+  ...GIT_V2_MUTATION_ACTIONS,
+  ...FILE_READ_ACTIONS,
+  ...FILE_MUTATION_ACTIONS,
+  ...SEARCH_READ_ACTIONS,
+  ...SEARCH_MUTATION_ACTIONS,
 ]);
 
 export type WorkspaceAction = z.infer<typeof WorkspaceAction>;
@@ -170,12 +193,16 @@ export const ProjectPrepared = z.object({
 
 export type ProjectPrepared = z.infer<typeof ProjectPrepared>;
 
-export const WorkspaceValue = z.union([
+/** Every result a `workspace.result` can carry; the relay discards anything else. */
+export const WorkspaceValue = z.discriminatedUnion("kind", [
   GitStatus,
   GitDiff,
   WorkspaceMutationResult,
   WorkspaceUnpublished,
   ProjectPrepared,
+  ...GIT_V2_VALUES,
+  ...FILE_VALUES,
+  ...SEARCH_VALUES,
 ]);
 export type WorkspaceValue = z.infer<typeof WorkspaceValue>;
 

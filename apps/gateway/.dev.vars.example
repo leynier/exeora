@@ -53,3 +53,16 @@ GITHUB_APP_WEBHOOK_SECRET=
 # apps/extension/wxt.config.ts pins, so `bun run ext:dev` can sign in here.
 # Never in production: that key is public.
 EXEORA_EXTENSION_IDS=helnfgncjgikiojakjdfppmmflbdjamo
+
+# AI Assist, optional: which providers an account may link, as a comma list
+# of `openai` and `xai`. Unset means off and the routes answer `ai_disabled`.
+# API keys speak to the documented APIs. Linking a ChatGPT or Grok
+# subscription by device code reuses flows other tools use without the
+# providers promising them (the Codex CLI's public client, xAI's OpenID
+# provider): those are unofficial and may stop working without notice, and
+# whether to offer them is your call. Needs CLOUD_CREDENTIALS_KEY above.
+AI_ASSIST_PROVIDERS=
+# `off` keeps only the API keys and offers no device login.
+AI_ASSIST_OAUTH=
+# The OAuth client xAI knows this gateway as. Unset offers xAI by key only.
+XAI_OAUTH_CLIENT_ID=

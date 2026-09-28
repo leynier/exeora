@@ -10,6 +10,7 @@ export default defineConfig({
           name: "node",
           include: [
             "packages/*/src/**/*.test.ts",
+            "packages/design/react/**/*.test.ts",
             "apps/gateway/src/**/*.test.ts",
             "apps/web/landing/src/**/*.test.ts",
             "apps/web/dashboard/src/**/*.test.ts",

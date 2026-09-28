@@ -9,7 +9,20 @@
     "./mark": "./mark.ts",
     "./brand": "./brand.ts",
     "./brand-data.json": "./brand-data.json",
-    "./wordmark.svg": "./wordmark.svg"
+    "./wordmark.svg": "./wordmark.svg",
+    "./react": "./react/index.ts"
   },
-  "description": "The design tokens and the mark, written down once. The tokens are read as an @theme block by the two Tailwind builds and as inline text by the gateway's OAuth screens; the mark's geometry is read by the landing and by the brand asset generator."
+  "description": "The design tokens and the mark, written down once. The tokens are read as an @theme block by the two Tailwind builds and as inline text by the gateway's OAuth screens; the mark's geometry is read by the landing and by the brand asset generator. The React primitives under react/ are raw TSX that each app compiles itself.",
+  "peerDependencies": {
+    "lucide-react": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "lucide-react": "1.48.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  }
 }

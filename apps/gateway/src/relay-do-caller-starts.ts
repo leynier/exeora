@@ -1,4 +1,4 @@
-import { encodeMessage } from "@exeora/protocol";
+import { encodeMessage, requiredFeature, workspaceTab } from "@exeora/protocol";
 import {
   type ApprovalCallerState,
   type ApprovalView,
@@ -95,10 +95,16 @@ export function handleWorkspaceCallerMessage(
     settleCaller(socket, offline("No Exeora CLI is connected for this project."));
     return;
   }
-  if (!executorState.capabilities?.features?.includes("source-control-v1")) {
+  // Each action names the feature a CLI must have announced. An older CLI
+  // still serves what it has, and the tab that needs more says so.
+  const feature = requiredFeature(message.action.action);
+  if (!executorState.capabilities?.features?.includes(feature)) {
     settleCaller(socket, {
       type: "error",
-      error: { code: "FORBIDDEN", message: "Update the Exeora CLI to use Source Control." },
+      error: {
+        code: "FORBIDDEN",
+        message: `Update the Exeora CLI on this machine to use ${workspaceTab(message.action.action)}.`,
+      },
     });
     return;
   }

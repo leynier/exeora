@@ -273,3 +273,30 @@ test("switches branches from the toolbar picker", async ({ page }) => {
   await page.getByRole("option", { name: /^experiment/ }).click();
   await expect(page.getByRole("button", { name: "Current branch experiment" })).toBeVisible();
 });
+
+test("opens a change beside the list as a preview tab, and pins it on a double click", async ({
+  page,
+}) => {
+  await signedIn(page);
+  await mockApi(page);
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
+  const tabs = page.getByRole("tablist", { name: "Open files and diffs" });
+  const list = page.getByRole("complementary", { name: "Source Control" });
+  await expect(tabs).toHaveCount(0);
+
+  await list.getByRole("button", { name: /main\.txt/ }).click();
+  await expect(tabs.getByRole("tab")).toHaveText(["main.txt"]);
+  await list.getByRole("button", { name: /notes\.md/ }).click();
+  // A preview gives way to the next single click.
+  await expect(tabs.getByRole("tab")).toHaveText(["notes.md"]);
+  await list.getByRole("button", { name: /notes\.md/ }).dblclick();
+  await list.getByRole("button", { name: /main\.txt/ }).click();
+  await expect(tabs.getByRole("tab")).toHaveText(["notes.md", "main.txt"]);
+  await expect(tabs.getByRole("tab", { name: "main.txt" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  await tabs.getByRole("button", { name: "Close main.txt" }).click();
+  await expect(tabs.getByRole("tab")).toHaveText(["notes.md"]);
+});

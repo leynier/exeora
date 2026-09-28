@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import "../env.js";
+import { ai } from "../ai/routes.js";
+import { aiGenerate } from "../ai/routes-generate.js";
+import { pullRequests } from "../github/pull-requests/routes.js";
 import { github } from "../github/routes.js";
 import {
   hasScope,
@@ -22,6 +25,7 @@ import { projects } from "./projects.js";
 import type { ApiEnv } from "./router.js";
 import { workspace } from "./workspace.js";
 import { workspaceCreate } from "./workspace-create.js";
+import { workspaceReads } from "./workspace-reads.js";
 import { workspaces } from "./workspaces.js";
 
 /**
@@ -75,6 +79,7 @@ api.route("/", locations);
 api.route("/", workspaces);
 api.route("/", workspaceCreate);
 api.route("/", workspace);
+api.route("/", workspaceReads);
 api.route("/", clients);
 api.route("/", accountClients);
 api.route("/", extension);
@@ -82,6 +87,9 @@ api.route("/", audit);
 api.route("/", cloud);
 api.route("/", cloudScripts);
 api.route("/", github);
+api.route("/", ai);
+api.route("/", aiGenerate);
+api.route("/", pullRequests);
 
 // Administration panel. Mounted last so its middleware only sees /api/admin/*
 // after the shared auth middleware has already bound the caller.

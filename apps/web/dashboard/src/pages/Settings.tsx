@@ -1,3 +1,4 @@
+import { AiProvidersCard } from "../components/ai/AiProvidersCard.js";
 import { DangerZone } from "../components/DangerZone.js";
 import { ExtensionCard } from "../components/ExtensionCard.js";
 import { GitHubCard } from "../components/GitHubCard.js";
@@ -72,6 +73,8 @@ export function Settings() {
       </Card>
 
       <GitHubCard className="mb-6" />
+
+      <AiProvidersCard className="mb-6" />
 
       <ExtensionCard className="mb-6" />
 

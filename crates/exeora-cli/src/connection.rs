@@ -10,7 +10,9 @@ use crate::{
     protocol::{
         CLOUD_FEATURE, CLOUD_HOOKS_FEATURE, HEARTBEAT_INTERVAL_MS, HEARTBEAT_REQUEST,
         HEARTBEAT_TIMEOUT_MS, MAX_RESULT_BYTES, PRESENCE_SIGNAL_INTERVAL_MS, PROJECT_CLONE_FEATURE,
-        PROTOCOL_VERSION, REJECTED_BACKOFF_MAX_MS, REJECTED_BACKOFF_MIN_MS, ToolName, now_ms,
+        PROTOCOL_VERSION, REJECTED_BACKOFF_MAX_MS, REJECTED_BACKOFF_MIN_MS,
+        SOURCE_CONTROL_V1_FEATURE, SOURCE_CONTROL_V2_FEATURE, ToolName, WORKSPACE_V2_FEATURE,
+        now_ms,
     },
     tools::{CallScope, ToolEngine},
     workspace::{
@@ -1446,7 +1448,13 @@ fn announced_projects(config_path: &Path, at_start: &[ProjectEntry]) -> Vec<Proj
 /// Exeora Cloud does not clone projects: it holds the repository it was
 /// created for, so only a person's own machine announces that.
 fn announced_features(local: bool) -> Vec<&'static str> {
-    let mut features = vec!["source-control-v1", "terminal-v1", "mcp-proxy-v1"];
+    let mut features = vec![
+        SOURCE_CONTROL_V1_FEATURE,
+        SOURCE_CONTROL_V2_FEATURE,
+        WORKSPACE_V2_FEATURE,
+        "terminal-v1",
+        "mcp-proxy-v1",
+    ];
     if local {
         features.push(PROJECT_CLONE_FEATURE);
     } else {
@@ -2463,6 +2471,16 @@ done
         assert!(!announced_features(true).contains(&"cloud-v1"));
         assert!(announced_features(false).contains(&"cloud-v1"));
         assert!(!announced_features(false).contains(&"project-clone-v1"));
+    }
+
+    #[test]
+    fn announces_every_workspace_feature_from_either_kind_of_machine() {
+        for local in [true, false] {
+            let features = announced_features(local);
+            assert!(features.contains(&"source-control-v1"), "{features:?}");
+            assert!(features.contains(&"source-control-v2"), "{features:?}");
+            assert!(features.contains(&"workspace-v2"), "{features:?}");
+        }
     }
 
     #[test]

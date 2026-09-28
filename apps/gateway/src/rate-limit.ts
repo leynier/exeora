@@ -67,6 +67,10 @@ export function isRateLimitedAuthRequest(method: string, pathname: string): bool
 
 /** Where `gh` in an instance asks for its token. */
 const GH_TOKEN = /^\/api\/projects\/[^/]+\/gh-token$/;
+/** AI Assist: device logins and key checks under `/api/ai`, generations under a project. */
+const AI_WRITE = /^\/api\/(?:ai\/|projects\/[^/]+\/ai\/)/;
+/** A project's pull request and everything under it: reads are free, changes are counted. */
+const PULL_REQUEST = /^\/api\/projects\/[^/]+\/pull-request(\/|$)/;
 
 /**
  * Which limiter, if any, applies to an authenticated request.
@@ -101,10 +105,17 @@ export function limiterFor(
       pathname === "/api/projects" ||
       pathname.startsWith("/api/cloud/") ||
       /^\/api\/projects\/[^/]+\/git-credential$/.test(pathname) ||
-      GH_TOKEN.test(pathname))
+      GH_TOKEN.test(pathname) ||
+      // Each AI request is a device login started or a generation billed to
+      // the account's provider; a page that loops would spend that budget.
+      AI_WRITE.test(pathname))
   ) {
     return env.RL_WRITE;
   }
+
+  // Each change to a pull request is a write at GitHub in the account's
+  // name; the screen's polling, being GETs, is not.
+  if (method !== "GET" && PULL_REQUEST.test(pathname)) return env.RL_WRITE;
 
   return undefined;
 }

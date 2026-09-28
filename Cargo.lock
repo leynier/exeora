@@ -1139,6 +1139,7 @@ dependencies = [
  "futures-util",
  "globset",
  "grep-matcher",
+ "grep-regex",
  "grep-searcher",
  "hostname",
  "http",
@@ -1460,6 +1461,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9417543f4870fc8f1c8e1af870afae2431007626d9e703fce6471c468d33847"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "grep-regex"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce0c256c3ad82bcc07b812c15a45ec1d398122e8e15124f96695234db7112ef"
+dependencies = [
+ "bstr",
+ "grep-matcher",
+ "log",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]

@@ -468,7 +468,7 @@
                       "const": true
                     },
                     "value": {
-                      "anyOf": [
+                      "oneOf": [
                         {
                           "type": "object",
                           "properties": {
@@ -1085,6 +1085,856 @@
                             "localPath",
                             "adopted",
                             "branch"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "log"
+                            },
+                            "commits": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "oid": {
+                                    "type": "string"
+                                  },
+                                  "shortOid": {
+                                    "type": "string"
+                                  },
+                                  "parents": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "authorName": {
+                                    "type": "string"
+                                  },
+                                  "authorEmail": {
+                                    "type": "string"
+                                  },
+                                  "authoredAt": {
+                                    "type": "string"
+                                  },
+                                  "committedAt": {
+                                    "type": "string"
+                                  },
+                                  "subject": {
+                                    "type": "string"
+                                  },
+                                  "refs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "oid",
+                                  "shortOid",
+                                  "parents",
+                                  "authorName",
+                                  "authorEmail",
+                                  "authoredAt",
+                                  "committedAt",
+                                  "subject",
+                                  "refs"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "nextCursor": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "head": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "upstream": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "commits",
+                            "nextCursor",
+                            "head",
+                            "upstream"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "commit_detail"
+                            },
+                            "oid": {
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "oldPath": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "A",
+                                      "M",
+                                      "D",
+                                      "R",
+                                      "C",
+                                      "T"
+                                    ]
+                                  },
+                                  "additions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "deletions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "binary": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "status",
+                                  "additions",
+                                  "deletions",
+                                  "binary"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "oid",
+                            "message",
+                            "files"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "commit_diff"
+                            },
+                            "oid": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "patch": {
+                              "type": "string"
+                            },
+                            "binary": {
+                              "type": "boolean"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "oid",
+                            "path",
+                            "patch",
+                            "binary",
+                            "truncated"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "diff_all"
+                            },
+                            "area": {
+                              "type": "string",
+                              "enum": [
+                                "working",
+                                "staged"
+                              ]
+                            },
+                            "patch": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "untrackedOmitted": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "area",
+                            "patch",
+                            "truncated",
+                            "untrackedOmitted"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "range_diff"
+                            },
+                            "base": {
+                              "type": "string"
+                            },
+                            "head": {
+                              "type": "string"
+                            },
+                            "mergeBase": {
+                              "type": "string"
+                            },
+                            "patch": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "oldPath": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "A",
+                                      "M",
+                                      "D",
+                                      "R",
+                                      "C",
+                                      "T"
+                                    ]
+                                  },
+                                  "additions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "deletions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "binary": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "status",
+                                  "additions",
+                                  "deletions",
+                                  "binary"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "base",
+                            "head",
+                            "mergeBase",
+                            "patch",
+                            "truncated",
+                            "files"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "staged_context"
+                            },
+                            "branch": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "oldPath": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "A",
+                                      "M",
+                                      "D",
+                                      "R",
+                                      "C",
+                                      "T"
+                                    ]
+                                  },
+                                  "additions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "deletions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "binary": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "status",
+                                  "additions",
+                                  "deletions",
+                                  "binary"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "patch": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "branch",
+                            "files",
+                            "patch",
+                            "truncated"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "range_context"
+                            },
+                            "base": {
+                              "type": "string"
+                            },
+                            "head": {
+                              "type": "string"
+                            },
+                            "mergeBase": {
+                              "type": "string"
+                            },
+                            "commits": {
+                              "maxItems": 40,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "oid": {
+                                    "type": "string"
+                                  },
+                                  "subject": {
+                                    "type": "string"
+                                  },
+                                  "body": {
+                                    "type": "string"
+                                  },
+                                  "author": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "oid",
+                                  "subject",
+                                  "body",
+                                  "author"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "oldPath": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "A",
+                                      "M",
+                                      "D",
+                                      "R",
+                                      "C",
+                                      "T"
+                                    ]
+                                  },
+                                  "additions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "deletions": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "binary": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "status",
+                                  "additions",
+                                  "deletions",
+                                  "binary"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "patch": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "base",
+                            "head",
+                            "mergeBase",
+                            "commits",
+                            "files",
+                            "patch",
+                            "truncated"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "stash_list"
+                            },
+                            "entries": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "index",
+                                  "message",
+                                  "createdAt"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "entries"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "tree"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "entries": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "file",
+                                      "directory",
+                                      "symlink"
+                                    ]
+                                  },
+                                  "size": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "ignored": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "path",
+                                  "type",
+                                  "ignored"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "path",
+                            "entries",
+                            "truncated"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "file"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            },
+                            "encoding": {
+                              "type": "string",
+                              "enum": [
+                                "text",
+                                "base64"
+                              ]
+                            },
+                            "token": {
+                              "type": "string"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "binary": {
+                              "type": "boolean"
+                            },
+                            "mime": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "path",
+                            "content",
+                            "encoding",
+                            "token",
+                            "size",
+                            "truncated",
+                            "binary",
+                            "mime"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "file_write"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "written",
+                                "conflict"
+                              ]
+                            },
+                            "token": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "path",
+                            "status",
+                            "token"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "search"
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "token": {
+                                    "type": "string"
+                                  },
+                                  "matches": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "line": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "column": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "length": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "preview": {
+                                          "type": "string"
+                                        },
+                                        "previewOffset": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        }
+                                      },
+                                      "required": [
+                                        "line",
+                                        "column",
+                                        "length",
+                                        "preview",
+                                        "previewOffset"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "truncated": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "token",
+                                  "matches",
+                                  "truncated"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "totalMatches": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "filesSearched": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "filesSkipped": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "files",
+                            "totalMatches",
+                            "truncated",
+                            "filesSearched",
+                            "filesSkipped"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "replace"
+                            },
+                            "files": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "replaced": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "ok",
+                                      "conflict",
+                                      "missing",
+                                      "skipped"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "path",
+                                  "replaced",
+                                  "status"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "replaced": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "skipped": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "files",
+                            "replaced",
+                            "skipped"
                           ],
                           "additionalProperties": false
                         }
@@ -2241,6 +3091,632 @@
                   "required": [
                     "action",
                     "repository"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "log"
+                    },
+                    "cursor": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "limit": {
+                      "default": 30,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "limit"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "commit_detail"
+                    },
+                    "oid": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{4,64}$"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "oid"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "commit_diff"
+                    },
+                    "oid": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{4,64}$"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "oid"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "diff_all"
+                    },
+                    "area": {
+                      "type": "string",
+                      "enum": [
+                        "working",
+                        "staged"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "area"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "range_diff"
+                    },
+                    "base": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "base"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "staged_context"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "range_context"
+                    },
+                    "base": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "base"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "stash_list"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "amend"
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 10000
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "stash_push"
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "includeUntracked": {
+                      "default": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "includeUntracked"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "stash_pop"
+                    },
+                    "index": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "index"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "stash_drop"
+                    },
+                    "index": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "index"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "sync"
+                    },
+                    "remote": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "discard_all"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "tree"
+                    },
+                    "path": {
+                      "default": ".",
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "showIgnored": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "path",
+                    "showIgnored"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_read"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "encoding": {
+                      "default": "text",
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "base64"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "path",
+                    "encoding"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_write"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "content": {
+                      "type": "string",
+                      "maxLength": 1000000
+                    },
+                    "expectedToken": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "create": {
+                      "default": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "path",
+                    "content",
+                    "create"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_create"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "file",
+                        "directory"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "path",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_rename"
+                    },
+                    "from": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "overwrite": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from",
+                    "to",
+                    "overwrite"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_move"
+                    },
+                    "paths": {
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "overwrite": {
+                      "default": false,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "paths",
+                    "to",
+                    "overwrite"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_delete"
+                    },
+                    "paths": {
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "paths"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "file_duplicate"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "path"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "search"
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "regex": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "caseSensitive": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "wholeWord": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "include": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "exclude": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "includeIgnored": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    },
+                    "maxResults": {
+                      "default": 500,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2000
+                    },
+                    "maxPerFile": {
+                      "default": 50,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "query",
+                    "regex",
+                    "caseSensitive",
+                    "wholeWord",
+                    "includeIgnored",
+                    "maxResults",
+                    "maxPerFile"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "replace"
+                    },
+                    "query": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "regex": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "caseSensitive": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "wholeWord": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "replacement": {
+                      "type": "string",
+                      "maxLength": 10000
+                    },
+                    "preserveCase": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "targets": {
+                      "minItems": 1,
+                      "maxItems": 500,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4096
+                          },
+                          "token": {
+                            "type": "string",
+                            "maxLength": 64
+                          },
+                          "lines": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            }
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "token"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "query",
+                    "regex",
+                    "caseSensitive",
+                    "wholeWord",
+                    "replacement",
+                    "preserveCase",
+                    "targets"
                   ],
                   "additionalProperties": false
                 }

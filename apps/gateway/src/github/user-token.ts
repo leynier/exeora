@@ -113,9 +113,15 @@ export async function userFetch(
   userId: string,
   url: string,
   fetcher: typeof fetch,
+  /** A GET without one. A body is sent as given, with the headers named beside it. */
+  init: { method?: string; body?: string; headers?: Record<string, string> } = {},
 ): Promise<Response> {
   const { token, sealedAccess } = await current(env, userId, fetcher, Date.now());
-  const response = await githubFetch(fetcher, url, { headers: githubHeaders(`Bearer ${token}`) });
+  const response = await githubFetch(fetcher, url, {
+    ...(init.method ? { method: init.method } : {}),
+    ...(init.body === undefined ? {} : { body: init.body }),
+    headers: { ...githubHeaders(`Bearer ${token}`), ...init.headers },
+  });
   if (response.status === 401) {
     await response.body?.cancel().catch(() => undefined);
     await forget(env, userId, { access: sealedAccess });

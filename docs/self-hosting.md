@@ -124,6 +124,22 @@ A machine's token is cut down to what the project's owner can do on GitHub: none
 
 Connecting finishes in the browser that started it. The way back from GitHub is accepted only in a browser signed in to Exeora as the account that asked, so a link made by one person does nothing in the browser of another.
 
+### AI Assist (optional)
+
+AI Assist lets an account link its own ChatGPT or Grok account and write commit messages and pull requests from the dashboard. It stays off until `AI_ASSIST_PROVIDERS` names at least one provider, and needs `CLOUD_CREDENTIALS_KEY` (above) to keep the tokens and keys under; with either missing the routes answer `ai_disabled` and the card is not drawn.
+
+```bash
+bun run secret AI_ASSIST_PROVIDERS   # openai,xai
+bun run secret XAI_OAUTH_CLIENT_ID   # optional: the client id of xAI's device flow
+bun run secret AI_ASSIST_OAUTH       # optional: "off" to offer API keys only
+```
+
+Two things to know before switching it on. The subscription flows are not documented by either provider for third parties: ChatGPT is linked through the device-code sign-in of OpenAI's own Codex CLI, Grok through the device flow of xAI's `auth.x.ai`, and either may change or close them without notice. Set `AI_ASSIST_OAUTH=off` to offer API keys only, which the providers do document. And what a generation reads, the staged patch or a branch's commits and diff, is sent from the gateway to the provider the person chose and kept nowhere; only the fact of a generation is audited.
+
+Every non-GET request under `/api/ai/` and `/api/projects/:id/ai/` is counted on `RL_WRITE`. Tokens are renewed before they expire, the way GitHub's are, and forgotten when a provider stops accepting them.
+
+Pull requests need nothing beyond the GitHub app above: the permissions in its table already cover reading and opening them, checks and comments. An installation from before those permissions were asked shows in the dashboard as waiting for them until its owner accepts them on GitHub.
+
 ## 5. Administrators
 
 On a fresh database, the **first account to sign in becomes the admin**. That person can open the administration panel and act on every account. Protect that first sign-in the same way you would protect any root account.

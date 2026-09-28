@@ -3,8 +3,8 @@ import Doc from "../../layouts/Doc.astro";
 ---
 
 <Doc
-  title="Source Control and web terminal"
-  description="Inspect and change Git state or open a shell on a connected project from the private dashboard."
+  title="Workspace: files, search, source control and terminal"
+  description="Browse and edit files, search, work with Git and pull requests, or open a shell on a connected project from the private dashboard and the Chrome side panel."
   canonicalPath="/docs/workspace/"
 >
   <p>
@@ -38,17 +38,101 @@ import Doc from "../../layouts/Doc.astro";
     chosen until it is ready. One that is asleep is woken when you select it.
   </p>
 
-  <h2>Source Control</h2>
+  <h2 id="views">The views</h2>
+
+  <p>
+    Workspace has five views. On a wide screen they are the icons down the left edge, with the
+    view's list beside them and what you pick from the list open as tabs on the right: a single
+    click opens a preview tab that the next click replaces, a double click keeps it. On a phone,
+    and in the Chrome side panel, the same views are the bar along the bottom, the list fills the
+    screen, and what you pick opens over it with Back. Explorer is <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>,
+    Search <kbd>Shift</kbd>+<kbd>F</kbd>, Source Control <kbd>Shift</kbd>+<kbd>G</kbd>.
+  </p>
+
+  <p>
+    Each view needs a CLI that can serve it. Source Control as it always was works with any CLI;
+    the Explorer, Search, the commit history, stashes and the assistant's context need one that
+    announces <code>workspace-v2</code> and <code>source-control-v2</code>. A view whose machine runs
+    an older CLI says so and names the machine, while the others keep working. Instances on Exeora
+    Cloud are always current.
+  </p>
+
+  <h2 id="explorer">Explorer</h2>
+
+  <p>
+    The files of the working copy, a folder at a time: only the root and the folders you open are
+    listed, so a repository with a large dependency tree costs nothing until that folder is opened.
+    Files matched by <code>.gitignore</code> are hidden unless you show them; <code>.git</code> is
+    never listed and never touched. What git says about a file is drawn beside it, and on the
+    folders above it, in the same letters Source Control uses.
+  </p>
+
+  <p>
+    A file opens in an editor with syntax colouring. Save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd>
+    or the button: the editor sends the version it read along with the new text, and a file that
+    changed on the machine meanwhile is not overwritten; the banner offers to reload it or to
+    overwrite anyway. Markdown files open as a page with a way back to the source, images open as
+    pictures, and a file over a megabyte is shown but not edited. A file with changes offers its
+    diff from the editor's toolbar.
+  </p>
+
+  <p>
+    A right click, or a long press on a touch screen, gives every row its actions: new file or
+    folder, rename, move, duplicate, copy its path, delete. On a wide screen a row can also be
+    dragged into a folder. Renaming or moving a tracked file uses <code>git mv</code>, so the
+    rename shows as staged. Deleting is permanent on that machine: there is no trash to recover
+    from, which the confirmation says.
+  </p>
+
+  <h2 id="search">Search</h2>
+
+  <p>
+    Search runs on the machine that holds the workspace, across every file git would track, as you
+    type. It can match case, whole words, or a regular expression, and be narrowed to files to
+    include or exclude by glob. Hits are grouped by file, or under their folders, and a hit opens
+    the file on its line. A search that stops at the limit says so.
+  </p>
+
+  <p>
+    Replace applies to one hit, one file or every hit at once, keeping the case of an all-caps or
+    capitalised match when asked. Each file is replaced only if it is still the version that was
+    searched; one that changed meanwhile is skipped and named. A file with unsaved edits open in
+    the editor is never replaced under it. Replace all is withheld while the results are cut short,
+    since it would miss what is not listed.
+  </p>
+
+  <h2 id="source-control">Source Control</h2>
 
   <p>
     The dashboard reads Git's porcelain status from the selected workspace and presents it as a git
-    client: the current branch in the toolbar, a commit composer above staged and unstaged files, and
-    the selected diff beside them. You can stage, unstage, commit staged changes, discard tracked
-    changes, delete individual untracked files, fetch, pull, and push. The branch control lists the
-    current branch, other local branches, and remotes you can check out. Choosing a branch that is
-    already checked out in another connected workspace switches the view to that workspace rather
-    than running <code>git switch</code> in place. Type a name there to create a branch from HEAD,
-    or delete a merged local branch.
+    client: the current branch in the toolbar, a commit composer, what is staged and what changed,
+    as a list or grouped by folder. <kbd>Enter</kbd> in the message commits, <kbd>Shift</kbd>+<kbd>Enter</kbd>
+    starts a body. The one button under the message names what the situation calls for: commit
+    what is staged, publish a branch that has no upstream, sync when the branch is both ahead and
+    behind, pull, push, stage what changed. Everything else git can do here waits under the
+    button's chevron: commit and push, commit and sync, amend the last commit, stage or unstage
+    everything, discard every change, fetch, pull, push, sync, publish, stash and stash pop. An
+    amend of a commit that is already on the upstream, and any discard, ask first.
+  </p>
+
+  <p>
+    A row's menu stages, unstages, discards, deletes an untracked file or copies its path; a
+    folder's does the same for everything under it. The whole working tree, or everything staged,
+    opens as one diff. On a wide screen a diff can be shown side by side.
+  </p>
+
+  <p>
+    Commits shows the history behind HEAD with its graph, a page at a time. A commit opens with its
+    message and the files it changed with what each gained and lost; a file opens its diff for that
+    commit, and the whole commit opens as one patch. Stashes are listed with a way to apply or drop
+    each.
+  </p>
+
+  <p>
+    The branch control lists the current branch, other local branches, and remotes you can check
+    out. Choosing a branch that is already checked out in another connected workspace switches the
+    view to that workspace rather than running <code>git switch</code> in place. Type a name there
+    to create a branch from HEAD, or delete a merged local branch.
   </p>
 
   <p>
@@ -67,7 +151,8 @@ import Doc from "../../layouts/Doc.astro";
     interactive credential prompts are disabled so an unattended operation fails instead of
     hanging. For a project <a href="/docs/github/">connected to GitHub</a>, git on an instance, and
     on a machine whose own credentials could not read the repository, asks Exeora for a
-    short-lived token instead.
+    short-lived token instead. Sync is a pull followed by a push; a pull that needs a choice
+    between merging and rebasing fails with git's own words, and is made from the terminal.
   </p>
 
   <p>
@@ -79,6 +164,20 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     Force push, hard reset, remote branch deletion, forced local branch deletion, and exposed rebase
     controls are intentionally absent. Pull uses that repository's own Git configuration.
+  </p>
+
+  <p>
+    With an assistant <a href="/docs/ai-assist/">linked in Settings</a>, a button beside the
+    message writes it from what is staged, and <strong>Ship changes</strong> under the chevron goes
+    from a working tree to a pull request in one go.
+  </p>
+
+  <h2 id="pull-request">Pull Request</h2>
+
+  <p>
+    The pull request of the branch on screen, read with the GitHub account
+    <a href="/docs/github/">connected in Settings</a>; the details are on
+    <a href="/docs/pull-request/">their own page</a>.
   </p>
 
   <h2>Web terminal</h2>
@@ -103,16 +202,18 @@ import Doc from "../../layouts/Doc.astro";
   <h2>What is recorded</h2>
 
   <p>
-    Source Control mutations and terminal session openings appear in the audit stream. Exeora does
-    <strong>not</strong> record command text, keystrokes, terminal output, file diffs, or commit
-    messages.
+    Source Control mutations, every change the Explorer or a replace makes, generations by an
+    assistant, pull request actions and terminal session openings appear in the audit stream, by
+    name only. Exeora does <strong>not</strong> record command text, keystrokes, terminal output,
+    file contents, diffs, search queries or commit messages.
   </p>
 
   <h2>Project policy</h2>
 
   <p>
-    Source Control and the web terminal are owner-operated workspace features. They do not travel
-    through an MCP client and are therefore separate from the project's MCP command policy. Opening
+    Every view of Workspace is an owner-operated feature. None of them travels through an MCP
+    client, so none is subject to the project's MCP command policy: a read-only project still lets
+    its owner edit a file from the Explorer. Opening
     the terminal grants the same authority as opening a local shell as the user running the CLI;
     review the confirmation accordingly.
   </p>

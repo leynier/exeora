@@ -108,6 +108,22 @@ declare global {
     GITHUB_APP_WEBHOOK_SECRET?: string;
 
     /**
+     * AI Assist: which providers an account may link, as a comma-separated
+     * list of `openai` and `xai`. Unset or empty means the feature is off and
+     * the routes answer `ai_disabled`. The API-key paths speak to documented
+     * APIs; the device logins that link a ChatGPT or Grok subscription reuse
+     * flows other tools use without the providers promising them (the Codex
+     * CLI's public client, xAI's OpenID provider), so they are unofficial and
+     * may stop working without notice. Credentials are kept under
+     * `CLOUD_CREDENTIALS_KEY`, without which this is off as well.
+     */
+    AI_ASSIST_PROVIDERS?: string;
+    /** `off` keeps only the API keys: no device login is offered for any provider. */
+    AI_ASSIST_OAUTH?: string;
+    /** The OAuth client xAI knows this gateway as. Unset offers xAI by API key only. */
+    XAI_OAUTH_CLIENT_ID?: string;
+
+    /**
      * Injected into `env` by OAuthProvider before it calls either handler.
      * Declared here so there is a single Env type across the Worker rather
      * than an intersection that has to be threaded through every helper.

@@ -1,5 +1,7 @@
 pub mod clone;
+mod files;
 mod git;
+mod search;
 mod terminal;
 
 pub(crate) use terminal::send_control;
@@ -39,7 +41,16 @@ impl WorkspaceEngine {
         action: Value,
         cancel: CancellationToken,
     ) -> Result<Value, ExeoraError> {
-        self.git.execute(root, action, cancel).await
+        // The Explorer and search work on the same checkout and under the
+        // same lock as git; they are only routed to their own code here.
+        let name = action.get("action").and_then(Value::as_str).unwrap_or("");
+        if files::handles(name) {
+            files::execute(&self.git, root, action, cancel).await
+        } else if search::handles(name) {
+            search::execute(&self.git, root, action, cancel).await
+        } else {
+            self.git.execute(root, action, cancel).await
+        }
     }
 
     pub async fn terminal_open(

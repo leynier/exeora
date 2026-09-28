@@ -1,0 +1,66 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc
+  title="Pull requests"
+  description="See, open, review and merge the pull request of the branch on screen, from the dashboard and the Chrome side panel."
+  canonicalPath="/docs/pull-request/"
+>
+  <p>
+    The Pull Request view of <a href="/docs/workspace/">Workspace</a> shows the pull request of the
+    branch checked out in the selected workspace, or the form that opens one. It works for
+    repositories on GitHub, through the account <a href="/docs/github/">connected in Settings</a>:
+    what you see and do there is what that account can see and do on GitHub, with the permissions
+    the app was given. A project whose remote is elsewhere is told so.
+  </p>
+
+  <h2 id="reading">What it shows</h2>
+
+  <ul>
+    <li><strong>The request.</strong> Number, title, state (open, draft, merged or closed), author, head and base, what changed, and whether GitHub considers it mergeable. When it does not, the reason GitHub gives.</li>
+    <li><strong>Checks.</strong> Every check run and commit status on the head commit, failing ones first, then those still running, then the ones that passed, which fold away when there are more than a handful. Each opens on GitHub.</li>
+    <li><strong>Conversation.</strong> Comments, review comments with their file and line, and reviews with their verdict, in order. Your own comments can be edited; a new one is posted from the box at the bottom. Markdown is rendered.</li>
+    <li><strong>The diff.</strong> What the branch adds over the base, read from the machine that holds the workspace against the merge base, so it matches what you would push.</li>
+  </ul>
+
+  <p>The view refreshes on its own every minute while it is on screen, and on demand.</p>
+
+  <h2 id="opening">Opening one</h2>
+
+  <p>
+    With no pull request for the branch, the form asks for a title, which starts as the branch's
+    name, the base branch, and a description. The branch is pushed first, with an upstream when it
+    has none, so the request is made of what the machine has; then the request is opened, as a
+    draft if you choose. With an <a href="/docs/ai-assist/">assistant linked</a>, a button writes
+    the title and description from the branch's commits and diff.
+  </p>
+
+  <h2 id="acting">Acting on it</h2>
+
+  <p>
+    The button under the request names what comes next: mark a draft ready, or merge with the
+    repository's preferred method. The chevron holds the rest: the other merge methods the
+    repository allows, converting to a draft, editing the title or base, and closing. Merging and
+    closing ask first. Nothing here deletes a branch; GitHub does that on merge when the repository
+    is set to.
+  </p>
+
+  <h2 id="ship">Ship changes</h2>
+
+  <p>
+    <strong>Ship changes</strong>, under the chevron of the commit button in Source Control, does
+    the whole trip at once and needs an assistant and GitHub linked: it stages every change, has the
+    assistant write the commit message, creates a branch off the base when the workspace is on it,
+    commits, has the assistant write the pull request, pushes, and opens the request. Each step is
+    shown as it runs, with the branch name and the titles the assistant chose. The first failure
+    stops the chain where it is; nothing is undone, and the message says which step it was.
+  </p>
+
+  <h2 id="recorded">What is recorded</h2>
+
+  <p>
+    Opening, editing, merging, closing and commenting appear in the audit stream by name, with the
+    project and workspace. Titles, descriptions and comments are never recorded.
+  </p>
+</Doc>
