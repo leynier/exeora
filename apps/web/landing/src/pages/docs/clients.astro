@@ -12,7 +12,7 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc
   title="Connecting a client"
-  description="Where to paste the MCP URL in Claude, ChatGPT, Cursor, VS Code and Claude Code."
+  description="Where to paste the MCP URL in Claude, ChatGPT, Cursor, VS Code, Copilot, Devin, Zed and every other MCP client."
   canonicalPath="/docs/clients/"
 >
   <p>
@@ -26,7 +26,7 @@ import Doc from "../../layouts/Doc.astro";
   <p>
     <code>https://exeora.dev/mcp</code> is the same for everyone and covers several projects at once.
     When you authorize a client on it, the consent screen asks what it may reach: all your projects,
-    including the ones you add later, or only the ones you tick. The client uses
+    including the ones you add later, or only the ones you tick. The client uses{" "}
     <code>list_projects</code> to see them and names the project on each tool call whenever more than
     one is available.
   </p>
@@ -60,39 +60,206 @@ import Doc from "../../layouts/Doc.astro";
     take away.
   </p>
 
-  <h2>Claude Code</h2>
+  <p>
+    The steps below use <code>https://exeora.dev/mcp</code>; a project URL goes in the same place.
+    Menus move between releases, so each section names the setting as the client's own
+    documentation does today.
+  </p>
 
-  <pre>claude mcp add --transport http exeora &lt;the URL&gt;</pre>
+  <h2 id="claude-code">Claude Code</h2>
 
-  <h2>Claude</h2>
+  <pre>claude mcp add --transport http exeora https://exeora.dev/mcp</pre>
 
   <p>
-    Settings → Connectors → Add custom connector, and paste the URL. Claude speaks the 2025 protocol
-    today, which matters only for confirmation prompts: see{" "}
+    Then run <code>/mcp</code> inside Claude Code, or <code>claude mcp login exeora</code>, to sign
+    in through the browser. Add <code>--scope project</code> to share the entry through the
+    repository's <code>.mcp.json</code>, or <code>--scope user</code> for every project.
+  </p>
+
+  <h2 id="claude">Claude</h2>
+
+  <p>
+    Customize → Connectors → <strong>+</strong> → Add custom connector, paste the URL and choose
+    Add, then Connect. On Team and Enterprise an owner adds it first, under Organization settings →
+    Connectors, and members connect to it from Customize. The free plan allows one custom
+    connector.
+  </p>
+
+  <p>
+    Claude speaks the 2025 protocol today, which matters only for confirmation prompts: see{" "}
     <a href="/docs/policy/#confirming">confirming a change</a>.
   </p>
 
-  <h2>ChatGPT</h2>
+  <h2 id="chatgpt">ChatGPT</h2>
 
   <p>
-    Settings → Connectors → Create, and paste the URL. Same note about the protocol revision as
-    Claude.
+    Custom MCP servers are part of developer mode, on the web, on Plus, Pro, Business, Enterprise and
+    Education. Turn it on under Settings → Security and login → Developer mode, then open{" "}
+    <a href="https://chatgpt.com/plugins">chatgpt.com/plugins</a>, add an app with the URL, and
+    choose OAuth. In a chat, pick it from the <strong>+</strong> menu under Developer mode. On
+    Business and Enterprise a workspace admin may have to allow developer mode first.
   </p>
 
-  <h2>Cursor</h2>
+  <p>Same note about the protocol revision as Claude.</p>
+
+  <h2 id="cursor">Cursor</h2>
 
   <p>
-    Settings → MCP → Add new MCP server, choose the HTTP transport and paste the URL. Cursor stores
-    this in <code>~/.cursor/mcp.json</code>, which can also be edited directly.
+    Add the server from Cursor's MCP settings, or write it to <code>~/.cursor/mcp.json</code> for
+    every project or <code>.cursor/mcp.json</code> for one:
   </p>
 
-  <h2>VS Code</h2>
+  <pre>{`{
+  "mcpServers": {
+    "exeora": { "url": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <p>Cursor registers itself and opens the sign-in when the server is first used.</p>
+
+  <h2 id="vscode">VS Code</h2>
 
   <p>
-    Run <strong>MCP: Add Server</strong> from the command palette, choose HTTP, and paste the URL.
+    Run <strong>MCP: Add Server</strong> from the command palette, choose HTTP, paste the URL, and
+    pick Workspace or Global. The same entry in <code>.vscode/mcp.json</code>:
   </p>
 
-  <h2>Anything else</h2>
+  <pre>{`{
+  "servers": {
+    "exeora": { "type": "http", "url": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <h2 id="copilot">GitHub Copilot</h2>
+
+  <p>
+    <strong>In VS Code</strong>, Copilot's agent mode uses the servers above: add Exeora as in{" "}
+    <a href="#vscode">VS Code</a> and sign in from the <strong>Auth</strong> action shown over the
+    entry. <strong>In JetBrains IDEs</strong>, open Copilot Chat in agent mode, choose the tools
+    icon, then Add MCP Tools, and add the server to the <code>mcp.json</code> it opens; OAuth there
+    is still in preview.
+  </p>
+
+  <pre>{`{
+  "servers": {
+    "exeora": { "url": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <p>
+    On Copilot Business and Enterprise, an administrator has to enable the{" "}
+    <strong>MCP servers in Copilot</strong> policy first; it is off by default. Copilot's cloud
+    agent on github.com does not support servers that sign in with OAuth, so it cannot use Exeora
+    today.
+  </p>
+
+  <h2 id="devin">Devin</h2>
+
+  <p>
+    Customize → MCPs → Add MCP → Add custom MCP. Choose the HTTP transport, paste the URL, set the
+    authentication method to OAuth, save, and choose <strong>Connect</strong>. Organization access
+    shares one connection with everyone; Personal has each member sign in as themselves, which is
+    usually what you want, since the grant is to your Exeora account. Adding a server takes the
+    Manage MCP Servers permission.
+  </p>
+
+  <h2 id="antigravity">Antigravity</h2>
+
+  <p>
+    From the <strong>…</strong> menu at the top of the agent panel, open MCP Servers → Manage MCP
+    Servers → View raw config, and add the server to <code>mcp_config.json</code>. Antigravity
+    reads the address from <code>serverUrl</code>; <code>url</code> is not supported.
+  </p>
+
+  <pre>{`{
+  "mcpServers": {
+    "exeora": { "serverUrl": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <p>Then choose <strong>Authenticate</strong> for it under Agent Settings → Customizations.</p>
+
+  <h2 id="amp">Amp</h2>
+
+  <pre>amp mcp add exeora https://exeora.dev/mcp</pre>
+
+  <p>
+    Or in <code>~/.config/amp/settings.json</code>. Amp registers itself and opens the browser to
+    sign in the next time it starts.
+  </p>
+
+  <pre>{`{
+  "amp.mcpServers": {
+    "exeora": { "url": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <h2 id="zed">Zed</h2>
+
+  <p>
+    Settings → AI → MCP Servers → Add Server → Add Remote Server, or in <code>settings.json</code>.
+    With no <code>Authorization</code> header configured, Zed asks you to sign in with OAuth.
+  </p>
+
+  <pre>{`{
+  "context_servers": {
+    "exeora": { "url": "https://exeora.dev/mcp" }
+  }
+}`}</pre>
+
+  <h2 id="opencode">OpenCode</h2>
+
+  <p>In <code>opencode.json</code>:</p>
+
+  <pre>{`{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "exeora": { "type": "remote", "url": "https://exeora.dev/mcp", "enabled": true }
+  }
+}`}</pre>
+
+  <p>
+    OpenCode signs in by itself on first use; <code>opencode mcp auth exeora</code> starts the
+    sign-in by hand.
+  </p>
+
+  <h2 id="grok">Grok</h2>
+
+  <p>
+    On grok.com, open Connectors → New Connector → Custom, paste the URL and complete the sign-in.
+    On Business and Enterprise a team admin adds the connector first. xAI's documentation does not
+    yet say whether custom connectors register themselves with OAuth; if the sign-in never
+    completes, that is the part missing on Grok's side, and nothing on Exeora's can change it. The
+    Grok API's remote MCP tool takes only a bearer token, so it cannot sign in to Exeora.
+  </p>
+
+  <h2 id="perplexity">Perplexity</h2>
+
+  <p>
+    Account Settings → Connectors → Custom connector → Remote. Paste the URL, choose OAuth for
+    authentication and Streamable HTTP for transport. Custom connectors are on the Pro, Max and
+    Enterprise plans, and on Enterprise an admin has to allow members to add them.
+  </p>
+
+  <h2 id="more-clients">More clients</h2>
+
+  <ul>
+    <li>
+      <strong>Codex</strong>: <code>codex mcp add exeora --url https://exeora.dev/mcp</code>, then{" "}
+      <code>codex mcp login exeora</code>.
+    </li>
+    <li>
+      <strong>Gemini CLI</strong>:{" "}
+      <code>gemini mcp add --transport http exeora https://exeora.dev/mcp</code>, then{" "}
+      <code>/mcp auth exeora</code>.
+    </li>
+    <li>
+      <strong>Windsurf</strong>: add the server to Cascade's <code>mcp_config.json</code> with{" "}
+      <code>serverUrl</code>, as for Antigravity.
+    </li>
+  </ul>
+
+  <h2 id="anything-else">Anything else</h2>
 
   <p>
     Any client that speaks MCP over Streamable HTTP with OAuth 2.1 will work; there is nothing
@@ -101,10 +268,10 @@ import Doc from "../../layouts/Doc.astro";
 
   <pre>bunx @modelcontextprotocol/inspector@2.1.0</pre>
 
-  <h2>If a call fails immediately</h2>
+  <h2 id="call-fails">If a call fails immediately</h2>
 
   <p>
-    <code>LOCAL_EXECUTOR_OFFLINE</code> means a machine of yours is off, or
+    <code>LOCAL_EXECUTOR_OFFLINE</code> means a machine of yours is off, or{" "}
     <code>exeora connect</code> is not running on it: the machine that holds the workspace the call
     named, or the default location when it named none. Nothing is queued, on purpose.{" "}
     <code>EXECUTOR_WAKING</code> means an instance on Exeora Cloud was asleep and did not come up in

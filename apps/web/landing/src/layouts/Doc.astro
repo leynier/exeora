@@ -1,7 +1,10 @@
 ---
+import DocsNav from "../components/DocsNav.astro";
+import DocsSearch from "../components/DocsSearch.astro";
 import Footer from "../components/Footer.astro";
 import Navbar from "../components/Navbar.astro";
-import { DOC_PAGES } from "../lib/docs.js";
+import { outlineHtml } from "../lib/doc-headings.js";
+import { DOC_PAGES, docSection } from "../lib/docs.js";
 import Layout from "./Layout.astro";
 
 /**
@@ -12,6 +15,10 @@ import Layout from "./Layout.astro";
  * readable as source. What it adds is the navigation, since docs are a set
  * rather than a single page, and a `pre` style, since half of what is being
  * explained is commands and TOML.
+ *
+ * Three kinds of navigation, all derived rather than written per page: the
+ * index of pages (`lib/docs.ts`), the outline of this page (read back out of
+ * its own headings by `outlineHtml`), and search (Pagefind, over the build).
  *
  * Written as Astro pages rather than pulled from a documentation framework.
  * A framework would arrive with a design system of its own, and the choice
@@ -26,81 +33,308 @@ interface Props {
 }
 
 const { title, description, canonicalPath } = Astro.props;
+
+const { html, headings } = outlineHtml(await Astro.slots.render("default"));
+const hasOutline = headings.length >= 2;
+
+const index = DOC_PAGES.findIndex((page) => page.href === canonicalPath);
+const current = DOC_PAGES[index];
+const previous = index > 0 ? DOC_PAGES[index - 1] : undefined;
+const next = index >= 0 ? DOC_PAGES[index + 1] : undefined;
+
+const prose =
+  "text-body-lg text-foreground-muted mt-10 space-y-5 [&_a]:underline [&_code]:font-mono [&_h2]:text-title-lg [&_h2]:text-foreground [&_h2]:mt-12 [&_h2]:mb-3 [&_h3]:text-title-md [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-2 [&_li]:ml-5 [&_li]:list-disc [&_pre]:border-border [&_pre]:bg-surface [&_pre]:text-body-md [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:p-4 [&_pre]:font-mono [&_strong]:text-foreground [&_table]:w-full [&_table]:text-body-md [&_td]:border-border-subtle [&_td]:border-t [&_td]:py-2 [&_td]:pr-4 [&_td]:align-top [&_th]:text-foreground [&_th]:py-2 [&_th]:pr-4 [&_th]:text-left";
 ---
 
 <Layout title={`${title} · Exeora docs`} description={description} canonicalPath={canonicalPath}>
   <Navbar />
 
-  <div class="mx-auto flex max-w-6xl gap-12 px-6 pt-24 pb-20">
-    <nav aria-label="Documentation" class="hidden w-52 shrink-0 lg:block">
-      <div class="sticky top-24">
-        <p class="text-label-md text-foreground-faint mb-3 font-mono uppercase">Docs</p>
-        <ul class="space-y-1">
-          {
-            DOC_PAGES.map((page) => (
-              <li>
-                <a
-                  href={page.href}
-                  aria-current={page.href === canonicalPath ? "page" : undefined}
-                  class:list={[
-                    "text-body-md block rounded-md px-2 py-1 transition-colors duration-fast",
-                    page.href === canonicalPath
-                      ? "bg-surface text-foreground"
-                      : "text-foreground-muted hover:text-foreground",
-                  ]}
-                >
-                  {page.label}
-                </a>
-              </li>
-            ))
-          }
-        </ul>
+  <!-- Below lg the sidebar has no room, so a bar under the navbar stands in
+       for it: the page you are on, the full index behind a button, and search. -->
+  <div
+    id="docs-mobile-bar"
+    class="border-border-subtle bg-bg/90 sticky top-14 z-40 mt-14 border-b backdrop-blur-xl lg:hidden"
+  >
+    <div class="flex items-center gap-2 px-4 py-2 sm:px-6">
+      <button
+        type="button"
+        id="docs-menu-toggle"
+        aria-expanded="false"
+        aria-controls="docs-menu"
+        class="text-body-md text-foreground hover:bg-surface flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-fast"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          class="text-foreground-muted size-4 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h10M4 17h16"></path>
+        </svg>
+        <span class="text-foreground-muted shrink-0">Docs</span>
+        <span class="text-foreground-faint shrink-0" aria-hidden="true">/</span>
+        <span class="truncate">{current?.label ?? title}</span>
+        <svg
+          viewBox="0 0 24 24"
+          class="text-foreground-muted ml-auto size-4 shrink-0 transition-transform duration-fast"
+          data-chevron
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6"></path>
+        </svg>
+      </button>
+      <button
+        type="button"
+        data-docs-search-open
+        aria-label="Search the docs"
+        class="text-foreground-muted hover:text-foreground hover:bg-surface inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-fast"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          class="size-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m20 20-3.5-3.5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <nav
+      id="docs-menu"
+      aria-label="Documentation"
+      hidden
+      class="border-border-subtle max-h-[70vh] overflow-y-auto border-t px-4 py-4 sm:px-6"
+    >
+      <DocsNav current={canonicalPath} />
+    </nav>
+  </div>
+
+  <div class="mx-auto flex max-w-7xl gap-10 px-6 pt-8 pb-20 lg:pt-24 xl:gap-12">
+    <nav aria-label="Documentation" class="hidden w-56 shrink-0 lg:block">
+      <div class="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pr-2 pb-6">
+        <button
+          type="button"
+          data-docs-search-open
+          class="border-border bg-surface/60 text-body-md text-foreground-faint hover:text-foreground-muted hover:border-foreground-faint/30 mb-6 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors duration-fast"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            class="size-4 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.5-3.5"></path>
+          </svg>
+          <span class="flex-1">Search</span>
+          <kbd class="text-label-md border-border rounded border px-1.5 font-mono" data-shortcut-hint
+            >Ctrl K</kbd
+          >
+        </button>
+        <DocsNav current={canonicalPath} />
       </div>
     </nav>
 
-    <main class="min-w-0 flex-1">
-      <h1 class="text-headline-lg">{title}</h1>
+    <main class="min-w-0 flex-1 [&_[id]]:scroll-mt-32 lg:[&_[id]]:scroll-mt-20" data-pagefind-body>
+      {current && (
+        <p class="text-label-md text-brand font-mono uppercase" data-pagefind-ignore>
+          {docSection(canonicalPath)}
+        </p>
+      )}
+      <h1 class="text-headline-lg mt-2" data-pagefind-meta="title">{title}</h1>
       <p class="text-body-lg text-foreground-muted mt-3">{description}</p>
 
-      <div
-        class="text-body-lg text-foreground-muted mt-10 space-y-5 [&_a]:underline [&_code]:font-mono [&_h2]:text-title-lg [&_h2]:text-foreground [&_h2]:mt-12 [&_h2]:mb-3 [&_h3]:text-title-md [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-2 [&_li]:ml-5 [&_li]:list-disc [&_pre]:border-border [&_pre]:bg-surface [&_pre]:text-body-md [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:p-4 [&_pre]:font-mono [&_strong]:text-foreground [&_table]:w-full [&_table]:text-body-md [&_td]:border-border-subtle [&_td]:border-t [&_td]:py-2 [&_td]:pr-4 [&_td]:align-top [&_th]:text-foreground [&_th]:py-2 [&_th]:pr-4 [&_th]:text-left"
-      >
-        <slot />
-      </div>
+      {
+        hasOutline && (
+          <details
+            class="border-border bg-surface/40 group mt-8 rounded-xl border xl:hidden"
+            data-pagefind-ignore
+          >
+            <summary class="text-title-md text-foreground flex list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
+              On this page
+              <svg
+                viewBox="0 0 24 24"
+                class="text-foreground-muted size-4 transition-transform duration-fast group-open:rotate-180"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </summary>
+            <ul class="border-border-subtle space-y-1 border-t px-4 py-3">
+              {headings.map((heading) => (
+                <li class:list={[heading.depth === 3 && "pl-4"]}>
+                  <a
+                    href={`#${heading.id}`}
+                    data-toc-link={heading.id}
+                    class="text-body-md text-foreground-muted hover:text-foreground block py-1 transition-colors duration-fast"
+                    set:html={heading.html}
+                  />
+                </li>
+              ))}
+            </ul>
+          </details>
+        )
+      }
+
+      <div class={prose} set:html={html} />
 
       {/* Every page is a step in the same sequence, so the next one is always
           worth offering: docs read in order far more often than they are
           searched. */}
-      <nav class="border-border mt-16 flex flex-wrap justify-between gap-4 border-t pt-6">
+      <nav
+        aria-label="Previous and next page"
+        class="mt-16 grid gap-3 sm:grid-cols-2"
+        data-pagefind-ignore
+      >
         {
-          (() => {
-            const index = DOC_PAGES.findIndex((page) => page.href === canonicalPath);
-            const previous = index > 0 ? DOC_PAGES[index - 1] : undefined;
-            const next = index >= 0 ? DOC_PAGES[index + 1] : undefined;
-
-            return (
-              <>
-                <span>
-                  {previous && (
-                    <a href={previous.href} class="text-body-md text-foreground-muted hover:text-foreground">
-                      ← {previous.label}
-                    </a>
-                  )}
-                </span>
-                <span>
-                  {next && (
-                    <a href={next.href} class="text-body-md text-foreground-muted hover:text-foreground">
-                      {next.label} →
-                    </a>
-                  )}
-                </span>
-              </>
-            );
-          })()
+          previous ? (
+            <a
+              href={previous.href}
+              class="border-border hover:border-foreground-faint/30 hover:bg-surface/60 group rounded-xl border px-4 py-3 transition-colors duration-fast"
+            >
+              <span class="text-label-md text-foreground-faint block font-mono uppercase">Previous</span>
+              <span class="text-title-md text-foreground-muted group-hover:text-foreground mt-1 block">
+                ← {previous.label}
+              </span>
+            </a>
+          ) : (
+            <span />
+          )
+        }
+        {
+          next && (
+            <a
+              href={next.href}
+              class="border-border hover:border-foreground-faint/30 hover:bg-surface/60 group rounded-xl border px-4 py-3 text-right transition-colors duration-fast"
+            >
+              <span class="text-label-md text-foreground-faint block font-mono uppercase">Next</span>
+              <span class="text-title-md text-foreground-muted group-hover:text-foreground mt-1 block">
+                {next.label} →
+              </span>
+            </a>
+          )
         }
       </nav>
     </main>
+
+    {
+      hasOutline && (
+        <aside aria-label="On this page" class="hidden w-52 shrink-0 xl:block" data-pagefind-ignore>
+          <div class="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6">
+            <p class="text-label-md text-foreground-faint mb-3 font-mono uppercase">On this page</p>
+            <ul class="border-border-subtle space-y-0.5 border-l">
+              {headings.map((heading) => (
+                <li>
+                  <a
+                    href={`#${heading.id}`}
+                    data-toc-link={heading.id}
+                    class:list={[
+                      "toc-link text-body-md text-foreground-muted hover:text-foreground -ml-px block border-l border-transparent py-1 transition-colors duration-fast",
+                      heading.depth === 3 ? "pl-6" : "pl-3",
+                    ]}
+                    set:html={heading.html}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+      )
+    }
   </div>
 
+  <DocsSearch />
   <Footer />
 </Layout>
+
+<script>
+  import { detectInstallPlatform } from "../lib/install-platform.js";
+
+  // The search shortcut is ⌘K on a Mac and Ctrl+K everywhere else, so the hint
+  // is written for the majority and corrected here for a Mac.
+  const client = navigator as Navigator & { userAgentData?: { platform?: string } };
+  const onMac =
+    detectInstallPlatform({
+      userAgentDataPlatform: client.userAgentData?.platform,
+      legacyPlatform: navigator.platform,
+      userAgent: navigator.userAgent,
+    }) === "macos";
+  if (onMac) {
+    for (const hint of document.querySelectorAll("[data-shortcut-hint]")) hint.textContent = "⌘K";
+  }
+
+  const toggle = document.getElementById("docs-menu-toggle");
+  const menu = document.getElementById("docs-menu");
+  const bar = document.getElementById("docs-mobile-bar");
+
+  if (toggle && menu && bar) {
+    const chevron = toggle.querySelector("[data-chevron]");
+    const setOpen = (open: boolean) => {
+      menu.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      chevron?.classList.toggle("rotate-180", open);
+    };
+
+    toggle.addEventListener("click", () => setOpen(menu.hidden));
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || menu.hidden) return;
+      setOpen(false);
+      toggle.focus();
+    });
+    document.addEventListener("click", (event) => {
+      if (!menu.hidden && event.target instanceof Node && !bar.contains(event.target)) {
+        setOpen(false);
+      }
+    });
+  }
+
+  // Marks the section being read in "On this page": the last heading that has
+  // scrolled past the top third of the viewport.
+  const links = [...document.querySelectorAll<HTMLAnchorElement>("[data-toc-link]")];
+  const targets = [...new Set(links.map((link) => link.dataset.tocLink))]
+    .map((id) => (id ? document.getElementById(id) : null))
+    .filter((element): element is HTMLElement => element !== null);
+
+  if (targets.length > 0) {
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = window.innerHeight / 3;
+      let currentId = targets[0]?.id;
+      for (const target of targets) {
+        if (target.getBoundingClientRect().top <= line) currentId = target.id;
+        else break;
+      }
+      for (const link of links) {
+        link.toggleAttribute("data-active", link.dataset.tocLink === currentId);
+      }
+    };
+    window.addEventListener(
+      "scroll",
+      () => {
+        frame ||= requestAnimationFrame(update);
+      },
+      { passive: true },
+    );
+    update();
+  }
+</script>

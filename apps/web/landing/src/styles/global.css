@@ -156,6 +156,37 @@
   }
 }
 
+/* Documentation. A heading's link to itself shows only when you point at it,
+   the section being read is marked in "On this page", and search highlights
+   the result the keyboard is on and the words that matched. */
+.heading-anchor {
+  margin-left: 0.5rem;
+  color: var(--color-foreground-faint);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--transition-duration-fast);
+}
+
+:is(h2, h3):hover > .heading-anchor,
+.heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.toc-link[data-active] {
+  border-color: var(--color-brand);
+  color: var(--color-foreground);
+}
+
+.search-result:hover,
+.search-result[data-active] {
+  background: var(--color-surface-variant);
+}
+
+.search-result mark {
+  background: transparent;
+  color: var(--color-brand);
+}
+
 /* Anything that animates in must also be visible without animation.
    `!important` is what makes this beat Tailwind's animation utilities, which
    is why biome.json turns off noImportantStyles for this file.

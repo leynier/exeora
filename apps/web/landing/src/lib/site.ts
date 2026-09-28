@@ -20,3 +20,9 @@ export const INSTALL_COMMANDS = {
   linux: "curl -fsSL https://exeora.dev/linux/install.sh | sh",
   windows: "irm https://exeora.dev/windows/install.ps1 | iex",
 } as const;
+
+/**
+ * Exeora for Chrome. A store search until the listing's own address is known;
+ * replace it with `https://chromewebstore.google.com/detail/<slug>/<id>` then.
+ */
+export const CHROME_EXTENSION_URL = "https://chromewebstore.google.com/search/Exeora";
