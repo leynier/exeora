@@ -64,5 +64,6 @@ EXEORA_EXTENSION_IDS=helnfgncjgikiojakjdfppmmflbdjamo
 AI_ASSIST_PROVIDERS=
 # `off` keeps only the API keys and offers no device login.
 AI_ASSIST_OAUTH=
-# The OAuth client xAI knows this gateway as. Unset offers xAI by key only.
+# The OAuth client xAI knows this gateway as. Unset uses xAI's shared public
+# client for coding agents, the one its own CLI uses; `off` offers xAI by key only.
 XAI_OAUTH_CLIENT_ID=

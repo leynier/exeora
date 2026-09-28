@@ -121,7 +121,16 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.19.0",
+    "LATEST_CLI_VERSION": "0.20.0",
+
+    // AI Assist: which providers an account may link from Settings, as a
+    // comma list of `openai` and `xai`. Not secret: it says what is offered,
+    // not how it is reached. The tokens and keys it stores need
+    // CLOUD_CREDENTIALS_KEY, a secret; without it the feature stays off.
+    // The device logins that link a subscription are unofficial flows (see
+    // docs/self-hosting.md); AI_ASSIST_OAUTH=off would keep API keys only.
+    // XAI_OAUTH_CLIENT_ID=off would drop xAI's device login alone.
+    "AI_ASSIST_PROVIDERS": "openai,xai",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds
     // `usage_daily` out of R2 SQL. Not secret: the account id is in every
