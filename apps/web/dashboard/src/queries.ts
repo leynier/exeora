@@ -260,9 +260,10 @@ export const useGitStatus = (
   const target = workspace ?? "main";
   return useQuery({
     queryKey: keys.gitStatus(id, target),
-    queryFn: () => api.gitStatus(id, workspace),
+    queryFn: ({ signal }) => api.gitStatus(id, workspace, signal),
     enabled: enabled && id.length > 0,
     refetchInterval: live ? LIVE : false,
+    refetchOnWindowFocus: live,
   });
 };
 

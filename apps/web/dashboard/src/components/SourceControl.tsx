@@ -1,6 +1,6 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type GitStatus,
@@ -39,11 +39,12 @@ export function SourceControl({
   status,
   loading,
   error,
+  autoRefresh,
+  onAutoRefreshChange,
   onSelectWorkspace,
 }: {
   projectId: string;
   workspace?: string;
-  /** The workspaces on the machine whose git status this is, and no others. */
   workspaces: Workspace[];
   /** The root of the location on screen, which is what its git status lists. */
   root: LocationRoot;
@@ -55,6 +56,8 @@ export function SourceControl({
   status?: GitStatus;
   loading: boolean;
   error: unknown;
+  autoRefresh: boolean;
+  onAutoRefreshChange: (enabled: boolean) => void;
   onSelectWorkspace: (slug: string | null) => void;
 }) {
   const client = useQueryClient();
@@ -63,21 +66,27 @@ export function SourceControl({
   const [selected, setSelected] = useState<WorkspaceSelection | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [confirm, setConfirm] = useState<{
     action: WorkspaceAction;
     title: string;
     body: string;
     label: string;
   } | null>(null);
-  /** The branch typed into the picker, while the dialog that takes it is open. */
   const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(null);
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
   const chosenArea = chosen?.area ?? "working";
+  const diffKey = useMemo(
+    () => ["workspace", projectId, targetKey, "diff", chosenPath, chosenArea] as const,
+    [projectId, targetKey, chosenPath, chosenArea],
+  );
+  const canLoadDiff = Boolean(chosen && status?.repository);
   const diff = useQuery({
-    queryKey: ["workspace", projectId, targetKey, "diff", chosenPath, chosenArea],
-    queryFn: () => api.gitDiff(projectId, chosenPath, chosenArea, workspace),
-    enabled: Boolean(chosen && status?.repository),
+    queryKey: diffKey,
+    queryFn: ({ signal }) => api.gitDiff(projectId, chosenPath, chosenArea, workspace, signal),
+    enabled: canLoadDiff,
+    refetchOnWindowFocus: false,
   });
   const staged = useMemo(
     () => status?.files.filter((file) => file.index !== "." && file.index !== "?") ?? [],
@@ -88,15 +97,99 @@ export function SourceControl({
     [status],
   );
   const chosenFile = status?.files.find((file) => file.path === chosen?.path);
+  const pollGeneration = useRef(0);
+  const pollController = useRef<AbortController | null>(null);
+  const pollPaused = useRef(false);
+  const refresh = useCallback(
+    () =>
+      Promise.all([
+        client.invalidateQueries(
+          { queryKey: keys.gitStatus(projectId, targetKey) },
+          { cancelRefetch: false },
+        ),
+        client.invalidateQueries(
+          { queryKey: ["workspace", projectId, targetKey, "diff"] },
+          { cancelRefetch: false },
+        ),
+      ]),
+    [client, projectId, targetKey],
+  );
 
-  // Several actions run one after another under one pending state, which is
-  // how a bulk stage larger than the per-request path limit goes out.
+  const manualRefresh = useCallback(async () => {
+    if (pollPaused.current) return;
+    pollPaused.current = true;
+    setRefreshing(true);
+    pollGeneration.current += 1;
+    pollController.current?.abort();
+    try {
+      await Promise.all([
+        client.cancelQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
+        client.cancelQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+      ]);
+      await refresh();
+    } finally {
+      pollPaused.current = false;
+      setRefreshing(false);
+    }
+  }, [client, projectId, refresh, targetKey]);
+
+  const poll = useCallback(async () => {
+    const generation = pollGeneration.current;
+    const controller = new AbortController();
+    pollController.current = controller;
+    try {
+      const [nextStatus, nextDiff] = await Promise.all([
+        api.gitStatus(projectId, workspace, controller.signal),
+        canLoadDiff
+          ? api.gitDiff(projectId, chosenPath, chosenArea, workspace, controller.signal)
+          : Promise.resolve(undefined),
+      ]);
+      if (controller.signal.aborted || generation !== pollGeneration.current) return;
+      client.setQueryData(keys.gitStatus(projectId, targetKey), nextStatus);
+      if (nextDiff) client.setQueryData(diffKey, nextDiff);
+      setSelected((current) => selectionAfterStatus(current, nextStatus));
+    } catch {
+      // Keep the last known status and retry on the next visible tick.
+    } finally {
+      if (pollController.current === controller) pollController.current = null;
+    }
+  }, [canLoadDiff, chosenArea, chosenPath, client, diffKey, projectId, targetKey, workspace]);
+
+  useEffect(() => {
+    if (!autoRefresh || pending || refreshing) return;
+    let stopped = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        try {
+          if (!stopped && !pollPaused.current && document.visibilityState !== "hidden")
+            await poll();
+        } finally {
+          if (!stopped) schedule();
+        }
+      }, 3_000);
+    };
+    schedule();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      pollController.current?.abort();
+    };
+  }, [autoRefresh, pending, poll, refreshing]);
+
   const run = async (actions: WorkspaceAction | WorkspaceAction[]) => {
     const batch = Array.isArray(actions) ? actions : [actions];
     const action = batch[0];
     if (!action) return;
+    pollPaused.current = true;
     setPending(true);
     try {
+      pollGeneration.current += 1;
+      pollController.current?.abort();
+      await Promise.all([
+        client.cancelQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
+        client.cancelQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+      ]);
       let result = await api.workspaceAction(projectId, action, workspace);
       for (const next of batch.slice(1)) {
         result = await api.workspaceAction(projectId, next, workspace);
@@ -113,19 +206,14 @@ export function SourceControl({
         "error",
       );
     } finally {
+      pollPaused.current = false;
       setPending(false);
       setConfirm(null);
     }
   };
 
   if (loading) return <Skeleton className="h-full w-full rounded-xl" />;
-  if (error)
-    return (
-      <ErrorBanner
-        error={error}
-        onRetry={() => client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) })}
-      />
-    );
+  if (error) return <ErrorBanner error={error} onRetry={() => void manualRefresh()} />;
   if (!status?.repository)
     return (
       <EmptyState title="Not a Git repository">
@@ -196,12 +284,19 @@ export function SourceControl({
             {status.ahead > 0 ? `Push ${status.ahead}` : "Push"}
           </button>
           <button
-            className="btn"
+            className={`btn ${autoRefresh ? "btn-primary" : ""}`}
             disabled={pending}
             type="button"
-            onClick={() =>
-              void client.invalidateQueries({ queryKey: keys.gitStatus(projectId, targetKey) })
-            }
+            aria-pressed={autoRefresh}
+            onClick={() => onAutoRefreshChange(!autoRefresh)}
+          >
+            Auto refresh
+          </button>
+          <button
+            className="btn"
+            disabled={pending || refreshing}
+            type="button"
+            onClick={() => void manualRefresh()}
           >
             Refresh
           </button>

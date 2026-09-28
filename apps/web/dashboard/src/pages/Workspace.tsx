@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 import { CloudMachineNotice } from "../components/CloudMachineNotice.js";
 import { NoRoot } from "../components/NoRoot.js";
@@ -74,6 +74,7 @@ export function Workspace() {
   const asked = search.get("workspace");
   const workspaces = useWorkspaces(projectId || undefined);
   const tab = search.get("view") === "terminal" ? "terminal" : "source";
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const setTab = (value: "source" | "terminal") => {
     const params = new URLSearchParams(search);
     if (value === "terminal") params.set("view", "terminal");
@@ -125,14 +126,9 @@ export function Workspace() {
     : [];
   const rootPath = home?.localPath ?? (home?.default ? (project?.localPath ?? "") : "");
   const capabilities = useWorkspaceCapabilities(projectId, targetId, ready);
-  // Every poll runs a status on the machine: only while the list is on screen
-  // and the CLI can answer it.
-  const status = useGitStatus(
-    projectId,
-    targetId,
-    ready,
-    tab === "source" && capabilities.data?.sourceControl !== false,
-  );
+  // SourceControl owns polling so status and the selected diff refresh together.
+  // This query still fetches once here before the component can mount.
+  const status = useGitStatus(projectId, targetId, ready, false);
   // The branch the default location's root is really on, once its machine
   // has said. What another location's status says is about another root, so
   // until then, and from there, it is the one the project was added with.
@@ -338,6 +334,8 @@ export function Workspace() {
               status={status.data}
               loading={status.isLoading}
               error={status.error}
+              autoRefresh={autoRefresh}
+              onAutoRefreshChange={setAutoRefresh}
               onSelectWorkspace={(slug) => select(projectId, slug)}
             />
           )}
