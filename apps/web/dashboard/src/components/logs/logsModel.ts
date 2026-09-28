@@ -26,7 +26,8 @@ export type LogEvent =
       ok: boolean;
       durationMs: number;
       errorCode?: string;
-    };
+    }
+  | { type: "log.sync"; at: number; running: string[] };
 
 export type LogLine =
   | {
@@ -43,8 +44,9 @@ export type LogLine =
       kind: "end";
       at: number;
       tool: string;
-      ok: boolean;
-      durationMs: number;
+      /** Null for a call that ended while the tab was disconnected, how is not known. */
+      ok: boolean | null;
+      durationMs?: number;
       errorCode?: string;
     }
   | { key: string; kind: "note"; at: number; text: string };
@@ -62,6 +64,13 @@ export function parseLogEvent(raw: string): LogEvent | null {
   }
   if (value === null || typeof value !== "object") return null;
   const event = value as Record<string, unknown>;
+  if (event.type === "log.sync" && typeof event.at === "number" && Array.isArray(event.running)) {
+    return {
+      type: "log.sync",
+      at: event.at,
+      running: event.running.filter((id): id is string => typeof id === "string"),
+    };
+  }
   if (typeof event.id !== "string" || typeof event.at !== "number") return null;
   if (typeof event.tool !== "string") return null;
   if (event.type === "log.start") {
@@ -94,6 +103,7 @@ export function parseLogEvent(raw: string): LogEvent | null {
  * shown twice: a socket that reconnects is told again about what is running.
  */
 export function appendEvent(lines: readonly LogLine[], event: LogEvent): LogLine[] {
+  if (event.type === "log.sync") return settleMissing(lines, event.running, event.at);
   const key = `${event.type === "log.start" ? "start" : "end"}:${event.id}`;
   if (lines.some((line) => line.key === key)) return lines as LogLine[];
   const line: LogLine =
@@ -117,6 +127,40 @@ export function appendEvent(lines: readonly LogLine[], event: LogEvent): LogLine
           ...(event.errorCode ? { errorCode: event.errorCode } : {}),
         };
   return trimmed([...lines, line]);
+}
+
+/**
+ * Ends every line still shown running whose call the relay no longer has: it
+ * finished while this tab was not connected, and how it ended is not known.
+ * Nothing is invented for calls this tab never saw start.
+ */
+function settleMissing(
+  lines: readonly LogLine[],
+  running: readonly string[],
+  at: number,
+): LogLine[] {
+  const still = new Set(running);
+  const ended = new Set(
+    lines.filter((line) => line.kind === "end").map((line) => line.key.slice(4)),
+  );
+  const lost: LogLine[] = [];
+  for (const line of lines) {
+    if (line.kind !== "start") continue;
+    const id = line.key.slice(6);
+    if (ended.has(id) || still.has(id)) continue;
+    lost.push({ key: `end:${id}`, kind: "end", at, tool: line.tool, ok: null });
+  }
+  return lost.length > 0 ? trimmed([...lines, ...lost]) : (lines as LogLine[]);
+}
+
+/** Whether a frame is the relay's answer to a heartbeat. */
+export function isHeartbeatAck(raw: string): boolean {
+  try {
+    const value = JSON.parse(raw) as { type?: unknown } | null;
+    return value?.type === "heartbeat.ack";
+  } catch {
+    return false;
+  }
 }
 
 /** A line of the view's own, such as the connection dropping. */

@@ -17,11 +17,14 @@ async function watch(id: string, target = "") {
   const socket = response.webSocket;
   if (!socket) throw new Error("logs socket was not returned");
   const events: LogEvent[] = [];
+  const syncs: string[][] = [];
   socket.accept();
   socket.addEventListener("message", (event: MessageEvent) => {
-    events.push(JSON.parse(String(event.data)) as LogEvent);
+    const frame = JSON.parse(String(event.data)) as LogEvent;
+    if (frame.type === "log.sync") syncs.push(frame.running);
+    else events.push(frame);
   });
-  return { socket, events };
+  return { socket, events, syncs };
 }
 
 const WORKSPACE = "&workspaceId=wsp_feature&workspaceSlug=feature";
@@ -97,6 +100,8 @@ describe("the live log of a machine's calls", () => {
     await eventually(() =>
       expect(late.events).toEqual([expect.objectContaining({ type: "log.start", id: "req_long" })]),
     );
+    // And that this is all that runs, for a tab that reconnects to settle the rest.
+    await eventually(() => expect(late.syncs).toEqual([["req_long"]]));
 
     controller.abort();
     await call;
@@ -119,8 +124,9 @@ describe("the live log of a machine's calls", () => {
       args: { path: "README.md" },
     });
     const tab = await watch("logs_after");
-    // The call is over: nothing was written down for a tab to be sent later.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The call is over: nothing was written down for a tab to be sent later,
+    // and nothing is running.
+    await eventually(() => expect(tab.syncs).toEqual([[]]));
     expect(tab.events).toEqual([]);
   });
 

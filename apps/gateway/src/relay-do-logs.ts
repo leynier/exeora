@@ -59,6 +59,16 @@ export type LogEvent =
       ok: boolean;
       durationMs: number;
       errorCode?: string;
+    }
+  | {
+      /**
+       * Ends what a tab is told when it connects: every call running now. A
+       * tab that reconnects ends any line it still shows running that is not
+       * listed, since that call finished while it was away.
+       */
+      type: "log.sync";
+      at: number;
+      running: string[];
     };
 
 function projectTag(projectId: string): string {
@@ -68,7 +78,7 @@ function projectTag(projectId: string): string {
 /**
  * Takes a dashboard tab's socket. The Worker has checked the ticket; this
  * only says which root or workspace the tab is watching, and tells it about
- * the calls that are running there now.
+ * the calls that are running there now, then that this is all of them.
  */
 export function acceptLogsSocket(
   ctx: DurableObjectState,
@@ -88,6 +98,7 @@ export function acceptLogsSocket(
     ...(workspaceId ? { workspaceId } : {}),
     settled: false,
   } satisfies LogsSocketState);
+  const running: string[] = [];
   for (const caller of ctx.getWebSockets("tool")) {
     const state = caller.deserializeAttachment() as {
       id?: string;
@@ -97,7 +108,9 @@ export function acceptLogsSocket(
     if (!state?.id || state.settled || !state.log) continue;
     if (!watches(projectId, workspaceId, state.log)) continue;
     send(server, startEvent(state.id, state.log));
+    running.push(state.id);
   }
+  send(server, { type: "log.sync", at: Date.now(), running });
   return new Response(null, { status: 101, webSocket: client });
 }
 

@@ -123,6 +123,17 @@ function LogRow({ line }: { line: LogLine }) {
       </div>
     );
   }
+  if (line.ok === null) {
+    return (
+      <div className="flex gap-3">
+        {time}
+        <span className="min-w-0 break-words whitespace-pre-wrap text-gray-500">
+          <span>? </span>
+          <span className="text-gray-400">{line.tool}</span> ended while the log was disconnected
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="flex gap-3">
       {time}
@@ -131,7 +142,9 @@ function LogRow({ line }: { line: LogLine }) {
           {line.ok ? "✓ " : "✗ "}
         </span>
         <span className="text-gray-400">{line.tool}</span>
-        <span className="text-gray-500 tabular-nums"> {formatDuration(line.durationMs)}</span>
+        {line.durationMs !== undefined ? (
+          <span className="text-gray-500 tabular-nums"> {formatDuration(line.durationMs)}</span>
+        ) : null}
         {line.errorCode ? <span className="text-red-400"> {line.errorCode}</span> : null}
       </span>
     </div>

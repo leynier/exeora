@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api.js";
-import { appendEvent, appendNote, type LogLine, parseLogEvent } from "./logsModel.js";
+import {
+  appendEvent,
+  appendNote,
+  isHeartbeatAck,
+  type LogLine,
+  parseLogEvent,
+} from "./logsModel.js";
 
 const HEARTBEAT_REQUEST = '{"type":"heartbeat"}';
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -107,7 +113,7 @@ export function useWorkspaceLogs({
       ws.addEventListener("message", (message) => {
         if (disposed) return;
         const raw = String(message.data);
-        if (raw.includes('"heartbeat.ack"')) {
+        if (isHeartbeatAck(raw)) {
           lastAck = Date.now();
           return;
         }

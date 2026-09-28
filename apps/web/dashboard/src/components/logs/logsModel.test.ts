@@ -4,6 +4,7 @@ import {
   appendNote,
   formatClock,
   formatDuration,
+  isHeartbeatAck,
   type LogEvent,
   type LogLine,
   MAX_LINES,
@@ -70,6 +71,39 @@ describe("appendEvent", () => {
       lines = appendEvent(lines, start(`c${index}`));
     expect(lines).toHaveLength(MAX_LINES);
     expect(lines[0]?.key).toBe("start:c5");
+  });
+});
+
+describe("a reconnect", () => {
+  it("ends what finished while the tab was away, and nothing it never saw", () => {
+    let lines: LogLine[] = [];
+    lines = appendEvent(lines, start("gone"));
+    lines = appendEvent(lines, start("still"));
+    lines = appendEvent(lines, start("done"));
+    lines = appendEvent(lines, end("done"));
+    lines = appendEvent(lines, { type: "log.sync", at: 5_000, running: ["still", "never-seen"] });
+    expect(lines.at(-1)).toEqual({
+      key: "end:gone",
+      kind: "end",
+      at: 5_000,
+      tool: "run_command",
+      ok: null,
+    });
+    expect(lines.filter((line) => line.kind === "end")).toHaveLength(2);
+    expect(runningCount(lines)).toBe(1);
+    const again = appendEvent(lines, { type: "log.sync", at: 6_000, running: ["still"] });
+    expect(again).toBe(lines);
+  });
+
+  it("reads the list of what runs, and tells a heartbeat's answer apart", () => {
+    expect(parseLogEvent('{"type":"log.sync","at":1,"running":["a",2]}')).toEqual({
+      type: "log.sync",
+      at: 1,
+      running: ["a"],
+    });
+    expect(isHeartbeatAck('{"type":"heartbeat.ack"}')).toBe(true);
+    expect(isHeartbeatAck('{"type":"log.start","summary":"heartbeat.ack"}')).toBe(false);
+    expect(isHeartbeatAck("nope")).toBe(false);
   });
 });
 
