@@ -208,8 +208,11 @@ export function SourceControl({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <aside className="border-border-subtle flex min-h-0 flex-col overflow-hidden border-b lg:border-r lg:border-b-0">
+      {/* Below lg it is one column that scrolls as a whole: the commit box, every
+          changed file, then the diff. Two panes sharing a narrow height, as in a
+          side panel, left room for one file and a sliver of diff. */}
+      <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[20rem_minmax(0,1fr)] lg:overflow-visible">
+        <aside className="border-border-subtle flex flex-col border-b lg:min-h-0 lg:overflow-hidden lg:border-r lg:border-b-0">
           <section className="border-border-subtle shrink-0 border-b p-3">
             <label className="block">
               <span className="text-label-md text-foreground-faint font-mono tracking-wide uppercase">
@@ -263,7 +266,7 @@ export function SourceControl({
           </div>
         </aside>
 
-        <main className="bg-bg flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <main className="bg-bg flex min-h-[32rem] min-w-0 flex-col overflow-hidden lg:min-h-0">
           {chosen ? (
             <header className="border-border-subtle flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
               <div className="min-w-0">
