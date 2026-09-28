@@ -49,6 +49,16 @@ describe("repositoryKey", () => {
   });
 });
 
+describe("slashes", () => {
+  it("trims a long run of slashes in linear time", () => {
+    const slashes = "/".repeat(100_000);
+    expect(repositoryKey(`https://github.com/${slashes}acme/api${slashes}x`)).toBe(
+      `github.com/acme/api${slashes}x`,
+    );
+    expect(repositoryKey(`https://github.com/acme/api.git${slashes}`)).toBe("github.com/acme/api");
+  });
+});
+
 describe("clone addresses", () => {
   it("writes the https and ssh forms of whatever it was given", () => {
     expect(httpsRepositoryUrl("git@github.com:Acme/API.git")).toBe(

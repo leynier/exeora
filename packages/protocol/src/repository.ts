@@ -32,6 +32,15 @@ function decoded(value: string): string {
   }
 }
 
+/** A loop, not `/\/+$/`: that pattern backtracks quadratically on a long run of slashes. */
+function withoutSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === "/") start++;
+  while (end > start && value[end - 1] === "/") end--;
+  return value.slice(start, end);
+}
+
 function parts(url: string | null | undefined): Parts | null {
   const text = url?.trim();
   if (!text) return null;
@@ -52,10 +61,7 @@ function parts(url: string | null | undefined): Parts | null {
     raw = scp[2];
   }
 
-  const path = raw
-    .replace(/^\/+|\/+$/g, "")
-    .replace(/\.git$/i, "")
-    .replace(/\/+$/g, "");
+  const path = withoutSlashes(withoutSlashes(raw).replace(/\.git$/i, ""));
   const where = host.toLowerCase().replace(/^www\./, "");
   if (!where || !path || path.includes("..") || /\s/.test(path)) return null;
   return { host: where, path };
