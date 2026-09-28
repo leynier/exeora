@@ -196,6 +196,7 @@ export async function mockApi(
     failMachines?: () => boolean;
     onRequest?: (request: Request) => void;
     statusDelay?: (requestNumber: number) => number;
+    statusHead?: (requestNumber: number) => string | undefined;
     projects?: Array<typeof project>;
     terminals?: Array<{
       sessionId: string;
@@ -279,6 +280,7 @@ export async function mockApi(
     if (path.endsWith("/workspace/status")) {
       statusRequests += 1;
       const response = structuredClone(state[target]);
+      response.head = options.statusHead?.(statusRequests) ?? response.head;
       const delay = options.statusDelay?.(statusRequests) ?? 0;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
       await route.fulfill({ status: 200, json: response });

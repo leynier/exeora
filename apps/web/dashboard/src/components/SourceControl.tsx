@@ -45,7 +45,6 @@ export function SourceControl({
 }: {
   projectId: string;
   workspace?: string;
-  /** The workspaces on the machine whose git status this is, and no others. */
   workspaces: Workspace[];
   /** The root of the location on screen, which is what its git status lists. */
   root: LocationRoot;
@@ -67,13 +66,13 @@ export function SourceControl({
   const [selected, setSelected] = useState<WorkspaceSelection | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [confirm, setConfirm] = useState<{
     action: WorkspaceAction;
     title: string;
     body: string;
     label: string;
   } | null>(null);
-  /** The branch typed into the picker, while the dialog that takes it is open. */
   const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(null);
   const chosen = selected ?? defaultWorkspaceSelection(status);
   const chosenPath = chosen?.path ?? "";
@@ -100,6 +99,7 @@ export function SourceControl({
   const chosenFile = status?.files.find((file) => file.path === chosen?.path);
   const pollGeneration = useRef(0);
   const pollController = useRef<AbortController | null>(null);
+  const pollPaused = useRef(false);
   const refresh = useCallback(
     () =>
       Promise.all([
@@ -114,6 +114,24 @@ export function SourceControl({
       ]),
     [client, projectId, targetKey],
   );
+
+  const manualRefresh = useCallback(async () => {
+    if (pollPaused.current) return;
+    pollPaused.current = true;
+    setRefreshing(true);
+    pollGeneration.current += 1;
+    pollController.current?.abort();
+    try {
+      await Promise.all([
+        client.cancelQueries({ queryKey: keys.gitStatus(projectId, targetKey) }),
+        client.cancelQueries({ queryKey: ["workspace", projectId, targetKey, "diff"] }),
+      ]);
+      await refresh();
+    } finally {
+      pollPaused.current = false;
+      setRefreshing(false);
+    }
+  }, [client, projectId, refresh, targetKey]);
 
   const poll = useCallback(async () => {
     const generation = pollGeneration.current;
@@ -131,24 +149,21 @@ export function SourceControl({
       if (nextDiff) client.setQueryData(diffKey, nextDiff);
       setSelected((current) => selectionAfterStatus(current, nextStatus));
     } catch {
-      // Keep the last known status. The next visible tick retries, while the
-      // capabilities query owns the persistent offline/unavailable state.
+      // Keep the last known status and retry on the next visible tick.
     } finally {
       if (pollController.current === controller) pollController.current = null;
     }
   }, [canLoadDiff, chosenArea, chosenPath, client, diffKey, projectId, targetKey, workspace]);
 
-  // Refresh status and the selected diff together while this document is visible.
-  // Schedule the next poll only after the current one finishes so a slow cloud wake
-  // is allowed to land instead of being aborted by the next three-second tick.
   useEffect(() => {
-    if (!autoRefresh || pending) return;
+    if (!autoRefresh || pending || refreshing) return;
     let stopped = false;
     let timer: number | undefined;
     const schedule = () => {
       timer = window.setTimeout(async () => {
         try {
-          if (!stopped && document.visibilityState !== "hidden") await poll();
+          if (!stopped && !pollPaused.current && document.visibilityState !== "hidden")
+            await poll();
         } finally {
           if (!stopped) schedule();
         }
@@ -160,19 +175,15 @@ export function SourceControl({
       if (timer !== undefined) window.clearTimeout(timer);
       pollController.current?.abort();
     };
-  }, [autoRefresh, pending, poll]);
+  }, [autoRefresh, pending, poll, refreshing]);
 
-  // Several actions run one after another under one pending state, which is
-  // how a bulk stage larger than the per-request path limit goes out.
   const run = async (actions: WorkspaceAction | WorkspaceAction[]) => {
     const batch = Array.isArray(actions) ? actions : [actions];
     const action = batch[0];
     if (!action) return;
+    pollPaused.current = true;
     setPending(true);
     try {
-      // A poll may already be in flight when an action starts. Invalidate its
-      // generation as well as aborting it, so even a transport that finishes
-      // after abort cannot write stale data over the action response.
       pollGeneration.current += 1;
       pollController.current?.abort();
       await Promise.all([
@@ -195,13 +206,14 @@ export function SourceControl({
         "error",
       );
     } finally {
+      pollPaused.current = false;
       setPending(false);
       setConfirm(null);
     }
   };
 
   if (loading) return <Skeleton className="h-full w-full rounded-xl" />;
-  if (error) return <ErrorBanner error={error} onRetry={() => void refresh()} />;
+  if (error) return <ErrorBanner error={error} onRetry={() => void manualRefresh()} />;
   if (!status?.repository)
     return (
       <EmptyState title="Not a Git repository">
@@ -280,7 +292,12 @@ export function SourceControl({
           >
             Auto refresh
           </button>
-          <button className="btn" disabled={pending} type="button" onClick={() => void refresh()}>
+          <button
+            className="btn"
+            disabled={pending || refreshing}
+            type="button"
+            onClick={() => void manualRefresh()}
+          >
             Refresh
           </button>
         </div>

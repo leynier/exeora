@@ -113,6 +113,33 @@ test("cancels an in-flight auto refresh before a source control action", async (
   await expect(page.getByRole("heading", { name: "Staged 1" })).toBeVisible();
 });
 
+test("manual refresh wins over an in-flight auto refresh", async ({ page }) => {
+  let statusRequests = 0;
+  await signedIn(page);
+  await mockApi(page, {
+    statusDelay: (requestNumber) => (requestNumber === 2 ? 1_500 : 0),
+    statusHead: (requestNumber) =>
+      requestNumber === 2 ? "stale" : requestNumber >= 3 ? "fresh" : undefined,
+    onRequest: (request) => {
+      if (
+        request.method() === "GET" &&
+        new URL(request.url()).pathname.endsWith("/workspace/status")
+      ) {
+        statusRequests += 1;
+      }
+    },
+  });
+  await openWorkspace(page, `/dashboard/workspace?project=${project.id}`);
+  await expect.poll(() => statusRequests, { timeout: 4_500 }).toBeGreaterThanOrEqual(2);
+
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Current branch fresh" })).toBeVisible();
+  await page.getByRole("button", { name: "Auto refresh" }).click();
+
+  await page.waitForTimeout(1_700);
+  await expect(page.getByRole("button", { name: "Current branch fresh" })).toBeVisible();
+});
+
 test("keeps source control and terminal bound to the selected workspace", async ({ page }) => {
   const requests: Request[] = [];
   await signedIn(page);
