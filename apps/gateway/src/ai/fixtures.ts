@@ -45,6 +45,8 @@ export interface Asked {
   method: string;
   url: string;
   headers: Headers;
+  /** How a redirect would be handled, which every provider request says. */
+  redirect: Request["redirect"];
   text: string;
   json(): unknown;
   form(): URLSearchParams;
@@ -66,6 +68,7 @@ export function fakeProvider(
       method: request.method,
       url: request.url,
       headers: request.headers,
+      redirect: request.redirect,
       text,
       json: () => JSON.parse(text),
       form: () => new URLSearchParams(text),

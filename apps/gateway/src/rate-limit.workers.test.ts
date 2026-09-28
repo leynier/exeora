@@ -101,6 +101,15 @@ describe("which authenticated requests are counted", () => {
     expect(limiterFor(env, "POST", "/api/projects")).toBe(env.RL_WRITE);
   });
 
+  it("counts every request that spends the account's AI provider budget", () => {
+    expect(limiterFor(env, "POST", "/api/ai/providers/openai/device")).toBe(env.RL_WRITE);
+    expect(limiterFor(env, "POST", "/api/projects/prj_1/ai/commit-message")).toBe(env.RL_WRITE);
+    // Storing a key checks it with the provider, which a loop would spend as well.
+    expect(limiterFor(env, "PUT", "/api/ai/providers/xai/key")).toBe(env.RL_WRITE);
+    expect(limiterFor(env, "GET", "/api/ai")).toBeUndefined();
+    expect(limiterFor(env, "PUT", "/api/ai/settings")).toBeUndefined();
+  });
+
   it("leaves reads alone, because the dashboard polls three of them", () => {
     // Every fifteen seconds, from an open tab, without anyone touching it.
     expect(limiterFor(env, "GET", "/api/devices")).toBeUndefined();

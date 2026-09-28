@@ -9,7 +9,9 @@ import type { DeviceLogin, DeviceLoginStart } from "./providers/types.js";
 /**
  * A device login between its start and its grant: one per account and
  * provider, replaced by the next start and gone once granted. What the flow
- * has to keep secret in the meantime is encrypted like a credential.
+ * has to keep secret in the meantime is encrypted like a credential: the
+ * device code, which is what redeems the grant once the person has typed
+ * the user code, and whatever else the provider's flow carries.
  */
 
 export interface PendingLogin extends DeviceLogin {
@@ -26,7 +28,7 @@ export async function storeLogin(
   start: DeviceLoginStart,
 ): Promise<void> {
   const values = {
-    deviceId: start.deviceId,
+    deviceCiphertext: await encryptSecret(key.credentialsKey, start.deviceId),
     userCode: start.userCode,
     verificationUrl: start.verificationUrl,
     intervalS: start.interval,
@@ -58,17 +60,19 @@ export async function readLogin(
     )
     .get();
   if (!row) return null;
+  let deviceId: string;
   let secret: string | undefined;
-  if (row.secretCiphertext) {
-    try {
+  try {
+    deviceId = await decryptSecret(key.credentialsKey, row.deviceCiphertext);
+    if (row.secretCiphertext) {
       secret = await decryptSecret(key.credentialsKey, row.secretCiphertext);
-    } catch {
-      await deleteLogin(env, userId, provider);
-      return null;
     }
+  } catch {
+    await deleteLogin(env, userId, provider);
+    return null;
   }
   return {
-    deviceId: row.deviceId,
+    deviceId,
     userCode: row.userCode,
     secret,
     verificationUrl: row.verificationUrl,

@@ -2144,8 +2144,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "device_id": {
-          "name": "device_id",
+        "device_ciphertext": {
+          "name": "device_ciphertext",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

@@ -44,7 +44,8 @@ export function useShip(ctx: WorkspaceContext) {
   const run = useCallback(
     async (base: string) => {
       const status = ctx.status.data;
-      if (!status) return;
+      // A ship that is running owns the checkout until it is done or stopped.
+      if (!status || abort.current) return;
       const plan = shipPlan(status, base);
       const controller = new AbortController();
       abort.current = controller;

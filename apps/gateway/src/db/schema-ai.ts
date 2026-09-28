@@ -68,7 +68,8 @@ export const aiDeviceLogins = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     provider: text("provider", { enum: AI_PROVIDER_IDS }).notNull(),
-    deviceId: text("device_id").notNull(),
+    /** The provider's handle for the login, which is what redeems it: encrypted like a credential. */
+    deviceCiphertext: text("device_ciphertext").notNull(),
     userCode: text("user_code").notNull(),
     verificationUrl: text("verification_url").notNull(),
     intervalS: integer("interval_s").notNull(),

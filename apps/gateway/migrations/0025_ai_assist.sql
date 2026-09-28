@@ -1,7 +1,7 @@
 CREATE TABLE `ai_device_logins` (
 	`user_id` text NOT NULL,
 	`provider` text NOT NULL,
-	`device_id` text NOT NULL,
+	`device_ciphertext` text NOT NULL,
 	`user_code` text NOT NULL,
 	`verification_url` text NOT NULL,
 	`interval_s` integer NOT NULL,

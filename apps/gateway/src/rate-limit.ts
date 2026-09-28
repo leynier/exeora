@@ -69,6 +69,7 @@ export function isRateLimitedAuthRequest(method: string, pathname: string): bool
 const GH_TOKEN = /^\/api\/projects\/[^/]+\/gh-token$/;
 /** AI Assist: device logins and key checks under `/api/ai`, generations under a project. */
 const AI_WRITE = /^\/api\/(?:ai\/|projects\/[^/]+\/ai\/)/;
+const AI_KEY = /^\/api\/ai\/providers\/[^/]+\/key$/;
 /** A project's pull request and everything under it: reads are free, changes are counted. */
 const PULL_REQUEST = /^\/api\/projects\/[^/]+\/pull-request(\/|$)/;
 
@@ -112,6 +113,10 @@ export function limiterFor(
   ) {
     return env.RL_WRITE;
   }
+
+  // Storing an API key checks it with the provider first, which is a request
+  // there in the account's name like any generation.
+  if (method === "PUT" && AI_KEY.test(pathname)) return env.RL_WRITE;
 
   // Each change to a pull request is a write at GitHub in the account's
   // name; the screen's polling, being GETs, is not.

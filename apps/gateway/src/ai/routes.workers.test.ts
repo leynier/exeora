@@ -158,7 +158,11 @@ describe("linking ChatGPT by device code", () => {
       interval: 5,
     });
     expect(login.expiresAt).toBeGreaterThan(Date.now());
-    expect(await loginRow("openai")).toMatchObject({ deviceId: "da_1", userCode: "ABCD-1234" });
+    const pendingRow = await loginRow("openai");
+    expect(pendingRow).toMatchObject({ userCode: "ABCD-1234" });
+    // The device code redeems the grant, so a dump of the table must not hold it.
+    expect(pendingRow?.deviceCiphertext).not.toContain("da_1");
+    expect(await decryptSecret(CREDENTIALS_KEY, pendingRow?.deviceCiphertext ?? "")).toBe("da_1");
 
     const pending = await call("/api/ai/providers/openai/device/poll", {
       method: "POST",
@@ -276,6 +280,7 @@ describe("linking Grok by device code", () => {
     provider((asked) => {
       if (asked.url === "https://auth.x.ai/.well-known/openid-configuration") {
         return Response.json({
+          issuer: "https://auth.x.ai",
           device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
           token_endpoint: "https://auth.x.ai/oauth2/token",
         });
@@ -330,10 +335,90 @@ describe("linking Grok by device code", () => {
     expect(await decryptSecret(CREDENTIALS_KEY, row?.accessCiphertext ?? "")).toBe("xai_at_1");
   });
 
+  it("refuses a discovery document that names endpoints elsewhere", async () => {
+    // The device code and the refresh token go to the token endpoint, so a
+    // document that pointed it at another host would be handing them over.
+    const fake = provider((asked) => {
+      if (asked.url.endsWith("openid-configuration")) {
+        return Response.json({
+          issuer: "https://auth.x.ai",
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
+          token_endpoint: "https://tokens.example.net/oauth2/token",
+        });
+      }
+      return Response.json({ device_code: "dc_3", user_code: "X" });
+    });
+    const started = await call("/api/ai/providers/xai/device", {
+      method: "POST",
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(started.status).toBe(502);
+    expect(fake.asked.map((asked) => asked.url)).toEqual([
+      "https://auth.x.ai/.well-known/openid-configuration",
+    ]);
+    expect(await loginRow("xai")).toBeUndefined();
+  });
+
+  it("refuses a discovery document from another issuer", async () => {
+    const fake = provider((asked) => {
+      if (asked.url.endsWith("openid-configuration")) {
+        return Response.json({
+          issuer: "https://auth.example.net",
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
+          token_endpoint: "https://auth.x.ai/oauth2/token",
+        });
+      }
+      return Response.json({ device_code: "dc_4", user_code: "X" });
+    });
+    const started = await call("/api/ai/providers/xai/device", {
+      method: "POST",
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(started.status).toBe(502);
+    expect(fake.asked).toHaveLength(1);
+  });
+
+  it("does not follow a redirect of the token request", async () => {
+    const fake = provider((asked) => {
+      if (asked.url.endsWith("openid-configuration")) {
+        return Response.json({
+          issuer: "https://auth.x.ai",
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
+          token_endpoint: "https://auth.x.ai/oauth2/token",
+        });
+      }
+      if (asked.url.endsWith("/oauth2/device")) {
+        return Response.json({
+          device_code: "dc_5",
+          user_code: "MOVED",
+          verification_uri: "https://auth.x.ai/device",
+        });
+      }
+      // A 307 would replay the body, device code included, at `Location`.
+      return new Response(null, {
+        status: 307,
+        headers: { Location: "https://tokens.example.net/oauth2/token" },
+      });
+    });
+    const on = aiOn();
+    await call("/api/ai/providers/xai/device", { method: "POST", userId: USER, env: on });
+    const poll = await call("/api/ai/providers/xai/device/poll", {
+      method: "POST",
+      userId: USER,
+      env: on,
+    });
+    expect(poll.status).toBe(502);
+    expect(fake.asked.every((asked) => asked.url.startsWith("https://auth.x.ai/"))).toBe(true);
+    expect(fake.asked.every((asked) => asked.redirect === "manual")).toBe(true);
+  });
+
   it("drops the login when the person declines", async () => {
     provider((asked) => {
       if (asked.url.endsWith("openid-configuration")) {
         return Response.json({
+          issuer: "https://auth.x.ai",
           device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
           token_endpoint: "https://auth.x.ai/oauth2/token",
         });

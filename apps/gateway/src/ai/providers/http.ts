@@ -28,7 +28,12 @@ export function withTimeout(ms: number, signal?: AbortSignal): AbortSignal {
   return controller.signal;
 }
 
-/** A request that never throws anything but an `AiError`. */
+/**
+ * A request that never throws anything but an `AiError`, and never follows
+ * a redirect: a 307 or 308 would send the body, which may carry a token, a
+ * device code or an API key, wherever `Location` points. No provider
+ * redirects the endpoints asked here, so a redirect is a failure.
+ */
 export async function providerFetch(
   fetcher: typeof fetch,
   label: string,
@@ -36,15 +41,25 @@ export async function providerFetch(
   init: RequestInit & { signal?: AbortSignal | undefined; timeoutMs?: number | undefined },
 ): Promise<Response> {
   const { timeoutMs, signal, ...rest } = init;
+  let response: Response;
   try {
-    return await fetcher(url, {
+    response = await fetcher(url, {
       ...rest,
+      redirect: "manual",
       signal: withTimeout(timeoutMs ?? REQUEST_TIMEOUT_MS, signal),
     });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new AiError("unavailable", `${label} could not be reached. Try again in a few minutes.`);
   }
+  if (response.status >= 300 && response.status < 400 && response.headers.has("Location")) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new AiError(
+      "unavailable",
+      `${label} redirected the request, which is not followed. Try again in a few minutes.`,
+    );
+  }
+  return response;
 }
 
 /** Refuses anything but a success, in words about the cause rather than the response. */

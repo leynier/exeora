@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, CircleDashed, CircleX, LoaderCircle } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { prApi, prKeys } from "../../api-pr.js";
 import { Dialog, DialogActions, DialogError } from "../Dialog.js";
 import type { WorkspaceContext } from "../workspace/context.js";
@@ -33,10 +33,22 @@ export function ShipDialog({
   const base = lookup.data?.repository?.defaultBranch ?? null;
   const notGitHub = lookup.data !== undefined && !lookup.data.repository;
 
+  // One open is one ship. `run` is remade whenever the context is, which is
+  // every render of the page, and the first mutation renders it; an effect
+  // on `run` would start again mid-flight.
+  const latest = useRef(run);
+  latest.current = run;
+  const started = useRef(false);
   useEffect(() => {
-    if (open && base) void run(base);
-    if (!open) reset();
-  }, [open, base, run, reset]);
+    if (!open) {
+      started.current = false;
+      reset();
+      return;
+    }
+    if (!base || started.current) return;
+    started.current = true;
+    void latest.current(base);
+  }, [open, base, reset]);
 
   const { progress } = ship;
   return (

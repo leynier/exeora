@@ -31,7 +31,8 @@ import {
  */
 
 // Unofficial: xAI's OpenID provider, whose discovery document names the endpoints.
-const OIDC_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
+const OIDC_ISSUER = "https://auth.x.ai";
+const OIDC_DISCOVERY_URL = `${OIDC_ISSUER}/.well-known/openid-configuration`;
 // Unofficial: what the device grant asks for. Discovery lists `api:access` among
 // the scopes; a refresh token needs `offline_access`. Neither is documented.
 const OAUTH_SCOPE = "openid profile email offline_access api:access";
@@ -80,7 +81,9 @@ export const xai: AiProvider = {
     if (
       typeof body.device_code !== "string" ||
       typeof body.user_code !== "string" ||
-      typeof verificationUrl !== "string"
+      typeof verificationUrl !== "string" ||
+      // The person is sent there to sign in: nowhere but the issuer's own site.
+      !issuerUrl(verificationUrl)
     ) {
       throw new AiError("unavailable", `${LABEL} did not start a device login. Try again.`);
     }
@@ -214,22 +217,47 @@ interface Endpoints {
   token: string;
 }
 
+/**
+ * The endpoints the issuer names for itself, and no others. The device code
+ * and the refresh token are posted to the token endpoint, so a document that
+ * named another host would be handing them over: the issuer must be the one
+ * the document was fetched from (OpenID Connect Discovery 1.0 §4.3), and
+ * each endpoint must be https on that same host.
+ */
 async function discover(fetcher: typeof fetch): Promise<Endpoints> {
   const response = await providerFetch(fetcher, LABEL, OIDC_DISCOVERY_URL, {
     headers: { Accept: "application/json" },
   });
   await expectOk(response, LABEL);
   const body = (await readJson(response, LABEL)) as {
+    issuer?: unknown;
     device_authorization_endpoint?: unknown;
     token_endpoint?: unknown;
   };
+  if (typeof body.issuer !== "string" || !issuerUrl(body.issuer, true)) {
+    throw new AiError("unavailable", `${LABEL} names another issuer. Use an API key.`);
+  }
   if (
     typeof body.device_authorization_endpoint !== "string" ||
-    typeof body.token_endpoint !== "string"
+    typeof body.token_endpoint !== "string" ||
+    !issuerUrl(body.device_authorization_endpoint) ||
+    !issuerUrl(body.token_endpoint)
   ) {
     throw new AiError("unavailable", `${LABEL} does not offer a device login. Use an API key.`);
   }
   return { device: body.device_authorization_endpoint, token: body.token_endpoint };
+}
+
+/** Whether a URL is https on the issuer's host; as the issuer itself, whether it is the issuer. */
+function issuerUrl(value: string, exact = false): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.origin !== OIDC_ISSUER) return false;
+  return !exact || url.href.replace(/\/$/, "") === OIDC_ISSUER;
 }
 
 async function discoverModels(fetcher: typeof fetch, credential: Credential) {
