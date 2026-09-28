@@ -25,11 +25,17 @@ import {
  *
  * An API key speaks to the documented API. The OAuth path is a standard
  * device grant (RFC 8628) against xAI's OpenID provider, found by discovery,
- * with a client id the gateway is given in `XAI_OAUTH_CLIENT_ID`: without
- * one, only the key is offered. That flow is UNOFFICIAL, observed in other
- * tools rather than promised by xAI, and may stop working without notice.
+ * as xAI's shared public client for coding agents unless the gateway is
+ * given another in `XAI_OAUTH_CLIENT_ID`, or `off` there to offer the key
+ * only. That flow is UNOFFICIAL, observed in other tools rather than
+ * promised by xAI, and may stop working without notice.
  */
 
+// Unofficial: the public OAuth client xAI's own CLI and the other tools that
+// link a SuperGrok or X Premium subscription share, whose consent page names
+// Grok Build. Public by design of the device flow: it is no secret, and it
+// identifies the kind of client, not this gateway.
+export const XAI_PUBLIC_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 // Unofficial: xAI's OpenID provider, whose discovery document names the endpoints.
 const OIDC_ISSUER = "https://auth.x.ai";
 const OIDC_DISCOVERY_URL = `${OIDC_ISSUER}/.well-known/openid-configuration`;
@@ -202,7 +208,8 @@ export const xai: AiProvider = {
 
 function clientId(env: AiEnv): string | null {
   const id = env.XAI_OAUTH_CLIENT_ID?.trim();
-  return id ? id : null;
+  if (id === "off") return null;
+  return id ? id : XAI_PUBLIC_CLIENT_ID;
 }
 
 function requireClientId(env: AiEnv): string {

@@ -129,7 +129,7 @@
     // CLOUD_CREDENTIALS_KEY, a secret; without it the feature stays off.
     // The device logins that link a subscription are unofficial flows (see
     // docs/self-hosting.md); AI_ASSIST_OAUTH=off would keep API keys only.
-    // XAI_OAUTH_CLIENT_ID, when set as a secret, adds xAI's device login.
+    // XAI_OAUTH_CLIENT_ID=off would drop xAI's device login alone.
     "AI_ASSIST_PROVIDERS": "openai,xai",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds

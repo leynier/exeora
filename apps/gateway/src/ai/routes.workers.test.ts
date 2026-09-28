@@ -16,6 +16,7 @@ import {
 } from "./fixtures.js";
 import { storeLogin } from "./logins.js";
 import { replaceOutbound } from "./outbound.js";
+import { XAI_PUBLIC_CLIENT_ID } from "./providers/xai.js";
 
 /** AI Assist as the dashboard reaches it: linking, unlinking, models and settings. */
 
@@ -253,9 +254,9 @@ describe("linking ChatGPT by device code", () => {
     expect(await refused.json()).toMatchObject({ error: "ai_oauth_unavailable" });
   });
 
-  it("offers xAI by key only without a client id, and only the providers named", async () => {
+  it("offers xAI by key only when its client is off, and only the providers named", async () => {
     const status = (await (
-      await call("/api/ai", { userId: USER, env: aiOn({ XAI_OAUTH_CLIENT_ID: undefined }) })
+      await call("/api/ai", { userId: USER, env: aiOn({ XAI_OAUTH_CLIENT_ID: "off" }) })
     ).json()) as { providers: Array<{ id: string; authKinds: string[] }> };
     expect(status.providers).toMatchObject([
       { id: "openai", authKinds: ["oauth", "api_key"] },
@@ -333,6 +334,31 @@ describe("linking Grok by device code", () => {
     });
     const row = await storedRow("xai");
     expect(await decryptSecret(CREDENTIALS_KEY, row?.accessCiphertext ?? "")).toBe("xai_at_1");
+  });
+
+  it("uses xAI's shared public client when the gateway names none", async () => {
+    const fake = provider((asked) => {
+      if (asked.url.endsWith("openid-configuration")) {
+        return Response.json({
+          issuer: "https://auth.x.ai",
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device",
+          token_endpoint: "https://auth.x.ai/oauth2/token",
+        });
+      }
+      return Response.json({
+        device_code: "dc_7",
+        user_code: "PUBL-1234",
+        verification_uri: "https://accounts.x.ai/oauth2/device",
+      });
+    });
+    const started = await call("/api/ai/providers/xai/device", {
+      method: "POST",
+      userId: USER,
+      env: aiOn({ XAI_OAUTH_CLIENT_ID: undefined }),
+    });
+    expect(started.status).toBe(200);
+    const device = fake.asked.find((asked) => asked.url.endsWith("/oauth2/device"));
+    expect(device?.form().get("client_id")).toBe(XAI_PUBLIC_CLIENT_ID);
   });
 
   it("refuses a login whose sign-in page is not on x.ai", async () => {

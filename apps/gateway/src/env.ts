@@ -120,7 +120,10 @@ declare global {
     AI_ASSIST_PROVIDERS?: string;
     /** `off` keeps only the API keys: no device login is offered for any provider. */
     AI_ASSIST_OAUTH?: string;
-    /** The OAuth client xAI knows this gateway as. Unset offers xAI by API key only. */
+    /**
+     * The OAuth client xAI knows this gateway as. Unset uses xAI's shared
+     * public client for coding agents; `off` offers xAI by API key only.
+     */
     XAI_OAUTH_CLIENT_ID?: string;
 
     /**
