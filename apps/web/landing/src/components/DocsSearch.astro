@@ -1,0 +1,227 @@
+---
+/**
+ * Search across the documentation, backed by Pagefind.
+ *
+ * The index is built after `astro build` (see `build:landing`) and lives at
+ * `/pagefind/`, next to the pages it describes. Only the search API is loaded,
+ * and only when the dialog first opens; the interface is drawn here in the
+ * site's own tokens rather than Pagefind's default UI, for the same reason the
+ * docs are not a documentation framework.
+ *
+ * Any element with `data-docs-search-open` opens it, as do ⌘K / Ctrl+K and `/`.
+ */
+---
+
+<dialog
+  id="docs-search"
+  aria-label="Search the documentation"
+  class="border-border bg-surface text-foreground backdrop:bg-bg/70 m-auto mt-[10vh] w-[min(40rem,calc(100vw-2rem))] max-w-none rounded-xl border p-0 shadow-2xl shadow-black/40 backdrop:backdrop-blur-sm"
+>
+  <form method="dialog" class="border-border-subtle flex items-center gap-3 border-b px-4">
+    <svg
+      viewBox="0 0 24 24"
+      class="text-foreground-faint size-4 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m20 20-3.5-3.5"></path>
+    </svg>
+    <input
+      id="docs-search-input"
+      type="search"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="Search the docs"
+      aria-label="Search the docs"
+      aria-controls="docs-search-results"
+      class="text-body-lg placeholder:text-foreground-faint min-w-0 flex-1 bg-transparent py-4 outline-none"
+    />
+    <button
+      value="close"
+      class="text-label-md text-foreground-faint hover:text-foreground border-border rounded-md border px-1.5 py-0.5 font-mono"
+      aria-label="Close search"
+    >
+      Esc
+    </button>
+  </form>
+
+  <div class="max-h-[60vh] overflow-y-auto p-2">
+    <p id="docs-search-status" class="text-body-md text-foreground-muted px-3 py-6 text-center" aria-live="polite">
+      Type to search every page.
+    </p>
+    <ul id="docs-search-results" class="space-y-1"></ul>
+  </div>
+</dialog>
+
+<script>
+  interface PagefindSubResult {
+    title: string;
+    url: string;
+    excerpt: string;
+  }
+  interface PagefindData {
+    url: string;
+    excerpt: string;
+    meta: { title?: string };
+    sub_results: PagefindSubResult[];
+  }
+  interface Pagefind {
+    init?: () => Promise<void>;
+    debouncedSearch: (
+      query: string,
+    ) => Promise<{ results: { data: () => Promise<PagefindData> }[] } | null>;
+  }
+
+  const dialog = document.getElementById("docs-search") as HTMLDialogElement | null;
+  const input = document.getElementById("docs-search-input") as HTMLInputElement | null;
+  const list = document.getElementById("docs-search-results");
+  const status = document.getElementById("docs-search-status");
+
+  if (dialog && input && list && status) {
+    let pagefind: Promise<Pagefind | null> | undefined;
+    let active = -1;
+    // Bumped by every render. Pagefind's null return only covers a keystroke
+    // that lands before `debouncedSearch` resolves; the `data()` fetches after
+    // it are not cancelled, so each await checks it is still the latest.
+    let latest = 0;
+
+    // The file only exists in the built site, once Pagefind has run, so the
+    // bundler must not see this import at all. A plain `import()` of a variable
+    // is still rewritten with a preload helper that inline scripts never get
+    // defined, and search would fail with `__VITE_PRELOAD__ is not defined`.
+    const importAtRuntime = new Function("url", "return import(url)") as (
+      url: string,
+    ) => Promise<Pagefind>;
+
+    const load = () => {
+      pagefind ??= importAtRuntime("/pagefind/pagefind.js")
+        .then(async (module: Pagefind) => {
+          await module.init?.();
+          return module;
+        })
+        .catch(() => null);
+      return pagefind;
+    };
+
+    const links = () => [...list.querySelectorAll<HTMLAnchorElement>("a[data-result]")];
+
+    const highlight = (index: number) => {
+      const all = links();
+      active = all.length === 0 ? -1 : (index + all.length) % all.length;
+      all.forEach((link, i) => {
+        link.toggleAttribute("data-active", i === active);
+        if (i === active) link.scrollIntoView({ block: "nearest" });
+      });
+    };
+
+    // Pagefind wraps matches in <mark> and escapes the rest, so the excerpt is
+    // safe to insert as markup. Titles are plain text and set as such.
+    const result = (title: string, url: string, excerpt: string, nested: boolean) => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.dataset.result = "";
+      link.className = nested
+        ? "search-result block rounded-lg py-2 pr-3 pl-8"
+        : "search-result block rounded-lg px-3 py-2.5";
+      const heading = document.createElement("span");
+      heading.className = nested ? "text-body-md text-foreground block" : "text-title-md text-foreground block";
+      heading.textContent = nested ? `# ${title}` : title;
+      const body = document.createElement("span");
+      body.className = "text-body-md text-foreground-muted mt-0.5 line-clamp-2 block";
+      body.innerHTML = excerpt;
+      link.append(heading, body);
+      return link;
+    };
+
+    const render = async (query: string) => {
+      const generation = ++latest;
+      const stale = () => generation !== latest;
+
+      const api = await load();
+      if (stale()) return;
+      if (!api) {
+        status.hidden = false;
+        status.textContent = "Search is available in the built site.";
+        return;
+      }
+      if (!query.trim()) {
+        list.replaceChildren();
+        status.hidden = false;
+        status.textContent = "Type to search every page.";
+        return;
+      }
+
+      const search = await api.debouncedSearch(query);
+      if (!search || stale()) return;
+
+      const pages = await Promise.all(search.results.slice(0, 8).map((hit) => hit.data()));
+      if (stale()) return;
+      const items = pages.map((page) => {
+        const item = document.createElement("li");
+        const title = page.meta.title ?? page.url;
+        item.append(result(title, page.url, page.excerpt, false));
+        for (const sub of page.sub_results.filter((s) => s.url !== page.url).slice(0, 3)) {
+          item.append(result(sub.title, sub.url, sub.excerpt, true));
+        }
+        return item;
+      });
+
+      list.replaceChildren(...items);
+      status.hidden = items.length > 0;
+      status.textContent = items.length > 0 ? "" : `Nothing matches “${query}”.`;
+      highlight(0);
+    };
+
+    const open = () => {
+      if (dialog.open) return;
+      dialog.showModal();
+      input.select();
+      void load();
+    };
+
+    input.addEventListener("input", () => void render(input.value));
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        highlight(active + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        links()[active]?.click();
+      } else if (event.key === "Escape") {
+        // A search field spends the first Escape clearing itself, and the
+        // dialog would stay open until a second one.
+        event.preventDefault();
+        dialog.close();
+      }
+    });
+
+    // A result may point at a section of the page already open.
+    list.addEventListener("click", (event) => {
+      if ((event.target as HTMLElement).closest("a")) dialog.close();
+    });
+
+    // Clicking the backdrop lands on the dialog itself.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+
+    document.addEventListener("click", (event) => {
+      if ((event.target as HTMLElement).closest("[data-docs-search-open]")) open();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const target = event.target as HTMLElement;
+      const typing =
+        target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+      if ((event.key === "k" && (event.metaKey || event.ctrlKey)) || (event.key === "/" && !typing)) {
+        event.preventDefault();
+        open();
+      }
+    });
+  }
+</script>

@@ -1,18 +1,22 @@
 ---
+import { ADD_PROJECT, QUICKSTART } from "../lib/site.js";
 import Section from "./Section.astro";
 
 const steps = [
   {
     title: "Connect the machine",
     body: "Install one native binary and run exeora connect. It signs in and opens an outbound connection, even behind NAT or a corporate firewall",
+    code: QUICKSTART,
   },
   {
     title: "Add the project",
-    body: "Register the directory you want to serve. Exeora prints an MCP URL scoped to that project, not a shell endpoint for the whole machine",
+    body: "Register the directory you want to serve, or a GitHub repository. Exeora prints an MCP URL scoped to that project, not a shell endpoint for the whole machine",
+    code: ADD_PROJECT,
   },
   {
     title: "Paste the URL into your AI",
     body: "Authorize it once, then read, search, edit, and run commands under the policy you choose. Revoke it from the dashboard whenever you want",
+    code: "https://exeora.dev/p/<project>/mcp",
   },
 ];
 ---
@@ -35,16 +39,28 @@ const steps = [
     {
       steps.map((step, index) => (
         <li
-          class="animate-fade-in-up opacity-0-initial relative"
+          class="animate-fade-in-up opacity-0-initial relative flex flex-col"
           style={`animation-delay: ${140 + index * 90}ms`}
         >
           <span class="border-border bg-surface text-title-md text-foreground relative z-10 flex size-10 items-center justify-center rounded-full border font-mono">
             {index + 1}
           </span>
           <h3 class="text-headline-sm mt-5">{step.title}</h3>
-          <p class="text-body-lg text-foreground-muted mt-2.5">{step.body}</p>
+          <p class="text-body-lg text-foreground-muted mt-2.5 mb-4">{step.body}</p>
+          <code class="border-border bg-surface text-foreground mt-auto block truncate rounded-lg border px-3 py-2 font-mono text-[12px] sm:text-[13px]">
+            {step.code}
+          </code>
         </li>
       ))
     }
   </ol>
+
+  <p
+    class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-muted mt-12 text-center"
+    style="animation-delay: 420ms"
+  >
+    No machine to connect? Add a repository to{" "}
+    <a href="/docs/cloud/" class="text-foreground underline-offset-2 hover:underline">Exeora Cloud</a>
+    {" "}from the dashboard and skip the first step.
+  </p>
 </Section>

@@ -1,0 +1,45 @@
+---
+import { TOOL_NAMES } from "@exeora/protocol";
+
+/**
+ * Four facts a visitor can check, right under the hero. The tool count is read
+ * from the contract, like the tool reference, so it cannot go stale.
+ */
+
+const stats = [
+  {
+    value: String(TOOL_NAMES.length),
+    label: "tools, confined to one project",
+    href: "/docs/tools/",
+  },
+  { value: "0", label: "inbound ports to open", href: "/docs/security/" },
+  { value: "1 URL", label: "per project, revocable any time", href: "/docs/clients/" },
+  { value: "AGPL", label: "open source, run it yourself", href: "/docs/self-hosting/" },
+];
+---
+
+<section aria-label="Exeora in numbers" class="px-6 pb-4">
+  <!-- Hairlines between the cells are the grid gap showing the list's own
+       background, so they stay right however the cells wrap. -->
+  <ul
+    class="border-border bg-border-subtle mx-auto grid max-w-6xl grid-cols-2 gap-px overflow-hidden rounded-2xl border lg:grid-cols-4"
+  >
+    {
+      stats.map((stat) => (
+        <li>
+          <a
+            href={stat.href}
+            class="bg-bg hover:bg-surface group block h-full px-5 py-6 text-center transition-colors duration-fast sm:py-7"
+          >
+            <p class="text-foreground text-[28px] leading-none font-semibold tracking-[-0.5px] sm:text-[34px]">
+              {stat.value}
+            </p>
+            <p class="text-body-md text-foreground-muted group-hover:text-foreground mt-2 transition-colors duration-fast">
+              {stat.label}
+            </p>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</section>

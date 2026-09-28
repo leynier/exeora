@@ -6,7 +6,9 @@ import Features from "../components/Features.astro";
 import Footer from "../components/Footer.astro";
 import Hero from "../components/Hero.astro";
 import Navbar from "../components/Navbar.astro";
+import Platform from "../components/Platform.astro";
 import Security from "../components/Security.astro";
+import Stats from "../components/Stats.astro";
 import UseCases from "../components/UseCases.astro";
 import Workflow from "../components/Workflow.astro";
 import Layout from "../layouts/Layout.astro";
@@ -14,16 +16,18 @@ import Layout from "../layouts/Layout.astro";
 
 <Layout
   title="Exeora"
-  description="Connect Claude, ChatGPT, Cursor, or any MCP client to a real development project on your laptop, server, VM, or Raspberry Pi without uploading the repository or opening a port."
+  description="Connect Claude, ChatGPT, Cursor, or any MCP client to a real project on your laptop, server, VM, Raspberry Pi or Exeora Cloud, without uploading the repository or opening a port."
   canonicalPath="/"
 >
   <Navbar />
   <main>
     <Hero />
+    <Stats />
     <UseCases />
     <Workflow />
-    <Comparison />
+    <Platform />
     <Features />
+    <Comparison />
     <Security />
     <Faq />
     <CtaSection />

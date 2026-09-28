@@ -1,15 +1,34 @@
-# Exeora
+<p align="center">
+  <a href="https://exeora.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./apps/web/landing/public/brand/exeora-wordmark-light.svg">
+      <img alt="Exeora" src="./apps/web/landing/public/brand/exeora-wordmark-dark.svg" height="44">
+    </picture>
+  </a>
+</p>
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
-[![CI](https://github.com/leynier/exeora/actions/workflows/ci.yml/badge.svg?event=pull_request)](https://github.com/leynier/exeora/actions/workflows/ci.yml)
-[![Deploy](https://github.com/leynier/exeora/actions/workflows/deploy.yml/badge.svg)](https://github.com/leynier/exeora/actions/workflows/deploy.yml)
-[![GitHub stars](https://img.shields.io/github/stars/leynier/exeora?style=social)](https://github.com/leynier/exeora)
+<p align="center"><strong>Let your AI work where your code already runs.</strong></p>
 
-**Secure execution for AI agents, on any machine.**
+<p align="center">
+  <a href="./LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
+  <a href="https://github.com/leynier/exeora/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/leynier/exeora/actions/workflows/ci.yml/badge.svg?event=pull_request"></a>
+  <a href="https://github.com/leynier/exeora/actions/workflows/deploy.yml"><img alt="Deploy" src="https://github.com/leynier/exeora/actions/workflows/deploy.yml/badge.svg"></a>
+  <a href="https://github.com/leynier/exeora"><img alt="GitHub stars" src="https://img.shields.io/github/stars/leynier/exeora?style=social"></a>
+</p>
 
-Connect Claude, ChatGPT, Cursor, VS Code or Claude Code to a real project on a server, a VM, a build box, a Raspberry Pi, or the laptop in front of you.
+<p align="center">
+  <a href="https://exeora.dev">Website</a> ·
+  <a href="https://exeora.dev/docs/">Docs</a> ·
+  <a href="https://exeora.dev/dashboard/">Dashboard</a> ·
+  <a href="https://github.com/leynier/exeora/releases/latest">CLI releases</a> ·
+  <a href="https://exeora.dev/docs/self-hosting/">Self-hosting</a>
+</p>
 
-No port to open. No source code to upload. No tunnel to wire up.
+---
+
+Exeora turns a project on a server, a VM, a build box, a Raspberry Pi, the laptop in front of you, or Exeora Cloud into one MCP URL. Claude, ChatGPT, Cursor, VS Code, Copilot and every other MCP client can then read, edit and run it right there, under rules you set.
+
+No port to open. No source code to upload. No tunnel to wire up. Free for 10 machines and 2 Cloud instances.
 
 ```bash
 curl -fsSL https://exeora.dev/linux/install.sh | sh
@@ -19,11 +38,9 @@ exeora project add the-project-you-want-to-serve
 
 `connect` signs you in, registers the machine, and keeps the outbound connection open. It does not have to be run from a project directory. `exeora project add` registers a directory to serve. Point any client at the printed MCP URL and leave `connect` running.
 
-A project is a repository, and it lives in one or more locations: your machines and Exeora Cloud. One location is the default, where a call that names no workspace lands. Running `exeora project add` in a checkout whose remote is already a project joins that project as one more location. With GitHub connected in the dashboard, a project can also be added by picking a repository from a list and letting Exeora Cloud hold it, with no machine of yours switched on. See [projects, locations and workspaces](https://exeora.dev/docs/projects/).
+A project is a repository, and it lives in one or more locations: your machines and Exeora Cloud. One location is the default, where a call that names no workspace lands. Running `exeora project add` in a checkout whose remote is already a project joins that project as one more location. With GitHub connected in the dashboard, a project can also be added by picking a repository from a list and letting [Exeora Cloud](#exeora-cloud) hold it, with no machine of yours switched on. See [projects, locations and workspaces](https://exeora.dev/docs/projects/).
 
-**Hosted:** [exeora.dev](https://exeora.dev) · **Docs:** [exeora.dev/docs](https://exeora.dev/docs/) · **CLI:** [releases](https://github.com/leynier/exeora/releases/latest)
-
-> **Demo.** Drop a terminal recording at `docs/demo.gif` when you have one (see `docs/demo.gif.placeholder`). Until then, the live product is at [exeora.dev](https://exeora.dev).
+**Contents:** [Why Exeora](#why-exeora) · [How it works](#how-it-works) · [Compare](#compare) · [What you get](#what-you-get) · [Tools](#tools) · [Beyond tool calls](#beyond-tool-calls) · [Clients](#clients) · [Install](#install) · [Plans](#plans) · [Documentation](#documentation) · [Contributing](#contributing)
 
 ---
 
@@ -40,21 +57,29 @@ Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSock
 flowchart TD
     client["MCP client<br/><small>Claude · ChatGPT · Cursor</small>"]
 
-    subgraph cloud["exeora.dev · Cloudflare"]
-        gateway["Gateway<br/><small>OAuth 2.1 · MCP</small>"]
+    subgraph cloud["exeora.dev · Cloudflare · or your own gateway"]
+        gateway["Gateway<br/><small>OAuth 2.1 · policy · audit</small>"]
         relay["DeviceRelay"]
     end
 
-    subgraph machine["your machine"]
+    subgraph machine["your machine · laptop, server, VM, Pi"]
         cli["Exeora CLI"]
         repo[("your repository")]
+    end
+
+    subgraph instance["Exeora Cloud instance"]
+        cloudcli["Exeora CLI"]
+        clone[("a clone of the repository")]
     end
 
     client -->|"Streamable HTTP"| gateway
     gateway --> relay
     cli -.->|"outbound WebSocket only"| relay
+    cloudcli -.->|"outbound WebSocket only"| relay
     relay -->|"tool.call"| cli
+    relay -->|"tool.call"| cloudcli
     cli --> repo
+    cloudcli --> clone
 ```
 
 ## How it works
@@ -89,13 +114,33 @@ flowchart TD
 
 ## Tools
 
-`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `apply_patch` · `list_git_workspaces` · `create_workspace` · `attach_workspace` · `detach_workspace` · `remove_workspace` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command`
+`read_file` · `list_files` · `grep` · `edit_file` · `write_file` · `apply_patch` · `list_git_workspaces` · `create_workspace` · `attach_workspace` · `detach_workspace` · `remove_workspace` · `run_command` · `start_command` · `get_command_output` · `send_command_input` · `kill_command` · `list_skills`
 
 On the account URL, `list_projects` shows the available targets. When it returns more than one, every executor tool call names its `project`, so concurrent conversations do not move each other.
 
 Both URLs also carry `get_agent_prompt`, which reaches no machine: it hands back Exeora's own coding-agent instructions, for a client that arrived without any. See [the agent prompt](#the-agent-prompt).
 
 Full reference: [exeora.dev/docs/tools](https://exeora.dev/docs/tools/).
+
+## Beyond tool calls
+
+### Exeora Cloud
+
+A project does not need a machine of yours switched on. Exeora Cloud is one more location a project can live in: an instance Exeora runs, with a clone of the repository, the CLI already connected, your tools installed by a script you write, and `gh` signed in as you. One instance per workspace; it sleeps a minute after it stops working and wakes on the next call, disk intact. Clients connect with the same URL and the same policy applies.
+
+```bash
+exeora project add owner/repo --on cloud
+```
+
+See [Exeora Cloud](https://exeora.dev/docs/cloud/).
+
+### GitHub
+
+Connect GitHub once and add a project by picking a repository, with no address and no token. Exeora clones, fetches and pushes with tokens that last an hour and reach that one repository. See [connecting GitHub](https://exeora.dev/docs/github/).
+
+### Source Control, terminal and Chrome
+
+The dashboard shows what an agent changed: diffs, stage, commit, pull and push, and a web terminal on the same workspace, all under the project's policy. [Exeora for Chrome](https://exeora.dev/docs/extension/) puts that same screen in Chrome's side panel, next to the pull request you are reviewing. See [Source Control and terminal](https://exeora.dev/docs/workspace/).
 
 ### Proxy other MCP servers
 
@@ -105,15 +150,11 @@ See [proxy other MCP servers](https://exeora.dev/docs/mcp-proxy/) for configurat
 
 ## Clients
 
-Works with any MCP client that speaks Streamable HTTP and OAuth, including:
+No client plugin: anything that speaks MCP over Streamable HTTP with OAuth 2.1 connects. Step-by-step setup, checked against each client's own documentation, for:
 
-- [Claude](https://claude.ai) / Claude Code
-- [ChatGPT](https://chatgpt.com)
-- [Cursor](https://cursor.com)
-- VS Code MCP
-- [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
+[Claude Code](https://exeora.dev/docs/clients/#claude-code) · [Claude](https://exeora.dev/docs/clients/#claude) · [ChatGPT](https://exeora.dev/docs/clients/#chatgpt) · [Cursor](https://exeora.dev/docs/clients/#cursor) · [VS Code](https://exeora.dev/docs/clients/#vscode) · [GitHub Copilot](https://exeora.dev/docs/clients/#copilot) · [Devin](https://exeora.dev/docs/clients/#devin) · [Antigravity](https://exeora.dev/docs/clients/#antigravity) · [Amp](https://exeora.dev/docs/clients/#amp) · [Zed](https://exeora.dev/docs/clients/#zed) · [OpenCode](https://exeora.dev/docs/clients/#opencode) · [Grok](https://exeora.dev/docs/clients/#grok) · [Perplexity](https://exeora.dev/docs/clients/#perplexity) · [Codex, Gemini CLI and Windsurf](https://exeora.dev/docs/clients/#more-clients)
 
-Setup per client: [exeora.dev/docs/clients](https://exeora.dev/docs/clients/).
+To try one by hand, the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) works too.
 
 ## The agent prompt
 
@@ -162,21 +203,20 @@ Then add the printed URL to your client, for example:
 claude mcp add --transport http exeora <the URL>
 ```
 
+## Plans
+
+Free while Pro is in development: **10** live machines, **25** projects, **2** Exeora Cloud instances and **24 hours** of audit history, with no credit card. See [plans and limits](https://exeora.dev/docs/plans/).
+
 ## Documentation
 
 | | |
 |---|---|
-| Getting started | [exeora.dev/docs](https://exeora.dev/docs/) |
-| Projects, locations and workspaces | [exeora.dev/docs/projects](https://exeora.dev/docs/projects/) |
-| Connecting GitHub | [exeora.dev/docs/github](https://exeora.dev/docs/github/) |
-| Exeora Cloud | [exeora.dev/docs/cloud](https://exeora.dev/docs/cloud/) |
-| Connecting a client | [exeora.dev/docs/clients](https://exeora.dev/docs/clients/) |
-| The agent prompt | [exeora.dev/docs/agent-prompt](https://exeora.dev/docs/agent-prompt/) |
-| What a project allows | [exeora.dev/docs/policy](https://exeora.dev/docs/policy/) |
-| Security model | [exeora.dev/docs/security](https://exeora.dev/docs/security/) |
-| Self-hosting | [docs/self-hosting.md](./docs/self-hosting.md) · [site guide](https://exeora.dev/docs/self-hosting/) |
-| Developing this repo | [CONTRIBUTING.md](./CONTRIBUTING.md) |
-| Security reports | [SECURITY.md](./SECURITY.md) |
+| **Get started** | [Getting started](https://exeora.dev/docs/) · [Connecting a client](https://exeora.dev/docs/clients/) · [Projects, locations and workspaces](https://exeora.dev/docs/projects/) · [Connecting GitHub](https://exeora.dev/docs/github/) |
+| **Use** | [Tools](https://exeora.dev/docs/tools/) · [The agent prompt](https://exeora.dev/docs/agent-prompt/) · [Proxy other MCP servers](https://exeora.dev/docs/mcp-proxy/) · [Source Control and terminal](https://exeora.dev/docs/workspace/) · [Chrome extension](https://exeora.dev/docs/extension/) |
+| **Control** | [What a project allows](https://exeora.dev/docs/policy/) · [Security model](https://exeora.dev/docs/security/) · [Plans and limits](https://exeora.dev/docs/plans/) |
+| **Run** | [Exeora Cloud](https://exeora.dev/docs/cloud/) · [Self-hosting](https://exeora.dev/docs/self-hosting/) ([in this repo](./docs/self-hosting.md)) |
+| **Reference** | [CLI reference](https://exeora.dev/docs/cli/) · [Troubleshooting](https://exeora.dev/docs/troubleshooting/) |
+| **This repo** | [CONTRIBUTING.md](./CONTRIBUTING.md) · [SECURITY.md](./SECURITY.md) |
 
 ## Repository layout
 
@@ -188,6 +228,8 @@ claude mcp add --transport http exeora <the URL>
 | `packages/design` | Design tokens |
 | `apps/gateway` | Cloudflare Worker (OAuth, MCP, relay, API, static site) |
 | `apps/web` | Landing, docs and dashboard sources |
+| `apps/extension` | Exeora for Chrome, the dashboard's Workspace screen in the side panel |
+| `e2e` | Playwright tests for the landing, docs and dashboard |
 
 ## Contributing
 

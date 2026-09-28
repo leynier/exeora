@@ -144,6 +144,26 @@ exeora connect`}</pre>
     <code>EXEORA_GATEWAY_URL</code> still works and outranks the stored value, which makes it the right tool for one shell or one command rather than for living on a self-hosted gateway.
   </p>
 
+  <h2 id="chrome-extension">9. Exeora for Chrome (optional)</h2>
+  <p>
+    The <a href="/docs/extension/">Chrome extension</a> signs in against one gateway, fixed when it
+    is built, and the gateway only lets the extension ids it names sign in. Build it for yours:
+  </p>
+  <pre>{`EXEORA_GATEWAY_URL=https://your.example.com bun run ext:build`}</pre>
+  <p>
+    Then name its id in <code>apps/gateway/wrangler.jsonc</code>, comma separated if there are
+    several. A build published to the Chrome Web Store has the id the store assigned. A build
+    loaded unpacked has <code>helnfgncjgikiojakjdfppmmflbdjamo</code>, from the key committed in{" "}
+    <code>apps/extension/wxt.config.ts</code>; that key is public, so anyone can make an extension
+    with that id, and it belongs on a gateway only you use.
+  </p>
+  <pre>{`"EXEORA_EXTENSION_IDS": "<your extension id>"`}</pre>
+  <p>
+    An empty value turns the extension off: its sign-in page answers 404, and a sign-in from an id
+    that is no longer listed is refused. Sessions it already had keep working until they are
+    revoked from Settings in the dashboard, which still lists them.
+  </p>
+
   <h2>Local development</h2>
   <p>
     Copy <code>apps/gateway/.dev.vars.example</code> to <code>.dev.vars</code> and fill in the same

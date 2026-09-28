@@ -1,4 +1,5 @@
 ---
+import { TOOL_NAMES } from "@exeora/protocol";
 import Section from "./Section.astro";
 
 /**
@@ -80,7 +81,7 @@ const features = [
     class="animate-fade-in-up opacity-0-initial text-body-md text-foreground-faint mt-10 text-center"
     style="animation-delay: 420ms"
   >
-    Seventeen tools, confined to the project -{" "}
+    {TOOL_NAMES.length} tools, confined to the project -{" "}
     <a href="/docs/tools/" class="text-foreground underline-offset-2 hover:underline">
       full tool reference
     </a>
