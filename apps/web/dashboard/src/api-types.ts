@@ -403,6 +403,27 @@ export interface Approval {
   expiresAt: number;
 }
 
+/** One of the two scripts a project runs inside its instances on Exeora Cloud. */
+export type CloudHook = "install" | "resume";
+
+/**
+ * The scripts of a project, as its page holds them.
+ *
+ * A null script is an empty field, which is how a person says "use the file
+ * in the repository". A project that never saved any answers nulls, the
+ * repository's files switched on, and no date.
+ */
+export interface CloudScripts {
+  install: string | null;
+  resume: string | null;
+  /** Whether the files in the repository run where the page has no script. */
+  runRepositoryScripts: boolean;
+  updatedAt: number | null;
+}
+
+/** What saving sends: everything above but the date, which is the gateway's. */
+export type CloudScriptsInput = Omit<CloudScripts, "updatedAt">;
+
 /** Exeora for Chrome on this account. */
 export interface ExtensionStatus {
   /** Whether the gateway lets an extension sign in now. */

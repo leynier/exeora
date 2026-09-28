@@ -13,6 +13,7 @@ import {
   githubFetch,
   githubHeaders,
 } from "./app.js";
+import { pendingPermissions, storedPermissions } from "./permissions.js";
 import { repositoriesCacheKey } from "./repositories.js";
 import {
   type GitHubPerson,
@@ -40,6 +41,11 @@ export interface InstallationView {
   accountType: GitHubAccountType;
   repositorySelection: GitHubRepositorySelection;
   suspended: boolean;
+  /**
+   * What the app asks for and this installation has not granted, by GitHub's
+   * names. Empty when nothing is waiting, and when GitHub has not said yet.
+   */
+  pendingPermissions: string[];
   /** Where the installation is changed or removed, on GitHub. */
   manageUrl: string;
 }
@@ -79,6 +85,8 @@ interface UserInstallation {
   account: { login: string; type: string } | null;
   repository_selection: string;
   suspended_at: string | null;
+  /** What the installation granted the app, by name and level. */
+  permissions?: unknown;
 }
 
 /** How many pages of a hundred a listing is followed for before it is cut short. */
@@ -151,11 +159,15 @@ export async function completeConnection(
   const now = new Date();
   const database = db(env);
   for (const installation of usable) {
+    const permissions = storedPermissions(installation.permissions);
     const values = {
       accountLogin: installation.account.login,
       accountType: accountType(installation.account.type),
       repositorySelection: selection(installation.repository_selection),
       suspendedAt: installation.suspended_at ? new Date(installation.suspended_at) : null,
+      // Left as it was when GitHub did not say: what a webhook stored is
+      // worth more than a blank.
+      ...(permissions === null ? {} : { permissions }),
       updatedAt: now,
     };
     await database
@@ -210,6 +222,7 @@ export async function listInstallations(
     accountType: row.accountType,
     repositorySelection: row.repositorySelection,
     suspended: row.suspendedAt !== null,
+    pendingPermissions: pendingPermissions(row.permissions),
     manageUrl: manageUrl(row),
   }));
 }

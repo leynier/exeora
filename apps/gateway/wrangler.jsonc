@@ -65,7 +65,11 @@
     { "name": "RL_WRITE", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
     // Keyed by user: tool calls. Deliberately generous, because a coding agent
     // reading its way through a repository is meant to be fast.
-    { "name": "RL_MCP", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }
+    { "name": "RL_MCP", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } },
+    // Keyed by instance: what a machine of Exeora Cloud asks for itself, which
+    // is a token for `gh`. Its own budget, so a script that calls `gh` in a
+    // loop cannot spend the one its owner registers machines with.
+    { "name": "RL_MACHINE", "namespace_id": "1004", "simple": { "limit": 30, "period": 60 } }
   ],
 
   // The OAuth screens are the one place this Worker renders HTML, and they
@@ -78,7 +82,13 @@
   "rules": [
     {
       "type": "Text",
-      "globs": ["**/tokens.css", "**/install.sh", "**/install.ps1", "**/bootstrap.sh"],
+      "globs": [
+        "**/tokens.css",
+        "**/install.sh",
+        "**/install.ps1",
+        "**/bootstrap.sh",
+        "**/tools.sh"
+      ],
       "fallthrough": true
     }
   ],
@@ -111,7 +121,7 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.18.1",
+    "LATEST_CLI_VERSION": "0.19.0",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds
     // `usage_daily` out of R2 SQL. Not secret: the account id is in every

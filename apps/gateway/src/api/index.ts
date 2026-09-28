@@ -13,6 +13,7 @@ import { admin } from "./admin.js";
 import { audit } from "./audit.js";
 import { clients } from "./clients.js";
 import { cloud } from "./cloud.js";
+import { cloudScripts } from "./cloud-scripts.js";
 import { devices } from "./devices.js";
 import { extension } from "./extension.js";
 import { locations } from "./locations.js";
@@ -44,15 +45,19 @@ api.use("/api/*", async (c, next) => {
   const props = propsOf(c.executionCtx);
   const userId = props.userId;
   if (!userId) return c.json({ error: "unauthorized" }, 401);
-  // A machine token names a device, and a device has two things to do over
-  // HTTP: open its relay socket, and ask for the git credential of its own
-  // project. It carries the owner's user id only so those can check the
-  // device is theirs, never to act as them here.
-  if (props.deviceId !== undefined && !isMachineApiRequest(c.req.method, c.req.path)) {
+  // A machine token names a device, and a device has three things to do over
+  // HTTP: open its relay socket, and ask for the git credential and the `gh`
+  // token of its own project. It carries the owner's user id only so those
+  // can check the device is theirs, never to act as them here.
+  const machine = props.deviceId !== undefined;
+  if (machine && !isMachineApiRequest(c.req.method, c.req.path)) {
     return insufficientScope(["dashboard:manage"]);
   }
   if (!hasScope(props, "dashboard:manage")) {
-    const executorRoute = isExecutorApiRequest(c.req.method, c.req.path);
+    // A machine is held to its own list, which it has just passed, and the
+    // person's CLI to the executor's. They differ by the `gh` token, which
+    // is an instance's to ask for and nobody else's.
+    const executorRoute = machine || isExecutorApiRequest(c.req.method, c.req.path);
     if (!executorRoute || !hasScope(props, "executor:connect")) {
       return insufficientScope([executorRoute ? "executor:connect" : "dashboard:manage"]);
     }
@@ -75,6 +80,7 @@ api.route("/", accountClients);
 api.route("/", extension);
 api.route("/", audit);
 api.route("/", cloud);
+api.route("/", cloudScripts);
 api.route("/", github);
 
 // Administration panel. Mounted last so its middleware only sees /api/admin/*

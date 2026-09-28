@@ -92,6 +92,10 @@ const accountTools = ACCOUNT_TOOL_NAMES.map((name) => ({
   </p>
 
   <p>
+    On an instance of Exeora Cloud, <code>run_command</code> and <code>start_command</code> wait while a <a href="/docs/cloud/#scripts">script of the project</a> is running, for 30 seconds at most, and then go ahead while the script goes on. The tools that read and edit files never wait.
+  </p>
+
+  <p>
     <code>list_workspaces</code> is the gateway's inventory across every location. It lists the
     project root as <code>main</code> and every other workspace with the location that holds it,
     and for a workspace on Exeora Cloud the status of its instance. It works while machines are

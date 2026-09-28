@@ -1,5 +1,6 @@
 import type { AccountClient, Project } from "./api.js";
 import type { Machine } from "./api-projects.js";
+import { troubledHooks } from "./cloudHooks.js";
 import { clientLabel } from "./format.js";
 import { instanceLabel, instancesOf } from "./projectModel.js";
 import { livesNowhere } from "./survival.js";
@@ -74,6 +75,25 @@ export function attentionItems(input: {
       action: instance.error ?? "Retry it, and check the details if it fails again.",
       to: "/machines?view=cloud&state=failed",
       linkLabel: "Open Machines",
+    });
+  }
+
+  // One entry for an instance, whichever of its scripts ended badly. A hook
+  // with no script, and a tool that is merely missing, are not problems.
+  for (const instance of instancesOf(input.machines)) {
+    const troubled = troubledHooks(instance);
+    if (troubled.length === 0) continue;
+    const scripts =
+      troubled.length === 1
+        ? `The ${troubled[0]?.hook} script`
+        : `The ${troubled.map((entry) => entry.hook).join(" and ")} scripts`;
+    const timedOut = troubled.every((entry) => entry.run.status === "timed_out");
+    items.push({
+      key: `hooks:${instance.deviceId}`,
+      title: `${scripts} ${timedOut ? "ran out of time" : "failed"} on the instance for ${instanceLabel(instance)} of ${instance.project.name}.`,
+      action: "The instance is ready. Read what the script printed, then run it again.",
+      to: `/projects/${instance.project.id}`,
+      linkLabel: "Open project",
     });
   }
 

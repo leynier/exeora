@@ -9,6 +9,7 @@
 
 pub mod clock;
 pub mod commands;
+pub mod hooks;
 pub mod http;
 pub mod keepalive;
 pub mod sprite;
@@ -21,12 +22,13 @@ use crate::{
     cgroup::{CommandLimits, format_size, parse_size},
     config::ConfigStore,
     connection::{ConnectMode, connect_forever, emit_event},
-    protocol::WAKE_PORT,
+    protocol::{RESUME_GAP_MS, WAKE_PORT},
     tools::ToolEngine,
     workspace::WorkspaceEngine,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use clock::ResumeDetector;
+use hooks::{HookRunner, HookSettings};
 use keepalive::{Busy, Keepalive};
 use serde_json::json;
 use sprite::SpriteApi;
@@ -100,32 +102,42 @@ pub struct CloudRuntime {
     pub config: CloudConfig,
     pub limits: Option<Arc<CommandLimits>>,
     pub keepalive: Arc<Keepalive>,
+    /// The scripts of the project, and the gate they hold commands at.
+    pub hooks: Arc<HookRunner>,
     json_output: bool,
     link: watch::Sender<LinkState>,
     epoch: AtomicU64,
     reconnect: Notify,
     last_reconnect_request: StdMutex<Option<Instant>>,
     resume: StdMutex<ResumeDetector>,
+    /// How many times this machine has come up: one for the start of the
+    /// process, and one more for every pause it came back from.
+    generation: watch::Sender<u64>,
 }
 
 impl CloudRuntime {
     pub fn new(
         config: CloudConfig,
         limits: Option<Arc<CommandLimits>>,
+        hooks: HookSettings,
         json_output: bool,
     ) -> Arc<Self> {
         let keepalive = Keepalive::new(SpriteApi::new(config.sprite_socket.clone()));
         let (link, _) = watch::channel(LinkState::Down);
+        let (generation, generations) = watch::channel(1);
+        let hooks = HookRunner::new(hooks, limits.clone(), generations, json_output);
         Arc::new(Self {
             config,
             limits,
             keepalive,
+            hooks,
             json_output,
             link,
             epoch: AtomicU64::new(0),
             reconnect: Notify::new(),
             last_reconnect_request: StdMutex::new(None),
             resume: StdMutex::new(ResumeDetector::new()),
+            generation,
         })
     }
 
@@ -147,25 +159,48 @@ impl CloudRuntime {
     }
 
     /// The connection was just heard from; a gap is measured from here.
+    ///
+    /// Unless the gap is already a pause. A frame that was waiting in the
+    /// socket when the machine froze is read the moment it thaws, before the
+    /// clock is looked at, and marking then would make the pause vanish
+    /// without anybody having seen it. It is left for `observe_resume`.
     pub fn mark_heard(&self) {
-        if let Ok(mut resume) = self.resume.lock() {
+        if let Ok(mut resume) = self.resume.lock()
+            && resume.gap_ms() <= RESUME_GAP_MS
+        {
             resume.mark();
         }
     }
 
-    pub fn resume_gap_ms(&self) -> u64 {
-        self.resume
-            .lock()
-            .map(|resume| resume.gap_ms())
-            .unwrap_or(0)
-    }
-
-    /// Reports a gap past the threshold and marks, for the once-a-second check.
-    pub fn resume_check(&self) -> Option<u64> {
-        self.resume
+    /// Looks at the clock, and answers with the gap when the machine was
+    /// paused since anybody last looked.
+    ///
+    /// Two places look: the wake request, which is what resumed the machine
+    /// and arrives first, and the tick of the connection, once a second. Both
+    /// come here, and looking marks, so one pause is seen once: whoever looks
+    /// second finds no gap. That is what lets the generation count pauses
+    /// rather than sightings of them.
+    pub fn observe_resume(&self) -> Option<u64> {
+        let gap = self
+            .resume
             .lock()
             .ok()
-            .and_then(|mut resume| resume.check())
+            .and_then(|mut resume| resume.check())?;
+        self.generation.send_modify(|generation| *generation += 1);
+        Some(gap)
+    }
+
+    /// Makes the clock read as if the machine had been paused this long.
+    #[cfg(test)]
+    pub(crate) fn pause_for_test(&self, by: Duration) {
+        if let Ok(mut resume) = self.resume.lock() {
+            resume.rewind(by);
+        }
+    }
+
+    /// One at the start of the process, one more for each pause since.
+    pub fn generation(&self) -> u64 {
+        *self.generation.borrow()
     }
 
     /// Asks the connection loop to drop its socket and dial again. At most
@@ -182,6 +217,18 @@ impl CloudRuntime {
         *last = Some(Instant::now());
         self.reconnect.notify_one();
         true
+    }
+
+    /// Asks the same, and is not held back by a request made a moment ago:
+    /// for a pause that was just seen, after which the socket is dead
+    /// whatever was asked before the machine froze.
+    pub fn reconnect_now(&self) {
+        let mut last = self
+            .last_reconnect_request
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        *last = Some(Instant::now());
+        self.reconnect.notify_one();
     }
 
     pub async fn reconnect_requested(&self) {
@@ -221,12 +268,17 @@ impl CloudRuntime {
         in_flight: crate::connection::InFlight,
     ) {
         let json_output = self.json_output;
+        let hooks = self.hooks.clone();
         let busy: Busy = Arc::new(move || {
             let engine = engine.clone();
             let workspace = workspace.clone();
             let in_flight = in_flight.clone();
+            let hooks = hooks.clone();
             Box::pin(async move {
-                !in_flight.lock().await.is_empty()
+                // A script is work like any other: a machine that went to
+                // sleep halfway through an install would wake to half of one.
+                hooks.busy()
+                    || !in_flight.lock().await.is_empty()
                     || engine.running_processes().await > 0
                     || workspace.open_terminals().await > 0
             })
@@ -245,6 +297,20 @@ impl CloudRuntime {
                 );
             }
         }));
+    }
+
+    /// Looks once a second for a script somebody asked for from a shell on
+    /// the machine. See `hooks::requests`.
+    pub fn spawn_hook_requests(self: &Arc<Self>) {
+        let hooks = self.hooks.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                hooks.poll_requests();
+            }
+        });
     }
 }
 
@@ -321,7 +387,15 @@ async fn run(config: ConfigStore, json_output: bool) -> Result<()> {
         }
     }
 
-    let runtime = CloudRuntime::new(cloud, limits, json_output);
+    // A cloud machine holds one project, and its checkout is where the
+    // scripts of that project run.
+    let checkout = hooks::checkout(&projects)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            anyhow!("config.json names no project; this machine was not bootstrapped.")
+        })?;
+    let hooks = HookSettings::new(hooks::directory()?, checkout);
+    let runtime = CloudRuntime::new(cloud, limits, hooks, json_output);
     connect_forever(
         &config,
         &api,

@@ -48,6 +48,13 @@ impl ResumeDetector {
         (gap > RESUME_GAP_MS).then_some(gap)
     }
 
+    /// Moves the last mark into the past, as a pause would have.
+    #[cfg(test)]
+    pub(crate) fn rewind(&mut self, by: std::time::Duration) {
+        self.wall_ms = self.wall_ms.saturating_sub(by.as_millis() as u64);
+        self.mono = self.mono.checked_sub(by).unwrap_or(self.mono);
+    }
+
     fn gap(wall_now: u64, mono_now: Instant, wall_then: u64, mono_then: Instant) -> u64 {
         let wall_delta = wall_now.saturating_sub(wall_then);
         let mono_delta = mono_now.duration_since(mono_then).as_millis() as u64;

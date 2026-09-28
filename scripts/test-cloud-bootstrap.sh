@@ -28,6 +28,9 @@ mkdir -p "$EXEORA_INSTALL_DIR"
   echo '    printf "%s\n" "$@" "token-file=${EXEORA_MACHINE_TOKEN_FILE:-}" "gateway=${EXEORA_GATEWAY_URL:-}" >> "$HOME/.exeora/credential-args"'
   echo '    [ "$4" = get ] && printf "username=x-access-token\npassword=ghs_fake\n"'
   echo '    exit 0 ;;'
+  echo '  gh-shim)'
+  echo '    printf "%s\n" "$@" "token-file=${EXEORA_MACHINE_TOKEN_FILE:-}" "gateway=${EXEORA_GATEWAY_URL:-}" > "$HOME/.exeora/gh-args"'
+  echo '    exit 0 ;;'
   echo '  *) printf "%s\n" "$@" > "$HOME/.exeora/connect-args" ;;'
   echo 'esac'
 } > "$EXEORA_INSTALL_DIR/exeora"
@@ -40,6 +43,13 @@ case "\$*" in *--unix-socket*) echo "\$*" >> "$root/hold-calls"; exit 0 ;; esac
 echo "\$*" >> "$root/curl-calls"
 cat "$root/installer.sh"
 EOF_CURL
+# git-lfs, as git runs it for `git lfs`: it records where it was asked to set
+# itself up, which is all the real one needs to be told.
+cat > "$fake_bin/git-lfs" <<EOF_LFS
+#!/usr/bin/env sh
+printf '%s %s\n' "\$(pwd)" "\$*" >> "$root/lfs-calls"
+EOF_LFS
+chmod +x "$fake_bin/git-lfs"
 # No root here: the script has to keep going without memory limits.
 printf '#!/usr/bin/env sh\nexit 1\n' > "$fake_bin/sudo"
 chmod +x "$fake_bin/curl" "$fake_bin/sudo"
@@ -74,11 +84,12 @@ payload() {
   [ "${4:-}" = helper ] && credential=',"credentialHelper":{"projectId":"prj_test"}'
   [ "${4:-}" = both ] && credential="$credential"',"credentialHelper":{"projectId":"prj_test"}'
   # PAYLOAD_REPO_URL is the address to clone when it is not the usual one,
-  # PAYLOAD_PREVIOUS a JSON array of the addresses the repository had before.
+  # PAYLOAD_PREVIOUS a JSON array of the addresses the repository had before,
+  # PAYLOAD_CLI_VERSION the release to install when it is not the usual one.
   local previous=""
   [ -n "${PAYLOAD_PREVIOUS:-}" ] && previous=",\"previousRepoUrls\":$PAYLOAD_PREVIOUS"
   cat <<EOF_PAYLOAD
-{"gatewayUrl":"https://exeora.test","installUrl":"https://exeora.test/linux/install.sh","cliVersion":"1.2.3","machineToken":"$3","repoUrl":"${PAYLOAD_REPO_URL:-$REPO_URL}","branch":"$1"$from$credential$previous,"cliConfig":{"gatewayUrl":"https://exeora.test","deviceId":"dev_test","deviceName":"cloud-test","projects":[{"id":"prj_test","slug":"widgets","name":"Widgets","root":"/home/sprite/workspace"}],"workspaces":[],"workspaceRoot":"/home/sprite/workspaces"}}
+{"gatewayUrl":"https://exeora.test","installUrl":"https://exeora.test/linux/install.sh","cliVersion":"${PAYLOAD_CLI_VERSION:-1.2.3}","machineToken":"$3","repoUrl":"${PAYLOAD_REPO_URL:-$REPO_URL}","branch":"$1"$from$credential$previous,"cliConfig":{"gatewayUrl":"https://exeora.test","deviceId":"dev_test","deviceName":"cloud-test","projects":[{"id":"prj_test","slug":"widgets","name":"Widgets","root":"/home/sprite/workspace"}],"workspaces":[],"workspaceRoot":"/home/sprite/workspaces"}}
 EOF_PAYLOAD
 }
 
@@ -116,6 +127,12 @@ helper="$(HOME="$home_a" git config --global credential.https://example.test.hel
 [ "$helper" = "$home_a/.config/exeora/git-credential-helper" ] || fail "credential helper not wired: $helper"
 [ "$(HOME="$home_a" "$home_a/.config/exeora/git-credential-helper" get)" = "$(printf 'username=x-access-token\npassword=ghp_test')" ] || fail "helper output"
 [ "$(wc -l < "$root/curl-calls")" = "1" ] || fail "installer not fetched once"
+# `gh` is the CLI, told where the machine token and the gateway are, since it
+# runs under whatever an agent starts and not under the service.
+[ -x "$home_a/.local/bin/gh" ] || fail "gh was not written"
+[ "$(stat -c %a "$home_a/.local/bin/gh")" = "755" ] || fail "gh mode"
+(cd / && env -i HOME="$home_a" PATH="/usr/bin:/bin" "$home_a/.local/bin/gh" pr list --author @me)
+[ "$(cat "$home_a/.exeora/gh-args")" = "$(printf 'gh-shim\n--\npr\nlist\n--author\n@me\ntoken-file=%s\ngateway=https://exeora.test' "$home_a/.config/exeora/machine-token")" ] || fail "gh did not reach the CLI as it was called: $(cat "$home_a/.exeora/gh-args")"
 
 # Bootstrapping again is a no-op that still ends well and installs nothing.
 out="$(bootstrap "$home_a" "$(payload feature/new main "$TOKEN")")"
@@ -130,6 +147,8 @@ run_service "$home_a"
 [ "$(git -C "$home_a/workspace" rev-parse HEAD)" = "$(git -C "$seed" rev-parse main)" ] || fail "not started from main"
 git -C "$origin" show-ref --quiet refs/heads/feature/new && fail "the new branch was pushed"
 grep -qx -- '--cloud' "$home_a/.exeora/connect-args" || fail "connect --cloud not run"
+# The checkout was given the hook that pushes what it keeps in LFS.
+grep -qx -- "$home_a/workspace install" "$root/lfs-calls" || fail "git-lfs was not set up in the checkout: $(cat "$root/lfs-calls" 2>/dev/null)"
 grep -q "tasks/exeora-setup" "$root/hold-calls" || fail "the machine was not held awake for the clone"
 # The refresher, a subshell of run.sh, did not outlive it.
 if pgrep -f "$home_a/.exeora/run.sh" >/dev/null 2>&1; then fail "hold refresher left running"; fi
@@ -281,6 +300,20 @@ if out="$(bootstrap "$home_j" "$(payload nope "" "$TOKEN")" 2>&1)"; then
   fail "a default branch the remote lacks was accepted"
 fi
 printf '%s\n' "$out" | grep -q "EXEORA_BOOTSTRAP_FATAL The branch nope" || fail "no fatal reason for a missing default branch: $out"
+
+# A CLI from before `gh` was signed in has no such command: no `gh` is written
+# for it, and one that a newer release left behind is taken away.
+home_k="$root/machine-k"
+PAYLOAD_CLI_VERSION=0.18.1 bootstrap "$home_k" "$(PAYLOAD_CLI_VERSION=0.18.1 payload main "" "$TOKEN")" >/dev/null
+[ ! -e "$home_k/.local/bin/gh" ] || fail "gh written for a CLI that cannot sign it in"
+bootstrap "$home_k" "$(payload main "" "$TOKEN")" >/dev/null
+[ -x "$home_k/.local/bin/gh" ] || fail "gh not written once the CLI can sign it in"
+PAYLOAD_CLI_VERSION=0.18.1 bootstrap "$home_k" "$(PAYLOAD_CLI_VERSION=0.18.1 payload main "" "$TOKEN")" >/dev/null
+[ ! -e "$home_k/.local/bin/gh" ] || fail "gh left behind for a CLI that cannot sign it in"
+# A `gh` somebody put there themselves is theirs, and stays.
+printf '#!/bin/sh\necho mine\n' > "$home_k/.local/bin/gh"
+PAYLOAD_CLI_VERSION=0.18.1 bootstrap "$home_k" "$(PAYLOAD_CLI_VERSION=0.18.1 payload main "" "$TOKEN")" >/dev/null
+[ "$(cat "$home_k/.local/bin/gh")" = "$(printf '#!/bin/sh\necho mine')" ] || fail "somebody's own gh was removed"
 
 # A payload that fails validation writes nothing and exits with node's code.
 home_d="$root/machine-d"

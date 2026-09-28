@@ -1,6 +1,8 @@
 import { Link, useNavigate, useParams } from "react-router";
 import { relativeTime } from "../api.js";
+import { showsCloudScripts } from "../cloudScripts.js";
 import { ClientList } from "../components/ClientList.js";
+import { CloudScriptsCard } from "../components/CloudScriptsCard.js";
 import { CommandPolicyCard } from "../components/CommandPolicyCard.js";
 import { McpEndpoint } from "../components/McpEndpoint.js";
 import { Menu } from "../components/Menu.js";
@@ -193,6 +195,15 @@ export function ProjectDetail() {
       <div className="mt-6">
         <CommandPolicyCard project={project} />
       </div>
+
+      {/* Under the policy, because it is the other half of what runs here:
+          the policy is what an agent may do, and these are what the project
+          does by itself. */}
+      {showsCloudScripts(project, me.data) ? (
+        <div className="mt-6">
+          <CloudScriptsCard project={project} />
+        </div>
+      ) : null}
 
       <div className="mt-6">
         <Card

@@ -6,6 +6,7 @@ import {
   useQuery,
 } from "@tanstack/react-query";
 import { api, type ToolCallFilters, type Workspace } from "./api.js";
+import { cloudApi } from "./api-cloud.js";
 import { type Machine, projectsApi } from "./api-projects.js";
 
 /**
@@ -23,6 +24,11 @@ export const keys = {
   machineList: (live: boolean) => ["machines", live ? "live" : "stored"] as const,
   projects: ["projects"] as const,
   workspaces: (projectId: string) => ["projects", projectId, "workspaces"] as const,
+  /**
+   * Not under `projects`, so that what refreshes the projects does not ask for
+   * the scripts again while somebody is writing them.
+   */
+  cloudScripts: (projectId: string) => ["cloud-scripts", projectId] as const,
   workspaceCapabilities: (id: string, target: string) =>
     ["workspace", id, target, "capabilities"] as const,
   gitStatus: (id: string, target: string) => ["workspace", id, target, "status"] as const,
@@ -123,9 +129,19 @@ export const useAdminUser = (id: string) => {
   });
 };
 
-/** Whether something is still on its way, which is when somebody is watching it. */
+/**
+ * Whether something is still on its way, which is when somebody is watching
+ * it. A script that is running counts: it ends in a result the row has to show.
+ */
 export function machinesInFlight(machines: readonly Machine[]): boolean {
-  return machines.some((machine) => machine.state === "setting up" || machine.state === "removing");
+  return machines.some(
+    (machine) =>
+      machine.state === "setting up" ||
+      machine.state === "removing" ||
+      (machine.kind === "cloud" &&
+        (machine.hooks?.install?.status === "running" ||
+          machine.hooks?.resume?.status === "running")),
+  );
 }
 
 /**
@@ -175,6 +191,20 @@ export const useGitHubRepositories = (query: string, enabled = true) =>
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+  });
+
+/**
+ * The scripts a project runs inside its instances on Exeora Cloud.
+ *
+ * Not polled: they change when somebody saves them, and the page that shows
+ * them holds a draft that a newer answer must not be written over.
+ */
+export const useCloudScripts = (projectId: string, enabled = true) =>
+  useQuery({
+    queryKey: keys.cloudScripts(projectId),
+    queryFn: () => cloudApi.getScripts(projectId),
+    enabled: enabled && projectId.length > 0,
+    staleTime: 60_000,
   });
 
 export const useWorkspaces = (projectId: string | undefined) =>

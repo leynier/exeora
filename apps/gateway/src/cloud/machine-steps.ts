@@ -1,7 +1,15 @@
-import type { CloudCliConfig, CloudMachineStatus } from "@exeora/protocol";
+import {
+  CLOUD_HOOKS_FEATURE,
+  CLOUD_INSTALL_TIMEOUT_MS,
+  type CloudCliConfig,
+  type CloudHookRun,
+  type CloudMachineStatus,
+} from "@exeora/protocol";
 import { and, eq, ne } from "drizzle-orm";
 import { permanentlyDeleteDevice, relayName, revokeDevice } from "../api/ops.js";
 import { db, schema } from "../db/client.js";
+import { newId } from "../ids.js";
+import { hookRunOf, settled } from "./hooks.js";
 import { explainFailure } from "./machine-errors.js";
 import { finishCloudRemoval } from "./teardown.js";
 import "../env.js";
@@ -19,6 +27,13 @@ import {
   readServiceLog,
   type SpritesConfig,
 } from "./sprites.js";
+import {
+  parseToolsReport,
+  TOOLS_SCRIPT,
+  TOOLS_TIMEOUT_MS,
+  toolsFailure,
+  toolsSucceeded,
+} from "./tools.js";
 
 /**
  * The steps a `CloudMachine` walks through, one per alarm.
@@ -33,8 +48,10 @@ import {
 export type MachinePhase =
   | "create"
   | "bootstrap"
+  | "tools"
   | "service"
   | "wait-hello"
+  | "wait-install"
   | "ready"
   | "destroy"
   | "error";
@@ -103,6 +120,14 @@ export type StepOutcome =
 const HELLO_BUDGET_MS = 10 * 60_000;
 const HELLO_POLL_MS = 5_000;
 const BOOTSTRAP_TIMEOUT_MS = 120_000;
+/**
+ * How long a machine is waited for to say how its install script went: the
+ * script's own limit, and the time to notice it ran out. Past this the
+ * machine is handed over with the wait itself recorded as what went wrong.
+ */
+const INSTALL_BUDGET_MS = CLOUD_INSTALL_TIMEOUT_MS + 2 * 60_000;
+/** The row is touched this often while waiting, so the sweep sees a machine at work. */
+const INSTALL_TOUCH_MS = 60_000;
 
 export async function runStep(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
   switch (record.phase) {
@@ -110,10 +135,14 @@ export async function runStep(context: StepContext, record: MachineRecord): Prom
       return create(context, record);
     case "bootstrap":
       return bootstrap(context, record);
+    case "tools":
+      return tools(context, record);
     case "service":
       return service(context, record);
     case "wait-hello":
       return waitHello(context, record);
+    case "wait-install":
+      return waitInstall(context, record);
     case "destroy":
       return destroy(context, record);
     default:
@@ -172,8 +201,40 @@ async function bootstrap(context: StepContext, record: MachineRecord): Promise<S
   // The secrets are not deleted here: a failure past this line, in the row
   // write or in the object itself, would retry this step without them. They
   // go in the same write that moves the phase on.
+  await writeMachineRow(context.env, record.deviceId, { step: "Installing tools" });
+  return { kind: "advance", phase: "tools", forgetSecrets: true };
+}
+
+/**
+ * Gives the machine what a person expects to find on one: `gh`, `uv`, `jq`
+ * and the rest. The script looks before it installs, so a machine that came
+ * with a tool keeps its own, and running it again costs a few seconds.
+ *
+ * Only `gh` stops a machine from being handed over. Anything else that could
+ * not be installed is written down for the page and the machine goes on.
+ */
+async function tools(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
+  const result = await execSprite(
+    context.sprites,
+    record.spriteName,
+    { script: TOOLS_SCRIPT, timeoutMs: TOOLS_TIMEOUT_MS },
+    context.fetcher,
+  );
+  if (!(await stillIn(context, record))) return { kind: "done" };
+  await db(context.env)
+    .update(schema.cloudMachines)
+    .set({ toolsReport: JSON.stringify(parseToolsReport(result.output)), updatedAt: new Date() })
+    .where(eq(schema.cloudMachines.deviceId, record.deviceId))
+    .run();
+  if (!toolsSucceeded(result)) {
+    // Retried like any other step: what stops a download today is most often
+    // a network that is back a minute later. The sentence comes first, and
+    // what the machine printed after it, which is how it is told apart.
+    const sentence = toolsFailure(result.output) ?? NO_TOOLS;
+    throw new Error(`${sentence}\n${tail(result.output)}`);
+  }
   await writeMachineRow(context.env, record.deviceId, { step: "Starting" });
-  return { kind: "advance", phase: "service", forgetSecrets: true };
+  return { kind: "advance", phase: "service" };
 }
 
 async function service(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
@@ -207,22 +268,82 @@ async function waitHello(context: StepContext, record: MachineRecord): Promise<S
       signal: AbortSignal.timeout(HELLO_POLL_MS),
     }).catch(() => undefined);
   }
-  const online = await context.env.DEVICE_RELAY.getByName(
-    relayName(record.userId, record.deviceId),
-  ).isOnline();
+  const relay = context.env.DEVICE_RELAY.getByName(relayName(record.userId, record.deviceId));
+  const online = await relay.isOnline();
   if (!(await stillIn(context, record))) return { kind: "done" };
   if (online) {
-    await writeMachineRow(context.env, record.deviceId, {
-      status: "ready",
-      step: null,
-      error: null,
-      readyAt: new Date(),
-    });
-    return { kind: "advance", phase: "ready" };
+    // A CLI that runs the project's scripts is running the install one now.
+    // The machine is handed over once it says how that went, so nobody
+    // starts work in a checkout whose dependencies are still arriving.
+    const capabilities = await relay.capabilities();
+    if (capabilities?.features?.includes(CLOUD_HOOKS_FEATURE)) {
+      await writeMachineRow(context.env, record.deviceId, { step: INSTALL_STEP });
+      return { kind: "advance", phase: "wait-install" };
+    }
+    return handOver(context, record);
   }
   if (Date.now() - record.phaseStartedAt > HELLO_BUDGET_MS) {
     const log = await readServiceLog(context.sprites, record.spriteName, "exeora", context.fetcher);
     throw new Error(`The CLI never connected. ${tail(log) || "The service wrote no log."}`);
+  }
+  return { kind: "again", delayMs: HELLO_POLL_MS };
+}
+
+const INSTALL_STEP = "Running the install script";
+const NO_TOOLS =
+  "The GitHub CLI (gh) could not be installed on the machine: the step did not finish. Retry to try again.";
+
+async function handOver(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
+  await writeMachineRow(context.env, record.deviceId, {
+    status: "ready",
+    step: null,
+    error: null,
+    readyAt: new Date(),
+  });
+  return { kind: "advance", phase: "ready" };
+}
+
+/**
+ * Waits for the machine to say how its install script went, and hands it
+ * over whichever way that was: a script that failed is something the page
+ * says about a machine that is ready, not a machine that could not be made.
+ */
+async function waitInstall(context: StepContext, record: MachineRecord): Promise<StepOutcome> {
+  const row = await db(context.env)
+    .select({ installHook: schema.cloudMachines.installHook })
+    .from(schema.cloudMachines)
+    .where(eq(schema.cloudMachines.deviceId, record.deviceId))
+    .get();
+  if (!(await stillIn(context, record))) return { kind: "done" };
+  const run = hookRunOf(row?.installHook ?? null);
+  if (settled(run)) return handOver(context, record);
+
+  const waited = Date.now() - record.phaseStartedAt;
+  if (waited > INSTALL_BUDGET_MS) {
+    const silent: CloudHookRun = {
+      runId: run?.runId ?? newId("req"),
+      status: "timed_out",
+      source: run?.source ?? "none",
+      trigger: run?.trigger ?? "setup",
+      scriptSha256: run?.scriptSha256 ?? null,
+      exitCode: null,
+      startedAt: run?.startedAt ?? record.phaseStartedAt,
+      finishedAt: Date.now(),
+      output: "The machine never said how the install script ended.",
+      truncated: false,
+    };
+    await db(context.env)
+      .update(schema.cloudMachines)
+      .set({ installHook: JSON.stringify(silent), updatedAt: new Date() })
+      .where(eq(schema.cloudMachines.deviceId, record.deviceId))
+      .run();
+    return handOver(context, record);
+  }
+  if (
+    Math.floor(waited / INSTALL_TOUCH_MS) !==
+    Math.floor((waited - HELLO_POLL_MS) / INSTALL_TOUCH_MS)
+  ) {
+    await writeMachineRow(context.env, record.deviceId, { step: INSTALL_STEP });
   }
   return { kind: "again", delayMs: HELLO_POLL_MS };
 }

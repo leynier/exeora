@@ -3,8 +3,10 @@ import { relativeTime } from "../api.js";
 import type { CloudInstance } from "../api-projects.js";
 import { instanceLabel, workspaceHref } from "../projectModel.js";
 import { isReachable, runtimeHint } from "../states.js";
+import { HookNotice, hasHookNotice } from "./HookNotice.js";
+import { InstanceFacts } from "./InstanceFacts.js";
 import { MachineFailure, needsToken } from "./MachineFailure.js";
-import { Fact, MachineRow } from "./MachineRow.js";
+import { MachineRow } from "./MachineRow.js";
 import { Badge } from "./ui.js";
 import type { InstanceControls } from "./WorkspaceControls.js";
 
@@ -66,6 +68,9 @@ export function InstanceRow({
         </>
       }
       failure={failed ? <MachineFailure machine={instance} /> : null}
+      // A script that failed is a note and not a failure: the instance is
+      // ready, and `failed` is kept for the ones that could not be made.
+      note={hasHookNotice(instance) ? <HookNotice instance={instance} /> : null}
       menuLabel={`Actions for ${label}`}
       busy={controls.busy}
       actions={
@@ -101,13 +106,7 @@ export function InstanceRow({
       // Not "Details", which is what a failure calls the log behind it: a row
       // that failed would otherwise have two disclosures under one name.
       detailsLabel="About this instance"
-      details={
-        <dl className="grid gap-3 sm:grid-cols-3">
-          <Fact label="Instance">{instance.name}</Fact>
-          <Fact label="CLI">{instance.cliVersion ?? "unknown"}</Fact>
-          <Fact label="Ready">{instance.readyAt ? relativeTime(instance.readyAt) : "not yet"}</Fact>
-        </dl>
-      }
+      details={<InstanceFacts instance={instance} />}
     />
   );
 }

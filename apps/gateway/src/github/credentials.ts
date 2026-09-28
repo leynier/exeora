@@ -7,6 +7,7 @@ import {
   GitHubError,
   type GitHubPermissions,
   githubConfig,
+  type InstallationToken,
   installationToken,
 } from "./app.js";
 import { markLost } from "./links.js";
@@ -33,12 +34,33 @@ export interface GitCredential {
   expiresAt: number;
 }
 
-/** What an agent needs to do its work: push a branch and open the pull request for it. */
-const FULL: GitHubPermissions = { contents: "write", metadata: "read", pull_requests: "write" };
+/**
+ * What an agent needs of git to do its work: push a branch, open the pull
+ * request for it, and have the push accepted when it changes a file under
+ * `.github/workflows/`, which GitHub refuses without `workflows`.
+ *
+ * Nothing else of what the app asks for is here. This is the token git holds,
+ * and git has no use for issues or checks.
+ */
+const FULL: GitHubPermissions = {
+  contents: "write",
+  metadata: "read",
+  pull_requests: "write",
+  workflows: "write",
+};
+/** For an installation whose owner has not accepted `workflows` yet. */
+const LEGACY_FULL: GitHubPermissions = {
+  contents: "write",
+  metadata: "read",
+  pull_requests: "write",
+};
 /** What is left for an installation that was not given pull requests. */
 const REDUCED: GitHubPermissions = { contents: "write", metadata: "read" };
 /** For a person who can read the repository and not push to it. Never more. */
 const READ_ONLY: GitHubPermissions = { contents: "read", metadata: "read" };
+
+/** What is asked for someone who may push, widest first. Each is asked once. */
+const WRITE_CHAIN = [FULL, LEGACY_FULL, REDUCED];
 
 /**
  * The repository a project clones through, when it has one that still works:
@@ -114,24 +136,36 @@ export async function projectCredential(
       { repositoryIds: [link.repoId], permissions },
       fetcher,
     );
-  let minted: Awaited<ReturnType<typeof mint>>;
-  if (!access.push) {
-    minted = await mint(READ_ONLY);
-  } else {
-    try {
-      minted = await mint(FULL);
-    } catch (error) {
-      // 422 is GitHub refusing a permission the installation never granted.
-      // Cloning and pushing still work without pull requests, so that much
-      // is asked for once more before giving up.
-      if (!(error instanceof GitHubError) || error.status !== 422) throw error;
-      minted = await mint(REDUCED);
-    }
-  }
+  const minted = access.push ? await widestGranted(mint) : await mint(READ_ONLY);
   return {
     host: "github.com",
     username: "x-access-token",
     password: minted.token,
     expiresAt: minted.expiresAt,
   };
+}
+
+/**
+ * The first token of the chain GitHub grants.
+ *
+ * 422 is GitHub refusing a permission the installation never granted, and
+ * the only answer that is worth asking again with less: cloning and pushing
+ * work without workflows, and without pull requests. Anything else is thrown
+ * as it came, since asking for less would not mend it. The chain is a list
+ * walked once, so a GitHub that refuses everything is asked three times and
+ * no more.
+ */
+async function widestGranted(
+  mint: (permissions: GitHubPermissions) => Promise<InstallationToken>,
+): Promise<InstallationToken> {
+  let refused: unknown;
+  for (const permissions of WRITE_CHAIN) {
+    try {
+      return await mint(permissions);
+    } catch (error) {
+      if (!(error instanceof GitHubError) || error.status !== 422) throw error;
+      refused = error;
+    }
+  }
+  throw refused;
 }

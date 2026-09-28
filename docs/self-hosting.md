@@ -95,7 +95,7 @@ Create the app at <https://github.com/settings/apps/new> (or under an organizati
 | Setup URL | Leave empty; GitHub disables it while the option above is checked |
 | Webhook URL | `https://your.example.com/api/github/webhook`, active |
 | Webhook secret | `openssl rand -hex 32`, the same value as `GITHUB_APP_WEBHOOK_SECRET` |
-| Repository permissions | Contents: read and write. Metadata: read-only. Pull requests: read and write |
+| Repository permissions | Contents: read and write. Metadata: read-only. Pull requests: read and write. Issues: read and write. Actions: read-only. Checks: read-only. Commit statuses: read-only. Workflows: read and write |
 | Subscribe to events | Repository. The installation events, and a person revoking their authorization, are always delivered |
 | Where can this app be installed | Any account, unless the gateway serves only yours |
 
@@ -111,6 +111,12 @@ bun run secret GITHUB_APP_WEBHOOK_SECRET
 ```
 
 `GITHUB_APP_SLUG` is the name in the app's public address, `github.com/apps/<slug>`. The key is accepted as GitHub downloads it (`BEGIN RSA PRIVATE KEY`) and as PKCS#8. An installation that was not given pull requests still clones and pushes: the gateway asks for a token without that permission when GitHub refuses the full one.
+
+The permissions in the table are the ones the gateway counts on, and the list it counts them against is `APP_PERMISSIONS` in `apps/gateway/src/github/permissions.ts`: an app that grants fewer shows every installation as waiting for the rest. Contents, Metadata and Pull requests are what cloning, pushing and opening a pull request need. Workflows lets a push change the files under `.github/workflows/`, which GitHub refuses without it. Issues, Actions, Checks and Commit statuses are what `gh` reads and writes inside an instance.
+
+For an app that already exists, the permissions are added by hand. In the App's settings, Permissions and events, set Issues to read and write, Actions, Checks and Commit statuses to read-only, and Workflows to read and write, and save. GitHub then asks the owner of each installation to accept them. Until they do, Exeora keeps working with what the installation already granted. The dashboard names what an installation has not accepted yet, and the gateway learns of an acceptance from the webhook, or the next time the account connects.
+
+Inside an instance of Exeora Cloud, `gh` acts as the person who owns the project, with the token GitHub gave them when they connected, and the instance asks the gateway for it each time it is needed. A project that was never connected and has a token somebody pasted is given that one instead, when its repository is on github.com. Those requests are counted by instance on the rate limiter `RL_MACHINE` (thirty a minute, declared under `ratelimits` in `apps/gateway/wrangler.jsonc`), apart from the account's own `RL_WRITE`, so a script that calls `gh` in a loop cannot spend the budget its owner registers machines with. Keep the binding when you copy the configuration: without it the requests are counted on `RL_WRITE`.
 
 Leave "Expire user authorization tokens" on, which is GitHub's default: the gateway renews a person's token before it runs out and stores the new pair. An account whose token GitHub stops accepting is asked to connect again, and reaches nothing through GitHub until it does.
 
