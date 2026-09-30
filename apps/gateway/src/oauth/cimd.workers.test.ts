@@ -39,12 +39,15 @@ function ask(clientId: string, configured = true): Promise<Response> {
 
   // The test stops at the sign-in page; no upstream login is performed. Do not
   // depend on an untracked .dev.vars file to configure an identity provider.
+  // The page mints the sign-in continuation cookie, so the secret it is keyed
+  // with has to be present too.
   const bindings = {
     ...env,
     GITHUB_CLIENT_ID: configured ? "cimd-test-client" : "",
     GITHUB_CLIENT_SECRET: configured ? "cimd-test-secret" : "",
     GOOGLE_CLIENT_ID: "",
     GOOGLE_CLIENT_SECRET: "",
+    COOKIE_SECRET: "cimd-test-cookie-secret",
   } as unknown as Env;
   return worker.fetch(new Request(url), bindings, createExecutionContext());
 }

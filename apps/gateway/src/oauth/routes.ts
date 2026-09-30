@@ -19,8 +19,15 @@ import { accountConsentPage, deviceDonePage, errorPage, signInPage } from "./pag
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
 import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
 import { grantedScopes } from "./scopes.js";
-import { clearSession, getSessionUserId, setSession } from "./session.js";
-import { authScopeFromResource, resolveAccountTarget } from "./target.js";
+import {
+  clearSession,
+  clearSigninContinuation,
+  getSessionUserId,
+  hasSigninContinuation,
+  setSession,
+  setSigninContinuation,
+} from "./session.js";
+import { authScopeFromResource, refusedResource, resolveAccountTarget } from "./target.js";
 import { resolveUser } from "./users.js";
 
 /**
@@ -44,10 +51,12 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
     return c.html(errorPage(describe(error)), 400);
   }
 
-  if ((await grantedScopes(c.env, authRequest)).length === 0) {
+  const scopes = await grantedScopes(c.env, authRequest);
+  if (scopes.length === 0) {
     return c.html(errorPage("This application did not request a scope it is allowed to use."), 400);
   }
-  const refused = await refusedExtension(c.env, authRequest);
+  const refused =
+    refusedResource(scopes, authRequest.resource) ?? (await refusedExtension(c.env, authRequest));
   if (refused) return c.html(errorPage(refused), 400);
 
   const providers = configuredProviders(c.env);
@@ -84,7 +93,28 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
     await clearSession(c);
   }
 
-  return c.html(signInPage(providers, await parkAuthorization(c.env, { authRequest })));
+  // Who is asking, for the sign-in screen: the registered name and where the
+  // result would be delivered. Neither is a trust decision; both are shown so
+  // a sign-in link that was pasted somewhere else can be read before
+  // continuing.
+  const askingClient = await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(
+    () => null,
+  );
+
+  // The state is minted here, in this response, so this is the only browser
+  // that can ever hold the cookie that goes with it. Born anywhere else, say
+  // from a state read out of a URL, and the cookie would bind nothing:
+  // a link carrying someone else's state would mint the match in whichever
+  // browser opened it.
+  const state = await parkAuthorization(c.env, { authRequest });
+  await setSigninContinuation(c, state);
+
+  return c.html(
+    signInPage(providers, state, {
+      clientName: askingClient?.clientName ?? null,
+      redirectUri: authRequest.redirectUri,
+    }),
+  );
 });
 
 oauthRoutes.get("/oauth/login/:provider", async (c) => {
@@ -105,6 +135,17 @@ oauthRoutes.get("/oauth/login/:provider", async (c) => {
   if (!(await peekAuthorization(c.env, state))) {
     return c.html(
       errorPage("This sign-in link has expired. Start again from the application."),
+      400,
+    );
+  }
+
+  // Only the browser the state was born in holds the cookie. A state pasted
+  // into a link gets no cookie here and never one later: this route never
+  // issues it, so the upstream round trip cannot be started for someone
+  // else's parked state.
+  if (!(await hasSigninContinuation(c, state))) {
+    return c.html(
+      errorPage("That sign-in link could not be completed. Start again from the application."),
       400,
     );
   }
@@ -151,6 +192,15 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
   const pending = await peekAuthorization(c.env, state);
   if (!pending) {
     return c.html(errorPage("This sign-in has expired. Start again from the application."), 400);
+  }
+
+  // A device-code grant carries its own browser binding, checked above. Every
+  // other sign-in must arrive in the browser whose /oauth/authorize response
+  // created the state: the cookie was minted there and nowhere since, so a
+  // copied callback URL cannot install whichever upstream account supplied
+  // its code as this browser's session.
+  if (!pending.deviceCodeHash && !(await hasSigninContinuation(c, state))) {
+    return c.html(errorPage("That sign-in could not be completed. Start again."), 400);
   }
 
   // Refresh cannot re-exchange a spent upstream code; reuse the first session.
@@ -242,6 +292,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
     // concurrent approve; a denial that lost must not flip the device grant.
     const claimed = await claimAuthorization(c.env, state);
     if (!claimed) return c.html(errorPage("This request has already been completed."), 400);
+    await clearSigninContinuation(c, state);
 
     if (claimed.deviceCodeHash) {
       await denyDeviceAuthorization(c.env, claimed.deviceCodeHash);
@@ -280,6 +331,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
           userEmail: user.email,
           state,
           scopes: await grantedScopes(c.env, authRequest),
+          redirectUri: authRequest.redirectUri,
           projects: await resolveAccountTarget(c.env, userId, authRequest.clientId),
           allProjects: false,
           problem:
@@ -293,6 +345,7 @@ oauthRoutes.post("/oauth/approve", async (c) => {
 
   const claimed = await claimAuthorization(c.env, state);
   if (!claimed) return c.html(errorPage("This request has expired. Start again."), 400);
+  await clearSigninContinuation(c, state);
 
   try {
     // After the claim: an account that has gone missing is terminal either way,
@@ -360,6 +413,10 @@ async function complete(
   const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(() => null);
   const scope = authScopeFromResource(authRequest.resource);
   const scopes = await grantedScopes(env, authRequest);
+  // Checked again where the code is minted, so no way of arriving here can
+  // carry a request that `/oauth/authorize` would have turned away.
+  const refused = refusedResource(scopes, authRequest.resource);
+  if (refused) throw new Error(refused);
   const identity = { clientName: client?.clientName, clientUri: client?.clientUri };
   const extension = await rememberExtensionConsent(env, authRequest, userId);
 

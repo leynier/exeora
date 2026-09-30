@@ -91,6 +91,56 @@ export async function hasDeviceContinuation(
   return token.length === expected.length && token === expected;
 }
 
+const SIGNIN_COOKIE_PREFIX = "exeora_signin_";
+const SIGNIN_COOKIE_VERSION = "v1";
+/** Longer than a parked authorization's TTL, to cover the upstream round trip. */
+const SIGNIN_TTL_SECONDS = 60 * 30;
+
+/**
+ * Binds a sign-in flow to the browser its state was born in.
+ *
+ * The parked state is minted server-side when the sign-in page is rendered, so
+ * a browser holding this cookie is one that rendered that page. The cookie is
+ * never issued from a state read out of a URL: a link that merely carries a
+ * state someone else parked would otherwise mint the matching cookie in
+ * whichever browser it is opened in, and the whole callback URL, state and
+ * upstream code included, can be copied and sent to anyone. The name carries a
+ * short hash of the state, so two sign-in tabs do not overwrite each other's
+ * cookie.
+ */
+export async function setSigninContinuation(
+  c: Context<{ Bindings: Env }>,
+  state: string,
+): Promise<void> {
+  const token = await signinContinuationToken(state, c.env.COOKIE_SECRET);
+  setCookie(
+    c,
+    signinCookieName(token),
+    `${SIGNIN_COOKIE_VERSION}.${token}`,
+    cookieOptions(c, SIGNIN_TTL_SECONDS),
+  );
+}
+
+export async function hasSigninContinuation(
+  c: Context<{ Bindings: Env }>,
+  state: string,
+): Promise<boolean> {
+  const token = await signinContinuationToken(state, c.env.COOKIE_SECRET);
+  const raw = getCookie(c, signinCookieName(token));
+  if (!raw?.startsWith(`${SIGNIN_COOKIE_VERSION}.`)) return false;
+  const value = raw.slice(SIGNIN_COOKIE_VERSION.length + 1);
+  return value.length === token.length && value === token;
+}
+
+/** Expires the cookie once the state it was minted with is consumed. */
+export async function clearSigninContinuation(
+  c: Context<{ Bindings: Env }>,
+  state: string,
+): Promise<void> {
+  const token = await signinContinuationToken(state, c.env.COOKIE_SECRET);
+  setCookie(c, signinCookieName(token), "", cookieOptions(c, 0));
+}
+
 export async function purgeBrowserSessions(env: Pick<Env, "DB">): Promise<void> {
   const now = new Date();
   await db(env)
@@ -123,6 +173,15 @@ function cookieOptions(c: Context<{ Bindings: Env }>, maxAge: number) {
 
 async function deviceContinuationToken(state: string, secret: string): Promise<string> {
   return tokenHash(`device-login:${state}`, secret);
+}
+
+async function signinContinuationToken(state: string, secret: string): Promise<string> {
+  return tokenHash(`signin-login:${state}`, secret);
+}
+
+/** One cookie per in-flight sign-in, named by a short non-reversible hash. */
+function signinCookieName(token: string): string {
+  return `${SIGNIN_COOKIE_PREFIX}${token.slice(0, 8)}`;
 }
 
 function randomToken(): string {

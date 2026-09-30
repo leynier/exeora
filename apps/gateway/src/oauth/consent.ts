@@ -27,6 +27,10 @@ export async function askForConsent(
     userEmail,
     state,
     scopes: await grantedScopes(env, authRequest),
+    // The one fact about the client the person cannot otherwise check: where
+    // the code, and so the token, is delivered. A registered name can say
+    // anything; the address is what the browser will actually be sent to.
+    redirectUri: authRequest.redirectUri,
   };
 
   if (scope?.kind === "account") {

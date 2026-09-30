@@ -13,7 +13,12 @@ import { abandonParkedDeviceGrant } from "./device-continue.js";
 import { deviceCodePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization } from "./pending.js";
 import { configuredProviders } from "./providers/index.js";
-import { clearSession, getSessionUserId, setDeviceContinuation } from "./session.js";
+import {
+  clearSession,
+  getSessionUserId,
+  setDeviceContinuation,
+  setSigninContinuation,
+} from "./session.js";
 
 /**
  * Headless CLI sign-in: mint a code, collect it in a browser, poll until the
@@ -70,6 +75,10 @@ deviceRoutes.post("/oauth/device", async (c) => {
 
   try {
     await setDeviceContinuation(c, state);
+    // The sign-in cookie is born with the state, here as in /oauth/authorize:
+    // the links on the sign-in page below lead through /oauth/login, which
+    // only continues for the browser that holds it.
+    await setSigninContinuation(c, state);
     const userId = await getSessionUserId(c);
     if (userId) {
       const user = await db(c.env)
@@ -92,7 +101,15 @@ deviceRoutes.post("/oauth/device", async (c) => {
       await clearSession(c);
     }
 
-    return c.html(signInPage(providers, state));
+    const askingClient = await c.env.OAUTH_PROVIDER.lookupClient(found.authRequest.clientId).catch(
+      () => null,
+    );
+    return c.html(
+      signInPage(providers, state, {
+        clientName: askingClient?.clientName ?? null,
+        redirectUri: found.authRequest.redirectUri,
+      }),
+    );
   } catch {
     // The user code is already consumed. Leaving the grant in `completing`
     // would make the CLI poll until TTL with no browser path left to finish it.

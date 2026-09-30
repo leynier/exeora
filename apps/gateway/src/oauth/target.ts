@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import { locationsOf } from "../locations.js";
+import { MCP_SCOPES } from "./scopes.js";
 
 /**
  * What an MCP client is actually asking for.
@@ -41,32 +42,53 @@ export type AuthScope = { kind: "project"; projectId: string } | { kind: "accoun
  * and be told another. `/mcp` has to be exactly that, so a client asking for
  * `/mcp/anything` is not quietly read as the account endpoint.
  *
- * `resource` may legally arrive more than once, and the token's audience then
- * carries every value. A project's own URL therefore wins over `/mcp` no matter
- * which order they were sent in: a token whose audience still names
- * `/p/:id/mcp` is accepted there, where a missing `project_clients` row means
- * "allowed", so answering such a request with the account screen would consent
- * to one thing and hand out a token good for another. Deciding it here, rather
- * than from whichever value happened to come first, also keeps the screen the
- * user sees from being the client's to choose.
+ * Exactly one value, or nothing. `resource` may legally arrive more than once,
+ * and the token's audience then carries every value, while a screen can only
+ * ask about one: two project URLs would show the first and hand out a token
+ * good for both. The audience is also matched by path prefix, so the origin on
+ * its own, or `/p`, reaches every project while naming none. A request whose
+ * audience is not precisely the one endpoint this returns is therefore read as
+ * asking for nothing, and `refusedResource` turns that into a refusal.
  */
 export function authScopeFromResource(resource: string | string[] | undefined): AuthScope | null {
-  const paths: string[] = [];
+  const values = resource === undefined ? [] : [resource].flat();
+  const [only] = values;
+  if (values.length !== 1 || only === undefined) return null;
 
-  for (const candidate of resource === undefined ? [] : [resource].flat()) {
-    try {
-      paths.push(new URL(candidate).pathname);
-    } catch {
-      // Not a URL. RFC 8707 allows other forms, but ours are always URLs.
-    }
+  let path: string;
+  try {
+    path = new URL(only).pathname;
+  } catch {
+    // Not a URL. RFC 8707 allows other forms, but ours are always URLs.
+    return null;
   }
 
-  for (const path of paths) {
-    const match = /^\/p\/([^/]+)\/mcp$/.exec(path);
-    if (match?.[1]) return { kind: "project", projectId: match[1] };
-  }
+  const match = /^\/p\/([^/]+)\/mcp$/.exec(path);
+  if (match?.[1]) return { kind: "project", projectId: match[1] };
 
-  return paths.includes("/mcp") ? { kind: "account" } : null;
+  return path === "/mcp" ? { kind: "account" } : null;
+}
+
+/**
+ * Why this request cannot be authorized, or null when it can.
+ *
+ * A token carrying an MCP scope must be bound to the one endpoint its consent
+ * screen was about. `/p/:id/mcp` lets a client with no `project_clients` row
+ * through, because the audience is what binds the token to that project, so a
+ * token with no audience, or a wider one, would run commands in projects nobody
+ * was asked about. Exeora's own clients never receive an MCP scope and send no
+ * resource, which is why this is decided by the scopes rather than the client.
+ */
+export function refusedResource(
+  scopes: readonly string[],
+  resource: string | string[] | undefined,
+): string | null {
+  if (!scopes.some((scope) => (MCP_SCOPES as readonly string[]).includes(scope))) return null;
+  if (authScopeFromResource(resource)) return null;
+  return (
+    "This application did not name the one Exeora MCP endpoint it is connecting to, so there " +
+    "is nothing specific to approve. Add it again using the MCP URL from your dashboard."
+  );
 }
 
 /** The project id inside a per-project MCP resource URL, or null. */

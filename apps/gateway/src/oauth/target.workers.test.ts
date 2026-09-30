@@ -6,6 +6,7 @@ import {
   authScopeFromResource,
   ownedProjectIds,
   projectIdFromResource,
+  refusedResource,
   resolveAccountTarget,
   resolveAuthTarget,
 } from "./target.js";
@@ -112,20 +113,51 @@ describe("telling the two endpoints apart", () => {
   });
 
   // `resource` may be sent more than once, and the token's audience then names
-  // every value. A project's own URL has to win whichever order they arrive in:
-  // that endpoint lets a client with no row through, so answering with the
-  // account screen would consent to a list of ticks while handing out a token
-  // still good for a project nobody was asked about.
-  it("answers a mixed resource list with the project, not the account", () => {
-    const project = { kind: "project", projectId: "prj_abc" };
+  // every value. A screen can only ask about one of them, so a list is read as
+  // asking for nothing rather than as whichever value it happens to show.
+  it("reads more than one resource as none", () => {
+    for (const resource of [
+      ["https://exeora.dev/mcp", "https://exeora.dev/p/prj_abc/mcp"],
+      ["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev/mcp"],
+      ["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev/p/prj_other/mcp"],
+      ["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev"],
+      ["https://exeora.dev/mcp", "https://exeora.dev/mcp"],
+      [],
+    ]) {
+      expect(authScopeFromResource(resource)).toBeNull();
+    }
+  });
+});
 
-    expect(
-      authScopeFromResource(["https://exeora.dev/mcp", "https://exeora.dev/p/prj_abc/mcp"]),
-    ).toEqual(project);
+// A token's audience is matched by path prefix, and a token with no audience is
+// not checked at all. Anything short of one exact endpoint would therefore be
+// good for projects the consent screen never named.
+describe("refusing a request that names no single endpoint", () => {
+  const mcp = ["tools:read", "tools:execute"];
 
-    expect(
-      authScopeFromResource(["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev/mcp"]),
-    ).toEqual(project);
+  it("lets through one project URL or the account URL", () => {
+    expect(refusedResource(mcp, "https://exeora.dev/p/prj_abc/mcp")).toBeNull();
+    expect(refusedResource(mcp, ["https://exeora.dev/p/prj_abc/mcp"])).toBeNull();
+    expect(refusedResource(["tools:read"], "https://exeora.dev/mcp")).toBeNull();
+  });
+
+  it("refuses a missing, wider or repeated resource", () => {
+    for (const resource of [
+      undefined,
+      "https://exeora.dev",
+      "https://exeora.dev/",
+      "https://exeora.dev/p",
+      "https://exeora.dev/p/prj_abc",
+      ["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev/p/prj_other/mcp"],
+      ["https://exeora.dev/p/prj_abc/mcp", "https://exeora.dev"],
+    ]) {
+      expect(refusedResource(mcp, resource)).toEqual(expect.any(String));
+    }
+  });
+
+  it("asks nothing of a token that carries no MCP scope", () => {
+    expect(refusedResource(["executor:connect", "executor:execute"], undefined)).toBeNull();
+    expect(refusedResource(["dashboard:manage"], undefined)).toBeNull();
   });
 });
 
