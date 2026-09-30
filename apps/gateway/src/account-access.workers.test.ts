@@ -215,6 +215,7 @@ describe("the account consent screen", () => {
       userEmail: "you@example.com",
       state: "state",
       scopes: [],
+      redirectUri: "https://claude.example/api/mcp/callback",
       allProjects: options.allProjects,
       projects: Array.from({ length: options.projects }, (_, index) => ({
         id: `prj_${index}`,

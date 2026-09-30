@@ -5,10 +5,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "../db/client.js";
 import {
   clearSession,
+  clearSigninContinuation,
   getSessionUserId,
   hasDeviceContinuation,
+  hasSigninContinuation,
   setDeviceContinuation,
   setSession,
+  setSigninContinuation,
 } from "./session.js";
 
 const USER = "usr_session";
@@ -34,7 +37,18 @@ const app = new Hono<{ Bindings: Env }>()
   })
   .get("/bound", async (c) =>
     c.text((await hasDeviceContinuation(c, c.req.query("state") ?? "")) ? "yes" : "no"),
-  );
+  )
+  .get("/bind-signin", async (c) => {
+    await setSigninContinuation(c, "req_state");
+    return c.text("ok");
+  })
+  .get("/bound-signin", async (c) =>
+    c.text((await hasSigninContinuation(c, c.req.query("state") ?? "")) ? "yes" : "no"),
+  )
+  .get("/clear-signin", async (c) => {
+    await clearSigninContinuation(c, "req_state");
+    return c.text("ok");
+  });
 
 beforeEach(async () => {
   await db(env)
@@ -111,6 +125,36 @@ describe("revocable browser session", () => {
       await (await app.request("/bound?state=other", { headers: { cookie } }, bindings)).text(),
     ).toBe("no");
     expect(await (await app.request("/bound?state=req_state", {}, bindings)).text()).toBe("no");
+  });
+
+  it("binds an upstream sign-in to this browser, not to a copied URL", async () => {
+    const response = await app.request("/bind-signin", {}, bindings);
+    const header = response.headers.get("set-cookie") ?? "";
+    expect(header).toMatch(/HttpOnly/i);
+    expect(header).toMatch(/SameSite=Lax/i);
+    // One cookie per state, so two sign-in tabs keep one each.
+    expect(header.startsWith("exeora_signin_")).toBe(true);
+    const cookie = cookieFrom(response);
+    expect(
+      await (
+        await app.request("/bound-signin?state=req_state", { headers: { cookie } }, bindings)
+      ).text(),
+    ).toBe("yes");
+    expect(
+      await (
+        await app.request("/bound-signin?state=other", { headers: { cookie } }, bindings)
+      ).text(),
+    ).toBe("no");
+    expect(await (await app.request("/bound-signin?state=req_state", {}, bindings)).text()).toBe(
+      "no",
+    );
+
+    // Consumed with the state it was minted for: the expiry is addressed to
+    // the same per-state cookie name the set used.
+    const cleared = await app.request("/clear-signin", {}, bindings);
+    const expired = cleared.headers.get("set-cookie") ?? "";
+    expect(expired).toMatch(/Max-Age=0/i);
+    expect(expired.split("=")[0]).toBe(cookie.split("=")[0]);
   });
 
   it("sets HttpOnly, SameSite and environment-appropriate Secure", async () => {

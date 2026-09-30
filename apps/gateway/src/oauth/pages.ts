@@ -85,15 +85,36 @@ function layout(title: string, body: ReturnType<typeof html>) {
     </html>`;
 }
 
-export function signInPage(providers: UpstreamProvider[], state: string) {
+/**
+ * Who is asking, as far as the sign-in screen can say it: the name the client
+ * registered under and the address it will receive its result at. Both come
+ * from the request rather than any trust decision, so they are shown as claims
+ * to read, never as facts to rely on; the consent screen repeats the address
+ * at the moment of the decision.
+ */
+export function signInPage(
+  providers: UpstreamProvider[],
+  state: string,
+  request?: { clientName: string | null; redirectUri: string | null },
+) {
+  const name = request?.clientName;
   return layout(
     "Sign in",
     html`
       <div class="card">
         <h1>Sign in to continue</h1>
         <p class="lede">
-          An application is asking to connect to the development environment on one of your machines.
+          ${name ? html`<strong>${name}</strong> is asking` : html`An application is asking`} to
+          connect to the development environment on one of your machines.
         </p>
+        ${
+          request?.redirectUri
+            ? html`<p class="lede" style="margin:0 0 1.5rem">
+                It will receive its result at
+                <code style="overflow-wrap:anywhere">${request.redirectUri}</code>.
+              </p>`
+            : ""
+        }
 
         ${providers.map(
           (provider) =>
@@ -118,6 +139,8 @@ export function consentPage(options: {
   userEmail: string;
   state: string;
   scopes: string[];
+  /** The address this client registered for its result, shown before the decision. */
+  redirectUri: string;
   /** The project this token will be bound to, when the request named one. */
   target?: AuthTarget | null;
 }) {
@@ -138,6 +161,10 @@ export function consentPage(options: {
         </p>
 
         <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
+        <p class="who">
+          <span class="dot"></span> Delivers its result to
+          <code style="overflow-wrap:anywhere">${options.redirectUri}</code>
+        </p>
 
         ${
           target
@@ -208,6 +235,8 @@ export function accountConsentPage(options: {
   userEmail: string;
   state: string;
   scopes: string[];
+  /** The address this client registered for its result, shown before the decision. */
+  redirectUri: string;
   projects: AccountTargetProject[];
   /** Whether "all projects" arrives chosen. */
   allProjects: boolean;
@@ -229,6 +258,10 @@ export function accountConsentPage(options: {
         </p>
 
         <p class="who"><span class="dot"></span> Signed in as ${options.userEmail}</p>
+        <p class="who">
+          <span class="dot"></span> Delivers its result to
+          <code style="overflow-wrap:anywhere">${options.redirectUri}</code>
+        </p>
 
         ${options.problem ? html`<div class="warn">${options.problem}</div>` : ""}
 

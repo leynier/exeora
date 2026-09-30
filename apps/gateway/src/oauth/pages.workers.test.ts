@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { consentPage, deviceCodePage, deviceDonePage, errorPage, signInPage } from "./pages.js";
+import {
+  accountConsentPage,
+  consentPage,
+  deviceCodePage,
+  deviceDonePage,
+  errorPage,
+  signInPage,
+} from "./pages.js";
 import { github } from "./providers/github.js";
 import { google } from "./providers/google.js";
 
@@ -70,6 +77,37 @@ describe("sign in", () => {
     expect(html).toContain("Continue with Google");
     expect(html).toContain("/oauth/login/google?state=state-1");
   });
+
+  it("names the application and where its result will be delivered", async () => {
+    const html = render(
+      signInPage([github], "state-1", {
+        clientName: "Some MCP Client",
+        redirectUri: "https://client.example/callback",
+      }),
+    );
+
+    expect(html).toContain("Some MCP Client</strong> is asking");
+    expect(html).toContain("https://client.example/callback");
+  });
+
+  it("still renders when the application is unknown", async () => {
+    const html = render(signInPage([github], "state-1"));
+
+    expect(html).toContain("An application is asking");
+    expect(html).not.toContain("receive its result at");
+  });
+
+  it("escapes a client-supplied name rather than rendering it as markup", async () => {
+    const html = render(
+      signInPage([github], "s", {
+        clientName: "<img src=x onerror=alert(1)>",
+        redirectUri: null,
+      }),
+    );
+
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img");
+  });
 });
 
 describe("consent", () => {
@@ -78,6 +116,7 @@ describe("consent", () => {
     userEmail: "you@example.com",
     state: "state-1",
     scopes: ["tools:read", "tools:execute"],
+    redirectUri: "https://claude.example/api/mcp/callback",
   };
 
   it("names the client, the account and every scope", async () => {
@@ -87,6 +126,25 @@ describe("consent", () => {
     expect(html).toContain("you@example.com");
     expect(html).toContain("tools:read");
     expect(html).toContain("tools:execute");
+  });
+
+  it("says where the result is delivered, before the decision", async () => {
+    // The one line that makes a registered name hollow: the address the code,
+    // and so the token, is sent to, which the person cannot check any other
+    // way. A client may call itself anything; this is where the code goes.
+    const page = text(consentPage(base));
+    expect(page).toContain("Delivers its result to");
+    expect(page).toContain("https://claude.example/api/mcp/callback");
+    expect(text(accountConsentPage({ ...base, projects: [], allProjects: true }))).toContain(
+      "Delivers its result to",
+    );
+  });
+
+  it("escapes a redirect URI rather than rendering it as markup", async () => {
+    const html = render(consentPage({ ...base, redirectUri: 'https://x.example/"onload="alert' }));
+
+    expect(html).not.toContain('"onload="alert<');
+    expect(html).toContain("&quot;onload=&quot;");
   });
 
   it("says plainly that commands are not filtered", async () => {
