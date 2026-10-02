@@ -37,15 +37,15 @@
     "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
+    "@biomejs/biome": "2.5.14",
     "@exeora/design": "workspace:*",
-    "@playwright/test": "1.62.1",
+    "@playwright/test": "1.63.0",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "latest",
     "fflate": "^0.8.3",
     "material-icon-theme": "5.38.1",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   }
 }
