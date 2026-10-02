@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "exeora-cli"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -1177,7 +1177,7 @@ dependencies = [
 
 [[package]]
 name = "exeora-protocol-gen"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "anyhow",
  "prettyplease",
