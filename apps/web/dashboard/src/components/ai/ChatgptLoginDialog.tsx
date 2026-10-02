@@ -76,6 +76,10 @@ function Login({
   cancelAttempt: { current: (() => void) | null };
 }) {
   const client = useQueryClient();
+  const completed = useRef(onComplete);
+  useLayoutEffect(() => {
+    completed.current = onComplete;
+  }, [onComplete]);
   const [activeMode, setActiveMode] = useState<ChatgptLoginMode>(mode);
   const [login, setLogin] = useState<{ authorizeUrl: string; expiresAt: number } | null>(null);
   const [outcome, setOutcome] = useState<
@@ -166,7 +170,7 @@ function Login({
         }
         if (status.state === "ready") {
           await client.invalidateQueries({ queryKey: aiKeys.chatgptStatus(deviceId) });
-          if (!stopped && !cancelRequested.current) onComplete(status);
+          if (!stopped && !cancelRequested.current) completed.current(status);
           return;
         }
         if (
@@ -189,7 +193,7 @@ function Login({
       if (timer.current !== null) window.clearTimeout(timer.current);
       timer.current = null;
     };
-  }, [client, deviceId, login, onComplete, outcome]);
+  }, [client, deviceId, login, outcome]);
 
   const safeUrl = chatgptAuthorizeUrl(login?.authorizeUrl);
   const retry = (nextMode = activeMode) => {

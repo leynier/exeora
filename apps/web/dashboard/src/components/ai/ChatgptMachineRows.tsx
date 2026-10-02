@@ -11,7 +11,7 @@ import {
 
 export type ChatgptMachineRowData = {
   machine: LocalMachine;
-  query: { data?: ChatgptStatus; error?: unknown };
+  query: { data?: ChatgptStatus; error?: unknown; isFetching?: boolean; refetch?: () => unknown };
 };
 
 export function ChatgptRow({
@@ -48,6 +48,8 @@ export function ChatgptRow({
                 machine={machine}
                 status={query.data}
                 error={query.error}
+                retryPending={query.isFetching ?? false}
+                onRetry={() => void query.refetch?.()}
                 warning={warningDeviceId === machine.deviceId}
                 logoutPending={logoutPending}
                 onLogin={onLogin}
@@ -66,6 +68,8 @@ function ChatgptMachineRow({
   machine,
   status,
   error,
+  retryPending,
+  onRetry,
   warning,
   logoutPending,
   onLogin,
@@ -75,6 +79,8 @@ function ChatgptMachineRow({
   machine: LocalMachine;
   status: ChatgptStatus | undefined;
   error: unknown;
+  retryPending: boolean;
+  onRetry: () => void;
   warning: boolean;
   logoutPending: boolean;
   onLogin: (deviceId: string, machineName: string, mode: ChatgptLoginMode) => void;
@@ -136,6 +142,14 @@ function ChatgptMachineRow({
               onClick={() => void navigator.clipboard?.writeText("exeora upgrade")}
             >
               Copy exeora upgrade
+            </button>
+          ) : machine.online && (availability === "status_error" || state === "pending") ? (
+            <button type="button" className="btn" disabled={retryPending} onClick={onRetry}>
+              {retryPending
+                ? "Checking…"
+                : state === "pending"
+                  ? "Check sign-in"
+                  : "Retry connection"}
             </button>
           ) : state === "ready" ? (
             <>
