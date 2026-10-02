@@ -74,7 +74,8 @@ export function AiProvidersCard({ className = "" }: { className?: string }) {
     machine,
     query: machineStatuses[index] ?? { data: undefined, error: undefined },
   }));
-  const readyMachines = machineRows.filter((row) => row.query.data?.state === "ready");
+  const availableMachines = machineRows.filter((row) => row.machine.online && !row.query.error);
+  const readyMachines = availableMachines.filter((row) => row.query.data?.state === "ready");
   const [selectedChatgptMachineId, setSelectedChatgptMachineId] = useState("");
   useEffect(() => {
     if (!readyMachines.some((row) => row.machine.deviceId === selectedChatgptMachineId)) {
@@ -134,7 +135,7 @@ export function AiProvidersCard({ className = "" }: { className?: string }) {
 
   if (!status.data?.enabled) return null;
   const linked = providers.filter((provider) => provider.linked && !provider.linked.legacy);
-  const settingsChatgptMachine = machineRows.find((row) =>
+  const settingsChatgptMachine = availableMachines.find((row) =>
     chatgptStatusCanConfigure(row.query.data),
   );
   const settingsProviders = [

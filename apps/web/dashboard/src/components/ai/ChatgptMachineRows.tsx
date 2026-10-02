@@ -82,7 +82,7 @@ function ChatgptMachineRow({
   onUseApiKey?: () => void;
 }) {
   const availability = error ? chatgptMachineAvailability(error) : null;
-  const state = status?.state;
+  const state = machine.online && availability === null ? status?.state : undefined;
   return (
     <div className="border-border-subtle rounded-lg border p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
