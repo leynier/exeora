@@ -16,9 +16,6 @@ export const CURATED_MODELS: Record<AiProviderId, readonly AiModel[]> = {
     { id: "grok-4", label: "Grok 4" },
     { id: "grok-code-fast-1", label: "Grok Code Fast 1" },
   ],
-  // The local CLI owns the ChatGPT model catalog. Gateway settings may name
-  // a model, but the empty list keeps the dashboard from inventing one here.
-  chatgpt: [],
 };
 
 /** No listing is allowed to grow past this: a selector, not a catalogue. */

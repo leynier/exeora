@@ -16,7 +16,7 @@ import {
   offeredProvider,
 } from "./providers/index.js";
 import { AiError } from "./providers/types.js";
-import { readSettings, SettingsPatch, writeSettings } from "./settings.js";
+import { RetiredPlanChoiceError, readSettings, SettingsPatch, writeSettings } from "./settings.js";
 
 /**
  * AI Assist for an account: which providers it may link and has linked, how
@@ -29,120 +29,21 @@ export const ai = new Hono<ApiEnv>();
 const disabled = (c: { json: (body: unknown, status: 404) => Response }) =>
   c.json({ error: "ai_disabled" }, 404);
 
-const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
-
-type AiFailureStatus = 403 | 409 | 422 | 429 | 502 | 503;
-
-export interface ChatgptFailure {
-  reason: string;
-  code?: string | undefined;
-  param?: string | undefined;
-  httpStatus?: number | undefined;
-  requestId?: string | undefined;
-}
-
-interface FailureContext {
-  deviceId?: string;
-  requestId?: string;
-}
-
-function requestIdOf(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value.slice(0, 128) : undefined;
-}
-
 /** Where the provider is the problem, in words for the person. */
 export function aiFailure(
-  c: { json: (body: unknown, status: AiFailureStatus) => Response },
+  c: { json: (body: unknown, status: 409 | 422 | 502) => Response },
   error: AiError,
-  context: FailureContext = {},
 ) {
-  const body = {
-    message: error.message,
-    ...(requestIdOf(context.requestId) ? { requestId: requestIdOf(context.requestId) } : {}),
-  };
+  const body = { message: error.message };
   switch (error.kind) {
     case "not_linked":
       return c.json({ error: "ai_not_linked", ...body }, 409);
     case "reconnect":
       return c.json({ error: "ai_reconnect", ...body }, 409);
-    case "legacy":
-      return c.json({ error: "ai_legacy_reconnect", ...body }, 409);
     case "invalid_key":
       return c.json({ error: "ai_invalid_key", ...body }, 422);
     default:
       return c.json({ error: "ai_unavailable", ...body }, 502);
-  }
-}
-
-/**
- * Translate a local CLI failure without exposing provider response bodies.
- * The CLI's request id is bounded again at this boundary because a future
- * client must not be able to make dashboard error payloads unbounded.
- */
-export function chatgptFailure(
-  c: { json: (body: unknown, status: AiFailureStatus) => Response },
-  failure: ChatgptFailure,
-  context: FailureContext = {},
-) {
-  const requestId = requestIdOf(failure.requestId);
-  const body = requestId ? { requestId } : {};
-  const signinBody = {
-    ...body,
-    ...(context.deviceId ? { deviceId: context.deviceId } : {}),
-  };
-  switch (failure.reason) {
-    case "usage_limit":
-      return c.json(
-        {
-          error: "ai_usage_limit",
-          message: "ChatGPT usage limit reached.",
-          manageUsageUrl: CHATGPT_USAGE_URL,
-          ...body,
-        },
-        429,
-      );
-    case "not_eligible":
-      return c.json(
-        {
-          error: "ai_not_eligible",
-          message: "ChatGPT plan usage is not available for this account or workspace.",
-          ...body,
-        },
-        403,
-      );
-    case "plan_disabled":
-      return c.json(
-        {
-          error: "ai_plan_disabled",
-          message: "ChatGPT plan usage is disabled for this sign-in.",
-          ...body,
-        },
-        409,
-      );
-    case "reconnect":
-    case "signed_out":
-      return c.json(
-        {
-          error: "ai_chatgpt_signin",
-          message: "Sign in with ChatGPT on this machine to continue.",
-          ...signinBody,
-        },
-        409,
-      );
-    case "temporarily_unavailable":
-      return c.json(
-        {
-          error: "ai_unavailable",
-          message: "ChatGPT is temporarily unavailable. Try again shortly.",
-          ...body,
-        },
-        503,
-      );
-    default:
-      return c.json(
-        { error: "ai_unavailable", message: "ChatGPT could not complete the request.", ...body },
-        502,
-      );
   }
 }
 
@@ -166,14 +67,7 @@ ai.get("/api/ai", async (c) => {
         id: provider.id,
         label: provider.label,
         authKinds,
-        ...(provider.machineBound ? { machineBound: true } : {}),
-        linked: link
-          ? {
-              kind: link.kind,
-              accountLabel: link.accountLabel,
-              ...(link.legacy ? { legacy: true } : {}),
-            }
-          : null,
+        linked: link ? { kind: link.kind, accountLabel: link.accountLabel } : null,
         // Curated only: the live listing is `GET …/models`, which asks the provider.
         models: curatedModels(provider.id),
       };
@@ -188,15 +82,6 @@ ai.post("/api/ai/providers/:provider/device", async (c) => {
   if (!config) return disabled(c);
   const offered = named(c, config);
   if (!offered) return c.json({ error: "not_found" }, 404);
-  if (offered.provider.machineBound) {
-    return c.json(
-      {
-        error: "ai_oauth_unavailable",
-        message: "ChatGPT sign-in is handled by the Exeora CLI on the machine.",
-      },
-      400,
-    );
-  }
   if (!offered.authKinds.includes("oauth")) {
     return c.json(
       {
@@ -208,17 +93,7 @@ ai.post("/api/ai/providers/:provider/device", async (c) => {
   }
   const userId = c.get("userId");
   try {
-    const startDeviceLogin = offered.provider.startDeviceLogin;
-    if (!startDeviceLogin) {
-      return c.json(
-        {
-          error: "ai_oauth_unavailable",
-          message: "This gateway offers that provider by API key only.",
-        },
-        400,
-      );
-    }
-    const start = await startDeviceLogin(outbound(), c.env);
+    const start = await offered.provider.startDeviceLogin(outbound(), c.env);
     await storeLogin(c.env, config, userId, offered.provider.id, start);
     return c.json({
       userCode: start.userCode,
@@ -237,15 +112,6 @@ ai.post("/api/ai/providers/:provider/device/poll", async (c) => {
   if (!config) return disabled(c);
   const offered = named(c, config);
   if (!offered) return c.json({ error: "not_found" }, 404);
-  if (offered.provider.machineBound) {
-    return c.json(
-      {
-        error: "ai_oauth_unavailable",
-        message: "ChatGPT sign-in is handled by the Exeora CLI on the machine.",
-      },
-      400,
-    );
-  }
   if (!offered.authKinds.includes("oauth")) {
     return c.json(
       {
@@ -266,17 +132,7 @@ ai.post("/api/ai/providers/:provider/device/poll", async (c) => {
     return c.json({ status: "expired" });
   }
   try {
-    const pollDeviceLogin = offered.provider.pollDeviceLogin;
-    if (!pollDeviceLogin) {
-      return c.json(
-        {
-          error: "ai_oauth_unavailable",
-          message: "This gateway offers that provider by API key only.",
-        },
-        400,
-      );
-    }
-    const poll = await pollDeviceLogin(outbound(), c.env, login);
+    const poll = await offered.provider.pollDeviceLogin(outbound(), c.env, login);
     if (poll.status === "pending") return c.json({ status: "pending" });
     await deleteLogin(c.env, userId, id);
     if (poll.status !== "granted") return c.json({ status: poll.status });
@@ -298,7 +154,6 @@ ai.put("/api/ai/providers/:provider/key", zValidator("json", keyInput), async (c
   if (!config) return disabled(c);
   const offered = named(c, config);
   if (!offered) return c.json({ error: "not_found" }, 404);
-  if (offered.provider.machineBound) return c.json({ error: "not_found" }, 404);
   if (!offered.authKinds.includes("api_key")) return c.json({ error: "not_found" }, 404);
   const userId = c.get("userId");
   const { key } = c.req.valid("json");
@@ -322,7 +177,6 @@ ai.delete("/api/ai/providers/:provider", async (c) => {
   if (!config) return disabled(c);
   const offered = named(c, config);
   if (!offered) return c.json({ error: "not_found" }, 404);
-  if (offered.provider.machineBound) return c.json({ error: "not_found" }, 404);
   const userId = c.get("userId");
   const removed = await forgetCredential(c.env, userId, offered.provider.id);
   await deleteLogin(c.env, userId, offered.provider.id);
@@ -334,7 +188,6 @@ ai.get("/api/ai/providers/:provider/models", async (c) => {
   if (!config) return disabled(c);
   const offered = named(c, config);
   if (!offered) return c.json({ error: "not_found" }, 404);
-  if (offered.provider.machineBound) return c.json({ error: "not_found" }, 404);
   try {
     const fetcher = outbound();
     const credential = await current(c.env, config, c.get("userId"), offered.provider, fetcher);
@@ -360,5 +213,12 @@ ai.put("/api/ai/settings", zValidator("json", SettingsPatch), async (c) => {
       400,
     );
   }
-  return c.json(await writeSettings(c.env, c.get("userId"), patch));
+  try {
+    return c.json(await writeSettings(c.env, c.get("userId"), patch));
+  } catch (error) {
+    if (error instanceof RetiredPlanChoiceError) {
+      return c.json({ error: "ai_provider_choice_required", message: error.message }, 400);
+    }
+    throw error;
+  }
 });

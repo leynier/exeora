@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.js";
 import {
@@ -19,14 +19,16 @@ import { isModelId } from "./catalog.js";
 /** The most a person may add to a prompt. Enough for a style guide, not a novel. */
 export const MAX_INSTRUCTIONS = 4000;
 
+export type SettingsProviderId = AiProviderId | "chatgpt";
+
 export interface OperationSettings {
-  provider: AiProviderId | null;
+  provider: SettingsProviderId | null;
   model: string | null;
   instructions: string | null;
 }
 
 export interface AiSettingsView {
-  defaultProvider: AiProviderId | null;
+  defaultProvider: SettingsProviderId | null;
   operations: Record<AiOperation, OperationSettings>;
 }
 
@@ -47,6 +49,12 @@ export const SettingsPatch = z.object({
 
 export type SettingsPatch = z.infer<typeof SettingsPatch>;
 
+export class RetiredPlanChoiceError extends Error {
+  constructor() {
+    super("Choose a linked provider to replace the previous ChatGPT plan connection.");
+  }
+}
+
 const EMPTY: OperationSettings = { provider: null, model: null, instructions: null };
 
 export async function readSettings(env: Pick<Env, "DB">, userId: string): Promise<AiSettingsView> {
@@ -61,6 +69,18 @@ export async function readSettings(env: Pick<Env, "DB">, userId: string): Promis
     .from(schema.aiOperationSettings)
     .where(eq(schema.aiOperationSettings.userId, userId))
     .all();
+  const hasLocalChoice =
+    wasLocalChatgpt(account?.defaultProvider) || rows.some((row) => wasLocalChatgpt(row.provider));
+  const linked = hasLocalChoice
+    ? await database
+        .select({ kind: schema.aiProviders.authKind })
+        .from(schema.aiProviders)
+        .where(
+          and(eq(schema.aiProviders.userId, userId), eq(schema.aiProviders.provider, "openai")),
+        )
+        .get()
+    : undefined;
+  const restorePlan = linked?.kind !== "api_key";
   const operations = Object.fromEntries(
     AI_OPERATIONS.map((operation) => {
       const row = rows.find((candidate) => candidate.operation === operation);
@@ -68,15 +88,33 @@ export async function readSettings(env: Pick<Env, "DB">, userId: string): Promis
         operation,
         row
           ? {
-              provider: row.provider,
-              model: row.model,
+              provider: restoredProvider(row.provider, restorePlan),
+              model:
+                wasLocalChatgpt(row.provider) ||
+                (row.provider === null && wasLocalChatgpt(account?.defaultProvider))
+                  ? null
+                  : row.model,
               instructions: row.instructions === "" ? null : row.instructions,
             }
           : EMPTY,
       ];
     }),
   ) as Record<AiOperation, OperationSettings>;
-  return { defaultProvider: account?.defaultProvider ?? null, operations };
+  return { defaultProvider: restoredProvider(account?.defaultProvider, restorePlan), operations };
+}
+
+// Retain the person's ChatGPT choice after retiring the per-machine provider.
+// Model names belong to its former catalog, so use the restored catalog's default.
+function wasLocalChatgpt(provider: string | null | undefined): boolean {
+  return provider === "chatgpt";
+}
+
+function restoredProvider(
+  provider: string | null | undefined,
+  restorePlan: boolean,
+): SettingsProviderId | null {
+  if (wasLocalChatgpt(provider)) return restorePlan ? "openai" : "chatgpt";
+  return AI_PROVIDER_IDS.find((id) => id === provider) ?? null;
 }
 
 export async function writeSettings(
@@ -85,6 +123,34 @@ export async function writeSettings(
   patch: SettingsPatch,
 ): Promise<AiSettingsView> {
   const database = db(env);
+  const saved = await readSettings(env, userId);
+  const replacements = [
+    [saved.defaultProvider, patch.defaultProvider],
+    ...AI_OPERATIONS.map((operation) => [
+      saved.operations[operation].provider,
+      patch.operations?.[operation]?.provider,
+    ]),
+  ].filter(([previous, next]) => previous === "chatgpt" && next !== undefined);
+  if (replacements.length > 0) {
+    const linked = await database
+      .select({ provider: schema.aiProviders.provider })
+      .from(schema.aiProviders)
+      .where(eq(schema.aiProviders.userId, userId))
+      .all();
+    if (replacements.some(([, next]) => !linked.some((row) => row.provider === next))) {
+      throw new RetiredPlanChoiceError();
+    }
+  }
+  // Canonicalize before applying patches: a newly supplied model must survive.
+  // D1 batches are atomic, and this only updates the retired provider's choices.
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE ai_operation_settings SET model = NULL, provider = CASE WHEN provider = 'chatgpt' AND NOT EXISTS (SELECT 1 FROM ai_providers WHERE user_id = ? AND provider = 'openai' AND auth_kind = 'api_key') THEN 'openai' ELSE provider END WHERE user_id = ? AND (provider = 'chatgpt' OR (provider IS NULL AND EXISTS (SELECT 1 FROM ai_settings WHERE user_id = ? AND default_provider = 'chatgpt')))",
+    ).bind(userId, userId, userId),
+    env.DB.prepare(
+      "UPDATE ai_settings SET default_provider = 'openai' WHERE user_id = ? AND default_provider = 'chatgpt' AND NOT EXISTS (SELECT 1 FROM ai_providers WHERE user_id = ? AND provider = 'openai' AND auth_kind = 'api_key')",
+    ).bind(userId, userId),
+  ]);
   if (patch.defaultProvider !== undefined) {
     await database
       .insert(schema.aiSettings)

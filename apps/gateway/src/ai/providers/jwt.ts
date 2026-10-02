@@ -2,8 +2,8 @@
  * Reads the claims out of a JWT without checking its signature.
  *
  * The token was just handed over by the provider on a channel the gateway
- * trusts, and nothing here is decided on the claims: they name the account
- * a request is sent for, and the provider checks the signature on every one.
+ * trusts. Claims only provide account routing and renewal schedules; they
+ * never authenticate an Exeora user. The provider checks the access token.
  */
 export function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -30,6 +30,14 @@ export function stringClaim(
     value = (value as Record<string, unknown>)[key];
   }
   return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/** Expiry metadata for renewal, never an authentication decision. */
+export function tokenExpiresAt(token: string): number | undefined {
+  const exp = decodeJwtPayload(token)?.exp;
+  return typeof exp === "number" && Number.isFinite(exp) && exp > 0 && exp <= 8_640_000_000_000
+    ? exp * 1000
+    : undefined;
 }
 
 function base64UrlDecode(text: string): string {

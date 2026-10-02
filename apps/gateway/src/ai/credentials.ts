@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../cloud/credentials.js";
 import { db, schema } from "../db/client.js";
 import type { AiAuthKind, AiProviderId, AiProviderRow } from "../db/schema-ai.js";
+import { tokenExpiresAt } from "./providers/jwt.js";
 import "../env.js";
 import {
   type AiEnv,
@@ -32,8 +33,6 @@ export interface LinkedProvider {
   provider: AiProviderId;
   kind: AiAuthKind;
   accountLabel: string | null;
-  /** True for the retired OpenAI/Codex OAuth link, which is display-only. */
-  legacy?: true;
 }
 
 export async function linkedProviders(
@@ -49,9 +48,7 @@ export async function linkedProviders(
     .from(schema.aiProviders)
     .where(eq(schema.aiProviders.userId, userId))
     .all();
-  return rows.map((row) =>
-    row.provider === "openai" && row.kind === "oauth" ? { ...row, legacy: true as const } : row,
-  );
+  return rows;
 }
 
 /** Keeps what a provider granted, in place of whatever was kept before. */
@@ -96,8 +93,7 @@ export async function forgetCredential(
 /**
  * The credential a provider will accept as the person, renewed first when
  * it is about to expire. Throws `AiError("not_linked")` when there is none,
- * `AiError("reconnect")` when the one there was is no longer any good, and
- * `AiError("legacy")` when the row belongs to the retired OpenAI sign-in.
+ * and `AiError("reconnect")` when the one there was is no longer any good.
  */
 export async function current(
   env: CredentialEnv & AiEnv,
@@ -109,13 +105,17 @@ export async function current(
 ): Promise<Credential> {
   const row = await read(env, userId, provider.id);
   if (!row) throw new AiError("not_linked", `${provider.label} is not linked to this account.`);
-  // The retired OpenAI device flow must never decrypt or refresh its tokens.
-  // Keep the row so the account can explicitly remove it from the dashboard.
-  if (isLegacyOpenAi(row)) throw legacyReconnect(provider);
 
-  const expiresAt = row.accessExpiresAt?.getTime() ?? null;
+  let expiresAt = row.accessExpiresAt?.getTime() ?? null;
+  let cachedAccess: string | null | undefined;
+  if (row.authKind === "oauth" && expiresAt === null) {
+    // Older Codex rows were stored without expires_in; their JWT still expires.
+    cachedAccess = await open(key, row.accessCiphertext);
+    if (cachedAccess !== null) expiresAt = tokenExpiresAt(cachedAccess) ?? null;
+  }
   if (row.authKind === "api_key" || expiresAt === null || expiresAt - now > RENEW_MARGIN_MS) {
-    const access = await open(key, row.accessCiphertext);
+    const access =
+      cachedAccess === undefined ? await open(key, row.accessCiphertext) : cachedAccess;
     if (access !== null) return held(access, row);
     // Encrypted under a key this gateway no longer has: gone for good.
     await forget(env, row);
@@ -147,13 +147,11 @@ async function renew(
   now: number,
   row: AiProviderRow,
 ): Promise<Credential> {
-  if (isLegacyOpenAi(row)) throw legacyReconnect(provider);
   const refreshToken = row.refreshCiphertext ? await open(key, row.refreshCiphertext) : null;
   if (refreshToken === null) {
     await forget(env, row);
     throw reconnect(provider);
   }
-  if (!provider.refresh) throw reconnect(provider);
   let granted: GrantedTokens;
   try {
     granted = await provider.refresh(fetcher, env, refreshToken);
@@ -207,17 +205,6 @@ function reconnect(provider: AiProvider): AiError {
     "reconnect",
     `${provider.label} no longer accepts this account's authorization. Link it again from the settings.`,
   );
-}
-
-function legacyReconnect(provider: AiProvider): AiError {
-  return new AiError(
-    "legacy",
-    `${provider.label} no longer supports this old ChatGPT sign-in. Use an OpenAI API key or sign in with ChatGPT on your machine.`,
-  );
-}
-
-function isLegacyOpenAi(row: Pick<AiProviderRow, "provider" | "authKind">): boolean {
-  return row.provider === "openai" && row.authKind === "oauth";
 }
 
 async function read(env: CredentialEnv, userId: string, provider: AiProviderId) {

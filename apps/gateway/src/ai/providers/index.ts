@@ -6,43 +6,14 @@ import { xai } from "./xai.js";
 /**
  * The providers, and which of them this gateway offers.
  *
- * The local ChatGPT plan is offered only when the gateway names it in
- * `AI_ASSIST_PROVIDERS`; it never creates a gateway credential. Without
- * `CLOUD_CREDENTIALS_KEY` there is nowhere safe to keep the other providers;
- * a ChatGPT-only deployment can still use its local machine-bound provider.
+ * Both flows that link a subscription are unofficial (see each provider), so
+ * nothing is offered until whoever runs the gateway names it in
+ * `AI_ASSIST_PROVIDERS`. `AI_ASSIST_OAUTH=off` keeps the API keys and drops
+ * the device logins. Without `CLOUD_CREDENTIALS_KEY` there is nowhere safe
+ * to keep any of it, and the feature is off as it is for GitHub.
  */
 
-/**
- * The machine-bound entry is intentionally a structural provider only. The
- * dedicated ChatGPT routes dispatch to the local CLI; these methods are
- * unreachable and fail closed if a caller forgets that boundary.
- */
-const chatgpt: AiProvider = {
-  id: "chatgpt",
-  label: "ChatGPT plan",
-  authKinds: [],
-  machineBound: true,
-  startDeviceLogin: async () => {
-    throw new Error("ChatGPT sign-in belongs to the local Exeora CLI.");
-  },
-  pollDeviceLogin: async () => {
-    throw new Error("ChatGPT sign-in belongs to the local Exeora CLI.");
-  },
-  refresh: async () => {
-    throw new Error("ChatGPT credentials never enter the gateway.");
-  },
-  validateKey: async () => {
-    throw new Error("ChatGPT plan does not use a gateway API key.");
-  },
-  listModels: async () => {
-    throw new Error("ChatGPT models are listed by the local Exeora CLI.");
-  },
-  generate: async () => {
-    throw new Error("ChatGPT generation belongs to the local Exeora CLI.");
-  },
-};
-
-const PROVIDERS: Record<AiProviderId, AiProvider> = { openai, xai, chatgpt };
+const PROVIDERS: Record<AiProviderId, AiProvider> = { openai, xai };
 
 export interface OfferedProvider {
   provider: AiProvider;
@@ -51,7 +22,7 @@ export interface OfferedProvider {
 }
 
 export interface AiConfig {
-  /** `CLOUD_CREDENTIALS_KEY`, or an empty string when only machine-bound providers are enabled. */
+  /** `CLOUD_CREDENTIALS_KEY`, under which every credential is kept. */
   credentialsKey: string;
   offered: OfferedProvider[];
 }
@@ -62,7 +33,8 @@ export function isProviderId(value: string): value is AiProviderId {
 
 /** The configuration, or null on a gateway where AI Assist is off. */
 export function aiConfig(env: AiEnv): AiConfig | null {
-  const credentialsKey = env.CLOUD_CREDENTIALS_KEY?.trim() ?? "";
+  const credentialsKey = env.CLOUD_CREDENTIALS_KEY?.trim();
+  if (!credentialsKey) return null;
   const named = (env.AI_ASSIST_PROVIDERS ?? "")
     .split(",")
     .map((name) => name.trim().toLowerCase())
@@ -70,22 +42,14 @@ export function aiConfig(env: AiEnv): AiConfig | null {
   const ids = [...new Set(named)];
   if (ids.length === 0) return null;
   const oauthOff = env.AI_ASSIST_OAUTH?.trim().toLowerCase() === "off";
-  const offered = ids
-    // A machine-bound provider never writes a credential. Providers that do
-    // write one are unavailable until the encryption key is configured.
-    .filter((id) => credentialsKey !== "" || PROVIDERS[id].machineBound === true)
-    .map((id) => {
-      const provider = PROVIDERS[id];
-      // The kill switch is deliberately scoped to xAI. OpenAI is API-key only
-      // and ChatGPT is local-machine bound, so neither should disappear when a
-      // deployment disables Grok OAuth.
-      const oauth = id === "xai" ? !oauthOff && (provider.oauthConfigured?.(env) ?? true) : true;
-      return {
-        provider,
-        authKinds: provider.authKinds.filter((kind) => kind !== "oauth" || oauth),
-      };
-    });
-  if (offered.length === 0) return null;
+  const offered = ids.map((id) => {
+    const provider = PROVIDERS[id];
+    const oauth = !oauthOff && (provider.oauthConfigured?.(env) ?? true);
+    return {
+      provider,
+      authKinds: provider.authKinds.filter((kind) => kind !== "oauth" || oauth),
+    };
+  });
   return { credentialsKey, offered };
 }
 

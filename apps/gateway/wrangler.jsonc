@@ -124,14 +124,13 @@
     "LATEST_CLI_VERSION": "0.21.0",
 
     // AI Assist: which providers an account may link from Settings, as a
-    // comma list of `openai`, `xai` and `chatgpt`. OpenAI API keys and xAI
-    // credentials need CLOUD_CREDENTIALS_KEY for encrypted gateway storage.
-    // ChatGPT uses official local CLI sign-in and inference; its tokens never
-    // enter the Worker, and it can be offered without that encryption key.
-    // Grok's device login remains unofficial (see docs/self-hosting.md);
-    // AI_ASSIST_OAUTH=off disables that login while keeping the other paths.
+    // comma list of `openai` and `xai`. Not secret: it says what is offered,
+    // not how it is reached. The tokens and keys it stores need
+    // CLOUD_CREDENTIALS_KEY, a secret; without it the feature stays off.
+    // The device logins that link a subscription are unofficial flows (see
+    // docs/self-hosting.md); AI_ASSIST_OAUTH=off would keep API keys only.
     // XAI_OAUTH_CLIENT_ID=off would drop xAI's device login alone.
-    "AI_ASSIST_PROVIDERS": "openai,xai,chatgpt",
+    "AI_ASSIST_PROVIDERS": "openai,xai",
 
     // Where the audit archive lives, for the nightly rollup that rebuilds
     // `usage_daily` out of R2 SQL. Not secret: the account id is in every

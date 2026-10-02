@@ -104,6 +104,46 @@ const commitMessage = (body: unknown = {}, userId = OWNER, environment = aiOn())
   call(`/api/projects/${PROJECT}/ai/commit-message`, { body, userId, env: environment });
 
 describe("POST /api/projects/:id/ai/commit-message", () => {
+  it.each(["default", "override"])(
+    "requires an explicit API-key choice before replacing a retired plan %s",
+    async (choice) => {
+      machine = await attachMachine(OWNER, DEVICE, PROJECT, () => STAGED);
+      await storeCredential(env, KEY, OWNER, "openai", "api_key", { access: "sk-test-key" });
+      if (choice === "default") {
+        await env.DB.prepare(
+          "INSERT INTO ai_settings (user_id, default_provider) VALUES (?, 'chatgpt')",
+        )
+          .bind(OWNER)
+          .run();
+      } else {
+        await env.DB.prepare(
+          "INSERT INTO ai_operation_settings (user_id, operation, provider) VALUES (?, 'commit', 'chatgpt')",
+        )
+          .bind(OWNER)
+          .run();
+      }
+      const fake = provider(() => responses("Add login"));
+      const refused = await commitMessage();
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({
+        message:
+          "Choose a linked provider in Settings to replace the previous ChatGPT plan connection.",
+      });
+      expect(fake.asked).toHaveLength(0);
+      expect(machine.seen).toHaveLength(0);
+      await call("/api/ai/settings", {
+        method: "PUT",
+        body: { operations: { commit: { instructions: "Keep the plan" } } },
+        userId: OWNER,
+        env: aiOn(),
+      });
+      expect((await commitMessage()).status).toBe(409);
+      expect(fake.asked).toHaveLength(0);
+      const explicit = await commitMessage({ provider: "openai" });
+      expect(explicit.status).toBe(200);
+      expect(fake.asked.map((asked) => asked.url)).toEqual(["https://api.openai.com/v1/responses"]);
+    },
+  );
   it("reads the staged changes, asks the provider, cleans the answer and audits the event", async () => {
     machine = await attachMachine(OWNER, DEVICE, PROJECT, () => STAGED);
     await storeCredential(env, KEY, OWNER, "openai", "api_key", { access: "sk-test" });
@@ -176,21 +216,35 @@ describe("POST /api/projects/:id/ai/commit-message", () => {
     });
   });
 
-  it("refuses a legacy OpenAI OAuth link without contacting the provider", async () => {
+  it("streams from the Codex backend for a ChatGPT link", async () => {
     machine = await attachMachine(OWNER, DEVICE, PROJECT, () => STAGED);
     await storeCredential(env, KEY, OWNER, "openai", "oauth", {
-      access: "legacy-access",
-      refresh: "legacy-refresh",
+      access: "at_chatgpt",
+      refresh: "rt",
       expiresAt: Date.now() + 3_600_000,
+      accountId: "acct_1",
     });
-    const fake = provider(() => {
-      throw new Error("legacy OpenAI credential attempted an outbound request");
+    provider((asked) => {
+      if (asked.url !== "https://chatgpt.com/backend-api/codex/responses") return undefined;
+      expect(asked.headers.get("authorization")).toBe("Bearer at_chatgpt");
+      expect(asked.headers.get("chatgpt-account-id")).toBe("acct_1");
+      expect(asked.headers.get("originator")).toBe("codex_cli_rs");
+      expect(asked.headers.get("openai-beta")).toBe("responses=experimental");
+      expect(asked.json()).toMatchObject({ model: "gpt-5.5", stream: true, store: false });
+      const stream = [
+        'event: response.created\ndata: {"type":"response.created"}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Add "}\n\n',
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"login."}\n\n',
+        'event: response.completed\ndata: {"type":"response.completed","response":{"output":[]}}\n\n',
+      ].join("");
+      return new Response(stream, { headers: { "content-type": "text/event-stream" } });
     });
     const response = await commitMessage();
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: "ai_legacy_reconnect" });
-    expect(fake.asked).toHaveLength(0);
-    expect(machine.seen).toEqual([]);
+    expect(await response.json()).toEqual({
+      message: "Add login",
+      provider: "openai",
+      model: "gpt-5.5",
+    });
   });
 
   it("says when nothing is staged, without asking the provider", async () => {

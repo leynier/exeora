@@ -17,8 +17,6 @@ import type { LocationRoot } from "../../workspacePaths.js";
 import { AddWorkspaceDialog } from "../AddWorkspaceDialog.js";
 import { CommitAssist } from "../ai/CommitAssist.js";
 import { ShipDialog } from "../ship/ShipDialog.js";
-import { shipPlan } from "../ship/shipPlan.js";
-import { shipProviders } from "../ship/shipProviders.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
 import type { WorkspaceSelection } from "../WorkspaceFileGroup.js";
 import type { WorkspaceContext } from "../workspace/context.js";
@@ -97,16 +95,7 @@ export function SourceControl({
   const { pending, run, setConfirm } = actions;
   const github = useGitHub();
   const ai = useQuery({ queryKey: aiKeys.status, queryFn: aiApi.status, staleTime: 60_000 });
-  const chatgpt = useQuery({
-    queryKey: aiKeys.chatgptProjectStatus(target.projectId, target.workspace),
-    queryFn: () => aiApi.chatgptProjectStatus(target.projectId, target.workspace),
-    enabled: ai.data?.enabled && ai.data.providers.some((provider) => provider.id === "chatgpt"),
-    retry: false,
-    staleTime: 30_000,
-  });
-  const providers = shipProviders(ai.data, chatgpt.data);
-  const needsCommit = status ? shipPlan(status, "").hasChanges : false;
-  const assistant = providers.pull_request !== null && (!needsCommit || providers.commit !== null);
+  const assistant = ai.data?.enabled && ai.data.providers.some((provider) => provider.linked);
   const ship: string | true | undefined = !assistant
     ? undefined
     : !github.data?.connected
@@ -315,12 +304,7 @@ export function SourceControl({
           />
         ) : null}
       </div>
-      <ShipDialog
-        ctx={ctx}
-        providers={providers}
-        open={shipping}
-        onClose={() => setShipping(false)}
-      />
+      <ShipDialog ctx={ctx} open={shipping} onClose={() => setShipping(false)} />
       <AddWorkspaceDialog
         open={creatingWorkspace !== null}
         project={project}

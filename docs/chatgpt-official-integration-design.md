@@ -1,5 +1,7 @@
 # Official ChatGPT Integration Design
 
+> Historical design: superseded by the user-requested restoration of the account-level Codex integration. The dashboard and gateway no longer use this per-machine flow. Published CLI 0.21.0 commands and protocol compatibility remain available independently. See the current AI Assist and self-hosting documentation.
+
 Status: selected implementation design, 2026-10-02. Architecture and UX prepared through the existing Claude Opus Dev profile in this workspace. Replaces the unofficial Codex-client link in `apps/gateway/src/ai/providers/openai.ts` with OpenAI's documented "ChatGPT plan usage in your open-source app" flow (Sign in with ChatGPT, dynamic agent registration, public Responses API).
 
 ## 1. Recommendation
