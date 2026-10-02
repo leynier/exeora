@@ -1,17 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { errorText } from "../../api.js";
 import {
-  type AiModel,
   type AiOperation,
   type AiProviderId,
   type AiProviderView,
   type AiSettings,
+  type AiSettingsProviderId,
   aiApi,
   aiKeys,
 } from "../../api-ai.js";
 import { fieldClass, fieldLabelClass } from "../Dialog.js";
-import { Select, type SelectOption } from "../Select.js";
+import { Select } from "../Select.js";
 import { useToast } from "../toast.js";
 
 const OPERATIONS: { id: AiOperation; label: string; hint: string }[] = [
@@ -25,27 +25,6 @@ const OPERATIONS: { id: AiOperation; label: string; hint: string }[] = [
 
 const MAX_INSTRUCTIONS = 4000;
 
-export interface ChatgptModelSource {
-  deviceId: string;
-  machineName: string;
-  models: AiModel[];
-  loading: boolean;
-}
-
-export interface ChatgptMachineOption {
-  deviceId: string;
-  machineName: string;
-}
-
-/** A lone local ChatGPT provider must become an explicit saved default. */
-export function defaultProviderOnSave(
-  defaultProvider: AiProviderId | null,
-  providers: readonly AiProviderView[],
-): AiProviderId | null {
-  if (defaultProvider) return defaultProvider;
-  return providers.length === 1 && providers[0]?.id === "chatgpt" ? "chatgpt" : null;
-}
-
 /**
  * Which provider and model each operation uses, and what else to tell it:
  * conventions, a language, a tone. Saved as a whole; the default provider
@@ -54,45 +33,31 @@ export function defaultProviderOnSave(
 export function AiOperationSettingsForm({
   providers,
   settings,
-  chatgptModels = [],
-  chatgptMachines = [],
-  chatgptMachineId,
-  onChatgptMachineChange,
 }: {
   providers: AiProviderView[];
   settings: AiSettings;
-  chatgptModels?: readonly ChatgptModelSource[];
-  chatgptMachines?: readonly ChatgptMachineOption[];
-  chatgptMachineId?: string;
-  onChatgptMachineChange?: (deviceId: string) => void;
 }) {
   const client = useQueryClient();
   const toast = useToast();
   const [draft, setDraft] = useState<AiSettings>(settings);
-  const [localChatgptMachineId, setLocalChatgptMachineId] = useState<string>(
-    chatgptModels[0]?.deviceId ?? "",
-  );
-  const machineOptions = chatgptMachines.length > 0 ? chatgptMachines : chatgptModels;
-  const selectedChatgptMachineId = chatgptMachineId ?? localChatgptMachineId;
-  const setChatgptMachine = useCallback(
-    (deviceId: string) => {
-      if (onChatgptMachineChange) onChatgptMachineChange(deviceId);
-      else setLocalChatgptMachineId(deviceId);
-    },
-    [onChatgptMachineChange],
-  );
-  const soleChatgpt = providers.length === 1 && providers[0]?.id === "chatgpt";
-  const effectiveDefaultProvider =
-    draft.defaultProvider ?? (soleChatgpt ? ("chatgpt" as const) : null);
   const save = useMutation({
-    mutationFn: () =>
-      aiApi.saveSettings({
-        defaultProvider: defaultProviderOnSave(draft.defaultProvider, providers),
+    mutationFn: () => {
+      if (
+        draft.defaultProvider === "chatgpt" ||
+        OPERATIONS.some(({ id }) => draft.operations[id].provider === "chatgpt")
+      ) {
+        throw new Error(
+          "Choose a linked provider to replace the previous ChatGPT plan connection.",
+        );
+      }
+      return aiApi.saveSettings({
+        defaultProvider: draft.defaultProvider,
         operations: {
           commit: draft.operations.commit,
           pull_request: draft.operations.pull_request,
         },
-      }),
+      });
+    },
     onSuccess: (saved) => {
       setDraft(saved);
       toast("AI Assist settings saved.");
@@ -100,40 +65,34 @@ export function AiOperationSettingsForm({
     },
     onError: (error) => toast(errorText(error, "The settings could not be saved."), "error"),
   });
-  const retainedProviders = [
-    draft.defaultProvider,
-    ...OPERATIONS.map(({ id }) => draft.operations[id].provider),
-  ].filter(
-    (id): id is AiProviderId => id !== null && !providers.some((provider) => provider.id === id),
-  );
-  const providerLabels: Record<AiProviderId, string> = {
-    openai: "OpenAI API",
-    xai: "Grok",
-    chatgpt: "ChatGPT plan",
-  };
-  const providerOptions: SelectOption[] = [
+  const providerOptions = [
     { value: "", label: "Default provider" },
-    ...providers.map((provider) => ({ value: provider.id, label: provider.label })),
-    ...Array.from(new Set(retainedProviders), (id) => ({
-      value: id,
-      label: `${providerLabels[id]} (not linked)`,
-      disabled: true,
+    ...providers.map((provider) => ({
+      value: provider.id,
+      label: `${provider.label}${provider.linked?.kind === "api_key" ? " (API key)" : ""}`,
     })),
+    ...Array.from(
+      new Set(
+        [draft.defaultProvider, ...OPERATIONS.map(({ id }) => draft.operations[id].provider)]
+          .filter((id): id is AiSettingsProviderId => id !== null)
+          .filter((id) => !providers.some((provider) => provider.id === id)),
+      ),
+      (id) => ({
+        value: id,
+        label: `${id === "openai" ? "ChatGPT / OpenAI" : id === "chatgpt" ? "Previous ChatGPT plan" : "Grok"} (not linked)`,
+        disabled: true,
+      }),
+    ),
   ];
-  useEffect(() => {
-    if (!machineOptions.some((source) => source.deviceId === selectedChatgptMachineId)) {
-      setChatgptMachine(machineOptions[0]?.deviceId ?? "");
-    }
-  }, [machineOptions, selectedChatgptMachineId, setChatgptMachine]);
-  const modelsOf = (provider: AiProviderId | null) => {
-    const id = provider ?? effectiveDefaultProvider ?? providers[0]?.id;
-    if (id === "chatgpt") {
-      return (
-        chatgptModels.find((source) => source.deviceId === selectedChatgptMachineId)?.models ?? []
-      );
-    }
-    return providers.find((item) => item.id === id)?.models ?? [];
-  };
+  const modelsOf = (provider: AiSettingsProviderId | null) =>
+    providers.find(
+      (item) =>
+        item.id ===
+        (provider ?? draft.defaultProvider ?? (providers.length === 1 ? providers[0]?.id : null)),
+    )?.models ?? [];
+  const unresolvedPlan =
+    draft.defaultProvider === "chatgpt" ||
+    OPERATIONS.some(({ id }) => draft.operations[id].provider === "chatgpt");
   const setOperation = (
     operation: AiOperation,
     patch: Partial<AiSettings["operations"][AiOperation]>,
@@ -154,14 +113,17 @@ export function AiOperationSettingsForm({
         save.mutate();
       }}
     >
-      {providers.length > 1 || soleChatgpt || draft.defaultProvider !== null ? (
+      {providerOptions.length > 2 ? (
         <div className="block">
           <span className={fieldLabelClass}>Default provider</span>
           <div className="mt-2">
             <Select
               label="Default provider"
-              value={draft.defaultProvider ?? (soleChatgpt ? "chatgpt" : "")}
-              options={providerOptions}
+              value={draft.defaultProvider ?? ""}
+              options={[
+                { value: "", label: "Automatic (first linked account)" },
+                ...providerOptions.filter((option) => option.value !== ""),
+              ]}
               onChange={(value) =>
                 setDraft((current) => ({
                   ...current,
@@ -175,16 +137,12 @@ export function AiOperationSettingsForm({
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {OPERATIONS.map((operation) => {
           const current = draft.operations[operation.id];
-          const operationProvider = current.provider ?? effectiveDefaultProvider;
           const models = modelsOf(current.provider);
-          const chatgptSource = chatgptModels.find(
-            (source) => source.deviceId === selectedChatgptMachineId,
-          );
           return (
             <fieldset key={operation.id} className="border-border-subtle rounded-lg border p-3">
               <legend className="text-title-md px-1">{operation.label}</legend>
               <p className="text-body-md text-foreground-faint">{operation.hint}</p>
-              {providers.length > 1 || current.provider !== null ? (
+              {providerOptions.length > 2 ? (
                 <div className="mt-3">
                   <span className={fieldLabelClass}>Provider</span>
                   <div className="mt-2">
@@ -204,36 +162,13 @@ export function AiOperationSettingsForm({
                 </div>
               ) : null}
               <div className="mt-3">
-                {operationProvider === "chatgpt" && machineOptions.length > 1 ? (
-                  <div className="mb-3">
-                    <span className={fieldLabelClass}>ChatGPT machine for model list</span>
-                    <div className="mt-2">
-                      <Select
-                        label={`${operation.label} ChatGPT machine`}
-                        value={selectedChatgptMachineId}
-                        options={machineOptions.map((source) => ({
-                          value: source.deviceId,
-                          label: source.machineName,
-                        }))}
-                        onChange={setChatgptMachine}
-                        wide
-                      />
-                    </div>
-                  </div>
-                ) : null}
                 <span className={fieldLabelClass}>Model</span>
                 <div className="mt-2">
                   <Select
                     label={`${operation.label} model`}
                     value={current.model ?? ""}
                     options={[
-                      {
-                        value: "",
-                        label:
-                          operationProvider === "chatgpt"
-                            ? `First available on ${chatgptSource?.machineName ?? "the machine"}`
-                            : `Default (${models[0]?.label ?? "provider's choice"})`,
-                      },
+                      { value: "", label: `Default (${models[0]?.label ?? "provider's choice"})` },
                       ...models.map((model) => ({ value: model.id, label: model.label })),
                     ]}
                     onChange={(value) => setOperation(operation.id, { model: value || null })}
@@ -258,8 +193,18 @@ export function AiOperationSettingsForm({
           );
         })}
       </div>
+      {unresolvedPlan ? (
+        <p className="text-body-md mt-3">
+          Link a ChatGPT subscription or choose a linked provider to replace the previous plan
+          connection before saving.
+        </p>
+      ) : null}
       <div className="mt-4 flex justify-end">
-        <button type="submit" className="btn btn-primary" disabled={save.isPending}>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={save.isPending || unresolvedPlan}
+        >
           {save.isPending ? "Saving…" : "Save settings"}
         </button>
       </div>

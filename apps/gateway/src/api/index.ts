@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import "../env.js";
-import { chatgpt } from "../ai/chatgpt.js";
 import { ai } from "../ai/routes.js";
 import { aiGenerate } from "../ai/routes-generate.js";
 import { pullRequests } from "../github/pull-requests/routes.js";
@@ -90,7 +89,6 @@ api.route("/", cloudScripts);
 api.route("/", github);
 api.route("/", ai);
 api.route("/", aiGenerate);
-api.route("/", chatgpt);
 api.route("/", pullRequests);
 
 // Administration panel. Mounted last so its middleware only sees /api/admin/*

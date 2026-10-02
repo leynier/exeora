@@ -6,26 +6,16 @@ import {
   type WorkspaceValue,
 } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ApiEnv } from "../api/router.js";
 import { dispatch, ownedTarget, targetQuery, workspaceError } from "../api/workspace-target.js";
 import { beginAudit, finishAudit } from "../audit.js";
-import { db, schema } from "../db/client.js";
 import { AI_PROVIDER_IDS, type AiOperation, type AiProviderId } from "../db/schema-ai.js";
 import "../env.js";
 import { uiClientName } from "../props.js";
-import { isCloudMachine } from "../workspace-placement.js";
 import { defaultModel } from "./catalog.js";
-import {
-  CHATGPT_RELAY_GENERATE_TIMEOUT_MS,
-  type ChatgptAction,
-  chatgptRelayFailure,
-  dispatchChatgpt,
-  parseChatgptGeneration,
-} from "./chatgpt.js";
 import { cleanupCommitMessage, cleanupPullRequest } from "./cleanup.js";
 import { current, linkedProviders } from "./credentials.js";
 import { outbound } from "./outbound.js";
@@ -33,7 +23,7 @@ import { commitPrompt, type Prompt, pullRequestPrompt } from "./prompts.js";
 import { GENERATE_TIMEOUT_MS, withTimeout } from "./providers/http.js";
 import { aiConfig, offeredProvider } from "./providers/index.js";
 import { AiError } from "./providers/types.js";
-import { aiFailure, chatgptFailure } from "./routes.js";
+import { aiFailure } from "./routes.js";
 import { readSettings } from "./settings.js";
 
 /**
@@ -117,16 +107,14 @@ async function generate(
   if (!target) return c.json({ error: "not_found" }, 404);
 
   // The provider: the one asked for, else the operation's, else the
-  // account's default, else the one provider the account linked, else the
-  // sole offered provider (used by a ChatGPT-only local deployment).
+  // account's default, else the one provider the account linked.
   const settings = await readSettings(c.env, userId);
   const operation = settings.operations[generation.operation];
-  const configuredProvider = chosen ?? operation.provider ?? settings.defaultProvider;
-  const linked = configuredProvider ? [] : await linkedProviders(c.env, userId);
   const providerId =
-    configuredProvider ??
-    linked[0]?.provider ??
-    (config.offered.length === 1 ? config.offered[0]?.provider.id : undefined);
+    chosen ??
+    operation.provider ??
+    settings.defaultProvider ??
+    (await linkedProviders(c.env, userId))[0]?.provider;
   const offered = providerId ? offeredProvider(config, providerId) : null;
   if (!offered) {
     return c.json(
@@ -134,37 +122,15 @@ async function generate(
       409,
     );
   }
-  const machineBound = offered.provider.machineBound === true;
-  if (machineBound) {
-    const device = await db(c.env)
-      .select({ kind: schema.devices.kind, revokedAt: schema.devices.revokedAt })
-      .from(schema.devices)
-      .where(and(eq(schema.devices.id, target.deviceId), eq(schema.devices.userId, userId)))
-      .get();
-    if (!device || device.revokedAt !== null) return c.json({ error: "not_found" }, 404);
-    if (device.kind !== "local" || (await isCloudMachine(c.env, target.deviceId))) {
-      return c.json(
-        {
-          error: "ai_chatgpt_unavailable_on_cloud",
-          message: "ChatGPT plan usage is available on local machines only.",
-        },
-        409,
-      );
-    }
+  const fetcher = outbound();
+  let credential: Awaited<ReturnType<typeof current>>;
+  try {
+    credential = await current(c.env, config, userId, offered.provider, fetcher);
+  } catch (error) {
+    if (error instanceof AiError) return aiFailure(c, error);
+    throw error;
   }
-  const fetcher = machineBound ? undefined : outbound();
-  let credential: Awaited<ReturnType<typeof current>> | undefined;
-  if (!machineBound) {
-    if (!fetcher)
-      throw new AiError("unavailable", "The AI provider is not ready to generate text.");
-    try {
-      credential = await current(c.env, config, userId, offered.provider, fetcher);
-    } catch (error) {
-      if (error instanceof AiError) return aiFailure(c, error);
-      throw error;
-    }
-  }
-  const model = operation.model ?? (machineBound ? undefined : defaultModel(offered.provider.id));
+  const model = operation.model ?? defaultModel(offered.provider.id);
 
   const audit = await beginAudit(c.env, {
     userId,
@@ -189,73 +155,17 @@ async function generate(
       await finishAudit(c.env, audit, { status: "error", errorCode: "NOTHING_TO_SUMMARIZE" });
       return c.json({ error: "ai_nothing_to_summarize", message: prepared.empty }, 422);
     }
-    let text: string;
-    let responseModel = model;
-    if (machineBound) {
-      const action: ChatgptAction = {
-        action: "chatgpt_generate",
-        ...(model ? { model } : {}),
-        instructions: prepared.system,
-        input: prepared.user,
-      };
-      const value = await dispatchChatgpt(
-        c.env,
-        userId,
-        target,
-        action,
-        withTimeout(CHATGPT_RELAY_GENERATE_TIMEOUT_MS, c.req.raw.signal),
-        projectId,
-      );
-      const generation = parseChatgptGeneration(value);
-      if (!generation.success) {
-        await finishAudit(c.env, audit, { status: "error", errorCode: "AI_INVALID_RESPONSE" });
-        return c.json(
-          { error: "ai_unavailable", message: "ChatGPT returned an invalid response." },
-          502,
-        );
-      }
-      if (generation.data.outcome === "failed") {
-        const reason = generation.data.reason ?? "failed";
-        await finishAudit(c.env, audit, {
-          status: "error",
-          errorCode: `AI_${reason.toUpperCase()}`,
-        });
-        return chatgptFailure(c, { ...generation.data, reason }, { deviceId: target.deviceId });
-      }
-      if (typeof generation.data.text !== "string" || !generation.data.model) {
-        await finishAudit(c.env, audit, { status: "error", errorCode: "AI_INVALID_RESPONSE" });
-        return c.json(
-          { error: "ai_unavailable", message: "ChatGPT returned an incomplete response." },
-          502,
-        );
-      }
-      text = generation.data.text;
-      responseModel = generation.data.model;
-    } else {
-      if (!fetcher || !credential || !model) {
-        throw new AiError("unavailable", "The AI provider is not ready to generate text.");
-      }
-      text = await offered.provider.generate(fetcher, credential, {
-        model,
-        system: prepared.system,
-        user: prepared.user,
-        signal: withTimeout(GENERATE_TIMEOUT_MS, c.req.raw.signal),
-      });
-    }
-    await finishAudit(c.env, audit, { status: "ok" });
-    return c.json({
-      ...generation.finish(text),
-      provider: offered.provider.id,
-      model: responseModel,
+    const text = await offered.provider.generate(fetcher, credential, {
+      model,
+      system: prepared.system,
+      user: prepared.user,
+      signal: withTimeout(GENERATE_TIMEOUT_MS, c.req.raw.signal),
     });
+    await finishAudit(c.env, audit, { status: "ok" });
+    return c.json({ ...generation.finish(text), provider: offered.provider.id, model });
   } catch (error) {
     await finishAudit(c.env, audit, { status: "error", errorCode: codeOf(error) });
     if (error instanceof AiError) return aiFailure(c, error);
-    if (machineBound && error instanceof ExeoraError) {
-      // The local plan has its own API contract. Do not expose workspace
-      // routing details or fall back to a billed gateway provider.
-      return chatgptRelayFailure(c, error);
-    }
     if (error instanceof ExeoraError) return workspaceError(c, error);
     if (c.req.raw.signal.aborted) return c.json({ error: "CANCELLED" }, 499 as never);
     console.error("ai generation failed", error);

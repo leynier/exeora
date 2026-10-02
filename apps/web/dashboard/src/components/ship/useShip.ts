@@ -6,7 +6,7 @@ import { type PullRequest, prApi } from "../../api-pr.js";
 import { keys } from "../../queries.js";
 import type { WorkspaceContext } from "../workspace/context.js";
 import { branchFromSubject, type ShipStep, type ShipStepState, shipPlan } from "./shipPlan.js";
-import type { ShipProviders } from "./shipProviders.js";
+import { shipProviders } from "./shipProviders.js";
 
 export type ShipProgress = {
   steps: { step: ShipStep; state: ShipStepState; note?: string }[];
@@ -26,7 +26,7 @@ const IDLE: ShipProgress = { steps: [], running: false, error: null, pullRequest
  * runs; the first failure stops the chain where it is, with the checkout in
  * whatever state that step reached, which is said in the error.
  */
-export function useShip(ctx: WorkspaceContext, providers: ShipProviders) {
+export function useShip(ctx: WorkspaceContext) {
   const client = useQueryClient();
   const [progress, setProgress] = useState<ShipProgress>(IDLE);
   const abort = useRef<AbortController | null>(null);
@@ -57,12 +57,15 @@ export function useShip(ctx: WorkspaceContext, providers: ShipProviders) {
         pullRequest: null,
       });
       const { projectId, workspace } = ctx.target;
-      const { commit: commitProvider, pull_request: pullRequestProvider } = providers;
       let current: GitStatus = status;
       let subject = "";
       try {
-        if (!pullRequestProvider || (plan.hasChanges && !commitProvider)) {
-          throw new Error("Connect the selected AI provider in Settings before shipping.");
+        const providers = shipProviders(await aiApi.status());
+        if (
+          (plan.steps.includes("commit_message") && !providers.commit) ||
+          !providers.pull_request
+        ) {
+          throw new Error("Link the configured AI providers in Settings before shipping changes.");
         }
         const step = async <T>(name: ShipStep, work: () => Promise<T>): Promise<T> => {
           if (controller.signal.aborted) throw new Error("Stopped.");
@@ -92,7 +95,7 @@ export function useShip(ctx: WorkspaceContext, providers: ShipProviders) {
           message = await step("commit_message", async () => {
             const result = await aiApi.commitMessage(
               projectId,
-              commitProvider ?? undefined,
+              providers.commit ?? undefined,
               workspace,
               controller.signal,
             );
@@ -115,7 +118,7 @@ export function useShip(ctx: WorkspaceContext, providers: ShipProviders) {
         const text = await step("pr_text", async () => {
           const result = await aiApi.pullRequest(
             projectId,
-            pullRequestProvider,
+            providers.pull_request ?? undefined,
             base,
             workspace,
             controller.signal,
@@ -161,7 +164,7 @@ export function useShip(ctx: WorkspaceContext, providers: ShipProviders) {
         abort.current = null;
       }
     },
-    [client, ctx, mark, providers],
+    [client, ctx, mark],
   );
 
   const stop = useCallback(() => abort.current?.abort(), []);

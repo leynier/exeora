@@ -19,9 +19,63 @@ test("writes a commit message from what is staged, unless the field moved on", a
   await expect(list.getByRole("button", { name: "Commit 2 files" })).toBeEnabled();
 });
 
-test("lists API-key OpenAI, local ChatGPT plan, and links Grok with a device code", async ({
-  page,
-}) => {
+test("links ChatGPT centrally through the Codex device page", async ({ page }) => {
+  let linked = false;
+  let polls = 0;
+  await signedIn(page);
+  await mockWorkspaceV2(page, { ai: true });
+  await page.route("**/api/ai", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        ...aiStatus,
+        providers: aiStatus.providers.map((provider) =>
+          provider.id === "openai"
+            ? {
+                ...provider,
+                linked: linked ? { kind: "oauth", accountLabel: "codex@example.com" } : null,
+              }
+            : provider,
+        ),
+      },
+    }),
+  );
+  await page.route("**/api/ai/providers/openai/device", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        userCode: "CODE-1234",
+        verificationUrl: "https://auth.openai.com/codex/device",
+        interval: 1,
+        expiresAt: Date.now() + 60_000,
+      },
+    }),
+  );
+  await page.route("**/api/ai/providers/openai/device/poll", (route) => {
+    polls += 1;
+    linked = polls >= 2;
+    return route.fulfill({
+      status: 200,
+      json: linked
+        ? { status: "granted", linked: { kind: "oauth", accountLabel: "codex@example.com" } }
+        : { status: "pending" },
+    });
+  });
+  await openWorkspace(page, "/dashboard/settings");
+  await page.getByRole("button", { name: "Link subscription", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Link ChatGPT", exact: true });
+  await expect(dialog.getByText("CODE-1234")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Open the provider's page" })).toHaveAttribute(
+    "href",
+    "https://auth.openai.com/codex/device",
+  );
+  await expect(dialog).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByText("codex@example.com", { exact: true })).toBeVisible();
+  await expect(page.getByText("subscription", { exact: true })).toBeVisible();
+  await expect(page.getByText("ChatGPT plan", { exact: true })).toHaveCount(0);
+});
+
+test("lists the assistants in Settings and links one with a device code", async ({ page }) => {
   let polls = 0;
   await signedIn(page);
   await mockWorkspaceV2(page, { ai: true });
@@ -50,21 +104,9 @@ test("lists API-key OpenAI, local ChatGPT plan, and links Grok with a device cod
   const card = page
     .getByRole("region", { name: "AI Assist" })
     .or(page.locator("section", { hasText: "AI Assist" }).first());
-  await expect(
-    page
-      .locator("p.text-title-md")
-      .filter({ hasText: /^OpenAI API$/ })
-      .first(),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator("p.text-title-md")
-      .filter({ hasText: /^ChatGPT plan$/ })
-      .first(),
-  ).toBeVisible();
+  await expect(page.getByText("ChatGPT", { exact: true })).toBeVisible();
   await expect(page.getByText(aiStatus.providers[0]?.linked?.accountLabel ?? "")).toBeVisible();
-  await expect(page.getByText("API key", { exact: true })).toBeVisible();
-  await expect(page.getByText("Old sign-in", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("subscription", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Link subscription" }).click();
   const dialog = page.getByRole("dialog", { name: "Link Grok" });
@@ -76,4 +118,34 @@ test("lists API-key OpenAI, local ChatGPT plan, and links Grok with a device cod
   await expect(dialog).toBeHidden({ timeout: 10_000 });
   await expect.poll(() => polls).toBeGreaterThanOrEqual(2);
   void card;
+});
+
+test("keeps a disconnected provider preference visible with one linked account", async ({
+  page,
+}) => {
+  await signedIn(page);
+  await mockWorkspaceV2(page, { ai: true });
+  await page.route("**/api/ai", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        ...aiStatus,
+        settings: {
+          ...aiStatus.settings,
+          defaultProvider: "xai",
+          operations: {
+            ...aiStatus.settings.operations,
+            commit: { provider: "xai", model: null, instructions: "Keep style" },
+          },
+        },
+      },
+    }),
+  );
+  await openWorkspace(page, "/dashboard/settings");
+  await expect(page.getByRole("button", { name: /^Default provider/ })).toContainText(
+    "Grok (not linked)",
+  );
+  await expect(page.getByRole("button", { name: /^Commit messages provider/ })).toContainText(
+    "Grok (not linked)",
+  );
 });

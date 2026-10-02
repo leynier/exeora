@@ -37,28 +37,33 @@ export const repository = {
   url: "https://github.com/example/e2e",
 };
 
-import {
-  type AiStatusFixture,
-  aiStatus,
-  type ChatgptMock,
-  chatgptLogin,
-  chatgptStatus,
-} from "./chatgpt-mock.js";
-
-export {
-  type AiStatusFixture,
-  aiStatus,
-  type ChatgptLoginFixture,
-  type ChatgptMock,
-  type ChatgptModelsContext,
-  type ChatgptModelsFixture,
-  type ChatgptProjectStatusContext,
-  type ChatgptStatusFixture,
-  chatgptLogin,
-  chatgptOnlyAiStatus,
-  chatgptReadyStatus,
-  chatgptStatus,
-} from "./chatgpt-mock.js";
+export const aiStatus = {
+  enabled: true,
+  providers: [
+    {
+      id: "openai",
+      label: "ChatGPT",
+      authKinds: ["oauth", "api_key"],
+      linked: { kind: "oauth", accountLabel: "ada@example.com" },
+      models: [{ id: "gpt-5.5", label: "GPT-5.5" }],
+    },
+    {
+      id: "xai",
+      label: "Grok",
+      authKinds: ["oauth", "api_key"],
+      linked: null,
+      models: [{ id: "grok-4-fast", label: "Grok 4 Fast" }],
+    },
+  ],
+  settings: {
+    defaultProvider: "openai",
+    operations: {
+      commit: { provider: null, model: null, instructions: null },
+      pull_request: { provider: null, model: null, instructions: null },
+    },
+  },
+  oauthAvailable: true,
+};
 
 export type PullRequestFixture = typeof pullRequest;
 
@@ -68,14 +73,8 @@ export async function mockIntegrations(
     onRequest?: (request: Request) => void;
     github?: { pullRequest: PullRequestFixture | null };
     ai?: boolean;
-    aiStatus?: AiStatusFixture;
-    chatgpt?: ChatgptMock;
   },
 ) {
-  const chatgptStatusRequests = new Map<string, number>();
-  const chatgptProjectStatusRequests = new Map<string, number>();
-  const chatgptLoginModes = new Map<string, string>();
-  const chatgptLoginRequests = new Map<string, number>();
   const integrations = async (route: Route) => {
     const request = route.request();
     options.onRequest?.(request);
@@ -92,119 +91,10 @@ export async function mockIntegrations(
       await route.fulfill({
         status: 200,
         json: options.ai
-          ? (options.aiStatus ?? aiStatus)
+          ? aiStatus
           : { enabled: false, providers: [], settings: null, oauthAvailable: false },
       });
       return;
-    }
-    const projectChatgpt = path.match(/^\/api\/projects\/([^/]+)\/ai\/chatgpt(?:\/(.*))?$/);
-    if (projectChatgpt) {
-      const projectId = decodeURIComponent(projectChatgpt[1] ?? "");
-      const action = projectChatgpt[2] ?? "status";
-      const workspace = url.searchParams.get("workspace") ?? undefined;
-      if (action === "status" && request.method() === "GET") {
-        if (!options.chatgpt) return route.fallback();
-        const key = `${projectId}:${workspace ?? ""}`;
-        const requestNumber = (chatgptProjectStatusRequests.get(key) ?? 0) + 1;
-        chatgptProjectStatusRequests.set(key, requestNumber);
-        const configured = options.chatgpt.projectStatus;
-        if (typeof configured === "function") {
-          await route.fulfill({
-            status: 200,
-            json: configured({ projectId, workspace, requestNumber }),
-          });
-          return;
-        }
-        if (configured) {
-          await route.fulfill({ status: 200, json: configured });
-          return;
-        }
-        if (typeof options.chatgpt.status === "function") {
-          await route.fulfill({
-            status: 200,
-            json: options.chatgpt.status({
-              deviceId: "project",
-              requestNumber,
-              loginMode: undefined,
-            }),
-          });
-          return;
-        }
-        await route.fulfill({ status: 200, json: options.chatgpt.status ?? chatgptStatus });
-        return;
-      }
-      if (action === "models" && request.method() === "GET") {
-        const configured = options.chatgpt.models;
-        const value =
-          typeof configured === "function"
-            ? configured({ deviceId: `project:${projectId}`, requestNumber: 1 })
-            : (configured ?? { models: [{ id: "gpt-5.5", label: "GPT-5.5" }] });
-        await route.fulfill({ status: 200, json: value });
-        return;
-      }
-    }
-    const deviceChatgpt = path.match(/^\/api\/devices\/([^/]+)\/ai\/chatgpt(?:\/(.*))?$/);
-    if (deviceChatgpt) {
-      const deviceId = decodeURIComponent(deviceChatgpt[1] ?? "");
-      const action = deviceChatgpt[2] ?? "status";
-      if (action === "status" && request.method() === "GET") {
-        const requestNumber = (chatgptStatusRequests.get(deviceId) ?? 0) + 1;
-        chatgptStatusRequests.set(deviceId, requestNumber);
-        const status = options.chatgpt?.status;
-        const value =
-          typeof status === "function"
-            ? status({
-                deviceId,
-                requestNumber,
-                loginMode: chatgptLoginModes.get(deviceId),
-              })
-            : (status ?? chatgptStatus);
-        await route.fulfill({ status: 200, json: value });
-        return;
-      }
-      if (action === "login" && request.method() === "POST") {
-        const body = request.postDataJSON() as { mode?: string };
-        const mode = body.mode ?? "new";
-        chatgptLoginModes.set(deviceId, mode);
-        const requestNumber = (chatgptLoginRequests.get(deviceId) ?? 0) + 1;
-        chatgptLoginRequests.set(deviceId, requestNumber);
-        const login = options.chatgpt?.login;
-        const value =
-          typeof login === "function"
-            ? login({ deviceId, mode, requestNumber })
-            : (login ?? chatgptLogin);
-        await route.fulfill({ status: 200, json: value });
-        return;
-      }
-      if (action === "login/cancel" && request.method() === "POST") {
-        await route.fulfill({ status: 200, json: { state: "signed_out" } });
-        return;
-      }
-      if (action === "welcome" && request.method() === "POST") {
-        await route.fulfill({ status: 200, json: { acknowledged: true } });
-        return;
-      }
-      if (action === "logout" && request.method() === "POST") {
-        await route.fulfill({
-          status: 200,
-          json: options.chatgpt?.logout ?? { revocationConfirmed: true },
-        });
-        return;
-      }
-      if (action === "models" && request.method() === "GET") {
-        const requestNumber = (chatgptStatusRequests.get(`models:${deviceId}`) ?? 0) + 1;
-        chatgptStatusRequests.set(`models:${deviceId}`, requestNumber);
-        const configured = options.chatgpt?.models;
-        const value =
-          typeof configured === "function"
-            ? configured({ deviceId, requestNumber })
-            : (configured ?? { models: [{ id: "gpt-5.5", label: "GPT-5.5" }] });
-        await route.fulfill({
-          status: 200,
-          json: value,
-        });
-        return;
-      }
     }
     if (path.endsWith("/ai/commit-message")) {
       await route.fulfill({
@@ -372,7 +262,6 @@ export async function mockIntegrations(
     "**/api/github",
     "**/api/ai",
     "**/api/ai/**",
-    "**/api/devices/**",
     "**/api/projects/*/pull-request**",
     "**/api/projects/*/ai/**",
   ]) {

@@ -16,7 +16,7 @@ import { users } from "./schema.js";
  * file is at its length limit, and `client.ts` merges them into one object.
  */
 
-export const AI_PROVIDER_IDS = ["openai", "xai", "chatgpt"] as const;
+export const AI_PROVIDER_IDS = ["openai", "xai"] as const;
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 
 export const AI_AUTH_KINDS = ["oauth", "api_key"] as const;
