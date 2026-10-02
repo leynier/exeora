@@ -6,6 +6,7 @@ import { externalHttpsUrl } from "../../external-url.js";
 import { Dialog, DialogActions, DialogError } from "../Dialog.js";
 import type { WorkspaceContext } from "../workspace/context.js";
 import { STEP_LABELS } from "./shipPlan.js";
+import type { ShipProviders } from "./shipProviders.js";
 import { useShip } from "./useShip.js";
 
 /**
@@ -15,14 +16,16 @@ import { useShip } from "./useShip.js";
  */
 export function ShipDialog({
   ctx,
+  providers,
   open,
   onClose,
 }: {
   ctx: WorkspaceContext;
+  providers: ShipProviders;
   open: boolean;
   onClose: () => void;
 }) {
-  const ship = useShip(ctx);
+  const ship = useShip(ctx, providers);
   const { run, reset } = ship;
   // The base is the repository's default branch, which GitHub knows.
   const lookup = useQuery({

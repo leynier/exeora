@@ -37,6 +37,29 @@ Upgrade an existing installation with `exeora upgrade`. It resolves the
 latest stable GitHub release, verifies the published SHA-256 checksum, and
 replaces the current executable in place on Linux, macOS, and Windows.
 
+## ChatGPT plan usage
+
+The upcoming CLI 0.21.0 adds the official [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source/). If you install the CLI from a checkout, run this from the repository root so Cargo uses the committed lockfile:
+
+```sh
+cargo install --path crates/exeora-cli --locked
+```
+
+The registration and credential files belong to the machine running this CLI. Use these commands there:
+
+```sh
+exeora chatgpt login
+exeora chatgpt status
+exeora chatgpt models
+exeora chatgpt logout
+```
+
+An eligible ChatGPT Plus or Pro account must grant `chatgpt.tokens.use.direct` for plan usage. If you signed in without that permission, run `exeora chatgpt login --enable-plan` to grant it. The CLI calls `https://api.openai.com/v1/responses` with the local credential; the credential is never uploaded to the gateway or Exeora Cloud. ChatGPT plan usage is unavailable in `exeora connect --cloud`.
+
+The sign-in callback is `http://127.0.0.1:<port>/auth/callback`, so the browser must run on the same machine as the CLI. On a headless or SSH machine, use `exeora chatgpt login --no-browser` there and open the printed URL through a port-forward to that machine. A ChatGPT plan failure does not fall back to an API key; choose the OpenAI API-key provider explicitly when you want that path.
+
+An old OpenAI subscription link from Exeora's unofficial Codex flow is legacy. It is not migrated automatically; sign in again with `exeora chatgpt login` on the machine that will run the request, or use an API key. See OpenAI's [registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions) and [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference) documentation for the provider contract.
+
 ## Projects and where they live
 
 A project is one git repository. It lives in as many locations as you like: your own machines, and Exeora Cloud. One set of commands covers all of them, and `--on <machine|cloud>` says where.

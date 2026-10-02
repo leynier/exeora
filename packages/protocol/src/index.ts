@@ -9,6 +9,7 @@ export * from "./repository.js";
 export * from "./tools.js";
 export * from "./tools-account.js";
 export * from "./workspace.js";
+export * from "./workspace-chatgpt.js";
 export * from "./workspace-features.js";
 export * from "./workspace-files.js";
 export * from "./workspace-git-v2.js";

@@ -104,6 +104,9 @@ describe("which authenticated requests are counted", () => {
   it("counts every request that spends the account's AI provider budget", () => {
     expect(limiterFor(env, "POST", "/api/ai/providers/openai/device")).toBe(env.RL_WRITE);
     expect(limiterFor(env, "POST", "/api/projects/prj_1/ai/commit-message")).toBe(env.RL_WRITE);
+    expect(limiterFor(env, "POST", "/api/devices/dev_1/ai/chatgpt/login")).toBe(env.RL_WRITE);
+    expect(limiterFor(env, "DELETE", "/api/devices/dev_1/ai/chatgpt")).toBe(env.RL_WRITE);
+    expect(limiterFor(env, "GET", "/api/devices/dev_1/ai/chatgpt")).toBeUndefined();
     // Storing a key checks it with the provider, which a loop would spend as well.
     expect(limiterFor(env, "PUT", "/api/ai/providers/xai/key")).toBe(env.RL_WRITE);
     expect(limiterFor(env, "GET", "/api/ai")).toBeUndefined();

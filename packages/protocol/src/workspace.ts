@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RepositoryRef } from "./repository.js";
+import { CHATGPT_ACTIONS, CHATGPT_VALUES } from "./workspace-chatgpt.js";
 import { FILE_MUTATION_ACTIONS, FILE_READ_ACTIONS, FILE_VALUES } from "./workspace-files.js";
 import { GIT_V2_MUTATION_ACTIONS, GIT_V2_READ_ACTIONS, GIT_V2_VALUES } from "./workspace-git-v2.js";
 import { SEARCH_MUTATION_ACTIONS, SEARCH_READ_ACTIONS, SEARCH_VALUES } from "./workspace-search.js";
@@ -147,6 +148,7 @@ export const WorkspaceAction = z.discriminatedUnion("action", [
   ...FILE_MUTATION_ACTIONS,
   ...SEARCH_READ_ACTIONS,
   ...SEARCH_MUTATION_ACTIONS,
+  ...CHATGPT_ACTIONS,
 ]);
 
 export type WorkspaceAction = z.infer<typeof WorkspaceAction>;
@@ -203,6 +205,7 @@ export const WorkspaceValue = z.discriminatedUnion("kind", [
   ...GIT_V2_VALUES,
   ...FILE_VALUES,
   ...SEARCH_VALUES,
+  ...CHATGPT_VALUES,
 ]);
 export type WorkspaceValue = z.infer<typeof WorkspaceValue>;
 

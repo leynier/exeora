@@ -2,6 +2,7 @@ use crate::{
     CLI_VERSION,
     api::ApiClient,
     auth::AuthManager,
+    chatgpt::ChatgptService,
     cloud::hooks::gate::{self, Gate},
     config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
     error::{ErrorCode, ExeoraError},
@@ -93,6 +94,7 @@ impl ConnectMode {
 const CLOUD_WORKSPACE_MESSAGE: &str =
     "Cloud workspaces are machines, managed from the dashboard and the gateway, not from here.";
 const CLOUD_PREPARE_MESSAGE: &str = "A cloud machine holds the one repository it was created for. Projects are put on Exeora Cloud from the dashboard and the gateway, not cloned from here.";
+const CHATGPT_V1_FEATURE: &str = "chatgpt-v1";
 /// The largest valid relay frame is a little above the protocol's 1 MiB
 /// result cap (MCP catalogs are larger), while still bounding JSON buffering
 /// if a gateway or proxy sends an unexpected message.
@@ -243,6 +245,7 @@ pub async fn connect_forever(
     }
     let lifecycle_lock = Arc::new(Mutex::new(()));
     let config_path = config.path().to_path_buf();
+    let chatgpt = ChatgptService::new(&config_path, mode.is_local())?;
     let gateway = config.gateway_url();
     let mut delay = Duration::from_secs(1);
     let mut rejected_delay = Duration::from_millis(REJECTED_BACKOFF_MIN_MS);
@@ -272,6 +275,7 @@ pub async fn connect_forever(
             &device_id,
             &projects,
             config_path.clone(),
+            chatgpt.clone(),
             auth.clone(),
             api.clone(),
             engine.clone(),
@@ -567,6 +571,7 @@ async fn connect_once(
     device_id: &str,
     projects: &[ProjectEntry],
     config_path: PathBuf,
+    chatgpt: Arc<ChatgptService>,
     auth: Arc<AuthManager>,
     api: crate::api::ApiClient,
     engine: Arc<ToolEngine>,
@@ -792,7 +797,7 @@ async fn connect_once(
                                 spawn_mcp_call(message, config_path.clone(), mcp.clone(), in_flight.clone(), out_tx.clone(), json_output, gate.clone()).await;
                             }
                             Some("workspace.call") => {
-                                spawn_workspace_call(message, config_path.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
+                                spawn_workspace_call(message, config_path.clone(), chatgpt.clone(), api.clone(), workspace.clone(), lifecycle_lock.clone(), in_flight.clone(), out_tx.clone(), json_output, !mode.is_local()).await;
                             }
                             Some("terminal.open") | Some("terminal.input") | Some("terminal.resize") | Some("terminal.close") => {
                                 route_terminal_message(message, config_path.clone(), workspace.clone(), terminal_tx.clone(), gate.clone(), held_terminals.clone(), connection.clone()).await;
@@ -1502,7 +1507,7 @@ fn announced_features(local: bool) -> Vec<&'static str> {
         "mcp-proxy-v1",
     ];
     if local {
-        features.push(PROJECT_CLONE_FEATURE);
+        features.extend([PROJECT_CLONE_FEATURE, CHATGPT_V1_FEATURE]);
     } else {
         // The scripts of a project run in its instances and nowhere else.
         features.extend([CLOUD_FEATURE, CLOUD_HOOKS_FEATURE]);
@@ -1548,6 +1553,7 @@ async fn handle_approval(
 async fn spawn_workspace_call(
     message: Value,
     config_path: PathBuf,
+    chatgpt: Arc<ChatgptService>,
     api: crate::api::ApiClient,
     workspace: Arc<WorkspaceEngine>,
     lifecycle_lock: LifecycleLock,
@@ -1561,9 +1567,6 @@ async fn spawn_workspace_call(
         .and_then(Value::as_str)
         .map(str::to_owned)
     else {
-        return;
-    };
-    let Some(project_id) = message.get("projectId").and_then(Value::as_str) else {
         return;
     };
     let started = now_ms();
@@ -1582,6 +1585,24 @@ async fn spawn_workspace_call(
         return;
     }
     let action = message.get("action").cloned().unwrap_or_else(|| json!({}));
+    if action
+        .get("action")
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.starts_with("chatgpt_"))
+    {
+        if cloud {
+            send_error(ExeoraError::new(
+                ErrorCode::Forbidden,
+                "ChatGPT is unavailable on Exeora Cloud machines.",
+            ));
+            return;
+        }
+        spawn_chatgpt_call(request_id, action, started, chatgpt, in_flight, outgoing).await;
+        return;
+    }
+    let Some(project_id) = message.get("projectId").and_then(Value::as_str) else {
+        return;
+    };
     // Answered before the project is looked up: preparing a project is how a
     // machine comes to have one the config does not know yet.
     if action.get("action").and_then(Value::as_str) == Some("project_prepare") {
@@ -1663,6 +1684,40 @@ async fn spawn_workspace_call(
             .await
         } else {
             workspace.execute(&target.root, action, cancel).await
+        };
+        in_flight.lock().await.remove(&request_id);
+        let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
+    });
+}
+
+/// Handles ChatGPT actions before project lookup. These calls are scoped to
+/// the local machine, and their action/value payloads are deliberately never
+/// logged: the service owns the token boundary and returns protocol DTOs.
+async fn spawn_chatgpt_call(
+    request_id: String,
+    action: Value,
+    started: u64,
+    chatgpt: Arc<ChatgptService>,
+    in_flight: InFlight,
+    outgoing: mpsc::UnboundedSender<Value>,
+) {
+    let cancel = CancellationToken::new();
+    in_flight.lock().await.insert(
+        request_id.clone(),
+        ActiveCall {
+            cancel: cancel.clone(),
+            root: None,
+        },
+    );
+    tokio::spawn(async move {
+        let result = tokio::select! {
+            _ = cancel.cancelled() => Err(ExeoraError::new(
+                ErrorCode::Cancelled,
+                "The ChatGPT request was cancelled.",
+            )),
+            result = chatgpt.handle(action) => result.map_err(|_| {
+                ExeoraError::new(ErrorCode::InternalError, "The ChatGPT request failed.")
+            }),
         };
         in_flight.lock().await.remove(&request_id);
         let _ = outgoing.send(workspace_result_frame(&request_id, started, result));
@@ -2289,6 +2344,7 @@ mod tests {
         cloud: bool,
     ) -> Value {
         let (outgoing, mut results) = mpsc::unbounded_channel();
+        let chatgpt = crate::chatgpt::ChatgptService::new(config_path, !cloud).expect("chatgpt");
         spawn_workspace_call(
             json!({
                 "type": "workspace.call",
@@ -2297,6 +2353,7 @@ mod tests {
                 "action": action,
             }),
             config_path.to_path_buf(),
+            chatgpt,
             gateway.api().await,
             Arc::new(WorkspaceEngine::new()),
             Arc::new(Mutex::new(())),
@@ -2515,9 +2572,11 @@ done
     #[test]
     fn announces_project_cloning_only_from_a_machine_of_the_person() {
         assert!(announced_features(true).contains(&"project-clone-v1"));
+        assert!(announced_features(true).contains(&"chatgpt-v1"));
         assert!(!announced_features(true).contains(&"cloud-v1"));
         assert!(announced_features(false).contains(&"cloud-v1"));
         assert!(!announced_features(false).contains(&"project-clone-v1"));
+        assert!(!announced_features(false).contains(&"chatgpt-v1"));
     }
 
     #[test]
@@ -2968,6 +3027,39 @@ done
         )
         .await;
         assert_eq!(frame["result"]["error"]["code"], "UNKNOWN_PROJECT");
+        assert!(gateway.received().is_empty());
+    }
+
+    #[tokio::test]
+    async fn chatgpt_device_actions_are_refused_before_cloud_project_lookup() {
+        let directory = tempdir().unwrap();
+        let config_path = directory.path().join("config.json");
+        let gateway = Gateway::start(|_, _, _| (500, json!({ "unexpected": true }))).await;
+        let (outgoing, mut frames) = mpsc::unbounded_channel();
+        let chatgpt = crate::chatgpt::ChatgptService::new(&config_path, false).unwrap();
+        spawn_workspace_call(
+            json!({
+                "type": "workspace.call",
+                "requestId": "chatgpt_cloud",
+                "action": { "action": "chatgpt_status" },
+            }),
+            config_path,
+            chatgpt,
+            gateway.api().await,
+            Arc::new(WorkspaceEngine::new()),
+            Arc::new(Mutex::new(())),
+            Arc::new(Mutex::new(HashMap::new())),
+            outgoing,
+            true,
+            true,
+        )
+        .await;
+        let frame = tokio::time::timeout(Duration::from_secs(5), frames.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame["result"]["ok"], false);
+        assert_eq!(frame["result"]["error"]["code"], "FORBIDDEN");
         assert!(gateway.received().is_empty());
     }
 

@@ -95,12 +95,14 @@ export function CreatePullRequest({
             onChange={(event) => setTitle(event.target.value)}
             disabled={create.isPending}
             autoComplete="off"
-            className={`${fieldClass} pr-9`}
+            className={fieldClass}
           />
         </label>
-        <div className="absolute top-7 right-1.5">
+        <div className="mt-1 flex justify-end">
           <GenerateButton
+            operation="pull_request"
             label="Write the title and description"
+            target={ctx.target}
             disabled={create.isPending}
             fieldValue={() => `${fields.current.title}\n${fields.current.body}`}
             generate={generate}

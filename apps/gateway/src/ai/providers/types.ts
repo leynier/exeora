@@ -72,13 +72,18 @@ export interface GenerateRequest {
 export interface AiProvider {
   id: AiProviderId;
   label: string;
+  /** A local-machine provider never creates an account credential row. */
+  machineBound?: boolean;
   /** What the provider can link by at all. `aiConfig` narrows it by what the gateway allows. */
   authKinds: readonly AiAuthKind[];
   /** Whether the gateway holds what the OAuth flow needs. Absent means it always does. */
   oauthConfigured?: (env: AiEnv) => boolean;
-  startDeviceLogin(fetcher: typeof fetch, env: AiEnv): Promise<DeviceLoginStart>;
-  pollDeviceLogin(fetcher: typeof fetch, env: AiEnv, login: DeviceLogin): Promise<DevicePoll>;
-  refresh(fetcher: typeof fetch, env: AiEnv, refreshToken: string): Promise<GrantedTokens>;
+  /** Absent for documented API-key-only providers. */
+  startDeviceLogin?: (fetcher: typeof fetch, env: AiEnv) => Promise<DeviceLoginStart>;
+  /** Absent for documented API-key-only providers. */
+  pollDeviceLogin?: (fetcher: typeof fetch, env: AiEnv, login: DeviceLogin) => Promise<DevicePoll>;
+  /** Absent for documented API-key-only providers. */
+  refresh?: (fetcher: typeof fetch, env: AiEnv, refreshToken: string) => Promise<GrantedTokens>;
   validateKey(fetcher: typeof fetch, key: string): Promise<{ accountLabel?: string | undefined }>;
   listModels(fetcher: typeof fetch, credential: Credential): Promise<AiModel[]>;
   generate(
@@ -96,7 +101,9 @@ export type AiErrorKind =
   /** The key the person typed is not one the provider accepts. */
   | "invalid_key"
   /** The account never linked this provider. */
-  | "not_linked";
+  | "not_linked"
+  /** A credential row was written by a retired integration and is display-only. */
+  | "legacy";
 
 /**
  * Where a provider is the problem. `message` is a sentence that can be shown

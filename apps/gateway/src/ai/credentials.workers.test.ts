@@ -3,12 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { decryptSecret } from "../cloud/credentials.js";
 import { db, schema } from "../db/client.js";
-import { current, linkedProviders, storeCredential } from "./credentials.js";
-import { type Asked, aiOn, CREDENTIALS_KEY, fakeProvider, seedUser } from "./fixtures.js";
+import { current, forgetCredential, linkedProviders, storeCredential } from "./credentials.js";
+import { aiOn, CREDENTIALS_KEY, fakeProvider, seedUser } from "./fixtures.js";
 import { openai } from "./providers/openai.js";
-import { AiError } from "./providers/types.js";
+import { type AiEnv, AiError, type AiProvider, type GrantedTokens } from "./providers/types.js";
 
-/** The OAuth credential over its life: handed out, renewed, and given up on. */
+/** Credential routing: legacy OpenAI rows are inert; API keys and xAI OAuth renew normally. */
 
 const USER = "usr_ai_credentials";
 const KEY = { credentialsKey: CREDENTIALS_KEY };
@@ -18,15 +18,15 @@ beforeEach(async () => {
   await seedUser(USER);
 });
 
-const stored = () =>
+const stored = (provider: "openai" | "xai") =>
   db(env)
     .select()
     .from(schema.aiProviders)
-    .where(and(eq(schema.aiProviders.userId, USER), eq(schema.aiProviders.provider, "openai")))
+    .where(and(eq(schema.aiProviders.userId, USER), eq(schema.aiProviders.provider, provider)))
     .get();
 
-async function opened() {
-  const row = await stored();
+async function opened(provider: "openai" | "xai") {
+  const row = await stored(provider);
   if (!row) return null;
   return {
     access: await decryptSecret(CREDENTIALS_KEY, row.accessCiphertext),
@@ -37,40 +37,70 @@ async function opened() {
   };
 }
 
-/** A token five minutes short of its renewal margin. */
-async function aboutToExpire(now: number) {
-  await storeCredential(env, KEY, USER, "openai", "oauth", {
-    access: "at_1",
-    refresh: "rt_1",
-    expiresAt: now + 60_000,
-    accountId: "acct_1",
-  });
+function xaiRefreshProvider(refresh: (token: string) => Promise<GrantedTokens>): AiProvider {
+  return {
+    id: "xai",
+    label: "Grok / xAI",
+    authKinds: ["oauth"],
+    refresh: async (_fetcher: typeof fetch, _env: AiEnv, token: string) => refresh(token),
+  } as unknown as AiProvider;
 }
 
-const isRefresh = (asked: Asked) =>
-  asked.url === "https://auth.openai.com/oauth/token" &&
-  asked.form().get("grant_type") === "refresh_token";
+const aboutToExpireXai = (now: number) =>
+  storeCredential(env, KEY, USER, "xai", "oauth", {
+    access: "xai-at-1",
+    refresh: "xai-rt-1",
+    expiresAt: now + 60_000,
+    accountId: "xai-account",
+  });
 
-const renewed = () =>
-  Response.json({ access_token: "at_2", refresh_token: "rt_2", expires_in: 3600 });
+describe("legacy OpenAI credentials", () => {
+  it("marks the row legacy and refuses before decryption, refresh or outbound fetch", async () => {
+    await storeCredential(env, KEY, USER, "openai", "oauth", {
+      access: "legacy-access",
+      refresh: "legacy-refresh",
+      accountLabel: "legacy@example.com",
+      expiresAt: Date.now() + 1,
+    });
+    const fake = fakeProvider(() => {
+      throw new Error("legacy credential attempted an outbound request");
+    });
+
+    // A wrong key proves the branch happens before decryptSecret. The row must remain
+    // available for the explicit unlink action.
+    const failure = await current(
+      aiOn(),
+      { credentialsKey: "a-different-key" },
+      USER,
+      openai,
+      fake.fetcher,
+    ).catch((error) => error);
+    expect(failure).toBeInstanceOf(AiError);
+    expect(failure).toMatchObject({ kind: "legacy" });
+    expect(fake.asked).toHaveLength(0);
+    expect(await opened("openai")).toMatchObject({
+      access: "legacy-access",
+      refresh: "legacy-refresh",
+    });
+    expect(await linkedProviders(env, USER)).toEqual([
+      {
+        provider: "openai",
+        kind: "oauth",
+        accountLabel: "legacy@example.com",
+        legacy: true,
+      },
+    ]);
+
+    expect(await forgetCredential(env, USER, "openai")).toBe(true);
+    expect(await stored("openai")).toBeUndefined();
+  });
+});
 
 describe("current", () => {
-  it("hands out an unexpired token and an API key without asking the provider", async () => {
-    const now = Date.now();
+  it("hands out an API key without asking the provider", async () => {
     const fake = fakeProvider(() => undefined);
-    await storeCredential(env, KEY, USER, "openai", "oauth", {
-      access: "at_fresh",
-      refresh: "rt_fresh",
-      expiresAt: now + HOUR,
-      accountId: "acct_1",
-    });
-    expect(await current(aiOn(), KEY, USER, openai, fake.fetcher, now)).toEqual({
-      kind: "oauth",
-      access: "at_fresh",
-      accountId: "acct_1",
-    });
     await storeCredential(env, KEY, USER, "openai", "api_key", { access: "sk-key" });
-    expect(await current(aiOn(), KEY, USER, openai, fake.fetcher, now)).toEqual({
+    expect(await current(aiOn(), KEY, USER, openai, fake.fetcher)).toEqual({
       kind: "api_key",
       access: "sk-key",
       accountId: undefined,
@@ -85,104 +115,119 @@ describe("current", () => {
     });
   });
 
-  it("renews once for two concurrent requests and keeps the new pair", async () => {
+  it("renews xAI once for two concurrent requests and keeps the new pair", async () => {
     const now = Date.now();
-    await aboutToExpire(now);
+    await aboutToExpireXai(now);
     let refreshes = 0;
-    const fake = fakeProvider((asked) => {
-      if (!isRefresh(asked)) return undefined;
+    const provider = xaiRefreshProvider(async (token) => {
       refreshes++;
-      expect(asked.form().get("refresh_token")).toBe("rt_1");
-      return renewed();
+      expect(token).toBe("xai-rt-1");
+      return {
+        access: "xai-at-2",
+        refresh: "xai-rt-2",
+        expiresAt: now + HOUR,
+        accountId: "xai-account",
+      };
     });
-    const on = aiOn();
+    const fake = fakeProvider(() => undefined);
     const [a, b] = await Promise.all([
-      current(on, KEY, USER, openai, fake.fetcher, now),
-      current(on, KEY, USER, openai, fake.fetcher, now),
+      current(aiOn(), KEY, USER, provider, fake.fetcher, now),
+      current(aiOn(), KEY, USER, provider, fake.fetcher, now),
     ]);
-    expect(a).toEqual({ kind: "oauth", access: "at_2", accountId: "acct_1" });
+    expect(a).toEqual({ kind: "oauth", access: "xai-at-2", accountId: "xai-account" });
     expect(b).toEqual(a);
     expect(refreshes).toBe(1);
-    const kept = await opened();
-    expect(kept).toMatchObject({ access: "at_2", refresh: "rt_2" });
-    // Stamped by the provider's own clock, a moment after `now`.
-    expect(kept?.expiresAt).toBeGreaterThanOrEqual(now + HOUR);
-    expect(kept?.expiresAt).toBeLessThan(now + HOUR + 10_000);
+    expect(await opened("xai")).toMatchObject({ access: "xai-at-2", refresh: "xai-rt-2" });
   });
 
   it("keeps what another gateway stored when its own write finds the row changed", async () => {
     const now = Date.now();
-    await aboutToExpire(now);
-    const fake = fakeProvider(async (asked) => {
-      if (!isRefresh(asked)) return undefined;
-      // Another isolate renewed first and wrote its pair while this one waited.
-      await storeCredential(env, KEY, USER, "openai", "oauth", {
-        access: "at_other",
-        refresh: "rt_other",
+    await aboutToExpireXai(now);
+    const provider = xaiRefreshProvider(async () => {
+      await storeCredential(env, KEY, USER, "xai", "oauth", {
+        access: "xai-at-other",
+        refresh: "xai-rt-other",
         expiresAt: now + HOUR,
-        accountId: "acct_1",
+        accountId: "xai-account",
       });
-      return renewed();
+      return {
+        access: "xai-at-2",
+        refresh: "xai-rt-2",
+        expiresAt: now + HOUR,
+        accountId: "xai-account",
+      };
     });
-    expect(await current(aiOn(), KEY, USER, openai, fake.fetcher, now)).toEqual({
+    const fake = fakeProvider(() => undefined);
+    expect(await current(aiOn(), KEY, USER, provider, fake.fetcher, now)).toEqual({
       kind: "oauth",
-      access: "at_other",
-      accountId: "acct_1",
+      access: "xai-at-other",
+      accountId: "xai-account",
     });
-    expect(await opened()).toMatchObject({ access: "at_other", refresh: "rt_other" });
+    expect(await opened("xai")).toMatchObject({ access: "xai-at-other", refresh: "xai-rt-other" });
   });
 
   it("keeps what another gateway stored when its own refresh token was already spent", async () => {
     const now = Date.now();
-    await aboutToExpire(now);
-    const fake = fakeProvider(async (asked) => {
-      if (!isRefresh(asked)) return undefined;
-      await storeCredential(env, KEY, USER, "openai", "oauth", {
-        access: "at_other",
-        refresh: "rt_other",
+    await aboutToExpireXai(now);
+    const provider = xaiRefreshProvider(async () => {
+      await storeCredential(env, KEY, USER, "xai", "oauth", {
+        access: "xai-at-other",
+        refresh: "xai-rt-other",
         expiresAt: now + HOUR,
       });
-      return Response.json({ error: "invalid_grant" }, { status: 400 });
-    });
-    expect(await current(aiOn(), KEY, USER, openai, fake.fetcher, now)).toMatchObject({
-      access: "at_other",
-    });
-  });
-
-  it("forgets a credential the provider refuses to renew", async () => {
-    const now = Date.now();
-    await aboutToExpire(now);
-    const fake = fakeProvider((asked) =>
-      isRefresh(asked) ? Response.json({ error: "invalid_grant" }, { status: 400 }) : undefined,
-    );
-    const failure = await current(aiOn(), KEY, USER, openai, fake.fetcher, now).catch((e) => e);
-    expect(failure).toBeInstanceOf(AiError);
-    expect(failure).toMatchObject({ kind: "reconnect" });
-    expect(await stored()).toBeUndefined();
-    expect(await linkedProviders(env, USER)).toEqual([]);
-  });
-
-  it("forgets a token about to expire that has nothing to renew it with", async () => {
-    const now = Date.now();
-    await storeCredential(env, KEY, USER, "openai", "oauth", {
-      access: "at_1",
-      expiresAt: now + 1,
+      throw new AiError("reconnect", "xAI rejected the refresh.");
     });
     const fake = fakeProvider(() => undefined);
-    await expect(current(aiOn(), KEY, USER, openai, fake.fetcher, now)).rejects.toMatchObject({
+    await expect(current(aiOn(), KEY, USER, provider, fake.fetcher, now)).resolves.toMatchObject({
+      access: "xai-at-other",
+    });
+    expect(await opened("xai")).toMatchObject({ access: "xai-at-other", refresh: "xai-rt-other" });
+  });
+
+  it("removes an xAI credential after an invalid refresh grant", async () => {
+    const now = Date.now();
+    await storeCredential(env, KEY, USER, "xai", "oauth", {
+      access: "xai-at-1",
+      refresh: "xai-rt-1",
+      expiresAt: now + 1,
+    });
+    const provider = xaiRefreshProvider(async () => {
+      throw new AiError("reconnect", "xAI rejected the refresh.");
+    });
+    const fake = fakeProvider(() => undefined);
+    await expect(current(aiOn(), KEY, USER, provider, fake.fetcher, now)).rejects.toMatchObject({
       kind: "reconnect",
     });
-    expect(await stored()).toBeUndefined();
+    expect(await stored("xai")).toBeUndefined();
+  });
+
+  it("forgets an xAI credential that is about to expire without a refresh token", async () => {
+    const now = Date.now();
+    await storeCredential(env, KEY, USER, "xai", "oauth", {
+      access: "xai-at-1",
+      expiresAt: now + 1,
+    });
+    const provider = xaiRefreshProvider(async () => {
+      throw new Error("refresh must not be called without a token");
+    });
+    const fake = fakeProvider(() => undefined);
+    await expect(current(aiOn(), KEY, USER, provider, fake.fetcher, now)).rejects.toMatchObject({
+      kind: "reconnect",
+    });
+    expect(await stored("xai")).toBeUndefined();
     expect(fake.asked).toHaveLength(0);
   });
 
-  it("leaves the credential alone when the provider merely cannot be reached", async () => {
+  it("leaves an xAI credential alone when the provider is temporarily unavailable", async () => {
     const now = Date.now();
-    await aboutToExpire(now);
-    const fake = fakeProvider(() => Response.json({}, { status: 503 }));
-    await expect(current(aiOn(), KEY, USER, openai, fake.fetcher, now)).rejects.toMatchObject({
+    await aboutToExpireXai(now);
+    const provider = xaiRefreshProvider(async () => {
+      throw new AiError("unavailable", "xAI is unavailable.");
+    });
+    const fake = fakeProvider(() => undefined);
+    await expect(current(aiOn(), KEY, USER, provider, fake.fetcher, now)).rejects.toMatchObject({
       kind: "unavailable",
     });
-    expect(await opened()).toMatchObject({ access: "at_1", refresh: "rt_1" });
+    expect(await opened("xai")).toMatchObject({ access: "xai-at-1", refresh: "xai-rt-1" });
   });
 });

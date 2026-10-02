@@ -43,7 +43,7 @@ export function CommitBox({
             rows={3}
             placeholder="Commit message"
             aria-label="Commit message"
-            className="border-border bg-bg mt-2 w-full resize-y rounded-lg border px-3 py-2 pr-9 font-mono text-xs"
+            className="border-border bg-bg mt-2 w-full resize-y rounded-lg border px-3 py-2 font-mono text-xs"
             onKeyDown={(event) => {
               if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
               event.preventDefault();
@@ -51,7 +51,7 @@ export function CommitBox({
             }}
           />
         </label>
-        {assist ? <div className="absolute top-8 right-1.5">{assist}</div> : null}
+        {assist ? <div className="mt-1 flex justify-end">{assist}</div> : null}
       </div>
       <SplitButton
         className="mt-2 w-full"

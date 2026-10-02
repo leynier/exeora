@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PROJECT_CLONE_FEATURE } from "./repository.js";
 import { WorkspaceAction, WorkspaceValue } from "./workspace.js";
 import {
+  CHATGPT_V1,
   isWorkspaceRead,
   requiredFeature,
   SOURCE_CONTROL_V1,
@@ -32,12 +33,15 @@ describe("workspace features", () => {
     expect(requiredFeature("stash_pop")).toBe(SOURCE_CONTROL_V2);
     expect(requiredFeature("tree")).toBe(WORKSPACE_V2);
     expect(requiredFeature("replace")).toBe(WORKSPACE_V2);
+    expect(requiredFeature("chatgpt_status")).toBe(CHATGPT_V1);
+    expect(requiredFeature("chatgpt_generate")).toBe(CHATGPT_V1);
   });
 
   it("names the tab each action belongs to", () => {
     expect(workspaceTab("log")).toBe("Source Control");
     expect(workspaceTab("file_write")).toBe("Explorer");
     expect(workspaceTab("search")).toBe("Search");
+    expect(workspaceTab("chatgpt_models")).toBe("ChatGPT");
   });
 
   it("tells reads from mutations", () => {
@@ -63,6 +67,7 @@ describe("workspace features", () => {
     expect(isWorkspaceRead("search")).toBe(true);
     expect(isWorkspaceRead("replace")).toBe(false);
     expect(isWorkspaceRead("unpublished")).toBe(false);
+    expect(isWorkspaceRead("chatgpt_status")).toBe(false);
     for (const read of reads)
       expect(WorkspaceAction.options.map((o) => o.shape.action.value)).toContain(read);
   });
@@ -105,6 +110,27 @@ describe("workspace features", () => {
       WorkspaceReadAction.safeParse({ action: "commit_detail", oid: "--output=x" }).success,
     ).toBe(false);
     expect(WorkspaceReadAction.safeParse({ action: "replace" }).success).toBe(false);
+    expect(
+      WorkspaceAction.parse({
+        action: "chatgpt_login_start",
+        mode: "enable_plan",
+      }),
+    ).toEqual({ action: "chatgpt_login_start", mode: "enable_plan" });
+    expect(
+      WorkspaceAction.parse({
+        action: "chatgpt_generate",
+        instructions: "Write a concise commit message.",
+        input: "Staged patch",
+      }),
+    ).toMatchObject({ action: "chatgpt_generate", input: "Staged patch" });
+    expect(
+      WorkspaceAction.safeParse({
+        action: "chatgpt_generate",
+        instructions: "x",
+        input: "x",
+        model: "bad model",
+      }).success,
+    ).toBe(false);
   });
 
   it("parses every kind of value", () => {
@@ -201,6 +227,34 @@ describe("workspace features", () => {
         files: [{ path: "a.ts", replaced: 1, status: "ok" }],
         replaced: 1,
         skipped: 0,
+      },
+      {
+        kind: "chatgpt_status",
+        state: "ready",
+        account: {
+          label: "person@example.com",
+          email: "person@example.com",
+          scopes: ["openid", "chatgpt.tokens.use.direct"],
+          planUsage: true,
+          newRegistration: false,
+        },
+      },
+      {
+        kind: "chatgpt_models",
+        models: [{ id: "gpt-5", label: "GPT-5" }],
+      },
+      {
+        kind: "chatgpt_generation",
+        outcome: "completed",
+        text: "feat: use ChatGPT",
+        model: "gpt-5",
+      },
+      {
+        kind: "chatgpt_generation",
+        outcome: "failed",
+        reason: "usage_limit",
+        httpStatus: 429,
+        requestId: "req_123",
       },
     ];
     for (const value of values) {

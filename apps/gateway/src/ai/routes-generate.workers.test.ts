@@ -176,35 +176,21 @@ describe("POST /api/projects/:id/ai/commit-message", () => {
     });
   });
 
-  it("streams from the Codex backend for a ChatGPT link", async () => {
+  it("refuses a legacy OpenAI OAuth link without contacting the provider", async () => {
     machine = await attachMachine(OWNER, DEVICE, PROJECT, () => STAGED);
     await storeCredential(env, KEY, OWNER, "openai", "oauth", {
-      access: "at_chatgpt",
-      refresh: "rt",
+      access: "legacy-access",
+      refresh: "legacy-refresh",
       expiresAt: Date.now() + 3_600_000,
-      accountId: "acct_1",
     });
-    provider((asked) => {
-      if (asked.url !== "https://chatgpt.com/backend-api/codex/responses") return undefined;
-      expect(asked.headers.get("authorization")).toBe("Bearer at_chatgpt");
-      expect(asked.headers.get("chatgpt-account-id")).toBe("acct_1");
-      expect(asked.headers.get("originator")).toBe("codex_cli_rs");
-      expect(asked.headers.get("openai-beta")).toBe("responses=experimental");
-      expect(asked.json()).toMatchObject({ model: "gpt-5.5", stream: true, store: false });
-      const stream = [
-        'event: response.created\ndata: {"type":"response.created"}\n\n',
-        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Add "}\n\n',
-        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"login."}\n\n',
-        'event: response.completed\ndata: {"type":"response.completed","response":{"output":[]}}\n\n',
-      ].join("");
-      return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+    const fake = provider(() => {
+      throw new Error("legacy OpenAI credential attempted an outbound request");
     });
     const response = await commitMessage();
-    expect(await response.json()).toEqual({
-      message: "Add login",
-      provider: "openai",
-      model: "gpt-5.5",
-    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: "ai_legacy_reconnect" });
+    expect(fake.asked).toHaveLength(0);
+    expect(machine.seen).toEqual([]);
   });
 
   it("says when nothing is staged, without asking the provider", async () => {

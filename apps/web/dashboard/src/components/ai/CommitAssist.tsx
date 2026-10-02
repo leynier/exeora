@@ -29,7 +29,9 @@ export function CommitAssist({
       : undefined;
   return (
     <GenerateButton
+      operation="commit"
       label="Write a commit message"
+      target={target}
       reason={reason}
       disabled={pending}
       fieldValue={value}

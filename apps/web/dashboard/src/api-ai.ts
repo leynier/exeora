@@ -6,7 +6,7 @@ import { request } from "./api.js";
  * from the gateway's `src/ai/` routes.
  */
 
-export type AiProviderId = "openai" | "xai";
+export type AiProviderId = "openai" | "xai" | "chatgpt";
 export type AiAuthKind = "oauth" | "api_key";
 export type AiOperation = "commit" | "pull_request";
 
@@ -19,7 +19,9 @@ export interface AiProviderView {
   id: AiProviderId;
   label: string;
   authKinds: AiAuthKind[];
-  linked: { kind: AiAuthKind; accountLabel: string | null } | null;
+  /** Machine-bound providers do not create an account-level credential row. */
+  machineBound?: boolean;
+  linked: { kind: AiAuthKind; accountLabel: string | null; legacy?: boolean } | null;
   models: AiModel[];
 }
 
@@ -73,6 +75,67 @@ export interface AiPullRequestText {
   model: string;
 }
 
+export type ChatgptLoginMode = "new" | "reauth" | "enable_plan";
+
+export type ChatgptState =
+  | "signed_out"
+  | "pending"
+  | "ready"
+  | "plan_disabled"
+  | "reconnect"
+  | "client_invalid"
+  | "unavailable_on_cloud";
+
+export type ChatgptLoginError =
+  | "login_timeout"
+  | "state_mismatch"
+  | "plan_disabled"
+  | "missing_code"
+  | "registration_incomplete"
+  | "client_mismatch"
+  | "temporarily_unavailable"
+  | "invalid_token_response"
+  | "invalid_id_token"
+  | "subject_mismatch"
+  | "reconnect"
+  | "client_invalid"
+  | "cancelled";
+
+export interface ChatgptAccount {
+  label: string;
+  email: string;
+  scopes: string[];
+  planUsage: boolean;
+  newRegistration: boolean;
+}
+
+export interface ChatgptPending {
+  /** Epoch milliseconds; the dashboard stops polling after this time. */
+  expiresAt: number;
+}
+
+export interface ChatgptStatus {
+  state: ChatgptState;
+  account?: ChatgptAccount;
+  pending?: ChatgptPending;
+  /** Safe, static reason for the most recent failed login attempt. */
+  loginError?: ChatgptLoginError | null;
+}
+
+export interface ChatgptLogin {
+  authorizeUrl: string;
+  /** Epoch milliseconds for the one pending loopback attempt. */
+  expiresAt: number;
+}
+
+export interface ChatgptModels {
+  models: AiModel[];
+}
+
+export interface ChatgptLogout {
+  revocationConfirmed: boolean;
+}
+
 const json = (body: unknown, method = "POST", signal?: AbortSignal): RequestInit => ({
   method,
   headers: { "Content-Type": "application/json" },
@@ -95,6 +158,48 @@ export const aiApi = {
     request<{ ok: true }>(`/api/ai/providers/${provider}`, { method: "DELETE" }),
   models: (provider: AiProviderId) =>
     request<{ models: AiModel[] }>(`/api/ai/providers/${provider}/models`),
+  chatgptStatus: (deviceId: string) =>
+    request<ChatgptStatus>(`/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt`),
+  chatgptLogin: (deviceId: string, mode: ChatgptLoginMode) =>
+    request<ChatgptLogin>(
+      `/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/login`,
+      json({ mode }),
+    ),
+  chatgptCancel: (deviceId: string) =>
+    request<ChatgptStatus>(
+      `/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/login/cancel`,
+      json({}),
+    ),
+  chatgptLogout: (deviceId: string) =>
+    request<ChatgptLogout>(
+      `/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/logout`,
+      json({}),
+    ),
+  chatgptModels: (deviceId: string) =>
+    request<ChatgptModels>(`/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/models`),
+  chatgptProjectStatus: (projectId: string, workspace?: string) =>
+    request<ChatgptStatus>(
+      `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt${target(workspace)}`,
+    ),
+  chatgptProjectLogin: (projectId: string, mode: ChatgptLoginMode, workspace?: string) =>
+    request<ChatgptLogin>(
+      `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt/login${target(workspace)}`,
+      json({ mode }),
+    ),
+  chatgptProjectCancel: (projectId: string, workspace?: string) =>
+    request<ChatgptStatus>(
+      `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt/login/cancel${target(workspace)}`,
+      json({}),
+    ),
+  chatgptProjectLogout: (projectId: string, workspace?: string) =>
+    request<ChatgptLogout>(
+      `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt/logout${target(workspace)}`,
+      json({}),
+    ),
+  chatgptProjectModels: (projectId: string, workspace?: string) =>
+    request<ChatgptModels>(
+      `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt/models${target(workspace)}`,
+    ),
   saveSettings: (patch: AiSettingsPatch) =>
     request<AiSettings>("/api/ai/settings", json(patch, "PUT")),
   commitMessage: (
@@ -127,4 +232,8 @@ function target(workspace: string | undefined): string {
 export const aiKeys = {
   status: ["ai"] as const,
   models: (provider: AiProviderId) => ["ai", "models", provider] as const,
+  chatgptStatus: (deviceId: string) => ["ai", "chatgpt", deviceId, "status"] as const,
+  chatgptModels: (deviceId: string) => ["ai", "chatgpt", deviceId, "models"] as const,
+  chatgptProjectStatus: (projectId: string, workspace?: string) =>
+    ["ai", "chatgpt", "project", projectId, workspace ?? "", "status"] as const,
 };
