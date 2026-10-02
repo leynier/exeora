@@ -125,6 +125,10 @@ describe("POST /api/projects/:id/ai/commit-message", () => {
       const fake = provider(() => responses("Add login"));
       const refused = await commitMessage();
       expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({
+        message:
+          "Choose a linked provider in Settings to replace the previous ChatGPT plan connection.",
+      });
       expect(fake.asked).toHaveLength(0);
       expect(machine.seen).toHaveLength(0);
       await call("/api/ai/settings", {

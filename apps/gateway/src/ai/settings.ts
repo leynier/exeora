@@ -90,9 +90,8 @@ export async function readSettings(env: Pick<Env, "DB">, userId: string): Promis
           ? {
               provider: restoredProvider(row.provider, restorePlan),
               model:
-                restorePlan &&
-                (wasLocalChatgpt(row.provider) ||
-                  (row.provider === null && wasLocalChatgpt(account?.defaultProvider)))
+                wasLocalChatgpt(row.provider) ||
+                (row.provider === null && wasLocalChatgpt(account?.defaultProvider))
                   ? null
                   : row.model,
               instructions: row.instructions === "" ? null : row.instructions,
@@ -146,7 +145,7 @@ export async function writeSettings(
   // D1 batches are atomic, and this only updates the retired provider's choices.
   await env.DB.batch([
     env.DB.prepare(
-      "UPDATE ai_operation_settings SET model = NULL, provider = CASE WHEN provider = 'chatgpt' THEN 'openai' ELSE provider END WHERE user_id = ? AND (provider = 'chatgpt' OR (provider IS NULL AND EXISTS (SELECT 1 FROM ai_settings WHERE user_id = ? AND default_provider = 'chatgpt'))) AND NOT EXISTS (SELECT 1 FROM ai_providers WHERE user_id = ? AND provider = 'openai' AND auth_kind = 'api_key')",
+      "UPDATE ai_operation_settings SET model = NULL, provider = CASE WHEN provider = 'chatgpt' AND NOT EXISTS (SELECT 1 FROM ai_providers WHERE user_id = ? AND provider = 'openai' AND auth_kind = 'api_key') THEN 'openai' ELSE provider END WHERE user_id = ? AND (provider = 'chatgpt' OR (provider IS NULL AND EXISTS (SELECT 1 FROM ai_settings WHERE user_id = ? AND default_provider = 'chatgpt')))",
     ).bind(userId, userId, userId),
     env.DB.prepare(
       "UPDATE ai_settings SET default_provider = 'openai' WHERE user_id = ? AND default_provider = 'chatgpt' AND NOT EXISTS (SELECT 1 FROM ai_providers WHERE user_id = ? AND provider = 'openai' AND auth_kind = 'api_key')",

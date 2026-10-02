@@ -118,7 +118,13 @@ async function generate(
   const offered = providerId ? offeredProvider(config, providerId) : null;
   if (!offered) {
     return c.json(
-      { error: "ai_not_linked", message: "Link ChatGPT or Grok in the settings first." },
+      {
+        error: "ai_not_linked",
+        message:
+          providerId === "chatgpt"
+            ? "Choose a linked provider in Settings to replace the previous ChatGPT plan connection."
+            : "Link ChatGPT or Grok in the settings first.",
+      },
       409,
     );
   }

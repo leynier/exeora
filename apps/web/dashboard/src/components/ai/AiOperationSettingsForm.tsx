@@ -132,10 +132,28 @@ export function AiOperationSettingsForm({
                 ...providerOptions.filter((option) => option.value !== ""),
               ]}
               onChange={(value) =>
-                setDraft((current) => ({
-                  ...current,
-                  defaultProvider: value ? (value as AiProviderId) : null,
-                }))
+                setDraft((current) =>
+                  value === (current.defaultProvider ?? "")
+                    ? current
+                    : {
+                        ...current,
+                        defaultProvider: value ? (value as AiProviderId) : null,
+                        operations: {
+                          commit: {
+                            ...current.operations.commit,
+                            model: current.operations.commit.provider
+                              ? current.operations.commit.model
+                              : null,
+                          },
+                          pull_request: {
+                            ...current.operations.pull_request,
+                            model: current.operations.pull_request.provider
+                              ? current.operations.pull_request.model
+                              : null,
+                          },
+                        },
+                      },
+                )
               }
             />
           </div>

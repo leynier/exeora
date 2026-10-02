@@ -17,7 +17,14 @@ test("requires replacing a retired plan preference explicitly before saving API-
             ? { ...provider, linked: { kind: "api_key", accountLabel: null } }
             : provider,
         ),
-        settings: { ...aiStatus.settings, defaultProvider: "chatgpt" },
+        settings: {
+          ...aiStatus.settings,
+          defaultProvider: "chatgpt",
+          operations: {
+            ...aiStatus.settings.operations,
+            commit: { ...aiStatus.settings.operations.commit, model: "retired-machine-model" },
+          },
+        },
       },
     }),
   );
@@ -34,6 +41,9 @@ test("requires replacing a retired plan preference explicitly before saving API-
     .getByRole("option", { name: "ChatGPT (API key)", exact: true })
     .click();
   await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /^Commit messages model/ })).toContainText(
+    "Default",
+  );
 });
 
 for (const [operation, label] of [
@@ -95,6 +105,44 @@ test("shows an automatic default honestly when provider order differs", async ({
   await expect(page.getByRole("button", { name: /^Default provider/ })).toContainText(
     "Automatic (first linked account)",
   );
+});
+
+test("preserves custom models when reselecting the current default provider", async ({ page }) => {
+  await signedIn(page);
+  await mockWorkspaceV2(page, { ai: true });
+  const settings = {
+    defaultProvider: "openai",
+    operations: {
+      commit: { provider: null, model: "gpt-5.5-mini", instructions: "Keep the model" },
+      pull_request: { provider: "xai", model: "grok-4-fast", instructions: null },
+    },
+  };
+  await page.route("**/api/ai", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        ...aiStatus,
+        providers: aiStatus.providers.map((provider) => ({
+          ...provider,
+          linked: { kind: "oauth", accountLabel: provider.id },
+        })),
+        settings,
+      },
+    }),
+  );
+  let saved: unknown;
+  await page.route("**/api/ai/settings", (route) => {
+    saved = route.request().postDataJSON();
+    return route.fulfill({ status: 200, json: saved });
+  });
+  await openWorkspace(page, "/dashboard/settings");
+  await page.getByRole("button", { name: /^Default provider/ }).click();
+  await page
+    .getByRole("listbox", { name: "Default provider", exact: true })
+    .getByRole("option", { name: "ChatGPT", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await expect.poll(() => saved).toEqual(settings);
 });
 
 test("blocks Ship before mutations when the previous plan would use an API key", async ({

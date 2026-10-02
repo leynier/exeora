@@ -103,6 +103,56 @@ it.each(["default", "override"])(
   },
 );
 
+it.each(
+  (["default", "commit", "pull_request"] as const).flatMap((choice) =>
+    [false, true].map((explicitModel) => ({ choice, explicitModel })),
+  ),
+)(
+  "drops retired $choice models but preserves an explicit replacement ($explicitModel)",
+  async ({ choice, explicitModel }) => {
+    await storeCredential(env, { credentialsKey: CREDENTIALS_KEY }, USER, "openai", "api_key", {
+      access: "sk-simulated",
+    });
+    const operation = choice === "default" ? "commit" : choice;
+    await env.DB.prepare("INSERT INTO ai_settings (user_id, default_provider) VALUES (?, ?)")
+      .bind(USER, choice === "default" ? "chatgpt" : "openai")
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO ai_operation_settings (user_id, operation, provider, model) VALUES (?, ?, ?, 'retired-machine-model')",
+    )
+      .bind(USER, operation, choice === "default" ? null : "chatgpt")
+      .run();
+    const status = await call("/api/ai", { userId: USER, env: aiOn() });
+    expect(await status.json()).toMatchObject({
+      settings: { operations: { [operation]: { model: null } } },
+    });
+    const saved = await call("/api/ai/settings", {
+      method: "PUT",
+      body: {
+        ...(choice === "default" ? { defaultProvider: "openai" } : {}),
+        operations: {
+          [operation]: {
+            ...(choice !== "default" ? { provider: "openai" } : {}),
+            ...(explicitModel ? { model: "gpt-5.5-mini" } : {}),
+          },
+        },
+      },
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(saved.status).toBe(200);
+    const expected = explicitModel ? "gpt-5.5-mini" : null;
+    expect(await saved.json()).toMatchObject({ operations: { [operation]: { model: expected } } });
+    expect(
+      await env.DB.prepare(
+        "SELECT model FROM ai_operation_settings WHERE user_id = ? AND operation = ?",
+      )
+        .bind(USER, operation)
+        .first(),
+    ).toEqual({ model: expected });
+  },
+);
+
 it.each(["default", "commit", "pull_request"] as const)(
   "requires a named linked replacement for the retired %s preference before any settings writes",
   async (choice) => {
