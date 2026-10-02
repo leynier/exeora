@@ -39,7 +39,7 @@ replaces the current executable in place on Linux, macOS, and Windows.
 
 ## ChatGPT plan usage
 
-The upcoming CLI 0.21.0 adds the official [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source/). If you install the CLI from a checkout, run this from the repository root so Cargo uses the committed lockfile:
+CLI 0.21.0 adds the official [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source/). If you install the CLI from a checkout, run this from the repository root so Cargo uses the committed lockfile:
 
 ```sh
 cargo install --path crates/exeora-cli --locked

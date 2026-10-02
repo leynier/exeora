@@ -1,6 +1,6 @@
 # Reporte de auditoría de seguridad y rendimiento
 
-Fecha: 2 de octubre de 2026. Plataforma: Exeora. Base revisada: `1594894`. Estado al cierre de la auditoría inicial: mejoras locales, sin despliegue ni publicación, conforme a la instrucción vigente entonces. La autorización posterior del release se recoge en la adenda.
+Fecha: 2 de octubre de 2026. Plataforma: Exeora. Base revisada: `1594894`. Estado al cierre de la auditoría inicial: mejoras locales, sin despliegue ni publicación, conforme a la instrucción vigente entonces. La entrega posterior de la integración oficial, el CLI 0.21.0 y sus evidencias se recoge en la sección 10.
 
 ## Resultado y alcance
 
@@ -170,3 +170,39 @@ La bienvenida tiene un único coordinador por raíz autenticada, conserva avisos
 Tras estos arreglos pasan 461 pruebas Rust (399 unitarias y 62 de integración), 1.547 pruebas JS/TS en 156 archivos y 177 escenarios E2E (173 Chromium y cuatro de viewport móvil), incluidos 43 de ChatGPT. Clippy sin advertencias, tipos, builds web/extensión, formato, longitud y el listado del paquete Rust pasan. Se repite la revisión completa contra la base real del PR antes del merge y se exige la CI del commit exacto.
 
 La decimoctava revisión confirmó que la suma de catálogo, refresh, reintentos y espera de Responses podía superar el deadline del relay aunque cada etapa respetara su propio límite. La generación tiene ahora un único presupuesto de 60 segundos de principio a fin, con un resultado estructurado de interrupción antes del límite de 90 segundos del gateway. Las regresiones HTTP verifican tiempos acumulados de catálogo y headers, y una rotación de refresh que se conserva tras el timeout sin seguir enviando el prompt. Pasan 463 pruebas Rust (401 unitarias y 62 de integración), Clippy, formato y listado del paquete. JS/TS, tipos, builds y los 177 escenarios E2E no cambian respecto al commit anterior aprobado; el nuevo commit debe aprobar otra vez CI y la revisión completa antes del merge.
+
+
+## 10. Entrega verificada de la integración y CLI 0.21.0
+
+El [PR #93](https://github.com/leynier/exeora/pull/93) se mezcló el 2 de octubre de 2026 a las 15:22:05 UTC como `70bb6248ae76412fac2367fcf00954fffa7b620f`. El árbol mezclado coincide exactamente con `ae4fd1e`, aprobado por los trece checks técnicos de GitHub y por la decimonovena revisión completa contra `592b33f`, que terminó sin hallazgos accionables. Esa revisión pasó 101 tests Rust, 137 JS/TS y 41 casos de navegador focalizados; la validación completa previa pasó 463 Rust, 1.547 JS/TS y 177 escenarios E2E. Son subconjuntos y no se suman a los totales.
+
+Al pasar el PR de borrador a listo se inició una revisión adicional de Pullfrog. La comprobación la detectó, pero un error de encadenamiento de comandos dejó continuar el merge y esa revisión se canceló. No se afirma que terminara ni emitiera un veredicto. La revisión completa independiente y los trece checks técnicos estaban aprobados; se comprobó el árbol exacto del merge y se exigió de nuevo la CI sobre `main` antes de desplegar. Las operaciones posteriores se separaron de sus preflight y se detienen ante un fallo.
+
+| Evidencia | Resultado observado |
+|---|---|
+| [Deploy 37026476589](https://github.com/leynier/exeora/actions/runs/37026476589) | Success sobre `70bb624`; CI y despliegue terminaron correctamente. |
+| D1 | `0027_ai_chatgpt_official.sql` aplicada a las 15:31:20 UTC. |
+| Worker de la integración | `f11547a7-9d4f-4906-8b04-06ded7e957b1`, publicado a las 15:31:38 UTC. |
+| Producción pública | `/`, `/dashboard/`, `/dashboard/panel/` y `/docs/ai-assist/` responden 200; `/api/ai` exige autenticación con 401 y Bearer; metadata del recurso MCP responde 200. |
+| Cabeceras y assets | HSTS, `nosniff`, CSP con WSS del mismo origen y `no-store` en API conservados; `main-DNVOsWKZ.js` responde 200 con caché anual immutable. |
+| Bundle del workspace actualizado | 39,16 kB / 13,28 kB gzip en el build verificado. Es tamaño de un chunk, no latencia de producción ni memoria global. |
+| [Release CLI 37027949390](https://github.com/leynier/exeora/actions/runs/37027949390) | Success sobre el tag anotado `cli-v0.21.0`, apuntando al mismo commit desplegado. Los cinco builds nativos pasaron antes de publicar. |
+| [Release 0.21.0](https://github.com/leynier/exeora/releases/tag/cli-v0.21.0) | Publicado a las 16:06:51 UTC con cinco binarios y `checksums-sha256.txt`. |
+| [crates.io](https://crates.io/crates/exeora-cli/0.21.0) | Versión 0.21.0, no retirada; checksum del paquete y `.cargo_vcs_info.json` verifican el commit `70bb624`. |
+| Prueba del binario Linux descargado | Reporta `exeora 0.21.0`; funcionan `--help`, `chatgpt login --help` y `--json chatgpt status`, que devuelve signed_out en una configuración privada aislada. |
+
+Se descargaron los cinco artefactos públicos y se comprobaron contra el manifest publicado:
+
+| Artefacto | SHA-256 |
+|---|---|
+| `exeora-aarch64-apple-darwin` | `0ae826943ad3f1d0881deb5581bca7531617e026b3fc1375ff2872868788c629` |
+| `exeora-aarch64-unknown-linux-gnu` | `c4e609d73b9eaeefa8a8788ee1dfae01fcb34899cad73e5c5fcca46840560301` |
+| `exeora-x86_64-apple-darwin` | `94b10d3c706148d2a7fc5b59163aa79d942a4cf36a1e81085fef012b501a631c` |
+| `exeora-x86_64-pc-windows-msvc.exe` | `87217675b1d4ae18099056d30a4fc92f637780be9ae1a2788803ef5dcd018582` |
+| `exeora-x86_64-unknown-linux-gnu` | `c86175a14008480490fd488fb73580f92f90ed0efb374b35a85d603a0824931a` |
+
+El anuncio `LATEST_CLI_VERSION` se actualiza a 0.21.0 únicamente después de comprobar el crate, los cinco checksums y el binario Linux publicado. La actualización del anuncio y esta reconciliación del reporte se entregan mediante otro PR y el workflow de despliegue con CI; el tag del CLI permanece ligado al commit de la integración verificado. El tag anterior `cli-v0.20.1` permanece intacto y su intento cancelado no se presenta como publicación.
+
+Para usar la integración: actualizar con `exeora upgrade` o instalar `cargo install --locked exeora-cli --version 0.21.0`, reiniciar cualquier proceso `exeora connect` que ya estuviera ejecutándose para anunciar las capacidades nuevas y ejecutar `exeora chatgpt login` en la máquina que hará la generación. El CLI también ofrece status, models, logout y login con `--enable-plan`.
+
+Límites de esta verificación: no se inició sesión ni se ejecutó inferencia con una cuenta real de ChatGPT. macOS y Windows cuentan con compilaciones nativas verificadas y checksums descargados; la prueba de ejecución descrita fue Linux. Los probes de producción son anónimos y no prueban un flujo autenticado completo ni actualizan automáticamente las máquinas ya conectadas. El diseño de arquitectura y bienvenida se apoyó en el perfil Claude Opus Dev del workspace mediante la orquestación de Alera; las credenciales y la inferencia del plan permanecen en la máquina local y Exeora Cloud conserva los proveedores de API key.
