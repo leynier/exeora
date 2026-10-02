@@ -3,6 +3,7 @@ import { lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import { storedToken } from "./auth.js";
+import { ChatgptWelcomeProvider } from "./components/ai/ChatgptWelcomeProvider.js";
 import { TerminalsProvider } from "./components/Terminals.js";
 import { ToastProvider } from "./components/toast.js";
 import { AppShell } from "./layouts/AppShell.js";
@@ -93,7 +94,9 @@ createRoot(root).render(
               element={
                 <RequireAuth>
                   <TerminalsProvider>
-                    <AppShell />
+                    <ChatgptWelcomeProvider>
+                      <AppShell />
+                    </ChatgptWelcomeProvider>
                   </TerminalsProvider>
                 </RequireAuth>
               }

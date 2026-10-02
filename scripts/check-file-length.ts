@@ -23,6 +23,7 @@ const SKIP_DIRS = new Set([
   "docs",
   "node_modules",
   "public",
+  "target",
   "__pycache__",
 ]);
 

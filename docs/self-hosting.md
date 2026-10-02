@@ -126,13 +126,34 @@ Connecting finishes in the browser that started it. The way back from GitHub is 
 
 ### AI Assist (optional)
 
-AI Assist lets an account link its own ChatGPT or Grok account and write commit messages and pull requests from the dashboard. Which providers may be linked is the `AI_ASSIST_PROVIDERS` var in `apps/gateway/wrangler.jsonc`, which offers `openai,xai` as committed; it is a var rather than a secret because it only says what is offered, and a secret of the same name would be replaced by the var on deploy. To keep AI Assist off, empty or remove the var. It also needs `CLOUD_CREDENTIALS_KEY` (above) to keep the tokens and keys under; without it the routes answer `ai_disabled` and the card is not drawn. The rest is optional:
+AI Assist writes commit messages and pull requests with a provider chosen by the account. Which providers are offered is the `AI_ASSIST_PROVIDERS` var in `apps/gateway/wrangler.jsonc`; it is a var rather than a secret because it only says what is offered, and a secret with the same name would be replaced by the var on deploy. To keep AI Assist off, empty or remove the var. OpenAI API keys and Grok credentials need `CLOUD_CREDENTIALS_KEY` (above) for encrypted gateway storage. The local ChatGPT provider works without that key because its credentials remain on the machine; `AI_ASSIST_PROVIDERS=chatgpt` offers that path alone.
 
-Grok's device login needs no setting: the gateway uses xAI's shared public client for coding agents, the one xAI's own CLI and the other tools that link a SuperGrok or X Premium subscription use, whose consent page names Grok Build. It is public by design of the device flow, so it is in the source rather than a secret. Reusing it is your call, as the flow is not documented for third parties: `XAI_OAUTH_CLIENT_ID=off`, as a var beside `AI_ASSIST_PROVIDERS`, offers Grok by API key only, and another value there replaces the client. The sign-in page it sends the person to is on `accounts.x.ai`, while the endpoints stay on `auth.x.ai`.
+#### ChatGPT plan on a local machine
 
-`AI_ASSIST_OAUTH=off`, as a var beside `AI_ASSIST_PROVIDERS`, keeps only the API keys and offers no device login for either provider; ChatGPT's needs nothing beyond the credentials key.
+OpenAI documents a separate [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source). Exeora keeps that flow in the CLI on the machine that will run the request. The upcoming CLI 0.21.0 exposes:
 
-Two things to know before switching it on. The subscription flows are not documented by either provider for third parties: ChatGPT is linked through the device-code sign-in of OpenAI's own Codex CLI, Grok through the device flow of xAI's `auth.x.ai`, and either may change or close them without notice. Set `AI_ASSIST_OAUTH=off` to offer API keys only, which the providers do document. And what a generation reads, the staged patch or a branch's commits and diff, is sent from the gateway to the provider the person chose and kept nowhere; only the fact of a generation is audited.
+```sh
+exeora chatgpt login
+exeora chatgpt status
+exeora chatgpt models
+exeora chatgpt logout
+```
+
+An eligible ChatGPT Plus or Pro user can grant the `chatgpt.tokens.use.direct` plan-usage permission during sign-in. Signing in without that permission only records the account; it does not enable plan usage. Run `exeora chatgpt login --enable-plan` to request the permission afterward. When enabled, the CLI sends the request with the local, owner-only credential to the public [OpenAI Responses API](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference) at `https://api.openai.com/v1/responses`. The credential stays on that machine and is not copied into the gateway, browser, D1 or Exeora Cloud.
+
+The callback is an HTTP loopback URL such as `http://127.0.0.1:<port>/auth/callback`. The browser must run on the same machine as the CLI because `127.0.0.1` means the computer running the browser. On a headless or SSH machine, run `exeora chatgpt login --no-browser` there and use the printed URL with a port-forward to that machine; do not open an unforwarded URL on another computer. ChatGPT plan usage is unavailable on Exeora Cloud machines.
+
+A ChatGPT plan failure never falls back silently to an OpenAI API key or another provider. Choose the OpenAI API-key provider explicitly when that is what you want. The [OpenAI registration and sign-in guide](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [account and session guidance](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions) and [preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) describe the provider's current contract. The local flow is documented here for the open-source CLI; availability on the shared hosted gateway is a separate release decision.
+
+An existing OpenAI subscription link created by the old unofficial Codex flow is a legacy link. It is never decrypted, reused or migrated automatically. Remove it, then sign in again with `exeora chatgpt login` on the machine that will run the request, or choose an OpenAI API key.
+
+#### OpenAI API keys and Grok
+
+The `openai` provider remains available with an API key from the OpenAI platform. It is separate from the ChatGPT plan flow and follows the gateway's existing storage and request path.
+
+Grok's device login remains an unofficial xAI flow for third-party applications. It uses xAI's shared public client for coding agents, the one xAI's own CLI and other tools that link a SuperGrok or X Premium subscription use, whose consent page names Grok Build. `XAI_OAUTH_CLIENT_ID=off`, as a var beside `AI_ASSIST_PROVIDERS`, offers Grok by API key only, and another value there replaces the client. The sign-in page it sends the person to is on `accounts.x.ai`, while the endpoints stay on `auth.x.ai`. The Grok subscription flow may change or close without notice.
+
+`AI_ASSIST_OAUTH=off`, as a var beside `AI_ASSIST_PROVIDERS`, keeps only API keys and disables Grok's device login. It does not disable the separate local ChatGPT flow. Add `chatgpt` to `AI_ASSIST_PROVIDERS` only when the gateway release you run exposes that provider; the matching CLI must be installed on each machine that will use it.
 
 Every non-GET request under `/api/ai/` and `/api/projects/:id/ai/` is counted on `RL_WRITE`. Tokens are renewed before they expire, the way GitHub's are, and forgotten when a provider stops accepting them.
 
@@ -187,7 +208,7 @@ bun run deploy
 
 ### Continuous deploy (this repository)
 
-Every push to `main` applies the D1 migrations, builds the site and deploys the Worker (`.github/workflows/deploy.yml`). That workflow does not run CI. A pull request runs `.github/workflows/ci.yml` on the pull request SHA. A direct push to `main` and `workflow_dispatch` migrate and deploy with no CI.
+Every push to `main` runs the reusable CI workflow on that exact commit before applying D1 migrations, building the site and deploying the Worker (`.github/workflows/deploy.yml`). Pull requests also run `.github/workflows/ci.yml` on their pull request SHA. Both a direct push to `main` and `workflow_dispatch` require successful CI before deployment; the deployment job runs only for `main`.
 
 Repository secrets under Settings → Secrets and variables → Actions:
 

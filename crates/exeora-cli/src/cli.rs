@@ -25,6 +25,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use url::Url;
 
@@ -83,6 +84,11 @@ pub enum Commands {
     Connect(ConnectArgs),
     #[command(about = "Show this machine's registration and projects")]
     Status,
+    #[command(about = "Use your ChatGPT plan on this machine")]
+    Chatgpt {
+        #[command(subcommand)]
+        command: ChatgptCommand,
+    },
     #[command(about = "Show recent tool calls: what ran, who asked and how it ended")]
     Logs(LogsArgs),
     #[command(about = "Write an exeora.toml restricting what agents may do in a directory")]
@@ -179,6 +185,23 @@ pub enum DeviceCommand {
     },
     #[command(about = "List your machines and the ones Exeora Cloud runs for you")]
     List,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ChatgptCommand {
+    #[command(about = "Sign in to ChatGPT on this machine")]
+    Login {
+        #[arg(long, help = "Print the sign-in URL instead of opening a browser")]
+        no_browser: bool,
+        #[arg(long, help = "Ask ChatGPT to allow plan usage again")]
+        enable_plan: bool,
+    },
+    #[command(about = "Show the ChatGPT sign-in state on this machine")]
+    Status,
+    #[command(about = "List models available through the ChatGPT plan")]
+    Models,
+    #[command(about = "Sign out of ChatGPT on this machine")]
+    Logout,
 }
 
 #[derive(Debug, Subcommand)]
@@ -342,6 +365,13 @@ pub async fn run(cli: Cli) -> Result<()> {
         return crate::cloud::hooks::command::run(command).await;
     }
     let mut config = ConfigStore::load()?;
+    if let Commands::Chatgpt { command } = &cli.command {
+        let local = chatgpt_local_mode(
+            crate::cloud::enabled_by_env(),
+            env::var_os("EXEORA_MACHINE_TOKEN_FILE").is_some(),
+        );
+        return chatgpt_command(&config, command, cli.json, local).await;
+    }
     // A cloud machine has no session, no browser and no registration to do:
     // it reads what the bootstrap wrote and dials the relay.
     if let Commands::Connect(args) = &cli.command
@@ -405,6 +435,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Connect(args) => connect_command(&mut config, &api, auth, args, cli.json).await,
         Commands::Cloud { command } => crate::cloud::commands::run(&api, command, cli.json).await,
         Commands::Status => status_command(&config, &api, cli.json).await,
+        Commands::Chatgpt { .. } => unreachable!(),
         Commands::Logs(args) => logs_command(&api, args, cli.json).await,
         Commands::Sync => sync_command(&mut config, &api).await,
         Commands::Gateway { .. }
@@ -1281,6 +1312,292 @@ async fn login_command(
     cliclack::outro(
         "Run `exeora connect` to bring this machine online, then `exeora project add` in a directory to serve it.",
     )?;
+    Ok(())
+}
+
+async fn chatgpt_command(
+    config: &ConfigStore,
+    command: &ChatgptCommand,
+    json_output: bool,
+    local: bool,
+) -> Result<()> {
+    if !local {
+        bail!("ChatGPT is unavailable on Exeora Cloud machines.");
+    }
+    let service = crate::chatgpt::ChatgptService::new(config.path(), true)?;
+    match command {
+        ChatgptCommand::Login {
+            no_browser,
+            enable_plan,
+        } => chatgpt_login(&service, *no_browser, *enable_plan, json_output).await,
+        ChatgptCommand::Status => {
+            let value = chatgpt_action(&service, json!({ "action": "chatgpt_status" })).await?;
+            print_chatgpt_status(&value, json_output)
+        }
+        ChatgptCommand::Models => {
+            let value = chatgpt_action(&service, json!({ "action": "chatgpt_models" })).await?;
+            print_chatgpt_models(&value, json_output)
+        }
+        ChatgptCommand::Logout => {
+            let value = chatgpt_action(&service, json!({ "action": "chatgpt_logout" })).await?;
+            print_chatgpt_logout(&value, json_output)
+        }
+    }
+}
+
+async fn chatgpt_login(
+    service: &std::sync::Arc<crate::chatgpt::ChatgptService>,
+    no_browser: bool,
+    enable_plan: bool,
+    json_output: bool,
+) -> Result<()> {
+    let status = chatgpt_action(service, json!({ "action": "chatgpt_status" })).await?;
+    let mode = chatgpt_login_mode(&status, enable_plan);
+    let login = chatgpt_action(
+        service,
+        json!({ "action": "chatgpt_login_start", "mode": mode }),
+    )
+    .await?;
+    let authorize_url = chatgpt_authorize_url(&login, no_browser)?;
+    let expires_at = login.get("expiresAt").and_then(chatgpt_expiry_millis);
+    if no_browser {
+        if json_output {
+            emit(json!({
+                "kind": "chatgpt_login",
+                "authorizeUrl": authorize_url.0,
+                "expiresAt": expires_at,
+                "sshHint": authorize_url.1.map(|port| format!("ssh -L {port}:127.0.0.1:{port} <host>")),
+            }))?;
+        } else {
+            println!("Open this ChatGPT sign-in URL:\n{}", authorize_url.0);
+            if let Some(port) = authorize_url.1 {
+                println!(
+                    "If the browser is on another machine, forward the loopback port with: ssh -L {port}:127.0.0.1:{port} <host>"
+                );
+            }
+        }
+    } else {
+        open::that(&authorize_url.0)
+            .map_err(|_| anyhow!("Could not open the ChatGPT sign-in browser."))?;
+        if !json_output {
+            println!("Waiting for ChatGPT authorization...");
+        }
+    }
+    let value = wait_for_chatgpt_status(service, expires_at).await?;
+    validate_chatgpt_login(&value)?;
+    if no_browser && json_output {
+        emit(value)
+    } else {
+        print_chatgpt_status(&value, json_output)?;
+        if !json_output
+            && value["account"]["planUsage"] == true
+            && value["account"]["newRegistration"] == true
+            && let Some(notice_id) = value["account"]["noticeId"].as_str()
+        {
+            println!(
+                "When you choose ChatGPT, eligible AI requests on this machine use your ChatGPT plan. Exeora never receives your ChatGPT tokens."
+            );
+            println!("Manage usage: https://chatgpt.com/settings/usage");
+            std::io::Write::flush(&mut std::io::stdout())?;
+            chatgpt_action(
+                service,
+                json!({"action":"chatgpt_welcome_ack", "noticeId":notice_id}),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+}
+
+fn validate_chatgpt_login(status: &Value) -> Result<()> {
+    if let Some(error) = status.get("loginError").and_then(Value::as_str)
+        && !error.is_empty()
+    {
+        bail!("ChatGPT sign-in failed ({error}).");
+    }
+    if !matches!(
+        status.get("state").and_then(Value::as_str),
+        Some("ready" | "plan_disabled")
+    ) {
+        bail!("ChatGPT sign-in did not complete.");
+    }
+    Ok(())
+}
+
+async fn wait_for_chatgpt_status(
+    service: &std::sync::Arc<crate::chatgpt::ChatgptService>,
+    expires_at: Option<u64>,
+) -> Result<Value> {
+    // The service owns the pending listener and its expiry. Bound the terminal
+    // wait by that protocol deadline, with a hard cap in case a malformed
+    // response omits it or a broken service never clears the attempt.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let remaining = expires_at
+        .and_then(|expires_at| expires_at.checked_sub(now))
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| Duration::from_secs(10 * 60))
+        .min(Duration::from_secs(10 * 60));
+    tokio::time::timeout(remaining, async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let status = chatgpt_action(service, json!({ "action": "chatgpt_status" })).await?;
+            if status.get("state").and_then(Value::as_str) != Some("pending") {
+                return Ok(status);
+            }
+        }
+    })
+    .await
+    .map_err(|_| anyhow!("Timed out waiting for ChatGPT authorization."))?
+}
+
+fn chatgpt_login_mode(status: &Value, enable_plan: bool) -> &'static str {
+    if enable_plan {
+        return "enable_plan";
+    }
+    let has_registration = status.get("account").is_some_and(Value::is_object);
+    match status.get("state").and_then(Value::as_str) {
+        // A saved registration remains usable after local sign-out and token
+        // loss. Reauth must reuse its issued client ID; only an invalid client
+        // registration needs the dynamic new-registration path.
+        Some("ready" | "plan_disabled" | "reconnect" | "signed_out") if has_registration => {
+            "reauth"
+        }
+        _ => "new",
+    }
+}
+
+fn chatgpt_local_mode(cloud_env: bool, has_machine_token: bool) -> bool {
+    !cloud_env && !has_machine_token
+}
+
+fn chatgpt_expiry_millis(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
+}
+
+async fn chatgpt_action(
+    service: &std::sync::Arc<crate::chatgpt::ChatgptService>,
+    action: Value,
+) -> Result<Value> {
+    service
+        .handle(action)
+        .await
+        .map_err(|_| anyhow!("The ChatGPT command failed."))
+}
+
+fn chatgpt_authorize_url(value: &Value, strip_hint: bool) -> Result<(String, Option<u16>)> {
+    let raw = value
+        .get("authorizeUrl")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("The ChatGPT sign-in did not return an authorization URL."))?;
+    let mut url = Url::parse(raw).context("The ChatGPT authorization URL is invalid")?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("auth.openai.com")
+        || url.path() != "/api/accounts/authorize"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        bail!("The ChatGPT authorization URL is not an official OpenAI sign-in URL.");
+    }
+    if !strip_hint
+        && url.query_pairs().any(|(key, _)| {
+            is_sensitive_chatgpt_query_key(&key) && !key.eq_ignore_ascii_case("id_token_hint")
+        })
+    {
+        bail!("The ChatGPT authorization URL contains an unsafe credential parameter.");
+    }
+    let port = url
+        .query_pairs()
+        .find(|(key, _)| key == "redirect_uri")
+        .and_then(|(_, redirect)| Url::parse(&redirect).ok())
+        .and_then(|redirect| redirect.port());
+    if strip_hint {
+        let query = url
+            .query_pairs()
+            .filter(|(key, _)| !is_sensitive_chatgpt_query_key(key))
+            .fold(
+                url::form_urlencoded::Serializer::new(String::new()),
+                |mut query, (key, value)| {
+                    query.append_pair(&key, &value);
+                    query
+                },
+            )
+            .finish();
+        url.set_query(Some(&query));
+    }
+    Ok((url.to_string(), port))
+}
+
+fn is_sensitive_chatgpt_query_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "id_token_hint" | "access_token" | "refresh_token" | "id_token" | "code_verifier" | "code"
+    )
+}
+
+fn print_chatgpt_status(value: &Value, json_output: bool) -> Result<()> {
+    if json_output {
+        return emit(value.clone());
+    }
+    let state = value
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    print!("ChatGPT: {state}");
+    if let Some(account) = value.get("account").and_then(Value::as_object) {
+        if let Some(label) = account.get("label").and_then(Value::as_str) {
+            print!(" ({})", terminal_text(label));
+        } else if let Some(email) = account.get("email").and_then(Value::as_str) {
+            print!(" ({})", terminal_text(email));
+        }
+    }
+    println!();
+    Ok(())
+}
+
+fn print_chatgpt_models(value: &Value, json_output: bool) -> Result<()> {
+    if json_output {
+        return emit(value.clone());
+    }
+    let Some(models) = value.get("models").and_then(Value::as_array) else {
+        bail!("The ChatGPT model response was invalid.");
+    };
+    if models.is_empty() {
+        println!("No ChatGPT models are available.");
+    }
+    for model in models {
+        let id = model.get("id").and_then(Value::as_str).unwrap_or("unknown");
+        let label = model.get("label").and_then(Value::as_str).unwrap_or(id);
+        println!("{}\t{}", terminal_text(id), terminal_text(label));
+    }
+    Ok(())
+}
+
+fn terminal_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect()
+}
+
+fn print_chatgpt_logout(value: &Value, json_output: bool) -> Result<()> {
+    if json_output {
+        return emit(value.clone());
+    }
+    if value
+        .get("revocationConfirmed")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        println!("Signed out of ChatGPT on this machine.");
+    } else {
+        println!("Signed out locally; ChatGPT did not confirm revocation.");
+    }
     Ok(())
 }
 
@@ -2235,8 +2552,10 @@ fn client_name(call: &ToolCallView) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        another_location, describe_machine, listed_projects, machine_item, machine_was_deleted,
-        projects_on_this_machine, projects_root_from, ran_in, sync_command, validate_project_root,
+        ChatgptCommand, Cli, Commands, another_location, chatgpt_authorize_url,
+        chatgpt_expiry_millis, chatgpt_local_mode, chatgpt_login_mode, describe_machine,
+        listed_projects, machine_item, machine_was_deleted, projects_on_this_machine,
+        projects_root_from, ran_in, sync_command, validate_chatgpt_login, validate_project_root,
         workspace_listing,
     };
     use crate::{
@@ -2244,6 +2563,7 @@ mod tests {
         config::{ConfigStore, ProjectEntry, WorkspaceEntry, WorkspaceSyncState},
         testing::{Gateway, listed_location, listed_project},
     };
+    use clap::Parser;
     use serde_json::{Value, json};
     use std::{
         fs,
@@ -2271,6 +2591,106 @@ mod tests {
             "createdAt": 1,
         }))
         .expect("tool call")
+    }
+
+    #[test]
+    fn chatgpt_login_errors_fail_even_when_an_old_account_remains_ready() {
+        for status in [
+            json!({"state":"signed_out","loginError":"access_denied"}),
+            json!({"state":"ready","loginError":"invalid_id_token"}),
+            json!({"state":"plan_disabled","loginError":"oauth_callback_failed"}),
+            json!({"state":"pending"}),
+        ] {
+            assert!(validate_chatgpt_login(&status).is_err());
+        }
+        for state in ["ready", "plan_disabled"] {
+            assert!(validate_chatgpt_login(&json!({"state":state})).is_ok());
+        }
+    }
+
+    #[test]
+    fn chatgpt_login_reuses_a_saved_registration_after_sign_out_or_token_loss() {
+        for state in ["ready", "plan_disabled", "reconnect", "signed_out"] {
+            let status = json!({
+                "kind": "chatgpt_status",
+                "state": state,
+                "account": {
+                    "label": "Person",
+                    "email": "person@example.test",
+                    "scopes": [],
+                    "planUsage": false,
+                    "newRegistration": false,
+                },
+            });
+            assert_eq!(chatgpt_login_mode(&status, false), "reauth", "{state}");
+        }
+        assert_eq!(
+            chatgpt_login_mode(&json!({ "state": "signed_out" }), false),
+            "new"
+        );
+        assert_eq!(
+            chatgpt_login_mode(&json!({ "state": "client_invalid", "account": {} }), false),
+            "new"
+        );
+        assert_eq!(
+            chatgpt_login_mode(&json!({ "state": "ready", "account": {} }), true),
+            "enable_plan"
+        );
+    }
+
+    #[test]
+    fn chatgpt_login_parser_exposes_local_browser_options() {
+        let cli = Cli::try_parse_from([
+            "exeora",
+            "chatgpt",
+            "login",
+            "--no-browser",
+            "--enable-plan",
+        ])
+        .expect("chatgpt login arguments");
+        assert!(matches!(
+            cli.command,
+            Commands::Chatgpt {
+                command: ChatgptCommand::Login {
+                    no_browser: true,
+                    enable_plan: true,
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn chatgpt_terminal_url_can_remove_only_the_hint_and_find_loopback_port() {
+        let value = json!({
+            "authorizeUrl": "https://auth.openai.com/api/accounts/authorize?state=opaque&id_token_hint=secret&code=also-secret&redirect_uri=http%3A%2F%2F127.0.0.1%3A1455%2Fauth%2Fcallback",
+        });
+        let (safe, port) = chatgpt_authorize_url(&value, true).expect("authorize URL");
+        assert_eq!(port, Some(1455));
+        assert!(safe.contains("state=opaque"));
+        assert!(!safe.contains("id_token_hint"));
+        assert!(!safe.contains("code=also-secret"));
+        assert!(!safe.contains("secret"));
+        assert!(
+            chatgpt_authorize_url(
+                &json!({ "authorizeUrl": "https://evil.example/api/accounts/authorize" }),
+                true,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn chatgpt_expiry_accepts_protocol_milliseconds() {
+        assert_eq!(chatgpt_expiry_millis(&json!(1234)), Some(1234));
+        assert_eq!(chatgpt_expiry_millis(&json!("1234")), Some(1234));
+        assert_eq!(chatgpt_expiry_millis(&json!("not-a-time")), None);
+    }
+
+    #[test]
+    fn chatgpt_commands_are_local_only_without_reading_environment_in_tests() {
+        assert!(chatgpt_local_mode(false, false));
+        assert!(!chatgpt_local_mode(true, false));
+        assert!(!chatgpt_local_mode(false, true));
     }
 
     #[test]

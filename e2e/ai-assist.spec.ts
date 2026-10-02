@@ -19,7 +19,9 @@ test("writes a commit message from what is staged, unless the field moved on", a
   await expect(list.getByRole("button", { name: "Commit 2 files" })).toBeEnabled();
 });
 
-test("lists the assistants in Settings and links one with a device code", async ({ page }) => {
+test("lists API-key OpenAI, local ChatGPT plan, and links Grok with a device code", async ({
+  page,
+}) => {
   let polls = 0;
   await signedIn(page);
   await mockWorkspaceV2(page, { ai: true });
@@ -48,9 +50,21 @@ test("lists the assistants in Settings and links one with a device code", async 
   const card = page
     .getByRole("region", { name: "AI Assist" })
     .or(page.locator("section", { hasText: "AI Assist" }).first());
-  await expect(page.getByText("ChatGPT", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator("p.text-title-md")
+      .filter({ hasText: /^OpenAI API$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("p.text-title-md")
+      .filter({ hasText: /^ChatGPT plan$/ })
+      .first(),
+  ).toBeVisible();
   await expect(page.getByText(aiStatus.providers[0]?.linked?.accountLabel ?? "")).toBeVisible();
-  await expect(page.getByText("subscription", { exact: true })).toBeVisible();
+  await expect(page.getByText("API key", { exact: true })).toBeVisible();
+  await expect(page.getByText("Old sign-in", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Link subscription" }).click();
   const dialog = page.getByRole("dialog", { name: "Link Grok" });

@@ -1,6 +1,11 @@
 import type { Page, Request, Route } from "@playwright/test";
 import { gitStatus, mockApi, project, workspace } from "./dashboard-mock.js";
-import { mockIntegrations, type PullRequestFixture } from "./integrations-mock.js";
+import {
+  type AiStatusFixture,
+  type ChatgptMock,
+  mockIntegrations,
+  type PullRequestFixture,
+} from "./integrations-mock.js";
 
 /**
  * What a machine with a v2 CLI answers: the reads route, the file edits,
@@ -88,14 +93,21 @@ export async function mockWorkspaceV2(
     stashes?: number;
     /** GitHub connected, with this pull request for the feature branch (or none). */
     github?: { pullRequest: PullRequestFixture | null };
-    /** AI Assist on, with ChatGPT linked. */
+    /** AI Assist on, with OpenAI API and the local ChatGPT plan offered. */
     ai?: boolean;
+    /** Optional provider/settings payload for provider-isolation scenarios. */
+    aiStatus?: AiStatusFixture;
+    /** Optional stateful responses for the local ChatGPT browser flow. */
+    chatgpt?: ChatgptMock;
   } = {},
 ) {
   await mockApi(page, { onRequest: options.onRequest });
   let token = 1;
-  if (options.github || options.ai) {
-    await mockIntegrations(page, options);
+  if (options.github || options.ai || options.chatgpt) {
+    await mockIntegrations(page, {
+      ...options,
+      chatgpt: options.chatgpt,
+    });
   }
   await page.route("**/api/projects/*/workspace/**", async (route: Route) => {
     const request = route.request();

@@ -4,34 +4,29 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc
   title="AI Assist"
-  description="Link your own ChatGPT or Grok account to write commit messages and pull requests from the dashboard."
+  description="Use your own ChatGPT plan, OpenAI API key or Grok account to write commit messages and pull requests."
   canonicalPath="/docs/ai-assist/"
 >
-  <p>
-    AI Assist writes commit messages and pull request descriptions from what is on the machine: the
-    staged patch, or the commits and diff a branch adds over its base. It uses an account of your
-    own, ChatGPT or Grok, linked once in <strong>Settings</strong>. Exeora runs no model of its own
-    and bills nothing for it.
-  </p>
+  <p> AI Assist writes commit messages and pull request descriptions from what is on the machine: the staged patch, or the commits and diff a branch adds over its base. It uses a provider chosen by you, and Exeora runs no model of its own or bills you for model use. </p>
 
-  <h2 id="linking">Linking an account</h2>
+  <h2 id="linking">Choose a provider</h2>
 
-  <p>
-    Each provider is linked one of two ways. <strong>Link subscription</strong> shows a code and a
-    page on the provider's site; sign in there, enter the code, and the provider hands the gateway
-    a token for your plan. <strong>Use an API key</strong> takes a key from the provider's platform,
-    checks it with the provider, and keeps it. Both are stored encrypted, the same way as the token
-    GitHub gives, and are deleted when you unlink.
-  </p>
+  <p> <strong>ChatGPT plan.</strong> The local open-source path follows OpenAI's <a href="https://developers.openai.com/siwc/token-sharing-open-source/" >Sign in with ChatGPT documentation</a >. The Exeora CLI on the machine that runs the request owns the registration and its owner-only credential files: </p>
 
-  <p>
-    The subscription flows reuse the sign-in the providers built for their own command-line tools.
-    Neither OpenAI nor xAI documents them for a product like this, and either may change or close
-    them without notice; if that happens, an API key still works, and the card says so. Requests
-    made through a subscription are governed by the provider's terms for your account, not by
-    anything Exeora can promise. A self-hosted gateway can leave the subscription flows off and
-    offer keys only.
-  </p>
+  <pre>{`exeora chatgpt login
+exeora chatgpt status
+exeora chatgpt models
+exeora chatgpt logout`}</pre>
+
+  <p> An eligible ChatGPT Plus or Pro account can grant the <code>chatgpt.tokens.use.direct</code> permission for plan usage. A successful sign-in without that permission does not enable generations; run <code>exeora chatgpt login --enable-plan</code> to request it afterward. When it is enabled, the local CLI calls the public <a href="https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference" >OpenAI Responses API</a > at <code>https://api.openai.com/v1/responses</code>. The ChatGPT credential stays on that machine; it is not sent to the gateway, browser, D1 or Exeora Cloud. </p>
+
+  <p> The sign-in callback is <code>http://127.0.0.1:&lt;port&gt;/auth/callback</code>. Open the authorization page in a browser on the same machine as the CLI because <code>127.0.0.1</code> refers to the browser's computer. For a headless or SSH machine, run <code>exeora chatgpt login --no-browser</code> there and use its URL with a port-forward to that machine. ChatGPT plan usage is unavailable on Exeora Cloud machines. </p>
+
+  <p> A ChatGPT plan request never silently falls back to an API key or another provider. Choose the OpenAI API provider explicitly when you want API-key billing. The official <a href="https://developers.openai.com/siwc/token-sharing-open-source/sign-in" >registration and sign-in guide</a >, <a href="https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions" >account and session guidance</a > and <a href="https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations" >preview limitations</a > describe the current provider contract. This page describes the local open-source path; it does not claim that the shared hosted gateway has enabled it or that live inference has been verified there. </p>
+
+  <p> <strong>OpenAI API.</strong> Use an API key from the OpenAI platform when you want the existing gateway provider. It is separate from ChatGPT plan usage and remains available wherever the gateway offers AI Assist. </p>
+
+  <p> <strong>Grok.</strong> Its subscription sign-in remains an unofficial xAI device flow for third-party applications and may change or close without notice. An xAI API key remains the documented alternative. A self-hosted gateway can offer API keys only. </p>
 
   <h2 id="settings">Provider, model and instructions</h2>
 
@@ -57,14 +52,11 @@ import Doc from "../../layouts/Doc.astro";
     accepts asks you to link again.
   </p>
 
+  <h2 id="old-links">Old ChatGPT subscription links</h2>
+
+  <p> A subscription link created by Exeora's old unofficial Codex flow is a legacy link. It is not migrated or reused automatically. Remove it, then sign in again with <code>exeora chatgpt login</code> on the machine that will run the request, or choose an OpenAI API key. </p>
+
   <h2 id="data">What leaves the machine</h2>
 
-  <p>
-    What the assistant reads is read from the machine that holds the workspace, passed through the
-    gateway to the provider you chose, and kept nowhere: the branch, the staged files with their
-    line counts and the staged patch, or the commits with their messages, the changed files and
-    the patch against the base, each cut at a fixed size. Every generation appears in the audit
-    stream as <code>ai.commit_message</code> or <code>ai.pull_request</code>, with the project and
-    workspace and never the content. The provider keeps what its own terms say it keeps.
-  </p>
+  <p> The machine that holds the workspace reads the branch, staged files, commits and patch, then sends the bounded context through the relay to the gateway. The gateway constructs the generation prompt. For ChatGPT plan usage, it relays that prompt to the same machine, which calls the public Responses API with its local credential; the gateway never receives that credential. For an OpenAI API key or Grok provider, the gateway sends the prompt to the provider you chose. In every case, the audit stream records <code>ai.commit_message</code> or <code>ai.pull_request</code> with the project and workspace, never the content. The provider keeps what its own terms say it keeps. </p>
 </Doc>

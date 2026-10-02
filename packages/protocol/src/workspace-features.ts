@@ -20,6 +20,8 @@ export const SOURCE_CONTROL_V1 = "source-control-v1";
 export const SOURCE_CONTROL_V2 = "source-control-v2";
 /** The Explorer and search: tree, file reads and edits, search and replace. */
 export const WORKSPACE_V2 = "workspace-v2";
+/** Local machine's official Sign in with ChatGPT and Responses API bridge. */
+export const CHATGPT_V1 = "chatgpt-v1";
 
 export const WORKSPACE_ACTION_FEATURES: Record<WorkspaceAction["action"], string> = {
   status: SOURCE_CONTROL_V1,
@@ -63,6 +65,13 @@ export const WORKSPACE_ACTION_FEATURES: Record<WorkspaceAction["action"], string
   file_duplicate: WORKSPACE_V2,
   search: WORKSPACE_V2,
   replace: WORKSPACE_V2,
+  chatgpt_status: CHATGPT_V1,
+  chatgpt_login_start: CHATGPT_V1,
+  chatgpt_login_cancel: CHATGPT_V1,
+  chatgpt_logout: CHATGPT_V1,
+  chatgpt_welcome_ack: CHATGPT_V1,
+  chatgpt_models: CHATGPT_V1,
+  chatgpt_generate: CHATGPT_V1,
 };
 
 /** The feature a CLI must have announced to be sent this action. */
@@ -70,10 +79,11 @@ export function requiredFeature(action: WorkspaceAction["action"]): string {
   return WORKSPACE_ACTION_FEATURES[action];
 }
 
-export type WorkspaceTab = "Source Control" | "Explorer" | "Search";
+export type WorkspaceTab = "Source Control" | "Explorer" | "Search" | "ChatGPT";
 
 /** The dashboard tab an action belongs to, for a refusal to name. */
 export function workspaceTab(action: WorkspaceAction["action"]): WorkspaceTab {
+  if (action.startsWith("chatgpt_")) return "ChatGPT";
   if (action === "search" || action === "replace") return "Search";
   if (action === "tree" || action.startsWith("file_")) return "Explorer";
   return "Source Control";

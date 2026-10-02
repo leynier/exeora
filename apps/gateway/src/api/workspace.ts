@@ -77,6 +77,11 @@ workspace.post(
   zValidator("json", WorkspaceAction),
   async (c) => {
     const action = c.req.valid("json");
+    // Plan usage is reachable only through the dedicated, owner-scoped AI
+    // routes. The generic workspace API must never start a login or inference.
+    if (action.action.startsWith("chatgpt_")) {
+      return c.json({ error: "use_ai_endpoint" }, 400);
+    }
     // Reads are neither audited nor counted as writes; they have a route of
     // their own. What the remote lacks is the gateway's own question.
     if (isWorkspaceRead(action.action) || action.action === "unpublished") {

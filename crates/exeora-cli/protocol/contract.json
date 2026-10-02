@@ -1937,6 +1937,304 @@
                             "skipped"
                           ],
                           "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_status"
+                            },
+                            "state": {
+                              "type": "string",
+                              "enum": [
+                                "signed_out",
+                                "pending",
+                                "ready",
+                                "plan_disabled",
+                                "reconnect",
+                                "client_invalid",
+                                "unavailable_on_cloud"
+                              ]
+                            },
+                            "account": {
+                              "type": "object",
+                              "properties": {
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "email": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 320
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "scopes": {
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  }
+                                },
+                                "planUsage": {
+                                  "type": "boolean"
+                                },
+                                "newRegistration": {
+                                  "type": "boolean"
+                                },
+                                "noticeId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "label",
+                                "email",
+                                "scopes",
+                                "planUsage",
+                                "newRegistration"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "pending": {
+                              "type": "object",
+                              "properties": {
+                                "expiresAt": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "expiresAt"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "loginError": {
+                              "type": "string",
+                              "enum": [
+                                "login_timeout",
+                                "state_mismatch",
+                                "plan_disabled",
+                                "missing_code",
+                                "registration_incomplete",
+                                "client_mismatch",
+                                "temporarily_unavailable",
+                                "invalid_token_response",
+                                "invalid_id_token",
+                                "subject_mismatch",
+                                "reconnect",
+                                "client_invalid",
+                                "cancelled"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "state"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_login"
+                            },
+                            "authorizeUrl": {
+                              "type": "string",
+                              "maxLength": 4096,
+                              "format": "uri"
+                            },
+                            "expiresAt": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "authorizeUrl",
+                            "expiresAt"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_logout"
+                            },
+                            "revocationConfirmed": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "revocationConfirmed"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_welcome_ack"
+                            },
+                            "acknowledged": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "acknowledged"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_models"
+                            },
+                            "models": {
+                              "maxItems": 50,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128,
+                                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+                                  },
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "label"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "models"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "chatgpt_generation"
+                                },
+                                "outcome": {
+                                  "type": "string",
+                                  "const": "completed"
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "maxLength": 200000
+                                },
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128,
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "outcome",
+                                "text",
+                                "model"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "chatgpt_generation"
+                                },
+                                "outcome": {
+                                  "type": "string",
+                                  "const": "failed"
+                                },
+                                "reason": {
+                                  "type": "string",
+                                  "enum": [
+                                    "usage_limit",
+                                    "not_eligible",
+                                    "plan_disabled",
+                                    "reconnect",
+                                    "unsupported",
+                                    "route_not_supported",
+                                    "permission",
+                                    "region_or_policy",
+                                    "temporarily_unavailable",
+                                    "incomplete",
+                                    "interrupted",
+                                    "model_unavailable",
+                                    "signed_out",
+                                    "failed"
+                                  ]
+                                },
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "param": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                },
+                                "httpStatus": {
+                                  "type": "integer",
+                                  "minimum": 100,
+                                  "maximum": 599
+                                },
+                                "requestId": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 128
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "outcome",
+                                "reason"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
                         }
                       ]
                     }
@@ -3717,6 +4015,128 @@
                     "replacement",
                     "preserveCase",
                     "targets"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_status"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_login_start"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "new",
+                        "reauth",
+                        "enable_plan"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "mode"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_login_cancel"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_logout"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_welcome_ack"
+                    },
+                    "noticeId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "noticeId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_models"
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_generate"
+                    },
+                    "model": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "input": {
+                      "type": "string",
+                      "maxLength": 220000
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "instructions",
+                    "input"
                   ],
                   "additionalProperties": false
                 }

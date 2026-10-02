@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decryptSecret } from "../cloud/credentials.js";
 import { db, schema } from "../db/client.js";
 import { limiterFor } from "../rate-limit.js";
+import { forgetCredential, storeCredential } from "./credentials.js";
 import {
   type Asked,
   aiOff,
@@ -11,10 +12,8 @@ import {
   CREDENTIALS_KEY,
   call,
   fakeProvider,
-  jwt,
   seedUser,
 } from "./fixtures.js";
-import { storeLogin } from "./logins.js";
 import { replaceOutbound } from "./outbound.js";
 import { XAI_PUBLIC_CLIENT_ID } from "./providers/xai.js";
 
@@ -105,153 +104,97 @@ describe("a gateway without AI Assist", () => {
   });
 });
 
-describe("linking ChatGPT by device code", () => {
-  const ACCESS = jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_1" } });
-  const ID_TOKEN = jwt({ email: "person@example.com" });
-
-  /** OpenAI as the Codex flow sees it: pending once, then granted. */
-  function codex() {
-    let polls = 0;
-    return provider((asked) => {
-      if (asked.url.endsWith("/deviceauth/usercode")) {
-        expect(asked.json()).toEqual({ client_id: "app_EMoamEEZ73f0CkXaXp7hrann" });
-        return Response.json({ device_auth_id: "da_1", user_code: "ABCD-1234", interval: 5 });
-      }
-      if (asked.url.endsWith("/deviceauth/token")) {
-        expect(asked.json()).toEqual({ device_auth_id: "da_1", user_code: "ABCD-1234" });
-        polls++;
-        return polls === 1
-          ? Response.json({ error: "pending" }, { status: 403 })
-          : Response.json({ authorization_code: "code_1", code_verifier: "verifier_1" });
-      }
-      if (asked.url === "https://auth.openai.com/oauth/token") {
-        expect(Object.fromEntries(asked.form())).toEqual({
-          grant_type: "authorization_code",
-          code: "code_1",
-          code_verifier: "verifier_1",
-          client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
-          redirect_uri: "http://localhost:1455/auth/callback",
-        });
-        return Response.json({
-          access_token: ACCESS,
-          refresh_token: "rt_1",
-          id_token: ID_TOKEN,
-          expires_in: 3600,
-        });
-      }
-      return undefined;
+describe("OpenAI API-key provider", () => {
+  it("offers OpenAI by API key only and never starts a retired device flow", async () => {
+    const fake = provider(() => {
+      throw new Error("retired OpenAI OAuth endpoint was called");
     });
-  }
-
-  it("starts, polls and keeps an encrypted credential the status shows as linked", async () => {
-    codex();
-    const on = aiOn();
-    const started = await call("/api/ai/providers/openai/device", {
-      method: "POST",
-      userId: USER,
-      env: on,
-    });
-    expect(started.status).toBe(200);
-    const login = (await started.json()) as Record<string, unknown>;
-    expect(login).toMatchObject({
-      userCode: "ABCD-1234",
-      verificationUrl: "https://auth.openai.com/codex/device",
-      interval: 5,
-    });
-    expect(login.expiresAt).toBeGreaterThan(Date.now());
-    const pendingRow = await loginRow("openai");
-    expect(pendingRow).toMatchObject({ userCode: "ABCD-1234" });
-    // The device code redeems the grant, so a dump of the table must not hold it.
-    expect(pendingRow?.deviceCiphertext).not.toContain("da_1");
-    expect(await decryptSecret(CREDENTIALS_KEY, pendingRow?.deviceCiphertext ?? "")).toBe("da_1");
-
-    const pending = await call("/api/ai/providers/openai/device/poll", {
-      method: "POST",
-      userId: USER,
-      env: on,
-    });
-    expect(await pending.json()).toEqual({ status: "pending" });
-
-    const granted = await call("/api/ai/providers/openai/device/poll", {
-      method: "POST",
-      userId: USER,
-      env: on,
-    });
-    expect(await granted.json()).toEqual({
-      status: "granted",
-      linked: { kind: "oauth", accountLabel: "person@example.com" },
-    });
-    expect(await loginRow("openai")).toBeUndefined();
-
-    const row = await storedRow("openai");
-    expect(row).toMatchObject({ authKind: "oauth", accountId: "acct_1" });
-    expect(row?.accessCiphertext).not.toContain(ACCESS);
-    expect(row?.refreshCiphertext).not.toContain("rt_1");
-    expect(await decryptSecret(CREDENTIALS_KEY, row?.accessCiphertext ?? "")).toBe(ACCESS);
-    expect(await decryptSecret(CREDENTIALS_KEY, row?.refreshCiphertext ?? "")).toBe("rt_1");
-    expect(row?.accessExpiresAt?.getTime()).toBeGreaterThan(Date.now() + 3_000_000);
-
-    const status = await call("/api/ai", { userId: USER, env: on });
-    const body = (await status.json()) as { providers: Array<Record<string, unknown>> };
-    expect(body).toMatchObject({ enabled: true, oauthAvailable: true });
-    expect(body.providers.map((entry) => entry.id)).toEqual(["openai", "xai"]);
-    expect(body.providers[0]).toMatchObject({
-      id: "openai",
-      authKinds: ["oauth", "api_key"],
-      linked: { kind: "oauth", accountLabel: "person@example.com" },
-      models: [
-        { id: "gpt-5.5", label: "GPT-5.5" },
-        { id: "gpt-5.5-mini" },
-        { id: "gpt-5.5-codex" },
-      ],
-    });
-    expect(body.providers[1]).toMatchObject({ id: "xai", linked: null });
-  });
-
-  it("says when the login expired before the person entered the code", async () => {
-    const fake = codex();
-    await storeLogin(env, { credentialsKey: CREDENTIALS_KEY }, USER, "openai", {
-      deviceId: "da_old",
-      userCode: "OLD",
-      verificationUrl: "https://auth.openai.com/codex/device",
-      interval: 5,
-      expiresAt: Date.now() - 1_000,
-    });
-    const response = await call("/api/ai/providers/openai/device/poll", {
-      method: "POST",
-      userId: USER,
-      env: aiOn(),
-    });
-    expect(await response.json()).toEqual({ status: "expired" });
-    expect(await loginRow("openai")).toBeUndefined();
-    expect(fake.asked).toHaveLength(0);
-  });
-
-  it("names a poll with nothing to poll", async () => {
-    const response = await call("/api/ai/providers/openai/device/poll", {
-      method: "POST",
-      userId: USER,
-      env: aiOn(),
-    });
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: "ai_login_missing" });
-  });
-
-  it("offers no device login when the gateway keeps only API keys", async () => {
-    const keysOnly = aiOn({ AI_ASSIST_OAUTH: "off" });
-    const status = (await (await call("/api/ai", { userId: USER, env: keysOnly })).json()) as {
+    const status = (await (await call("/api/ai", { userId: USER, env: aiOn() })).json()) as {
       oauthAvailable: boolean;
-      providers: Array<{ authKinds: string[] }>;
+      providers: Array<{ id: string; authKinds: string[] }>;
     };
-    expect(status.oauthAvailable).toBe(false);
-    expect(status.providers.map((entry) => entry.authKinds)).toEqual([["api_key"], ["api_key"]]);
+    expect(status.providers.find((entry) => entry.id === "openai")).toMatchObject({
+      authKinds: ["api_key"],
+    });
+
     const refused = await call("/api/ai/providers/openai/device", {
       method: "POST",
       userId: USER,
-      env: keysOnly,
+      env: aiOn(),
     });
     expect(refused.status).toBe(400);
     expect(await refused.json()).toMatchObject({ error: "ai_oauth_unavailable" });
+    expect(fake.asked).toHaveLength(0);
+  });
+
+  it("rejects API-key-only polling before decrypting a legacy pending login", async () => {
+    await db(env)
+      .insert(schema.aiDeviceLogins)
+      .values({
+        userId: USER,
+        provider: "openai",
+        deviceCiphertext: "not-a-ciphertext",
+        userCode: "legacy-code",
+        verificationUrl: "https://auth.example.test/device",
+        intervalS: 5,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretCiphertext: null,
+      })
+      .run();
+    const fake = provider(() => {
+      throw new Error("API-key-only polling must not make an outbound request");
+    });
+
+    const response = await call("/api/ai/providers/openai/device/poll", {
+      method: "POST",
+      userId: USER,
+      env: aiOn(),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "ai_oauth_unavailable" });
+    expect(fake.asked).toHaveLength(0);
+    expect(await loginRow("openai")).toMatchObject({ deviceCiphertext: "not-a-ciphertext" });
+  });
+
+  it("shows a legacy OAuth row without opening it and lets the owner remove it", async () => {
+    await storeCredential(env, { credentialsKey: CREDENTIALS_KEY }, USER, "openai", "oauth", {
+      access: "legacy-access",
+      refresh: "legacy-refresh",
+      accountLabel: "legacy@example.com",
+    });
+    const fake = provider(() => {
+      throw new Error("legacy OpenAI credential attempted an outbound request");
+    });
+    const status = (await (await call("/api/ai", { userId: USER, env: aiOn() })).json()) as {
+      providers: Array<Record<string, unknown>>;
+    };
+    expect(status.providers.find((entry) => entry.id === "openai")).toMatchObject({
+      linked: { kind: "oauth", legacy: true, accountLabel: "legacy@example.com" },
+    });
+
+    const models = await call("/api/ai/providers/openai/models", { userId: USER, env: aiOn() });
+    expect(models.status).toBe(409);
+    expect(await models.json()).toMatchObject({ error: "ai_legacy_reconnect" });
+    expect(fake.asked).toHaveLength(0);
+
+    const removed = await call("/api/ai/providers/openai", {
+      method: "DELETE",
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(await removed.json()).toEqual({ ok: true, removed: true });
+    expect(await forgetCredential(env, USER, "openai")).toBe(false);
+  });
+
+  it("keeps the API-key-only setting when OAuth is disabled", async () => {
+    const keysOnly = aiOn({ AI_ASSIST_OAUTH: "off" });
+    const status = (await (await call("/api/ai", { userId: USER, env: keysOnly })).json()) as {
+      oauthAvailable: boolean;
+      providers: Array<{ id: string; authKinds: string[] }>;
+    };
+    expect(status.oauthAvailable).toBe(false);
+    expect(status.providers.map((entry) => entry.authKinds)).toEqual([["api_key"], ["api_key"]]);
   });
 
   it("offers xAI by key only when its client is off, and only the providers named", async () => {
@@ -259,7 +202,7 @@ describe("linking ChatGPT by device code", () => {
       await call("/api/ai", { userId: USER, env: aiOn({ XAI_OAUTH_CLIENT_ID: "off" }) })
     ).json()) as { providers: Array<{ id: string; authKinds: string[] }> };
     expect(status.providers).toMatchObject([
-      { id: "openai", authKinds: ["oauth", "api_key"] },
+      { id: "openai", authKinds: ["api_key"] },
       { id: "xai", authKinds: ["api_key"] },
     ]);
     const one = (await (

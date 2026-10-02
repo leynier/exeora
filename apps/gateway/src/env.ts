@@ -108,14 +108,13 @@ declare global {
     GITHUB_APP_WEBHOOK_SECRET?: string;
 
     /**
-     * AI Assist: which providers an account may link, as a comma-separated
-     * list of `openai` and `xai`. Unset or empty means the feature is off and
-     * the routes answer `ai_disabled`. The API-key paths speak to documented
-     * APIs; the device logins that link a ChatGPT or Grok subscription reuse
-     * flows other tools use without the providers promising them (the Codex
-     * CLI's public client, xAI's OpenID provider), so they are unofficial and
-     * may stop working without notice. Credentials are kept under
-     * `CLOUD_CREDENTIALS_KEY`, without which this is off as well.
+     * AI Assist: which providers an account may use, as a comma-separated list
+     * of `openai`, `xai` and `chatgpt`. Unset or empty means the feature is off
+     * and the routes answer `ai_disabled`. OpenAI and xAI API-key credentials
+     * are kept under `CLOUD_CREDENTIALS_KEY`; a ChatGPT-only deployment does
+     * not need that key because its plan credential stays on the local CLI.
+     * `AI_ASSIST_OAUTH=off` removes xAI's device login while leaving API keys
+     * and the machine-bound ChatGPT flow available.
      */
     AI_ASSIST_PROVIDERS?: string;
     /** `off` keeps only the API keys: no device login is offered for any provider. */

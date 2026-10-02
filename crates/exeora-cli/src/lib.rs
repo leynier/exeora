@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod cgroup;
+pub mod chatgpt;
 pub mod cli;
 pub mod cloud;
 pub mod config;
