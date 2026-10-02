@@ -11,7 +11,7 @@ use crate::chatgpt::store::StoredAccount;
 
 const MAX_INSTRUCTIONS_UTF16: usize = 4_000;
 const MAX_INPUT_UTF16: usize = 220_000;
-const STREAM_TIMEOUT: Duration = Duration::from_secs(60);
+const GENERATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
 pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result<Value> {
@@ -19,6 +19,34 @@ pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result
 }
 
 pub(crate) async fn generate_for_revision(
+    service: &ChatgptService,
+    action: &Value,
+    expected: &session::Revision,
+) -> Result<Value> {
+    generate_with_budget(service, action, expected, GENERATION_TIMEOUT).await
+}
+
+async fn generate_with_budget(
+    service: &ChatgptService,
+    action: &Value,
+    expected: &session::Revision,
+    budget: Duration,
+) -> Result<Value> {
+    // Refresh, catalog discovery, retries and streaming share one deadline.
+    // Dropping this future still lets detached refresh persist token rotation.
+    match tokio::time::timeout(budget, generate_inner(service, action, expected)).await {
+        Ok(result) => result,
+        Err(_) => Ok(failure(
+            "interrupted",
+            Some("generation_timeout"),
+            None,
+            None,
+            None,
+        )),
+    }
+}
+
+async fn generate_inner(
     service: &ChatgptService,
     action: &Value,
     expected: &session::Revision,
@@ -193,23 +221,11 @@ pub(crate) async fn generate_for_revision(
     }
 
     let request_id = outcome.request_id.clone();
-    match tokio::time::timeout(
-        STREAM_TIMEOUT,
-        parse_stream(outcome.response, &model, request_id.as_deref()),
-    )
-    .await
-    {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(_)) => Ok(failure(
-            "interrupted",
-            Some("stream_error"),
-            None,
-            Some(StatusCode::OK),
-            request_id.as_deref(),
-        )),
+    match parse_stream(outcome.response, &model, request_id.as_deref()).await {
+        Ok(value) => Ok(value),
         Err(_) => Ok(failure(
             "interrupted",
-            Some("stream_timeout"),
+            Some("stream_error"),
             None,
             Some(StatusCode::OK),
             request_id.as_deref(),
@@ -953,6 +969,128 @@ mod tests {
         assert!(!consume_line(b"data: {\"type\":\"response.completed\"}", &mut data).unwrap());
         assert_eq!(data, r#"{"type":"response.completed"}"#);
         assert!(!consume_line(b"data: [DONE]", &mut data).unwrap());
+    }
+
+    #[tokio::test]
+    async fn generation_deadline_includes_catalog_and_response_headers() {
+        use axum::{
+            Router,
+            routing::{get, post},
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let requests = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/v1/models", get({
+                let requests = requests.clone();
+                move || { let requests = requests.clone(); async move {
+                    requests.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    axum::Json(json!({"models":[{"slug":"test-model", "visibility":"list"}]}))
+                }}
+            }))
+            .route("/v1/responses", post({
+                let requests = requests.clone();
+                move || { let requests = requests.clone(); async move {
+                    requests.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(400)).await;
+                    ([(reqwest::header::CONTENT_TYPE,"text/event-stream")],
+                        "data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Too late\"}]}]}}\n\n")
+                }}
+            }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let (_directory, service) = test_service(&base).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            generate_with_budget(
+                &service,
+                &json!({"instructions":"Commit", "input":"diff"}),
+                &session::revision(&service.store).unwrap(),
+                Duration::from_millis(500),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+        assert_eq!(result["reason"], "interrupted");
+        assert_eq!(result["code"], "generation_timeout");
+        assert!(result.get("text").is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn generation_timeout_preserves_detached_refresh_without_sending_the_prompt() {
+        use axum::{
+            Router,
+            routing::{get, post},
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let received = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let models = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route("/token", post({
+                let received = received.clone(); let release = release.clone();
+                move || { let received = received.clone(); let release = release.clone(); async move {
+                    received.notify_one(); release.notified().await;
+                    axum::Json(json!({"access_token":"rotated-access", "refresh_token":"rotated-refresh", "expires_in":3600, "token_type":"Bearer"}))
+                }}
+            }))
+            .route("/v1/models", get({
+                let models = models.clone();
+                move || { let models = models.clone(); async move {
+                    models.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(json!({"models":[{"slug":"test-model", "visibility":"list"}]}))
+                }}
+            }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let (_directory, service) = test_service(&base).await;
+        let mut account = service.store.load_active().unwrap().unwrap();
+        account.expires_at = Some(super::super::store::now_secs() + 1);
+        service.store.save(&account).unwrap();
+        let request = {
+            let service = service.clone();
+            tokio::spawn(async move {
+                generate_with_budget(
+                    &service,
+                    &json!({"instructions":"Commit", "input":"private diff"}),
+                    &session::revision(&service.store).unwrap(),
+                    Duration::from_millis(200),
+                )
+                .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(2), received.notified())
+            .await
+            .unwrap();
+        let result = request.await.unwrap().unwrap();
+        assert_eq!(result["code"], "generation_timeout");
+        assert_eq!(models.load(Ordering::SeqCst), 0);
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while service
+                .store
+                .load(&account.client_id)
+                .unwrap()
+                .refresh_token
+                .as_deref()
+                != Some("rotated-refresh")
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(models.load(Ordering::SeqCst), 0);
+        server.abort();
     }
 
     #[tokio::test]
