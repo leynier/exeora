@@ -31,19 +31,6 @@ const COMMON_SECURITY_HEADERS = {
  * script gadget while leaving the provider's framing and callback responses
  * untouched.
  */
-const DASHBOARD_CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' https: data:",
-  "font-src 'self'",
-  "connect-src 'self' wss:",
-  "form-action 'self'",
-  "frame-ancestors 'self'",
-].join("; ");
-
 /**
  * Vite and Astro put content hashes in these names. A long cache lifetime is
  * safe for them and keeps every dashboard navigation from revalidating its
@@ -65,7 +52,9 @@ export async function serveAssets(
 ): Promise<Response> {
   const url = new URL(request.url);
 
-  if (PANEL_PATHS.has(url.pathname)) return framedByExtension(await env.ASSETS.fetch(request), env);
+  if (PANEL_PATHS.has(url.pathname)) {
+    return framedByExtension(await env.ASSETS.fetch(request), env, url);
+  }
 
   if (url.pathname === DASHBOARD_PREFIX) {
     return withSecurityHeaders(Response.redirect(`${url.origin}${DASHBOARD_PREFIX}/`, 308));
@@ -80,7 +69,7 @@ export async function serveAssets(
     // `ok` is 200-299 only. Treating a revalidation as a miss answers a script
     // request with the HTML shell, the browser fails to parse that as a module,
     // and the page renders blank until a reload skips revalidation entirely.
-    if (asset.ok || asset.status === 304) return withAssetHeaders(asset, url.pathname);
+    if (asset.ok || asset.status === 304) return withAssetHeaders(asset, url.pathname, url);
 
     // Anything left is a client route. Static Assets answers those with a 307
     // towards a trailing slash, and following it would strip the OAuth query
@@ -103,11 +92,12 @@ export async function serveAssets(
     return withAssetHeaders(
       new Response(shell.body, { status: 200, headers: shell.headers }),
       `${DASHBOARD_PREFIX}/`,
+      url,
     );
   }
 
   const asset = await env.ASSETS.fetch(request);
-  if (asset.status !== 404) return withAssetHeaders(asset, url.pathname);
+  if (asset.status !== 404) return withAssetHeaders(asset, url.pathname, url);
 
   // `not_found_handling` is set to `none` so this Worker decides the fallback,
   // which leaves the landing's own 404 page to be served by hand. Without this
@@ -118,8 +108,8 @@ export async function serveAssets(
   // a redirect is not a page.
   const page = await env.ASSETS.fetch(new Request(`${url.origin}/404`));
   return page.ok
-    ? withAssetHeaders(new Response(page.body, { status: 404, headers: page.headers }), "/404")
-    : withAssetHeaders(asset, url.pathname);
+    ? withAssetHeaders(new Response(page.body, { status: 404, headers: page.headers }), "/404", url)
+    : withAssetHeaders(asset, url.pathname, url);
 }
 
 /**
@@ -129,22 +119,38 @@ export async function serveAssets(
  * must refuse every other parent. With the header, a page framed at all is
  * framed by one of Exeora's own extensions; with no id allowed, by nothing.
  */
-function framedByExtension(asset: Response, env: Pick<Env, "EXEORA_EXTENSION_IDS">): Response {
+function framedByExtension(
+  asset: Response,
+  env: Pick<Env, "EXEORA_EXTENSION_IDS">,
+  requestUrl: URL,
+): Response {
   const origins = extensionOrigins(env);
   return withSecurityHeaders(asset, {
-    contentSecurityPolicy: [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "script-src 'self' 'wasm-unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' https: data:",
-      "font-src 'self'",
-      "connect-src 'self' wss:",
-      "form-action 'self'",
-      `frame-ancestors ${origins.length > 0 ? origins.join(" ") : "'none'"}`,
-    ].join("; "),
+    contentSecurityPolicy: contentSecurityPolicy(
+      requestUrl,
+      origins.length > 0 ? origins.join(" ") : "'none'",
+    ),
   });
+}
+
+/** The same-origin WebSocket endpoint, explicit for browsers that do not map `'self'`. */
+function websocketOrigin(url: URL): string {
+  return `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
+}
+
+function contentSecurityPolicy(url: URL, frameAncestors: string): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' https: data:",
+    "font-src 'self'",
+    `connect-src 'self' ${websocketOrigin(url)}`,
+    "form-action 'self'",
+    `frame-ancestors ${frameAncestors}`,
+  ].join("; ");
 }
 
 /**
@@ -171,12 +177,12 @@ export function withSecurityHeaders(
 }
 
 /** Adds static-site headers without changing a 304 into a body-bearing response. */
-function withAssetHeaders(response: Response, pathname: string): Response {
+function withAssetHeaders(response: Response, pathname: string, requestUrl: URL): Response {
   let contentSecurityPolicy: string | undefined;
   if (pathname === DASHBOARD_PREFIX || pathname.startsWith(`${DASHBOARD_PREFIX}/`)) {
     const contentType = response.headers.get("content-type") ?? "";
     if (contentType.includes("text/html"))
-      contentSecurityPolicy = DASHBOARD_CONTENT_SECURITY_POLICY;
+      contentSecurityPolicy = contentSecurityPolicyForDashboard(requestUrl);
   }
 
   const options: { cacheControl?: string; contentSecurityPolicy?: string } = {};
@@ -185,4 +191,8 @@ function withAssetHeaders(response: Response, pathname: string): Response {
     options.cacheControl = "public, max-age=31536000, immutable";
   }
   return withSecurityHeaders(response, options);
+}
+
+function contentSecurityPolicyForDashboard(url: URL): string {
+  return contentSecurityPolicy(url, "'self'");
 }

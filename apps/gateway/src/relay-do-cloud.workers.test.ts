@@ -80,6 +80,7 @@ describe("waking a cloud machine", () => {
     "https://user:pass@exeora-test-org.sprites.app",
     "https://exeora-test-org.sprites.app?token=1",
     "https://exeora-test-org.sprites.app/#token=1",
+    "https://exeora-test-org.sprites.app/machine",
   ])("rejects an unsafe stored machine URL without sending the token: %s", async (url) => {
     const fetcher = vi.fn<typeof fetch>();
     await relay().configureCloud({ url, spriteName: "exeora-test" });

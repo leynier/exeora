@@ -1,6 +1,6 @@
 # Reporte de auditoría de seguridad y rendimiento
 
-Fecha: 2 de octubre de 2026. Plataforma: Exeora. Base revisada: `1594894`. Estado: mejoras locales, sin despliegue ni publicación, conforme a la última instrucción del usuario.
+Fecha: 2 de octubre de 2026. Plataforma: Exeora. Base revisada: `1594894`. Estado al cierre de la auditoría inicial: mejoras locales, sin despliegue ni publicación, conforme a la instrucción vigente entonces. La autorización posterior del release se recoge en la adenda.
 
 ## Resultado y alcance
 
@@ -69,7 +69,7 @@ Las métricas de tamaño y número de operaciones permiten verificar estas mejor
 
 Las comprobaciones anteriores se ejecutaron localmente o en espejos de build aislados. Los procesos temporales de pruebas/build se cerraron; el staging temporal macOS se eliminó y se conservaron los caches y recursos preexistentes.
 
-## 5. Límites y estado de entrega
+## 5. Límites y estado al cierre de la auditoría inicial
 
 - Los cambios no están desplegados ni publicados. No hubo push, merge, tags, publicación de paquetes, migraciones remotas ni escrituras de producción.
 - El CLI conserva la versión 0.20.0; se retiró el incremento de versión preparado para un release que ya no se realizará en este trabajo.
@@ -79,3 +79,19 @@ Las comprobaciones anteriores se ejecutaron localmente o en espejos de build ais
 - El cron cloud inspecciona la flota completa. Una optimización incremental debe evaluarse con métricas de una flota grande, conservando la detección de máquinas huérfanas y las reglas de eliminación.
 - Las reglas de aprobación de entornos y protección de ramas son configuración remota; no se modificaron. El workflow administrado de Pullfrog conserva sus referencias flotantes según su instrucción de no editarlo.
 - El reporte distingue validación local, revisión de código y estado de producción; no constituye una garantía de ausencia absoluta de vulnerabilidades.
+
+## 6. Adenda: preparación del CLI 0.20.1
+
+El usuario autorizó posteriormente publicar una nueva versión del CLI tras el merge automático y el despliegue del PR #91. Se preparó la versión 0.20.1 y se verificó el paquete Rust; el gateway continúa anunciando 0.20.0 hasta que se publiquen y verifiquen los artefactos nuevos.
+
+La revisión automática posterior señaló límites adicionales. Se verificaron y corrigieron antes de crear el tag de release:
+
+1. `spriteEndpoint` rechaza URLs con rutas distintas de `/`, tanto al leer los datos del proveedor como antes del wake; los tests verifican que no se envíen credenciales a esos destinos.
+2. Un timeout al drenar stdout/stderr de Git devuelve un error explícito. Ya no produce una salida vacía con estado de éxito y no se señaliza un process group cuyo proceso ya terminó.
+3. La CSP del dashboard y panel permite únicamente el WebSocket del origen servido, con `wss://host` en HTTPS y `ws://host:puerto` en desarrollo HTTP, conservando el embedding de Chrome permitido.
+4. El límite de frame WebSocket se igualó al límite de mensaje de 4 MiB. Una regresión con Tungstenite verifica un frame único en ese límite.
+5. El test de selecciones de cuenta usa 130 IDs y aplica el límite de producción de 100 parámetros de D1 sobre consultas reales; ya no depende de la tolerancia mayor del SQLite local.
+
+Validación de esta adenda: 362 tests del CLI (300 unitarios y 62 de integración/contrato), 41 tests focalizados de account/Sprites/relay, 16 de assets, 16 unitarios de auth/socket y un E2E Chromium de CSP correctos. También pasan formato, Clippy del CLI, TypeScript y límites de longitud. La instalación reproducible del checkout temporal utiliza Bun 1.3.14, la versión fijada en CI.
+
+La publicación se realizará mediante `Release CLI`, que exige CI y los cinco builds nativos antes de publicar el crate. Esta adenda documenta preparación y validación; la publicación y el despliegue se confirmarán con los resultados de sus workflows.

@@ -97,7 +97,14 @@ const CLOUD_PREPARE_MESSAGE: &str = "A cloud machine holds the one repository it
 /// result cap (MCP catalogs are larger), while still bounding JSON buffering
 /// if a gateway or proxy sends an unexpected message.
 const MAX_SOCKET_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
-const MAX_SOCKET_FRAME_BYTES: usize = 2 * 1024 * 1024;
+const MAX_SOCKET_FRAME_BYTES: usize = MAX_SOCKET_MESSAGE_BYTES;
+
+fn relay_websocket_config() -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_message_size(Some(MAX_SOCKET_MESSAGE_BYTES))
+        .max_frame_size(Some(MAX_SOCKET_FRAME_BYTES))
+        .max_write_buffer_size(MAX_SOCKET_MESSAGE_BYTES)
+}
 
 /// A frame that is work, and so a reason to keep a cloud machine awake. The
 /// acknowledgements are deliberately not: an idle CLI receives those forever.
@@ -588,10 +595,7 @@ async fn connect_once(
     // given at `wait_before_reconnect`. A pause in the middle of dialling
     // leaves an attempt that belongs to before the pause; it is made again.
     let dialled = {
-        let websocket = WebSocketConfig::default()
-            .max_message_size(Some(MAX_SOCKET_MESSAGE_BYTES))
-            .max_frame_size(Some(MAX_SOCKET_FRAME_BYTES))
-            .max_write_buffer_size(MAX_SOCKET_MESSAGE_BYTES);
+        let websocket = relay_websocket_config();
         let dialling = connect_async_with_config(request, Some(websocket), false);
         tokio::pin!(dialling);
         let mut clock = tokio::time::interval(Duration::from_secs(1));
@@ -2236,8 +2240,9 @@ fn platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeldTerminals, announced_features, announced_projects, awake_event, execute_workspace_tool,
-        handshake_rejection, is_work_frame, reconcile_projects, resolve_target, result_frame,
+        HeldTerminals, MAX_SOCKET_MESSAGE_BYTES, announced_features, announced_projects,
+        awake_event, execute_workspace_tool, handshake_rejection, is_work_frame,
+        reconcile_projects, relay_websocket_config, resolve_target, result_frame,
         route_terminal_message, spawn_workspace_call, validate_gateway_url, waits_for_scripts,
     };
     #[cfg(unix)]
@@ -3066,6 +3071,27 @@ done
         );
         assert_eq!(frame["result"]["ok"], false);
         assert_eq!(frame["result"]["error"]["code"], "TOOL_FAILED");
+    }
+
+    #[test]
+    fn relay_accepts_a_single_frame_at_the_message_limit() {
+        use std::io::Cursor;
+        use tokio_tungstenite::tungstenite::protocol::{Role, WebSocket};
+
+        let payload = vec![b'x'; MAX_SOCKET_MESSAGE_BYTES];
+        let mut wire = Vec::with_capacity(payload.len() + 10);
+        wire.push(0x81); // FIN + text
+        wire.push(127); // 64-bit payload length follows
+        wire.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+        wire.extend_from_slice(&payload);
+
+        let mut socket = WebSocket::from_raw_socket(
+            Cursor::new(wire),
+            Role::Client,
+            Some(relay_websocket_config()),
+        );
+        let message = socket.read().expect("message at the configured limit");
+        assert_eq!(message.into_data().len(), MAX_SOCKET_MESSAGE_BYTES);
     }
 
     #[test]

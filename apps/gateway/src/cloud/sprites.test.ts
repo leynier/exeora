@@ -62,6 +62,14 @@ describe("the Sprites client", () => {
     });
   });
 
+  it("rejects a machine URL with a non-root path", async () => {
+    const fetcher = fetcherAnswering(() =>
+      Response.json({ id: "s1", name: "exeora-abc", url: "https://sprites.example/machine" }),
+    );
+
+    await expect(getSprite(config, "exeora-abc", fetcher)).rejects.toMatchObject({ status: 502 });
+  });
+
   it("treats a missing machine as absent on read and as done on delete", async () => {
     const fetcher = fetcherAnswering(() => new Response("nope", { status: 404 }));
     await expect(getSprite(config, "gone", fetcher)).resolves.toBeNull();

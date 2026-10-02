@@ -248,6 +248,13 @@ async fn read_bounded<R: AsyncRead + Unpin>(
 }
 
 async fn collect_readers(readers: &mut [Reader]) -> Result<(Vec<u8>, Vec<u8>), ExeoraError> {
+    collect_readers_with_timeout(readers, GIT_DRAIN_TIMEOUT).await
+}
+
+async fn collect_readers_with_timeout(
+    readers: &mut [Reader],
+    drain_timeout: Duration,
+) -> Result<(Vec<u8>, Vec<u8>), ExeoraError> {
     let joined = async {
         let stdout = readers
             .get_mut(0)
@@ -263,11 +270,11 @@ async fn collect_readers(readers: &mut [Reader]) -> Result<(Vec<u8>, Vec<u8>), E
             .map_err(|error| ExeoraError::tool(error.to_string()))?;
         Ok::<_, ExeoraError>((stdout, stderr))
     };
-    match tokio::time::timeout(GIT_DRAIN_TIMEOUT, joined).await {
+    match tokio::time::timeout(drain_timeout, joined).await {
         Ok(result) => result,
         Err(_) => {
             abort_readers(readers);
-            Ok((Vec::new(), Vec::new()))
+            Err(ExeoraError::tool("Timed out while reading Git output."))
         }
     }
 }
@@ -345,7 +352,8 @@ pub(super) fn validate_oid(value: &str) -> Result<(), ExeoraError> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_bounded;
+    use super::{collect_readers_with_timeout, read_bounded};
+    use crate::error::ErrorCode;
     use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
@@ -360,5 +368,23 @@ mod tests {
 
         writer.await.unwrap();
         assert_eq!(output, vec![b'x'; 16]);
+    }
+
+    #[tokio::test]
+    async fn a_git_output_drain_timeout_is_an_error_and_aborts_readers() {
+        let mut readers = vec![
+            tokio::spawn(async { std::future::pending::<std::io::Result<Vec<u8>>>().await }),
+            tokio::spawn(async { std::future::pending::<std::io::Result<Vec<u8>>>().await }),
+        ];
+
+        let error = collect_readers_with_timeout(&mut readers, std::time::Duration::ZERO)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::ToolFailed);
+        assert!(error.message.contains("Timed out while reading Git output"));
+        for reader in readers {
+            assert!(reader.await.unwrap_err().is_cancelled());
+        }
     }
 }

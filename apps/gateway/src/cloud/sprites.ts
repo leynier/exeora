@@ -284,7 +284,14 @@ export function spriteEndpoint(value: unknown): string | null {
   if (typeof value !== "string" || value === "") return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    if (
+      url.protocol !== "https:" ||
+      url.pathname !== "/" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
       return null;
     }
     return url.href.replace(/\/$/, "");

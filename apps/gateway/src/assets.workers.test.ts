@@ -41,9 +41,13 @@ describe("static files", () => {
   it("serves the dashboard shell", async () => {
     const response = await get("/dashboard/");
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
-    expect(response.headers.get("content-security-policy")).toContain("'wasm-unsafe-eval'");
-    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'self'");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    const directives = csp.split("; ");
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("'wasm-unsafe-eval'");
+    expect(directives).toContain("connect-src 'self' wss://exeora.dev");
+    expect(directives).not.toContain("connect-src 'self' wss:");
+    expect(csp).toContain("frame-ancestors 'self'");
     expect(await response.text()).toContain("<title>Dashboard");
   });
 
@@ -148,6 +152,9 @@ describe("the extension's side panel", () => {
     expect(response.headers.get("content-security-policy")).toContain(
       `frame-ancestors chrome-extension://${env.EXEORA_EXTENSION_IDS}`,
     );
+    expect(response.headers.get("content-security-policy")).toContain(
+      "connect-src 'self' wss://exeora.dev",
+    );
     expect(response.headers.get("content-security-policy")).toContain("object-src 'none'");
     expect(response.headers.get("content-security-policy")).toContain("'wasm-unsafe-eval'");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
@@ -157,5 +164,12 @@ describe("the extension's side panel", () => {
     const off = { ...env, EXEORA_EXTENSION_IDS: "" } as unknown as Env;
     const response = await serveAssets(new Request(`${ORIGIN}/dashboard/panel`), off);
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+  });
+
+  it("uses a ws origin for an HTTP development request", async () => {
+    const response = await serveAssets(new Request("http://localhost:8787/dashboard/"), env);
+    expect(response.headers.get("content-security-policy")).toContain(
+      "connect-src 'self' ws://localhost:8787",
+    );
   });
 });

@@ -252,11 +252,38 @@ describe("clients on the account URL", () => {
   it("chunks account access edits before building the project query", async () => {
     await seedAccount(["prj_one"]);
 
+    // The local SQLite runtime can accept more binds than production D1.
+    // Enforce D1's 100-parameter ceiling while still executing real queries.
+    const limitedDatabase = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === "prepare") {
+          return (query: string) => {
+            const statement = target.prepare(query);
+            return new Proxy(statement, {
+              get(prepared, property) {
+                if (property === "bind") {
+                  return (...values: unknown[]) => {
+                    if (values.length > 100) throw new Error("D1 bind parameter limit exceeded");
+                    return prepared.bind(...values);
+                  };
+                }
+                const value = Reflect.get(prepared, property, prepared);
+                return typeof value === "function" ? value.bind(prepared) : value;
+              },
+            });
+          };
+        }
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
     const overD1Limit = await call("/api/account-clients/projects", {
       method: "PUT",
+      bindings: { DB: limitedDatabase },
       body: {
         clientId: "client_claude",
-        projectIds: Array.from({ length: 91 }, (_, i) => `p${i}`),
+        projectIds: Array.from({ length: 130 }, (_, i) => `p${i}`),
       },
     });
     expect(overD1Limit.status).toBe(404);
