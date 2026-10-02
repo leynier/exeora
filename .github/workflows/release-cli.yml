@@ -47,7 +47,9 @@ jobs:
             suffix: .exe
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # GitHub-hosted macOS images pre-tap aws/tap. Homebrew 6 requires
       # explicit trust for third-party taps, so every brew call — including
@@ -59,17 +61,17 @@ jobs:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: brew untap --force aws/tap || true
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           target: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: ${{ matrix.target }}
 
       - name: Install Zig
         if: runner.os == 'Linux'
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: 0.16.0
 
@@ -124,7 +126,7 @@ jobs:
           mkdir native
           cp "target/${{ matrix.target }}/release/exeora${{ matrix.suffix }}" "native/exeora-${{ matrix.target }}${{ matrix.suffix }}"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: exeora-${{ matrix.target }}
           path: native/*
@@ -137,7 +139,9 @@ jobs:
     needs: build-native
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # crates.io refuses to reuse a version, so a tag that disagrees with
       # Cargo.toml is a mistake that cannot be corrected by retagging.
@@ -151,28 +155,37 @@ jobs:
           fi
 
       # The gateway tells every connecting executor which CLI is newest, from a
-      # var in wrangler.jsonc. A release that forgets to bump it ships a CLI
-      # that then reports itself outdated forever, so a stable tag must agree
-      # with the var. Prereleases are exempt: they should not be advertised as
-      # latest, so they must not require the var to point at them.
-      - name: Check the gateway advertises this version
+      # var in wrangler.jsonc. The advertised stable version may lag while this
+      # release is being published, but it must never point at an unavailable
+      # newer binary. Prereleases are exempt because they are not advertised.
+      - name: Check the gateway does not advertise a newer version
         run: |
           version="${GITHUB_REF_NAME#cli-v}"
           if [[ "$version" == *-* ]]; then
-            echo "Prerelease $version: skipping the LATEST_CLI_VERSION check."
+            echo "Prerelease $version: skipping the stable advertisement check."
             exit 0
+          fi
+          stable_semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ ! "$version" =~ $stable_semver ]]; then
+            echo "Stable CLI tags must use X.Y.Z semver: $GITHUB_REF_NAME." >&2
+            exit 1
           fi
           advertised="$(
             grep 'LATEST_CLI_VERSION' apps/gateway/wrangler.jsonc | head -1 \
               | sed -n 's/.*"\([0-9][0-9.]*[^"]*\)".*/\1/p'
           )"
-          if [ "$version" != "$advertised" ]; then
-            echo "Tag $GITHUB_REF_NAME says $version, but apps/gateway/wrangler.jsonc advertises $advertised." >&2
-            echo "Bump LATEST_CLI_VERSION on main, let it deploy, then retag." >&2
+          if [[ ! "$advertised" =~ $stable_semver ]]; then
+            echo "LATEST_CLI_VERSION must be stable X.Y.Z for a stable CLI release; found '$advertised'." >&2
             exit 1
           fi
+          if [ "$(printf '%s\n%s\n' "$advertised" "$version" | sort -V | tail -n 1)" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME is older than the gateway's advertised CLI $advertised." >&2
+            echo "Publish the advertised version first, or correct LATEST_CLI_VERSION before tagging." >&2
+            exit 1
+          fi
+          echo "Gateway advertises $advertised; release tag is $version."
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
 
       - name: Publish Rust crate
         env:
@@ -187,9 +200,11 @@ jobs:
       # writes to it.
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: exeora-*
           path: native

@@ -1,4 +1,5 @@
 import datetime as dt
+import os
 import unittest
 from unittest import mock
 
@@ -38,6 +39,45 @@ class FakeCatalog:
 
 
 class AuditMaintenanceTests(unittest.TestCase):
+    def test_settle_quotes_deletion_id_before_building_the_gateway_path(self) -> None:
+        with mock.patch.object(maintenance, "gateway_request") as request:
+            maintenance.settle(SETTINGS, "adl/../unexpected", "lease", ok=True)
+
+        self.assertEqual(
+            request.call_args.args[1],
+            "/internal/audit-deletions/adl%2F..%2Funexpected",
+        )
+
+    def test_settings_reject_table_expression(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "CATALOG_URI": "https://catalog.example",
+                "WAREHOUSE": "warehouse",
+                "AUDIT_R2_MAINTENANCE_TOKEN": "token",
+                "AUDIT_R2_TABLE": "default.tool_calls;DROP TABLE audit",
+                "GATEWAY_URL": "https://gateway.example",
+                "AUDIT_MAINTENANCE_SECRET": "secret",
+            },
+            clear=True,
+        ), self.assertRaises(SystemExit):
+            maintenance.Settings.from_env()
+
+    def test_settings_reject_non_https_endpoints(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "CATALOG_URI": "http://catalog.example",
+                "WAREHOUSE": "warehouse",
+                "AUDIT_R2_MAINTENANCE_TOKEN": "token",
+                "AUDIT_R2_TABLE": "default.tool_calls",
+                "GATEWAY_URL": "https://gateway.example",
+                "AUDIT_MAINTENANCE_SECRET": "secret",
+            },
+            clear=True,
+        ), self.assertRaises(SystemExit):
+            maintenance.Settings.from_env()
+
     def test_erase_claims_a_lease_and_returns_it_when_settling(self) -> None:
         requests: list[tuple[str, dict | None, str | None]] = []
 

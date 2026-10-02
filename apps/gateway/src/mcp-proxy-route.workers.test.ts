@@ -1,4 +1,4 @@
-import { createExecutionContext, env } from "cloudflare:test";
+import { createExecutionContext, env, runInDurableObject } from "cloudflare:test";
 import {
   BASELINE_CAPABILITIES,
   type CommandPolicy,
@@ -7,6 +7,7 @@ import {
 } from "@exeora/protocol";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "./db/client.js";
+import { dispatchMcpToDevice } from "./dispatch-mcp.js";
 import { authenticated } from "./index.js";
 import { payload } from "./mcp-fixtures.js";
 import {
@@ -16,7 +17,7 @@ import {
   freshRelay,
   relay,
 } from "./relay-do-fixtures.js";
-import { decodeMcpCatalogs } from "./relay-mcp.js";
+import { decodeMcpCatalogs, replaceMcpCatalog } from "./relay-mcp.js";
 
 /**
  * Proxied MCP tools through the real route, from the Worker's authenticated
@@ -160,6 +161,30 @@ describe("proxied MCP tools through the project route", () => {
     expect(question?.tool).toBe(WRITE.exposedName);
     expect(question?.prompt).toContain("`create` from the `demo` MCP server");
     expect(question?.prompt).toContain('{"title":"hello"}');
+  });
+
+  it("rechecks the default machine catalog before applying the approval policy", async () => {
+    const executor = await seed({ ...DEFAULT_POLICY, approve: true }, true);
+    // The endpoint registered the tool from the old catalog as read-only. A
+    // reconnect can replace it before dispatch, so the target's current hint
+    // must decide whether the call is confirmed.
+    await runInDurableObject(relay(), (_instance, state) =>
+      replaceMcpCatalog(state, PROJECT_ID, [{ ...READ, annotations: { readOnlyHint: false } }]),
+    );
+
+    const result = await dispatchMcpToDevice(env as unknown as Env, {
+      userId: USER_ID,
+      projectId: PROJECT_ID,
+      tool: READ,
+      args: { query: "x" },
+      caller: { clientId: undefined, clientName: undefined, mcp: undefined },
+      approved: false,
+      canElicit: false,
+    });
+
+    expect(result.kind).toBe("value");
+    expect(executor.asked).toHaveLength(1);
+    expect(executor.mcpSeen).toHaveLength(1);
   });
 
   it("does not run a tool the machine declined", async () => {

@@ -443,7 +443,7 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn new(base: &str, http: reqwest::Client, auth: Arc<AuthManager>) -> Result<Self> {
         Ok(Self {
-            base: Url::parse(base)?,
+            base: crate::auth::trusted_gateway_url(base)?,
             http,
             auth,
         })

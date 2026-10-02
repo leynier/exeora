@@ -120,7 +120,9 @@ export async function userFetch(
   const response = await githubFetch(fetcher, url, {
     ...(init.method ? { method: init.method } : {}),
     ...(init.body === undefined ? {} : { body: init.body }),
-    headers: { ...githubHeaders(`Bearer ${token}`), ...init.headers },
+    // The caller may add content headers, but never replace the account token
+    // with an arbitrary Authorization value.
+    headers: { ...githubHeaders(), ...init.headers, Authorization: `Bearer ${token}` },
   });
   if (response.status === 401) {
     await response.body?.cancel().catch(() => undefined);

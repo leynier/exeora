@@ -138,11 +138,21 @@ export async function inspectMcpAccess(request: Request): Promise<{
   const bodyMethod = peeked?.method;
   const modern = request.headers.get("MCP-Protocol-Version") === "2026-07-28";
   const headerMethod = modern ? (request.headers.get("Mcp-Method") ?? undefined) : undefined;
+  // A missing body method is not evidence that the header is truthful. It is
+  // also how large or chunked requests look after the bounded peek, so treating
+  // a read-only header as authoritative here could classify a tools/call below
+  // the execute ceiling. Unknown or inconsistent POSTs must use the execute
+  // ceiling until the full protocol envelope has been validated by the MCP
+  // handler.
+  const bodyUnavailable = bodyMethod === undefined;
   const mismatched =
-    bodyMethod !== undefined && headerMethod !== undefined && bodyMethod !== headerMethod;
+    headerMethod !== undefined && bodyMethod !== undefined && bodyMethod !== headerMethod;
+  const unsafeMethod = bodyUnavailable || mismatched;
   const method = headerMethod ?? bodyMethod;
   const required =
-    method === undefined || mismatched || method === "tools/call" ? "tools:execute" : "tools:read";
+    method === undefined || unsafeMethod || method === "tools/call"
+      ? "tools:execute"
+      : "tools:read";
   // A body too large to peek could be a proxied call with large arguments, so
   // it loads the catalog; a native call the peek could read never does.
   const headerName = modern ? (request.headers.get("Mcp-Name") ?? undefined) : undefined;

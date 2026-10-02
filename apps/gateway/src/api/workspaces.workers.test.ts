@@ -134,6 +134,58 @@ describe("workspace inventory", () => {
     ).toBe(404);
   });
 
+  it("does not reveal a foreign cloud workspace through an idempotent delete", async () => {
+    await db(env)
+      .insert(schema.devices)
+      .values({
+        id: "dev_ws_other_cloud",
+        userId: OTHER,
+        name: "other cloud",
+        platform: "linux",
+        kind: "cloud",
+      })
+      .run();
+    await db(env)
+      .insert(schema.projects)
+      .values({
+        id: "prj_ws_other",
+        userId: OTHER,
+        deviceId: "dev_ws_other_cloud",
+        name: "Other repo",
+        slug: "other-repo",
+        localPath: "/home/sprite/other-repo",
+      })
+      .run();
+    await db(env)
+      .insert(schema.workspaces)
+      .values({
+        id: "wsp_other_cloud",
+        projectId: "prj_ws_other",
+        slug: "other-feature",
+        name: "other/feature",
+        branch: "other/feature",
+        localPath: "/home/sprite/other-feature",
+        managed: true,
+        deviceId: "dev_ws_other_cloud",
+      })
+      .run();
+
+    const response = await call(
+      "/api/projects/prj_workspaces/workspaces/wsp_other_cloud",
+      USER,
+      "DELETE",
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(
+      await db(env)
+        .select({ id: schema.workspaces.id })
+        .from(schema.workspaces)
+        .where(eq(schema.workspaces.id, "wsp_other_cloud"))
+        .get(),
+    ).toEqual({ id: "wsp_other_cloud" });
+  });
+
   it("rejects a workspace id that is not an id prefix", async () => {
     const response = await call(
       "/api/projects/prj_workspaces/workspaces/feature-one",

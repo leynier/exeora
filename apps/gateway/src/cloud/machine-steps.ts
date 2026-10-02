@@ -26,6 +26,7 @@ import {
   putService,
   readServiceLog,
   type SpritesConfig,
+  spriteEndpoint,
 } from "./sprites.js";
 import {
   parseToolsReport,
@@ -261,10 +262,15 @@ async function waitHello(context: StepContext, record: MachineRecord): Promise<S
   // Each poll reaches the machine over its URL so the clone can finish; what
   // it answers does not matter, the relay is what says the CLI is up.
   if (record.spriteUrl) {
+    const target = spriteEndpoint(record.spriteUrl);
+    if (!target) throw new FatalStepError("The machine returned an invalid address; retry it.");
     // Called as a plain function: the runtime's fetch refuses a `this`.
     const { fetcher } = context;
-    await fetcher(`${record.spriteUrl}/wake`, {
+    await fetcher(`${target}/wake`, {
       headers: { authorization: `Bearer ${context.sprites.token}` },
+      // The URL came from an upstream Sprite response; never replay the
+      // bearer at a redirect target.
+      redirect: "manual",
       signal: AbortSignal.timeout(HELLO_POLL_MS),
     }).catch(() => undefined);
   }

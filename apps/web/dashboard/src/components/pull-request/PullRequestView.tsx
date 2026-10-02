@@ -10,6 +10,7 @@ import {
   prApi,
   prKeys,
 } from "../../api-pr.js";
+import { openExternalUrl } from "../../external-url.js";
 import { ConfirmDialog } from "../ConfirmDialog.js";
 import { useToast } from "../toast.js";
 import { Badge } from "../ui.js";
@@ -103,7 +104,7 @@ export function PullRequestView({
           }
         : {
             label: open ? "Refresh" : "Open on GitHub",
-            run: () => (open ? void refresh() : window.open(pullRequest.url, "_blank", "noopener")),
+            run: () => (open ? void refresh() : openExternalUrl(pullRequest.url)),
           };
 
   const entries: MenuEntry[] = [
@@ -192,7 +193,7 @@ export function PullRequestView({
               label="Open on GitHub"
               icon={ExternalLink}
               size="sm"
-              onClick={() => window.open(pullRequest.url, "_blank", "noopener")}
+              onClick={() => openExternalUrl(pullRequest.url)}
             />
             <IconButton
               label="Show the changes against the base"

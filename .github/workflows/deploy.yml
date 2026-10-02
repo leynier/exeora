@@ -18,22 +18,97 @@ concurrency:
 permissions:
   contents: read
 
-# Deploy does not run ci.yml. A pull request runs those checks on the pull
-# request SHA. A direct push to main and workflow_dispatch apply migrations
-# and deploy that commit with no CI.
+# Every production deployment is gated by the same reusable CI workflow used by
+# releases. The check runs on this exact push or manually selected commit, so a
+# direct push and workflow_dispatch cannot apply a migration before validation.
 jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.14
 
       - name: Install
         run: bun install --frozen-lockfile
+
+      # Validate and collect the Worker secrets before the first remote
+      # mutation. A missing required secret must not leave D1 migrated while
+      # the old Worker is still serving the previous contract.
+      #
+      # Names are emitted for the deploy step, each matching its env var. The
+      # read-only AUDIT_R2_SQL_TOKEN is provisioned directly on the Worker;
+      # Wrangler preserves it across code deploys, so Actions never needs its
+      # value. Optional OAuth, Exeora Cloud and GitHub App secrets are listed
+      # only when the repository holds them, since wrangler-action refuses a
+      # listed secret without a value. A gateway may therefore run with one
+      # identity provider and without Cloud; a secret provisioned directly on
+      # the Worker is preserved when its Actions counterpart is absent.
+      - name: Choose the Worker secrets to set
+        id: worker-secrets
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          REQUEST_STATE_SECRET: ${{ secrets.REQUEST_STATE_SECRET }}
+          AUDIT_MAINTENANCE_SECRET: ${{ secrets.AUDIT_MAINTENANCE_SECRET }}
+          SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
+          CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_SLUG: ${{ secrets.GH_APP_SLUG }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GITHUB_APP_CLIENT_ID: ${{ secrets.GH_APP_CLIENT_ID }}
+          GITHUB_APP_CLIENT_SECRET: ${{ secrets.GH_APP_CLIENT_SECRET }}
+          GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.GH_APP_WEBHOOK_SECRET }}
+        run: |
+          if [ -z "$COOKIE_SECRET" ] || [ -z "$REQUEST_STATE_SECRET" ] || [ -z "$AUDIT_MAINTENANCE_SECRET" ]; then
+            echo 'COOKIE_SECRET, REQUEST_STATE_SECRET and AUDIT_MAINTENANCE_SECRET are required repository secrets.' >&2
+            exit 1
+          fi
+          if [ -n "$GITHUB_CLIENT_ID" ] || [ -n "$GITHUB_CLIENT_SECRET" ]; then
+            if [ -z "$GITHUB_CLIENT_ID" ] || [ -z "$GITHUB_CLIENT_SECRET" ]; then
+              echo 'GH_OAUTH_CLIENT_ID and GH_OAUTH_CLIENT_SECRET must be provided together.' >&2
+              exit 1
+            fi
+          fi
+          if [ -n "$GOOGLE_CLIENT_ID" ] || [ -n "$GOOGLE_CLIENT_SECRET" ]; then
+            if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+              echo 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be provided together.' >&2
+              exit 1
+            fi
+          fi
+          {
+            echo 'names<<EOF'
+            printf '%s\n' COOKIE_SECRET REQUEST_STATE_SECRET AUDIT_MAINTENANCE_SECRET
+            if [ -n "$GITHUB_CLIENT_ID" ]; then
+              printf '%s\n' GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET
+            fi
+            if [ -n "$GOOGLE_CLIENT_ID" ]; then
+              printf '%s\n' GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
+            fi
+            if [ -n "$SPRITES_TOKEN" ]; then echo SPRITES_TOKEN; fi
+            if [ -n "$CLOUD_CREDENTIALS_KEY" ]; then echo CLOUD_CREDENTIALS_KEY; fi
+            if [ -n "$GITHUB_APP_ID" ]; then echo GITHUB_APP_ID; fi
+            if [ -n "$GITHUB_APP_SLUG" ]; then echo GITHUB_APP_SLUG; fi
+            if [ -n "$GITHUB_APP_PRIVATE_KEY" ]; then echo GITHUB_APP_PRIVATE_KEY; fi
+            if [ -n "$GITHUB_APP_CLIENT_ID" ]; then echo GITHUB_APP_CLIENT_ID; fi
+            if [ -n "$GITHUB_APP_CLIENT_SECRET" ]; then echo GITHUB_APP_CLIENT_SECRET; fi
+            if [ -n "$GITHUB_APP_WEBHOOK_SECRET" ]; then echo GITHUB_APP_WEBHOOK_SECRET; fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
       # Migrations first: the new code may depend on columns the old schema
       # does not have. Migrations are additive as a rule, so the old Worker
@@ -43,7 +118,7 @@ jobs:
       # costs a window of failed calls, and is only worth taking when a two-step
       # expand/contract release would cost more.
       - name: Apply D1 migrations
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -57,42 +132,8 @@ jobs:
       - name: Build the landing and dashboard
         run: bun run --cwd apps/web build
 
-      # Names of the Worker secrets to set, each matching an env var on the
-      # deploy step. AUDIT_R2_SQL_TOKEN is provisioned directly on the Worker;
-      # Wrangler preserves it across code deploys, so Actions never needs its
-      # value. The two Exeora Cloud secrets are optional and treated the same
-      # way: listed only when the repository holds them, since wrangler-action
-      # refuses a listed secret without a value, and a gateway without Cloud
-      # (or with them set directly on the Worker) must still deploy. The six
-      # of the GitHub App are optional in the same way, each on its own.
-      - name: Choose the Worker secrets to set
-        id: worker-secrets
-        env:
-          SPRITES_TOKEN: ${{ secrets.SPRITES_TOKEN }}
-          CLOUD_CREDENTIALS_KEY: ${{ secrets.CLOUD_CREDENTIALS_KEY }}
-          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
-          GITHUB_APP_SLUG: ${{ secrets.GH_APP_SLUG }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          GITHUB_APP_CLIENT_ID: ${{ secrets.GH_APP_CLIENT_ID }}
-          GITHUB_APP_CLIENT_SECRET: ${{ secrets.GH_APP_CLIENT_SECRET }}
-          GITHUB_APP_WEBHOOK_SECRET: ${{ secrets.GH_APP_WEBHOOK_SECRET }}
-        run: |
-          {
-            echo 'names<<EOF'
-            printf '%s\n' GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET COOKIE_SECRET REQUEST_STATE_SECRET AUDIT_MAINTENANCE_SECRET
-            if [ -n "$SPRITES_TOKEN" ]; then echo SPRITES_TOKEN; fi
-            if [ -n "$CLOUD_CREDENTIALS_KEY" ]; then echo CLOUD_CREDENTIALS_KEY; fi
-            if [ -n "$GITHUB_APP_ID" ]; then echo GITHUB_APP_ID; fi
-            if [ -n "$GITHUB_APP_SLUG" ]; then echo GITHUB_APP_SLUG; fi
-            if [ -n "$GITHUB_APP_PRIVATE_KEY" ]; then echo GITHUB_APP_PRIVATE_KEY; fi
-            if [ -n "$GITHUB_APP_CLIENT_ID" ]; then echo GITHUB_APP_CLIENT_ID; fi
-            if [ -n "$GITHUB_APP_CLIENT_SECRET" ]; then echo GITHUB_APP_CLIENT_SECRET; fi
-            if [ -n "$GITHUB_APP_WEBHOOK_SECRET" ]; then echo GITHUB_APP_WEBHOOK_SECRET; fi
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
       - name: Deploy
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

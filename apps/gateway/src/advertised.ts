@@ -8,6 +8,11 @@ import type { ProjectMcpCatalog } from "./mcp-proxy-account-tools.js";
 import { decodeMcpCatalogs } from "./relay-mcp.js";
 import "./env.js";
 
+// An account can legitimately cover many projects. Keep tools/list from
+// opening one relay request per machine at once and accumulating unbounded
+// pending RPCs and response memory for a single browser request.
+const CATALOG_RELAY_CONCURRENCY = 16;
+
 /**
  * Which tools an endpoint offers, asked only for `tools/list` so that a tool
  * call pays neither the lookup nor the round trip to the device.
@@ -166,16 +171,20 @@ export async function advertisedAccountMcpTools(
   const byDevice = new Map<string, string[]>();
   for (const row of rows)
     byDevice.set(row.deviceId, [...(byDevice.get(row.deviceId) ?? []), row.id]);
-  const catalogs = Object.assign(
-    {},
-    ...(await Promise.all(
-      [...byDevice].map(async ([deviceId, projectIds]) =>
-        decodeMcpCatalogs(
-          await env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).mcpCatalogs(projectIds),
+  const catalogs: Record<string, McpToolDescriptor[]> = {};
+  const devices = [...byDevice];
+  for (let offset = 0; offset < devices.length; offset += CATALOG_RELAY_CONCURRENCY) {
+    const batch = await Promise.all(
+      devices
+        .slice(offset, offset + CATALOG_RELAY_CONCURRENCY)
+        .map(async ([deviceId, projectIds]) =>
+          decodeMcpCatalogs(
+            await env.DEVICE_RELAY.getByName(relayName(userId, deviceId)).mcpCatalogs(projectIds),
+          ),
         ),
-      ),
-    )),
-  ) as Record<string, McpToolDescriptor[]>;
+    );
+    for (const decoded of batch) Object.assign(catalogs, decoded);
+  }
 
   return rows.map((row) => ({
     projectId: row.id,

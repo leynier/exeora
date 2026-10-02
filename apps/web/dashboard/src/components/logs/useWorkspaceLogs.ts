@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api.js";
+import { ticketSocketUrl } from "../../socket-url.js";
 import {
   appendEvent,
   appendNote,
@@ -83,16 +84,18 @@ export function useWorkspaceLogs({
     const connect = async () => {
       if (disposed) return;
       setStatus((current) => (current === "idle" ? "connecting" : current));
-      let url: URL;
+      let url: URL | undefined;
       try {
         const ticket = await api.logsTicket(projectId, workspaceRef.current);
-        url = new URL(ticket.url);
+        url = ticketSocketUrl(ticket.url);
       } catch {
         schedule();
         return;
       }
-      if (disposed) return;
-      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      if (disposed || !url) {
+        if (!disposed) schedule();
+        return;
+      }
       const ws = new WebSocket(url);
       socket = ws;
       let lastAck = Date.now();

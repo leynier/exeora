@@ -10,6 +10,11 @@ import { queryWarehouseCalls } from "../warehouse-calls.js";
 import { relayName } from "./ops.js";
 import type { ApiEnv } from "./router.js";
 
+// Listing a user's approvals asks one Durable Object per online device. Keep
+// the fan-out bounded for accounts with many devices while retaining useful
+// parallelism for the normal small account.
+const APPROVAL_RELAY_CONCURRENCY = 16;
+
 /**
  * What was called, and what is waiting to be allowed.
  *
@@ -90,21 +95,25 @@ audit.get("/api/approvals", async (c) => {
     )
     .all();
 
-  const perDevice = await Promise.all(
-    devices.map(async (device) => {
-      try {
-        const approvals = await c.env.DEVICE_RELAY.getByName(
-          relayName(userId, device.id),
-        ).listApprovals();
+  const perDevice: Array<Array<{ requestedAt: number; deviceName: string }>> = [];
+  for (let offset = 0; offset < devices.length; offset += APPROVAL_RELAY_CONCURRENCY) {
+    const batch = await Promise.all(
+      devices.slice(offset, offset + APPROVAL_RELAY_CONCURRENCY).map(async (device) => {
+        try {
+          const approvals = await c.env.DEVICE_RELAY.getByName(
+            relayName(userId, device.id),
+          ).listApprovals();
 
-        return approvals.map((approval) => ({ ...approval, deviceName: device.name }));
-      } catch {
-        // One unreachable object must not empty the whole list: the other
-        // machines may well have a question waiting.
-        return [];
-      }
-    }),
-  );
+          return approvals.map((approval) => ({ ...approval, deviceName: device.name }));
+        } catch {
+          // One unreachable object must not empty the whole list: the other
+          // machines may well have a question waiting.
+          return [];
+        }
+      }),
+    );
+    perDevice.push(...batch);
+  }
 
   // Oldest first, because the oldest is the one closest to expiring and so the
   // one the person needs to answer next.

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { errorText } from "../api.js";
+import { externalHttpsUrl } from "../external-url.js";
 import { useGitHub } from "../queries.js";
 import { useToast } from "./toast.js";
 
@@ -31,8 +32,9 @@ export function ConnectGitHubButton({
         setLeaving(true);
         const fresh = await github.refetch();
         const url = fresh.data?.connectUrl;
-        if (url) {
-          window.location.assign(url);
+        const safeUrl = externalHttpsUrl(url);
+        if (safeUrl) {
+          window.location.assign(safeUrl);
           return;
         }
         setLeaving(false);

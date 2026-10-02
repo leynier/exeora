@@ -262,7 +262,7 @@ describe("warehouse usage rollup", () => {
         fetcher,
         now: new Date("2026-01-05T04:17:00.000Z"),
       }),
-    ).rejects.toThrow("sink unavailable");
+    ).rejects.toThrow("R2 SQL returned 503");
 
     expect(await db(env).select().from(schema.usageRollupState).get()).toBeUndefined();
   });

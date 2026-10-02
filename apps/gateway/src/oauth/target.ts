@@ -175,6 +175,11 @@ export interface AccountTargetProject {
   granted: boolean;
 }
 
+// D1 supports at most one hundred bound parameters per statement. Account
+// plans may be unlimited, so ownership checks use bounded batches rather than
+// turning the database limit into a project-count limit.
+const PROJECT_ID_QUERY_BATCH = 80;
+
 /**
  * Every project the user could hand to a client on the account endpoint.
  *
@@ -236,12 +241,19 @@ export async function ownedProjectIds(
   // Asked about the ids in hand rather than by reading the whole account back:
   // the answer is the intersection either way, and the account with the most
   // projects is exactly the one that should not pay for a list it never sent.
-  const rows = await db(env)
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.userId, userId), inArray(schema.projects.id, wanted)))
-    .all();
-
-  const owned = new Set(rows.map((row) => row.id));
+  const owned = new Set<string>();
+  for (let offset = 0; offset < wanted.length; offset += PROJECT_ID_QUERY_BATCH) {
+    const rows = await db(env)
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.userId, userId),
+          inArray(schema.projects.id, wanted.slice(offset, offset + PROJECT_ID_QUERY_BATCH)),
+        ),
+      )
+      .all();
+    for (const row of rows) owned.add(row.id);
+  }
   return wanted.filter((id) => owned.has(id));
 }

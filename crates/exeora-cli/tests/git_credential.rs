@@ -12,6 +12,15 @@ use std::{
 
 const TOKEN: &str = "ghs_a_token_nobody_may_see";
 
+fn write_machine_token(path: &Path) {
+    std::fs::write(path, "exm_test_machine\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+}
+
 fn exeora(home: &Path, gateway: &str) -> Command {
     let mut command = Command::cargo_bin("exeora").unwrap();
     command
@@ -28,7 +37,7 @@ fn exeora(home: &Path, gateway: &str) -> Command {
 /// names the device and the project it holds.
 fn machine(home: &Path, gateway: &str) -> Command {
     let token = home.join("token");
-    std::fs::write(&token, "exm_test_machine\n").unwrap();
+    write_machine_token(&token);
     std::fs::write(
         home.join("config.json"),
         json!({

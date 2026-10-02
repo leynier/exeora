@@ -35,8 +35,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, mpsc};
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::{
-    connect_async,
+    connect_async_with_config,
     tungstenite::{Error as WebSocketError, Message, client::IntoClientRequest, http::HeaderValue},
 };
 use tokio_util::sync::CancellationToken;
@@ -92,6 +93,11 @@ impl ConnectMode {
 const CLOUD_WORKSPACE_MESSAGE: &str =
     "Cloud workspaces are machines, managed from the dashboard and the gateway, not from here.";
 const CLOUD_PREPARE_MESSAGE: &str = "A cloud machine holds the one repository it was created for. Projects are put on Exeora Cloud from the dashboard and the gateway, not cloned from here.";
+/// The largest valid relay frame is a little above the protocol's 1 MiB
+/// result cap (MCP catalogs are larger), while still bounding JSON buffering
+/// if a gateway or proxy sends an unexpected message.
+const MAX_SOCKET_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+const MAX_SOCKET_FRAME_BYTES: usize = 2 * 1024 * 1024;
 
 /// A frame that is work, and so a reason to keep a cloud machine awake. The
 /// acknowledgements are deliberately not: an idle CLI receives those forever.
@@ -568,8 +574,9 @@ async fn connect_once(
     terminal_rx: &mut mpsc::Receiver<Value>,
     acked: Arc<AtomicBool>,
 ) -> Result<ConnectOutcome> {
+    let gateway_url = validate_gateway_url(gateway, mode.cloud().is_some())?;
     let token = auth.access_token().await?;
-    let mut url = Url::parse(gateway)?.join(&format!("/api/relay/{device_id}"))?;
+    let mut url = gateway_url.join(&format!("/api/relay/{device_id}"))?;
     url.set_scheme(if url.scheme() == "https" { "wss" } else { "ws" })
         .map_err(|_| anyhow!("invalid relay URL"))?;
     let mut request = url.as_str().into_client_request()?;
@@ -581,7 +588,11 @@ async fn connect_once(
     // given at `wait_before_reconnect`. A pause in the middle of dialling
     // leaves an attempt that belongs to before the pause; it is made again.
     let dialled = {
-        let dialling = connect_async(request);
+        let websocket = WebSocketConfig::default()
+            .max_message_size(Some(MAX_SOCKET_MESSAGE_BYTES))
+            .max_frame_size(Some(MAX_SOCKET_FRAME_BYTES))
+            .max_write_buffer_size(MAX_SOCKET_MESSAGE_BYTES);
+        let dialling = connect_async_with_config(request, Some(websocket), false);
         tokio::pin!(dialling);
         let mut clock = tokio::time::interval(Duration::from_secs(1));
         clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -812,6 +823,37 @@ async fn connect_once(
         workspace.kill_all().await;
     }
     Ok(ConnectOutcome::Disconnected)
+}
+
+/// The machine token or personal bearer token is sent during both HTTP
+/// discovery and the websocket handshake. Production/cloud connections must
+/// therefore use TLS; plain HTTP remains available only for a loopback local
+/// gateway used during development.
+fn validate_gateway_url(gateway: &str, cloud: bool) -> Result<Url> {
+    let url = Url::parse(gateway).context("The gateway URL is invalid")?;
+    let host = url.host_str().unwrap_or_default();
+    let host_for_ip = host.trim_matches(['[', ']']);
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host_for_ip
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    if url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && url.query().is_none()
+        && (url.scheme() == "https" || (url.scheme() == "http" && loopback))
+    {
+        return Ok(url);
+    }
+    if cloud {
+        Err(anyhow!(
+            "Cloud relay connections require an HTTPS gateway URL."
+        ))
+    } else {
+        Err(anyhow!(
+            "The local gateway URL must use HTTPS, or HTTP on loopback."
+        ))
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2196,7 +2238,7 @@ mod tests {
     use super::{
         HeldTerminals, announced_features, announced_projects, awake_event, execute_workspace_tool,
         handshake_rejection, is_work_frame, reconcile_projects, resolve_target, result_frame,
-        route_terminal_message, spawn_workspace_call, waits_for_scripts,
+        route_terminal_message, spawn_workspace_call, validate_gateway_url, waits_for_scripts,
     };
     #[cfg(unix)]
     use super::{InFlight, spawn_tool_call};
@@ -3054,6 +3096,17 @@ done
                 "reason": "not supported",
             })
         );
+    }
+
+    #[test]
+    fn restricts_plaintext_gateway_connections_to_local_development() {
+        assert!(validate_gateway_url("http://127.0.0.1:8787", false).is_ok());
+        assert!(validate_gateway_url("http://[::1]:8787", false).is_ok());
+        assert!(validate_gateway_url("http://gateway.example", false).is_err());
+        assert!(validate_gateway_url("http://127.0.0.1:8787", true).is_ok());
+        assert!(validate_gateway_url("wss://gateway.example", true).is_err());
+        assert!(validate_gateway_url("https://gateway.example", true).is_ok());
+        assert!(validate_gateway_url("https://user:pass@gateway.example", true).is_err());
     }
 
     #[test]

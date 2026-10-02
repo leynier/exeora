@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, CircleDashed, CircleX, LoaderCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { prApi, prKeys } from "../../api-pr.js";
+import { externalHttpsUrl } from "../../external-url.js";
 import { Dialog, DialogActions, DialogError } from "../Dialog.js";
 import type { WorkspaceContext } from "../workspace/context.js";
 import { STEP_LABELS } from "./shipPlan.js";
@@ -85,9 +86,20 @@ export function ShipDialog({
       {progress.pullRequest ? (
         <p className="text-body-md text-success mt-4">
           Opened{" "}
-          <a href={progress.pullRequest.url} target="_blank" rel="noreferrer" className="underline">
-            #{progress.pullRequest.number} {progress.pullRequest.title}
-          </a>
+          {externalHttpsUrl(progress.pullRequest.url) ? (
+            <a
+              href={externalHttpsUrl(progress.pullRequest.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              #{progress.pullRequest.number} {progress.pullRequest.title}
+            </a>
+          ) : (
+            <span>
+              #{progress.pullRequest.number} {progress.pullRequest.title}
+            </span>
+          )}
           .
         </p>
       ) : null}

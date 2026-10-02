@@ -32,6 +32,12 @@ use crate::cgroup::{CommandLimits, Leaf, oom_notice};
 
 type SharedChild = Arc<Mutex<Box<dyn ChildWrapper>>>;
 
+/// Input is written to a process pipe, so an unbounded request could retain a
+/// large allocation and block the executor until the child consumes it.
+const MAX_PROCESS_INPUT_BYTES: usize = 1 << 20;
+const PROCESS_INPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const PROCESS_OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
+
 struct Running {
     root: PathBuf,
     project_scope: String,
@@ -343,7 +349,15 @@ impl ProcessRegistry {
         if !entry.running {
             return Err(ExeoraError::tool("That process is not accepting input."));
         }
-        let payload = if args.newline.unwrap_or(true) {
+        let newline = args.newline.unwrap_or(true);
+        let suffix = usize::from(newline);
+        if args.data.len() > MAX_PROCESS_INPUT_BYTES.saturating_sub(suffix) {
+            return Err(ExeoraError::new(
+                ErrorCode::InvalidArguments,
+                format!("Process input is limited to {MAX_PROCESS_INPUT_BYTES} bytes."),
+            ));
+        }
+        let payload = if newline {
             format!("{}\n", args.data)
         } else {
             args.data
@@ -356,14 +370,44 @@ impl ProcessRegistry {
         let mut stdin = entry.stdin.lock().await;
         let written = match stdin.as_mut() {
             None => Err(std::io::ErrorKind::BrokenPipe.into()),
-            Some(stdin) => match stdin.write_all(payload.as_bytes()).await {
-                Ok(()) => stdin.flush().await,
-                Err(error) => Err(error),
+            Some(stdin) => match tokio::time::timeout(PROCESS_INPUT_WRITE_TIMEOUT, async {
+                stdin.write_all(payload.as_bytes()).await?;
+                stdin.flush().await
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Timed out while writing process input.",
+                )),
             },
         };
+        let timed_out = written
+            .as_ref()
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::TimedOut);
+        if timed_out {
+            // A cancelled write future leaves the pipe in the entry. Close it
+            // before stopping the child so a later call cannot reuse a writer
+            // whose task no longer owns the timeout boundary.
+            stdin.take();
+        }
         drop(stdin);
 
         if let Err(error) = written {
+            if timed_out && entry.running {
+                let leaf = entry.leaf.take();
+                if let Some(leaf) = &leaf {
+                    leaf.kill();
+                }
+                let mut child = entry.child.lock().await;
+                let _ = kill_child(child.as_mut()).await;
+                entry.running = false;
+                release(leaf);
+                return Err(ExeoraError::tool(
+                    "Timed out while writing process input; the process was stopped.",
+                ));
+            }
             refresh(entry).await;
             return Err(if entry.running {
                 ExeoraError::tool(error.to_string())
@@ -584,8 +628,10 @@ pub(crate) struct ScriptSpec<'a> {
     /// are what there is where a pipe cannot be shared, which is Windows.
     #[cfg_attr(not(unix), allow(dead_code))]
     pub merged: bool,
-    /// None reads until every holder of the pipes has closed them, and then
-    /// kills whatever the program left behind, which is what a command does.
+    /// None reads until every holder of the pipes has closed them, bounded by
+    /// the drain timeout. A timed out or cancelled process group is killed
+    /// before that drain; a detached descendant can outlive a successful
+    /// command, but it cannot keep this call open indefinitely.
     /// Some stops keeping output this long after the program itself is over
     /// and leaves alone what it started: see `run_script`.
     pub settle: Option<Duration>,
@@ -652,14 +698,25 @@ pub(crate) async fn run_script(
             _ = cancel.cancelled() => { cancelled = true; None },
         }
     };
+    // A timed out or cancelled command owns its whole process group, so kill
+    // it before draining. A successful wait already reaped the group; sending
+    // another signal could race a recycled process-group id.
     if status.is_none() {
         let _ = kill_child(child.as_mut()).await;
     }
     let mut lingering = None;
     match spec.settle {
         None => {
-            for reader in readers {
-                reader.await.map_err(join_error)??;
+            let mut readers = readers;
+            match tokio::time::timeout(PROCESS_OUTPUT_DRAIN_TIMEOUT, join_readers(&mut readers))
+                .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    for reader in readers {
+                        reader.abort();
+                    }
+                }
             }
         }
         Some(settle) => {
@@ -671,9 +728,8 @@ pub(crate) async fn run_script(
                 leaf.kill();
             }
             let finished = async {
-                for reader in readers {
-                    let _ = reader.await;
-                }
+                let mut readers = readers;
+                let _ = join_readers(&mut readers).await;
             };
             let _ = tokio::time::timeout(settle, finished).await;
         }
@@ -710,6 +766,13 @@ pub(crate) async fn run_script(
 }
 
 type Reader = tokio::task::JoinHandle<Result<(), ExeoraError>>;
+
+async fn join_readers(readers: &mut [Reader]) -> Result<(), ExeoraError> {
+    for reader in readers {
+        reader.await.map_err(join_error)??;
+    }
+    Ok(())
+}
 
 /// Starts the program with its output going where `captured` collects it.
 fn spawn_captured(
@@ -984,7 +1047,18 @@ async fn kill_child(child: &mut dyn ChildWrapper) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{CapturedOutput, OutputStream, Ring};
+    #[cfg(unix)]
+    use super::{MAX_PROCESS_INPUT_BYTES, ProcessRegistry, ScriptSpec, run_script};
     use crate::protocol::{MAX_COMMAND_OUTPUT_BYTES, MAX_PROCESS_BUFFER_BYTES};
+    #[cfg(unix)]
+    use serde_json::json;
+    #[cfg(unix)]
+    use std::{
+        ffi::OsStr,
+        time::{Duration, Instant},
+    };
+    #[cfg(unix)]
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn a_multibyte_character_at_the_byte_limit_waits_for_the_next_read() {
@@ -1033,5 +1107,64 @@ mod tests {
 
         let (stdout, stderr) = output.into_strings();
         assert_eq!(stdout.len() + stderr.len(), MAX_COMMAND_OUTPUT_BYTES);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn process_input_is_bounded_before_writing_to_the_child() {
+        let directory = tempfile::tempdir().unwrap();
+        let registry = ProcessRegistry::new();
+        let started = registry
+            .start_command(
+                directory.path(),
+                "project",
+                "workspace",
+                None,
+                json!({ "command": "cat" }),
+            )
+            .await
+            .unwrap();
+        let process_id = started["processId"].as_str().unwrap();
+        let error = registry
+            .send_input(
+                directory.path(),
+                "project",
+                "workspace",
+                None,
+                json!({ "processId": process_id, "data": "x".repeat(MAX_PROCESS_INPUT_BYTES) }),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, crate::error::ErrorCode::InvalidArguments);
+        registry.kill_all().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_detached_descendant_cannot_hold_a_command_call_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let started = Instant::now();
+        let outcome = run_script(
+            None,
+            ScriptSpec {
+                program: OsStr::new("/bin/sh"),
+                args: vec![
+                    OsStr::new("-c").to_owned(),
+                    OsStr::new("setsid sh -c 'sleep 30' & exit 0").to_owned(),
+                ],
+                cwd: directory.path(),
+                env: Vec::new(),
+                timeout: Duration::from_secs(5),
+                output_bytes: MAX_COMMAND_OUTPUT_BYTES,
+                merged: false,
+                settle: None,
+                leaf_prefix: "test",
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(outcome.exit_code, Some(0));
+        assert!(started.elapsed() < Duration::from_secs(4));
     }
 }

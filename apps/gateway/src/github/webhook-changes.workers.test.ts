@@ -215,6 +215,18 @@ describe("an installation cut down to a chosen few", () => {
     expect(await lostLinks()).toEqual([]);
   });
 
+  it("takes nothing away when GitHub returns a malformed repository list", async () => {
+    holding([], (asked) =>
+      asked.url.includes("/installation/repositories")
+        ? Response.json({ repositories: "not-a-list" })
+        : undefined,
+    );
+    const response = await deliver("installation_repositories", narrowed);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: "github_unavailable" });
+    expect(await lostLinks()).toEqual([]);
+  });
+
   it("asks nothing for an installation nothing is linked through", async () => {
     await db(env).delete(schema.githubRepositories).run();
     const { asked } = holding([]);

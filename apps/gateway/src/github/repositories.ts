@@ -213,6 +213,7 @@ async function userRepositories(
   if (Array.isArray(cached)) return cached;
 
   const repositories: InstallationRepository[] = [];
+  let complete = false;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const response = await userFetch(
       env,
@@ -221,14 +222,45 @@ async function userRepositories(
       fetcher,
     );
     await expectOk(response);
-    const body = (await response.json()) as { repositories?: RawRepository[] };
-    const batch = Array.isArray(body.repositories) ? body.repositories : [];
-    for (const raw of batch) {
-      const repository = parse(raw);
-      // Listed and yet not readable does not happen, and is not trusted if it does.
-      if (repository && raw.permissions?.pull !== false) repositories.push(repository);
+    const body = await response.json().catch(() => null);
+    if (!isRecord(body) || !Array.isArray(body.repositories)) {
+      throw new GitHubError(
+        502,
+        "GitHub returned an incomplete repository list. Try again in a few minutes.",
+      );
     }
-    if (batch.length < 100) break;
+    const batch = body.repositories;
+    for (const raw of batch) {
+      if (!isRecord(raw)) {
+        throw new GitHubError(
+          502,
+          "GitHub returned an incomplete repository list. Try again in a few minutes.",
+        );
+      }
+      const candidate = raw as RawRepository;
+      const repository = parse(candidate);
+      // Listed and yet not readable does not happen, and is not trusted if it does.
+      if (!repository) {
+        throw new GitHubError(
+          502,
+          "GitHub returned an incomplete repository list. Try again in a few minutes.",
+        );
+      }
+      if (candidate.permissions?.pull !== false) repositories.push(repository);
+    }
+    if (batch.length < 100) {
+      complete = true;
+      break;
+    }
+  }
+
+  // A full final page means the list may continue past the safety cap. Do not
+  // cache or present a partial list as if it were complete.
+  if (!complete) {
+    throw new GitHubError(
+      502,
+      "GitHub returned too many repositories to verify this connection. Try again in a few minutes.",
+    );
   }
 
   await env.OAUTH_KV.put(key, JSON.stringify(repositories), { expirationTtl: CACHE_SECONDS });
@@ -236,7 +268,9 @@ async function userRepositories(
 }
 
 function parse(raw: RawRepository): InstallationRepository | null {
-  if (typeof raw.id !== "number" || typeof raw.full_name !== "string") return null;
+  if (!safeRepositoryId(raw.id) || typeof raw.full_name !== "string" || raw.full_name === "") {
+    return null;
+  }
   const pushedAt = typeof raw.pushed_at === "string" ? Date.parse(raw.pushed_at) : Number.NaN;
   return {
     id: raw.id,
@@ -248,6 +282,14 @@ function parse(raw: RawRepository): InstallationRepository | null {
     pushedAt: Number.isNaN(pushedAt) ? null : pushedAt,
     canPush: raw.permissions?.push === true,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function safeRepositoryId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 export function cloneUrl(fullName: string): string {

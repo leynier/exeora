@@ -5,6 +5,7 @@ import {
   execSprite,
   getSprite,
   listSprites,
+  MAX_EXEC_OUTPUT_BYTES,
   putService,
   SpritesError,
 } from "./sprites.js";
@@ -16,6 +17,21 @@ function fetcherAnswering(handler: (request: Request) => Response | Promise<Resp
 }
 
 describe("the Sprites client", () => {
+  it("does not replay the organisation token at a redirect target", async () => {
+    let request: Request | undefined;
+    const fetcher = fetcherAnswering((asked) => {
+      request = asked;
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "https://attacker.example/collect" },
+      });
+    });
+
+    await expect(getSprite(config, "exeora-abc", fetcher)).rejects.toMatchObject({ status: 302 });
+    expect(request?.redirect).toBe("manual");
+    expect(request?.headers.get("authorization")).toBe("Bearer org/1/secret");
+  });
+
   it("creates a machine with a private URL and reads an existing one on 409", async () => {
     const fetcher = fetcherAnswering(async (request) => {
       if (request.method === "POST") {
@@ -37,10 +53,27 @@ describe("the Sprites client", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("rejects a machine URL that could receive the organisation bearer elsewhere", async () => {
+    const fetcher = fetcherAnswering(() =>
+      Response.json({ id: "s1", name: "exeora-abc", url: "https://attacker.example/?token=1" }),
+    );
+    await expect(createSprite(config, "exeora-abc", fetcher)).rejects.toMatchObject({
+      status: 502,
+    });
+  });
+
   it("treats a missing machine as absent on read and as done on delete", async () => {
     const fetcher = fetcherAnswering(() => new Response("nope", { status: 404 }));
     await expect(getSprite(config, "gone", fetcher)).resolves.toBeNull();
     await expect(deleteSprite(config, "gone", fetcher)).resolves.toBeUndefined();
+  });
+
+  it("rejects an API base with credentials or query data before sending the bearer", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    await expect(
+      getSprite({ ...config, apiBase: "https://attacker.example/?token=api-secret" }, "x", fetcher),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("runs a script and reads its exit status out of the output", async () => {
@@ -89,6 +122,13 @@ describe("the Sprites client", () => {
     ).resolves.toEqual({ output: "partial output", exitCode: null });
   });
 
+  it("bounds command output before buffering it", async () => {
+    const fetcher = fetcherAnswering(() => new Response(new Uint8Array(MAX_EXEC_OUTPUT_BYTES + 1)));
+    await expect(
+      execSprite(config, "exeora-abc", { script: "true", timeoutMs: 1000 }, fetcher),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
   it("registers a service under its name", async () => {
     const fetcher = fetcherAnswering(async (request) => {
       expect(request.method).toBe("PUT");
@@ -122,14 +162,16 @@ describe("the Sprites client", () => {
     ).catch((error) => error);
     expect((down as SpritesError).retryable).toBe(true);
 
+    const networkSecret = "sprites-network-secret";
     const unreachable = await listSprites(
       config,
       vi.fn<typeof fetch>(async () => {
-        throw new TypeError("fetch failed");
+        throw new TypeError(networkSecret);
       }),
     ).catch((error) => error);
     expect((unreachable as SpritesError).status).toBe(0);
     expect((unreachable as SpritesError).retryable).toBe(true);
+    expect((unreachable as SpritesError).message).not.toContain(networkSecret);
   });
 
   it("accepts the list in either envelope the API might use", async () => {

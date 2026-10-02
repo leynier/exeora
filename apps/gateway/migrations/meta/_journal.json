@@ -183,6 +183,13 @@
       "when": 1790570544538,
       "tag": "0025_ai_assist",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1790922120451,
+      "tag": "0026_github_repository_installation_index",
+      "breakpoints": true
     }
   ]
 }

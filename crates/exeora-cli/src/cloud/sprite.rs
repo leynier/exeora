@@ -10,6 +10,8 @@ use std::path::PathBuf;
 
 #[cfg(unix)]
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+#[cfg(unix)]
+const MAX_REPLY_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
 pub struct SpriteApi {
@@ -51,10 +53,17 @@ impl SpriteApi {
         stream.write_all(request).await?;
         let mut reply = Vec::new();
         // `Connection: close` asks the server to end the stream after the
-        // response, so reading to the end is reading the whole response.
-        tokio::time::timeout(TIMEOUT, stream.read_to_end(&mut reply))
+        // response, so reading to the end is reading the whole response. The
+        // status line is all this client needs; cap the body before a broken
+        // local runtime can make the cloud service retain unbounded memory.
+        let mut limited = stream.take((MAX_REPLY_BYTES + 1) as u64);
+        let read = limited.read_to_end(&mut reply);
+        tokio::time::timeout(TIMEOUT, read)
             .await
             .map_err(|_| anyhow::anyhow!("timed out waiting for the Sprite runtime"))??;
+        if reply.len() > MAX_REPLY_BYTES {
+            bail!("the Sprite runtime response is too large");
+        }
         Ok(reply)
     }
 
@@ -79,7 +88,7 @@ pub fn parse_status(reply: &[u8]) -> Result<u16> {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{SpriteApi, parse_status};
+    use super::{MAX_REPLY_BYTES, SpriteApi, parse_status};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
@@ -131,5 +140,25 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("500"));
+    }
+
+    #[tokio::test]
+    async fn bounds_an_oversized_runtime_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("api.sock");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![0_u8; 4096];
+            let _ = stream.read(&mut buffer).await;
+            let mut reply = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+            reply.extend(std::iter::repeat_n(b'x', MAX_REPLY_BYTES + 1));
+            stream.write_all(&reply).await.unwrap();
+        });
+        let error = SpriteApi::new(path)
+            .put_task("exeora", "3m")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("too large"));
     }
 }

@@ -16,6 +16,7 @@ const EXPIRY_KEY = "exeora.expires_at";
 const VERIFIER_KEY = "exeora.pkce_verifier";
 const STATE_KEY = "exeora.oauth_state";
 const RETURN_KEY = "exeora.return_to";
+const DEFAULT_RETURN_TO = "/dashboard/";
 
 interface ClientInfo {
   clientId: string;
@@ -67,7 +68,10 @@ export async function beginSignIn(returnTo?: string): Promise<void> {
 
   sessionStorage.setItem(VERIFIER_KEY, verifier);
   sessionStorage.setItem(STATE_KEY, state);
-  sessionStorage.setItem(RETURN_KEY, returnTo ?? window.location.pathname + window.location.search);
+  sessionStorage.setItem(
+    RETURN_KEY,
+    safeReturnTo(returnTo ?? window.location.pathname + window.location.search),
+  );
 
   const url = new URL(info.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
@@ -118,9 +122,32 @@ export async function completeSignIn(search: string): Promise<string> {
   sessionStorage.removeItem(VERIFIER_KEY);
   sessionStorage.removeItem(STATE_KEY);
 
-  const returnTo = sessionStorage.getItem(RETURN_KEY) ?? "/dashboard/";
+  const returnTo = safeReturnTo(sessionStorage.getItem(RETURN_KEY));
   sessionStorage.removeItem(RETURN_KEY);
   return returnTo;
+}
+
+/**
+ * Keeps the post-login navigation inside the dashboard origin and route.
+ * React Router state is normally produced by this app, but it is still
+ * attacker-controlled input when a browser extension or another same-origin
+ * script can construct a navigation entry. Returning a full URL here would
+ * turn the callback into an open redirect after a successful login.
+ */
+export function safeReturnTo(
+  value: string | null | undefined,
+  origin = window.location.origin,
+): string {
+  if (!value?.startsWith("/")) return DEFAULT_RETURN_TO;
+  try {
+    const target = new URL(value, origin);
+    if (target.origin !== origin) return DEFAULT_RETURN_TO;
+    if (target.pathname === "/dashboard") target.pathname = DEFAULT_RETURN_TO;
+    if (!target.pathname.startsWith(DEFAULT_RETURN_TO)) return DEFAULT_RETURN_TO;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return DEFAULT_RETURN_TO;
+  }
 }
 
 function randomString(bytes: number): string {

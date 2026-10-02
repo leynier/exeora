@@ -27,6 +27,8 @@ describe("static files", () => {
   it("serves the landing at the root", async () => {
     const response = await get("/");
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
     const html = await response.text();
     // Asserted on the title rather than on a headline: this test exists to
     // prove the root is the landing and not the dashboard shell, and pinning
@@ -39,6 +41,9 @@ describe("static files", () => {
   it("serves the dashboard shell", async () => {
     const response = await get("/dashboard/");
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+    expect(response.headers.get("content-security-policy")).toContain("'wasm-unsafe-eval'");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'self'");
     expect(await response.text()).toContain("<title>Dashboard");
   });
 
@@ -86,6 +91,13 @@ describe("client routes", () => {
 });
 
 describe("revalidation", () => {
+  it("caches hashed Astro assets for the lifetime of that version", async () => {
+    const response = await get("/_astro/install-platform.BcEVqyp9.js");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  });
+
   it("never answers a script request with HTML", async () => {
     const scriptPath = await assetPathFromShell();
 
@@ -100,6 +112,15 @@ describe("revalidation", () => {
 
     expect(revalidated.status).toBe(304);
     expect(revalidated.headers.get("content-type") ?? "").not.toContain("text/html");
+    expect(revalidated.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  });
+
+  it("does not mark a missing hashed asset's SPA fallback immutable", async () => {
+    const response = await get("/dashboard/assets/missing-abcdefgh.js");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type") ?? "").toContain("text/html");
+    expect(response.headers.get("cache-control")).not.toBe("public, max-age=31536000, immutable");
   });
 
   it("passes a revalidated document through as 304", async () => {
@@ -124,14 +145,17 @@ describe("the extension's side panel", () => {
     // It hands whatever frames it the questions that get an access token
     // back, so a website must not be able to frame it at all.
     const response = await get("/dashboard/panel");
-    expect(response.headers.get("content-security-policy")).toBe(
+    expect(response.headers.get("content-security-policy")).toContain(
       `frame-ancestors chrome-extension://${env.EXEORA_EXTENSION_IDS}`,
     );
+    expect(response.headers.get("content-security-policy")).toContain("object-src 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("'wasm-unsafe-eval'");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it("is framable by nothing when the gateway allows no extension", async () => {
     const off = { ...env, EXEORA_EXTENSION_IDS: "" } as unknown as Env;
     const response = await serveAssets(new Request(`${ORIGIN}/dashboard/panel`), off);
-    expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   });
 });

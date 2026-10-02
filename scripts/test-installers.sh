@@ -28,6 +28,9 @@ done
 if [ "${url##*/}" = "checksums-sha256.txt" ]; then
   hash="$(printf native-exeora | sha256sum | awk '{ print $1 }')"
   printf '%s  %s\n' "$hash" "$EXPECTED_ASSET" > "$output"
+  if [ "${DUPLICATE_CHECKSUM:-}" = "1" ]; then
+    printf '%s  %s\n' "$hash" "$EXPECTED_ASSET" >> "$output"
+  fi
 else
   printf native-exeora > "$output"
 fi
@@ -52,3 +55,22 @@ verify Linux x86_64 x86_64-unknown-linux-gnu
 verify Linux aarch64 aarch64-unknown-linux-gnu
 verify Darwin x86_64 x86_64-apple-darwin
 verify Darwin arm64 aarch64-apple-darwin
+
+invalid_destination="$test_root/invalid-version"
+if EXEORA_VERSION='1.2.3/other-release' EXEORA_INSTALL_DIR="$invalid_destination" PATH="$fake_bin:$PATH" sh ./install.sh >/dev/null 2>&1; then
+  echo "install.sh accepted a release path in EXEORA_VERSION" >&2
+  exit 1
+fi
+test ! -e "$invalid_destination/exeora"
+
+duplicate_destination="$test_root/duplicate-checksum"
+if FAKE_UNAME_SYSTEM=Linux \
+  FAKE_UNAME_MACHINE=x86_64 \
+  EXPECTED_ASSET=exeora-x86_64-unknown-linux-gnu \
+  DUPLICATE_CHECKSUM=1 \
+  EXEORA_INSTALL_DIR="$duplicate_destination" \
+  PATH="$fake_bin:$PATH" sh ./install.sh >/dev/null 2>&1; then
+  echo "install.sh accepted duplicate release checksums" >&2
+  exit 1
+fi
+test ! -e "$duplicate_destination/exeora"

@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { ticketSocketUrl } from "../socket-url.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { useToast } from "./toast.js";
 
@@ -113,8 +114,8 @@ export function WebTerminal({
 
       const ticket = await api.terminalTicket(projectId, workspace);
       if (attempt.current !== opening) return;
-      const target = new URL(ticket.url);
-      target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+      const target = ticketSocketUrl(ticket.url);
+      if (!target) throw new Error("The terminal connection URL was invalid.");
       target.searchParams.set("cols", String(term.cols));
       target.searchParams.set("rows", String(term.rows));
       const ws = new WebSocket(target);

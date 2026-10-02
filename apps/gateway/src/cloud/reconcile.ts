@@ -149,7 +149,9 @@ export async function reconcileCloud(
   for (const sprite of await listSprites(config, fetcher, { prefix })) {
     if (!isSpriteNameOfThisGateway(env, sprite.name) || known.has(sprite.name)) continue;
     const createdAt = Date.parse((sprite as { created_at?: string }).created_at ?? "");
-    if (Number.isFinite(createdAt) && now - createdAt < ORPHAN_GRACE_MS) continue;
+    // An unknown age may still be a creation request whose database write has
+    // not landed. Leaking one sweep is safer than deleting a live machine.
+    if (!Number.isFinite(createdAt) || now - createdAt < ORPHAN_GRACE_MS) continue;
     await deleteSprite(config, sprite.name, fetcher);
     summary.orphansDeleted += 1;
   }

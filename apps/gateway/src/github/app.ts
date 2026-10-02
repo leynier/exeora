@@ -139,6 +139,8 @@ export async function appJwt(
 const tokens = new Map<string, InstallationToken>();
 /** A token is handed out only while it has this long left, so a clone that starts now can finish. */
 const REUSE_MARGIN_MS = 5 * 60_000;
+/** Bound isolate memory if many installations/scopes are active at once. */
+const MAX_CACHED_INSTALLATION_TOKENS = 512;
 
 /** For the tests, which share one isolate and must not share its tokens. */
 export function forgetInstallationTokens(): void {
@@ -156,6 +158,11 @@ export async function installationToken(
   fetcher: typeof fetch,
   now: number = Date.now(),
 ): Promise<InstallationToken> {
+  // Remove stale entries opportunistically: an isolate can outlive many token
+  // lifetimes, and a cache that only evicts on exact-key reuse grows forever.
+  for (const [cachedKey, cached] of tokens) {
+    if (cached.expiresAt - now <= REUSE_MARGIN_MS) tokens.delete(cachedKey);
+  }
   // The permissions are part of the key: a token that may only read names
   // must never be the answer to a request for one that may push.
   const key = [
@@ -195,6 +202,11 @@ export async function installationToken(
     throw new GitHubError(502, "GitHub answered with something that is not a token. Try again.");
   }
   const minted = { token: body.token, expiresAt };
+  while (tokens.size >= MAX_CACHED_INSTALLATION_TOKENS) {
+    const oldest = tokens.keys().next().value;
+    if (oldest === undefined) break;
+    tokens.delete(oldest);
+  }
   tokens.set(key, minted);
   return minted;
 }
@@ -205,8 +217,22 @@ export async function githubFetch(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
+  let target: URL;
   try {
-    return await fetcher(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    target = new URL(url);
+  } catch {
+    throw new GitHubError(500, "This gateway built an invalid GitHub request.");
+  }
+  if (target.origin !== GITHUB_API && target.origin !== "https://github.com") {
+    throw new GitHubError(500, "This gateway built an invalid GitHub request.");
+  }
+  try {
+    return await fetcher(url, {
+      ...init,
+      // GitHub credentials must never be replayed at a redirect target.
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
   } catch {
     throw new GitHubError(0, "GitHub could not be reached. Try again in a few minutes.");
   }

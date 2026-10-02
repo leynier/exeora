@@ -4,6 +4,7 @@ import {
   formBody,
   GENERATE_TIMEOUT_MS,
   listedModels,
+  MAX_OUTPUT_TEXT_CHARS,
   outputItemsText,
   outputText,
   providerFetch,
@@ -203,6 +204,7 @@ function codexAuth(credential: Credential): Record<string, string> {
  */
 async function streamedText(body: ReadableStream<Uint8Array>): Promise<string> {
   const deltas: string[] = [];
+  let length = 0;
   let completed = "";
   for await (const event of sseEvents(body)) {
     let data: unknown;
@@ -215,6 +217,11 @@ async function streamedText(body: ReadableStream<Uint8Array>): Promise<string> {
     const frame = data as { type?: unknown; delta?: unknown; response?: { output?: unknown } };
     const type = event.event ?? frame.type;
     if (type === "response.output_text.delta" && typeof frame.delta === "string") {
+      length += frame.delta.length;
+      if (length > MAX_OUTPUT_TEXT_CHARS) {
+        await body.cancel().catch(() => undefined);
+        throw new AiError("unavailable", "The AI provider returned too much text. Try again.");
+      }
       deltas.push(frame.delta);
     } else if (type === "response.completed") {
       completed = outputItemsText(frame.response?.output);

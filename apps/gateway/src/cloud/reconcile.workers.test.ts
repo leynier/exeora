@@ -121,6 +121,9 @@ describe("the Cloud sweep", () => {
         { name: "exeora-reconcile_fine", created_at: minutesAgo(200).toISOString() },
         { name: "exeora-0123456789abcdefghjkmn", created_at: minutesAgo(60).toISOString() },
         { name: "exeora-0123456789abcdefghjkmp", created_at: minutesAgo(1).toISOString() },
+        // An API response without an age is not safe evidence that this is an
+        // old orphan, so the next sweep gets to try again.
+        { name: "exeora-0123456789abcdefghjkmq" },
         // Another gateway's machines under a longer prefix, and a name of the
         // wrong shape: neither is ours, however old.
         {

@@ -40,6 +40,12 @@ export interface McpClientInfo {
 /** Dashboard presence is intentionally approximate, not a write per call. */
 export const CLIENT_TOUCH_INTERVAL_MS = 15 * 60_000;
 
+// D1 permits at most one hundred bound variables in one statement. The
+// account scope already consumes four, so keep the single-update path below
+// this ceiling and use id-targeted batches for larger account selections.
+const ACCOUNT_PROJECT_PREDICATE_LIMIT = 90;
+const ACCOUNT_REVOKE_BATCH = 80;
+
 /**
  * Records that a client was just authorized against a project.
  *
@@ -110,6 +116,38 @@ export async function revokeAccountProjectsExcept(
   // answer the `where` already expresses. `notInArray` is left out entirely for
   // an empty list, since a list nobody is keeping narrows nothing.
   const keep = [...new Set(entry.keep)];
+
+  if (keep.length > ACCOUNT_PROJECT_PREDICATE_LIMIT) {
+    // Account plans can be unlimited, so a large but valid selection must not
+    // fail on SQLite's bind limit. Read the scoped rows once, then revoke by
+    // primary key in bounded D1 batches. The scope and `revoked_at IS NULL`
+    // predicates remain on every update, so a concurrent reauthorization or a
+    // row from another account cannot be changed by this cleanup.
+    const active = await db(env)
+      .select({ id: schema.projectClients.id, projectId: schema.projectClients.projectId })
+      .from(schema.projectClients)
+      .where(accountScope(entry))
+      .all();
+    const keepSet = new Set(keep);
+    const revoke = active.filter((row) => !keepSet.has(row.projectId));
+    const now = Date.now();
+    for (let offset = 0; offset < revoke.length; offset += ACCOUNT_REVOKE_BATCH) {
+      await env.DB.batch(
+        revoke.slice(offset, offset + ACCOUNT_REVOKE_BATCH).map((row) =>
+          env.DB.prepare(
+            `UPDATE project_clients
+                SET revoked_at = ?1
+              WHERE id = ?2
+                AND user_id = ?3
+                AND client_id = ?4
+                AND endpoint = 'account'
+                AND revoked_at IS NULL`,
+          ).bind(now, row.id, entry.userId, entry.clientId),
+        ),
+      );
+    }
+    return;
+  }
 
   await db(env)
     .update(schema.projectClients)

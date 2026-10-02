@@ -120,6 +120,7 @@ async fn ask(token_file: PathBuf) -> Result<String, Refusal> {
         .user_agent(format!("exeora/{CLI_VERSION}"))
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|error| Refusal::Unreachable(error.to_string()))?;
     let auth = AuthManager::with_machine_token(gateway.clone(), http.clone(), token_file);

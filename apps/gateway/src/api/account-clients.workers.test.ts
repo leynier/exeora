@@ -248,4 +248,32 @@ describe("clients on the account URL", () => {
       ).status,
     ).toBe(404);
   });
+
+  it("chunks account access edits before building the project query", async () => {
+    await seedAccount(["prj_one"]);
+
+    const overD1Limit = await call("/api/account-clients/projects", {
+      method: "PUT",
+      body: {
+        clientId: "client_claude",
+        projectIds: Array.from({ length: 91 }, (_, i) => `p${i}`),
+      },
+    });
+    expect(overD1Limit.status).toBe(404);
+
+    const tooMany = await call("/api/account-clients/projects", {
+      method: "PUT",
+      body: {
+        clientId: "client_claude",
+        projectIds: Array.from({ length: 501 }, (_, i) => `p${i}`),
+      },
+    });
+    expect(tooMany.status).toBe(400);
+
+    const tooLong = await call("/api/account-clients/projects", {
+      method: "PUT",
+      body: { clientId: "x".repeat(2001), projectIds: [] },
+    });
+    expect(tooLong.status).toBe(400);
+  });
 });

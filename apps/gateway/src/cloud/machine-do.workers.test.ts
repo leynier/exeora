@@ -72,6 +72,7 @@ function fakeSprites(answer: (request: Request) => Response | undefined = () => 
       }
       return new Response("bootstrap: done\nEXEORA_BOOTSTRAP_OK\n\n__EXEORA_EXIT_0__\n");
     }
+    if (path === "/wake") expect(request.redirect).toBe("manual");
     if (request.method === "PUT" && path.endsWith("/services/exeora")) {
       return Response.json({ name: "exeora" });
     }

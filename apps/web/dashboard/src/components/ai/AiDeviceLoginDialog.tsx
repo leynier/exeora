@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { errorText } from "../../api.js";
 import { type AiDeviceLogin, type AiProviderId, aiApi, aiKeys } from "../../api-ai.js";
+import { externalHttpsUrl } from "../../external-url.js";
 import { CopyButton } from "../CopyButton.js";
 import { Dialog, DialogActions, DialogError, DialogProgress } from "../Dialog.js";
 import { useToast } from "../toast.js";
@@ -49,6 +50,7 @@ function DeviceLogin({
   const [login, setLogin] = useState<AiDeviceLogin | null>(null);
   const [outcome, setOutcome] = useState<"pending" | "denied" | "expired">("pending");
   const timer = useRef<number | null>(null);
+  const verificationUrl = externalHttpsUrl(login?.verificationUrl);
 
   const start = useMutation({
     mutationFn: () => aiApi.startDeviceLogin(provider),
@@ -106,14 +108,16 @@ function DeviceLogin({
             {login.userCode}
           </p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <a
-              href={login.verificationUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-primary"
-            >
-              Open the provider's page
-            </a>
+            {verificationUrl ? (
+              <a
+                href={verificationUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary"
+              >
+                Open the provider's page
+              </a>
+            ) : null}
             <CopyButton value={login.userCode} label="Copy code" />
           </div>
         </div>
