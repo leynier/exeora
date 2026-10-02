@@ -1,6 +1,7 @@
 import { ChevronRight, CircleCheck, CircleDashed, CircleX, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import type { Check, PullRequestChecks } from "../../api-pr.js";
+import { externalHttpsUrl } from "../../external-url.js";
 import { ErrorBanner, Skeleton } from "../ui.js";
 
 /** Above this many, the checks that passed start folded. */
@@ -73,7 +74,7 @@ function Group({
           {checks.map((check) => (
             <li key={check.id}>
               <a
-                href={check.url ?? undefined}
+                href={externalHttpsUrl(check.url)}
                 target="_blank"
                 rel="noreferrer"
                 className="hover:bg-surface-variant flex items-center gap-2 px-4 py-1 text-xs"

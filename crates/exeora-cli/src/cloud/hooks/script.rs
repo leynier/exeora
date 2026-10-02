@@ -215,37 +215,75 @@ pub fn resolve(hook: Hook, scripts: &Scripts, repository: bool, checkout: &Path)
     if !repository {
         return Script::None;
     }
-    let path = checkout.join(hook.file());
-    let metadata = match std::fs::metadata(&path) {
-        Ok(metadata) => metadata,
+    let checkout = match std::fs::canonicalize(checkout) {
+        Ok(checkout) => checkout,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Script::None,
         Err(error) => {
-            return Script::Unusable {
-                source: Source::Repository,
-                reason: format!(
+            return unusable(format!(
+                "The repository checkout could not be resolved: {error}."
+            ));
+        }
+    };
+    let path = checkout.join(hook.file());
+    // Repository hooks are executable code. Do not follow a symlink in the
+    // hook path: a repository can otherwise make `.exeora` or the script
+    // itself point outside the checkout and execute an unrelated file.
+    let mut component = checkout.clone();
+    for part in std::path::Path::new(hook.file()).components() {
+        component.push(part);
+        let metadata = match std::fs::symlink_metadata(&component) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Script::None,
+            Err(error) => {
+                return unusable(format!(
                     "{} could not be read: {error}. Check its permissions in the repository.",
                     hook.file()
-                ),
-            };
+                ));
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return unusable(format!(
+                "{} resolves through a symlink, which repository hooks cannot use.",
+                hook.file()
+            ));
+        }
+    }
+    let path = match std::fs::canonicalize(&path) {
+        Ok(path) if path.starts_with(&checkout) => path,
+        Ok(_) => {
+            return unusable(format!(
+                "{} resolves outside the repository checkout.",
+                hook.file()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Script::None,
+        Err(error) => {
+            return unusable(format!(
+                "{} could not be read: {error}. Check its permissions in the repository.",
+                hook.file()
+            ));
+        }
+    };
+    let metadata = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            return unusable(format!(
+                "{} could not be read: {error}. Check its permissions in the repository.",
+                hook.file()
+            ));
         }
     };
     if !metadata.is_file() {
-        return Script::Unusable {
-            source: Source::Repository,
-            reason: format!(
-                "{} is not a file. Make it a shell script, or remove it.",
-                hook.file()
-            ),
-        };
+        return unusable(format!(
+            "{} is not a file. Make it a shell script, or remove it.",
+            hook.file()
+        ));
     }
     if metadata.len() > MAX_REPOSITORY_SCRIPT_BYTES {
-        return Script::Unusable {
-            source: Source::Repository,
-            reason: format!(
-                "{} is larger than {MAX_REPOSITORY_SCRIPT_BYTES} bytes. Keep the script short and have it call what it needs.",
-                hook.file()
-            ),
-        };
+        return unusable(format!(
+            "{} is larger than {MAX_REPOSITORY_SCRIPT_BYTES} bytes. Keep the script short and have it call what it needs.",
+            hook.file()
+        ));
     }
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     let read = std::fs::File::open(&path).and_then(|file| {
@@ -253,17 +291,25 @@ pub fn resolve(hook: Hook, scripts: &Scripts, repository: bool, checkout: &Path)
             .read_to_end(&mut bytes)
     });
     match read {
-        Ok(_) => Script::Repository {
+        Ok(size) if size as u64 <= MAX_REPOSITORY_SCRIPT_BYTES => Script::Repository {
             sha256: sha256(&bytes),
             path,
         },
-        Err(error) => Script::Unusable {
-            source: Source::Repository,
-            reason: format!(
-                "{} could not be read: {error}. Check its permissions in the repository.",
-                hook.file()
-            ),
-        },
+        Ok(_) => unusable(format!(
+            "{} is larger than {MAX_REPOSITORY_SCRIPT_BYTES} bytes. Keep the script short and have it call what it needs.",
+            hook.file()
+        )),
+        Err(error) => unusable(format!(
+            "{} could not be read: {error}. Check its permissions in the repository.",
+            hook.file()
+        )),
+    }
+}
+
+fn unusable(reason: String) -> Script {
+    Script::Unusable {
+        source: Source::Repository,
+        reason,
     }
 }
 
@@ -373,6 +419,22 @@ mod tests {
             "{script:?}"
         );
         assert_eq!(script.sha256(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_repository_hook_must_not_follow_a_symlinked_path() {
+        let checkout = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("cloud_install.sh"), "echo outside").unwrap();
+        std::os::unix::fs::symlink(outside.path(), checkout.path().join(".exeora")).unwrap();
+
+        let script = resolve(Hook::Install, &page(None, None), true, checkout.path());
+
+        assert!(
+            matches!(&script, Script::Unusable { reason, .. } if reason.contains("symlink")),
+            "{script:?}"
+        );
     }
 
     #[test]

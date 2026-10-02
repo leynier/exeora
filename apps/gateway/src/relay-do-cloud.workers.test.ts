@@ -75,6 +75,23 @@ describe("waking a cloud machine", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "http://exeora-test-org.sprites.app",
+    "https://user:pass@exeora-test-org.sprites.app",
+    "https://exeora-test-org.sprites.app?token=1",
+    "https://exeora-test-org.sprites.app/#token=1",
+    "https://exeora-test-org.sprites.app/machine",
+  ])("rejects an unsafe stored machine URL without sending the token: %s", async (url) => {
+    const fetcher = vi.fn<typeof fetch>();
+    await relay().configureCloud({ url, spriteName: "exeora-test" });
+    await useFetcher(fetcher);
+
+    const error = await failureOf(() => call("req_invalid_url"));
+
+    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("fails the caller at once when the machine does not wake, not at the relay timeout", async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response("starting", { status: 503 }));
     await configureCloud(1_500);
@@ -92,6 +109,25 @@ describe("waking a cloud machine", () => {
     expect((init.headers as Record<string, string>).authorization).toBe(
       "Bearer test-org/1/not-a-real-secret",
     );
+    expect(init.redirect).toBe("manual");
+  });
+
+  it("refuses a wake redirect without replaying the provider bearer", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (_input, init) => {
+      expect(init?.redirect).toBe("manual");
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "https://attacker.example/collect" },
+      });
+    });
+    await configureCloud(1_500);
+    await useFetcher(fetcher);
+
+    const error = await failureOf(() => call("req_redirected"));
+
+    expect(error.code).toBe("LOCAL_EXECUTOR_OFFLINE");
+    expect((error as { message?: string }).message).toContain("redirected");
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("wakes the machine for an approval too, and reports a machine that stays down", async () => {

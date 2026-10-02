@@ -26,13 +26,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import quote, urlsplit
 
 TIMEOUT_S = 60
+TABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
 
 
 class Table(Protocol):
@@ -61,13 +64,26 @@ class Settings:
                 sys.exit(f"{name} is required")
             return value
 
+        def need_https(name: str) -> str:
+            value = need(name).rstrip("/")
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.netloc:
+                sys.exit(f"{name} must be an absolute HTTPS URL")
+            return value
+
+        def table_name(name: str, default: str | None = None) -> str | None:
+            value = os.environ.get(name, default or "").strip() or None
+            if value is not None and not TABLE_NAME.fullmatch(value):
+                sys.exit(f"{name} must be a simple namespace.table identifier")
+            return value
+
         return Settings(
-            catalog_uri=need("CATALOG_URI"),
+            catalog_uri=need_https("CATALOG_URI"),
             warehouse=need("WAREHOUSE"),
             token=need("AUDIT_R2_MAINTENANCE_TOKEN"),
-            table=os.environ.get("AUDIT_R2_TABLE", "default.tool_calls_v2"),
-            legacy_table=os.environ.get("AUDIT_R2_LEGACY_TABLE", "").strip() or None,
-            gateway=need("GATEWAY_URL").rstrip("/"),
+            table=table_name("AUDIT_R2_TABLE", "default.tool_calls_v2") or "default.tool_calls_v2",
+            legacy_table=table_name("AUDIT_R2_LEGACY_TABLE"),
+            gateway=need_https("GATEWAY_URL"),
             secret=need("AUDIT_MAINTENANCE_SECRET"),
         )
 
@@ -198,7 +214,11 @@ def settle(
     if not ok:
         body["error"] = error[:500]
     try:
-        gateway_request(settings, f"/internal/audit-deletions/{deletion_id}", body)
+        gateway_request(
+            settings,
+            f"/internal/audit-deletions/{quote(deletion_id, safe='')}",
+            body,
+        )
     except urllib.error.HTTPError as http_error:
         # 404 means another run already closed it, which is not a problem.
         if http_error.code != 404:

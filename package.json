@@ -9,6 +9,12 @@
   "engines": {
     "node": ">=22"
   },
+  "overrides": {
+    "@esbuild-kit/core-utils>esbuild": "0.25.12",
+    "miniflare>sharp": "0.35.4",
+    "miniflare>undici": "7.29.1",
+    "hono": "4.13.7"
+  },
   "scripts": {
     "check": "biome check .",
     "check:fix": "biome check --write .",

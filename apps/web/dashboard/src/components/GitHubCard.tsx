@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { errorText } from "../api.js";
 import { type GitHubInstallation, projectsApi } from "../api-projects.js";
+import { externalHttpsUrl } from "../external-url.js";
 import { keys, useGitHub } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { ConnectGitHubButton } from "./GitHubConnect.js";
@@ -144,7 +145,7 @@ export function GitHubCard({ className = "" }: { className?: string }) {
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     <a
                       className="btn"
-                      href={installation.manageUrl}
+                      href={externalHttpsUrl(installation.manageUrl)}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -172,7 +173,7 @@ export function GitHubCard({ className = "" }: { className?: string }) {
                     </p>
                     <a
                       className="btn shrink-0"
-                      href={installation.manageUrl}
+                      href={externalHttpsUrl(installation.manageUrl)}
                       target="_blank"
                       rel="noreferrer"
                     >

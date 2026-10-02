@@ -230,6 +230,29 @@ describe("narrowing a submitted selection", () => {
     expect(await ownedProjectIds(env, STRANGER, ["prj_t"])).toEqual([]);
     expect(await ownedProjectIds(env, OWNER, [])).toEqual([]);
   });
+
+  it("keeps an account selection larger than one D1 IN statement", async () => {
+    await seed();
+    const many = Array.from({ length: 130 }, (_, index) => `prj_many_${index}`);
+    for (let offset = 0; offset < many.length; offset += 10) {
+      await db(env)
+        .insert(schema.projects)
+        .values(
+          many.slice(offset, offset + 10).map((id) => ({
+            id,
+            userId: OWNER,
+            deviceId: "dev_t",
+            name: id,
+            slug: id,
+            localPath: `/work/${id}`,
+          })),
+        )
+        .run();
+    }
+
+    const duplicate = many[0] ?? "prj_many_0";
+    expect(await ownedProjectIds(env, OWNER, [...many, "prj_not_owned", duplicate])).toEqual(many);
+  });
 });
 
 describe("resolving it for display", () => {

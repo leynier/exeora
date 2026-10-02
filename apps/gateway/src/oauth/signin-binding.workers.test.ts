@@ -169,6 +169,20 @@ describe("the sign-in flow is bound to the browser its state was born in", () =>
     expect(await who.text()).toBe(OWNER);
   });
 
+  it("does not let another signed-in browser approve the parked request", async () => {
+    const state = await parkedByAttacker();
+    const ownerCookie = await sessionOf(OWNER);
+
+    const approved = await fetchWorker("/oauth/approve", {
+      method: "POST",
+      headers: { cookie: ownerCookie, Origin: BASE },
+      body: new URLSearchParams({ state, decision: "approve" }),
+    });
+
+    expect(approved.status).toBe(400);
+    expect(await approved.text()).toContain("could not be completed");
+  });
+
   it("completes authorize, login and callback in the browser that started", async () => {
     const clientId = await register();
     attackerUpstream();

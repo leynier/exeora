@@ -14,6 +14,15 @@ fn exeora(home: &Path) -> Command {
     command
 }
 
+fn write_machine_token(path: &Path, value: &str) {
+    std::fs::write(path, value).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+}
+
 /// `config.json` as the bootstrap of a cloud machine writes it: the
 /// `CloudCliConfig` of `packages/protocol/src/cloud.ts`, which knows nothing
 /// of a projects folder or of the repository of a project.
@@ -81,7 +90,7 @@ fn a_cloud_machine_reads_the_config_its_bootstrap_wrote() {
         ));
 
     let token = home.path().join("token");
-    std::fs::write(&token, "not a machine token\n").unwrap();
+    write_machine_token(&token, "not a machine token\n");
     exeora(home.path())
         .env("EXEORA_MACHINE_TOKEN_FILE", &token)
         .args(["--json", "connect", "--cloud"])
@@ -94,7 +103,7 @@ fn a_cloud_machine_reads_the_config_its_bootstrap_wrote() {
 fn a_cloud_machine_without_a_bootstrap_says_so() {
     let home = tempfile::tempdir().unwrap();
     let token = home.path().join("token");
-    std::fs::write(&token, "exm_test_token\n").unwrap();
+    write_machine_token(&token, "exm_test_token\n");
     exeora(home.path())
         .env("EXEORA_MACHINE_TOKEN_FILE", &token)
         .args(["connect", "--cloud"])
@@ -307,7 +316,7 @@ exit 0
     /// An instance: a config that names its project, and the machine's token.
     fn instance(home: &Path) -> Command {
         std::fs::write(home.join("config.json"), BOOTSTRAP_CONFIG).unwrap();
-        std::fs::write(home.join("token"), "exm_test_machine\n").unwrap();
+        super::write_machine_token(&home.join("token"), "exm_test_machine\n");
         let mut command = gh(home);
         command.env("EXEORA_MACHINE_TOKEN_FILE", home.join("token"));
         command
@@ -749,7 +758,7 @@ mod service {
             .to_string(),
         )
         .unwrap();
-        std::fs::write(home.join("token"), "exm_test_machine\n").unwrap();
+        super::write_machine_token(&home.join("token"), "exm_test_machine\n");
         let child = Command::new(assert_cmd::cargo::cargo_bin("exeora"))
             .args(["--json", "connect", "--cloud"])
             .env("HOME", home)

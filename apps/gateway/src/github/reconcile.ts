@@ -5,6 +5,7 @@ import {
   expectOk,
   GITHUB_API,
   type GitHubEnv,
+  GitHubError,
   githubConfig,
   githubFetch,
   githubHeaders,
@@ -66,10 +67,24 @@ export async function reconcileInstallation(
       { headers: githubHeaders(`Bearer ${token}`) },
     );
     await expectOk(response);
-    const body = (await response.json()) as { repositories?: Array<{ id?: unknown }> };
-    const batch = Array.isArray(body.repositories) ? body.repositories : [];
+    const body = await response.json().catch(() => null);
+    if (!isRecord(body) || !Array.isArray(body.repositories)) {
+      // An absent list is not an empty installation. Treating a provider
+      // response error as empty would mark every linked repository as gone.
+      throw new GitHubError(
+        502,
+        "GitHub returned an incomplete repository list. Try again in a few minutes.",
+      );
+    }
+    const batch = body.repositories;
     for (const repository of batch) {
-      if (typeof repository.id === "number") held.add(repository.id);
+      if (!isRecord(repository) || !safeRepositoryId(repository.id)) {
+        throw new GitHubError(
+          502,
+          "GitHub returned an incomplete repository list. Try again in a few minutes.",
+        );
+      }
+      held.add(repository.id);
     }
     if (batch.length < 100) {
       whole = true;
@@ -91,4 +106,12 @@ export async function reconcileInstallation(
     ),
   );
   return gone.length;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function safeRepositoryId(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }

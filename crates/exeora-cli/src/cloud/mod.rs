@@ -343,6 +343,7 @@ async fn run(config: ConfigStore, json_output: bool) -> Result<()> {
 
     let http = reqwest::Client::builder()
         .user_agent(format!("exeora/{CLI_VERSION}"))
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let gateway = config.gateway_url();
     let auth = Arc::new(AuthManager::with_machine_token(

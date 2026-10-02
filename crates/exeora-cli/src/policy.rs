@@ -84,9 +84,9 @@ pub fn effective_policy(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return (account, None),
         Err(_) => {
             return (
-                account,
+                closed_policy(&account),
                 Some(format!(
-                    "{POLICY_FILENAME} could not be read; the account's policy applies."
+                    "{POLICY_FILENAME} could not be read; commands are disabled until it can be read."
                 )),
             );
         }
@@ -95,14 +95,24 @@ pub fn effective_policy(
         Ok(policy) => policy,
         Err(_) => {
             return (
-                account,
+                closed_policy(&account),
                 Some(format!(
-                    "{POLICY_FILENAME} is not valid TOML; the account's policy applies."
+                    "{POLICY_FILENAME} is not valid TOML; commands are disabled until it is fixed."
                 )),
             );
         }
     };
     (narrow_policy(&account, &local), None)
+}
+
+/// A local policy that cannot be read or parsed must never widen the account
+/// policy by being ignored. Read-only tools remain available so a person can
+/// inspect and repair the checkout, while every mutating tool is refused.
+fn closed_policy(account: &CommandPolicy) -> CommandPolicy {
+    CommandPolicy {
+        mode: PolicyMode::ReadOnly,
+        ..account.clone()
+    }
 }
 
 pub fn narrow_policy(remote: &CommandPolicy, local: &LocalCommandPolicy) -> CommandPolicy {
@@ -327,6 +337,8 @@ pub fn validate_tool_set(tools: &[ToolName]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ToolName;
+    use serde_json::json;
 
     #[test]
     fn a_read_only_project_runs_only_upstream_tools_that_claim_to_be_read_only() {
@@ -338,5 +350,30 @@ mod tests {
         assert!(!mcp_policy_allows(&read_only, Some(false)).allowed);
         assert!(mcp_policy_allows(&read_only, Some(true)).allowed);
         assert!(mcp_policy_allows(&CommandPolicy::default(), None).allowed);
+    }
+
+    #[test]
+    fn a_malformed_local_policy_closes_mutating_tools() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join(POLICY_FILENAME), "mode = [").unwrap();
+        let account = CommandPolicy {
+            tools: Some(vec![ToolName::ReadFile]),
+            ..CommandPolicy::default()
+        };
+
+        let (effective, warning) = effective_policy(directory.path(), Some(account));
+
+        assert_eq!(effective.mode, PolicyMode::ReadOnly);
+        assert!(warning.is_some());
+        assert!(
+            !policy_allows(
+                &effective,
+                ToolName::RunCommand,
+                &json!({ "command": "touch marker" }),
+            )
+            .allowed
+        );
+        assert!(policy_allows(&effective, ToolName::ReadFile, &json!({})).allowed);
+        assert!(!policy_allows(&effective, ToolName::ListFiles, &json!({})).allowed);
     }
 }

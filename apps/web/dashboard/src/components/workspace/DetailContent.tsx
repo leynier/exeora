@@ -1,12 +1,47 @@
-import { FileView } from "../explorer/FileView.js";
-import { RangeDiff } from "../pull-request/RangeDiff.js";
-import { CommitDetail } from "../source-control/CommitDetail.js";
-import { AllChangesDiff, CommitFileDiff, WorkingFileDiff } from "../source-control/FileDiff.js";
+import { lazy, Suspense } from "react";
 import type { WorkspaceContext } from "./context.js";
 import type { Detail } from "./workspaceLayout.js";
 
+// Detail panes are opened on demand. They include diff rendering, CodeMirror or
+// pull-request data and should not inflate the workspace route before a detail
+// is selected.
+const FileView = lazy(() =>
+  import("../explorer/FileView.js").then((module) => ({ default: module.FileView })),
+);
+const RangeDiff = lazy(() =>
+  import("../pull-request/RangeDiff.js").then((module) => ({ default: module.RangeDiff })),
+);
+const CommitDetail = lazy(() =>
+  import("../source-control/CommitDetail.js").then((module) => ({ default: module.CommitDetail })),
+);
+const WorkingFileDiff = lazy(() =>
+  import("../source-control/FileDiff.js").then((module) => ({ default: module.WorkingFileDiff })),
+);
+const AllChangesDiff = lazy(() =>
+  import("../source-control/FileDiff.js").then((module) => ({ default: module.AllChangesDiff })),
+);
+const CommitFileDiff = lazy(() =>
+  import("../source-control/FileDiff.js").then((module) => ({ default: module.CommitFileDiff })),
+);
+
+function DetailLoading() {
+  return (
+    <div className="grid min-h-0 flex-1 place-items-center text-sm text-foreground-muted">
+      Loading detail…
+    </div>
+  );
+}
+
 /** What a detail shows, whichever way it was opened. */
 export function DetailContent({ ctx, detail }: { ctx: WorkspaceContext; detail: Detail }) {
+  return (
+    <Suspense fallback={<DetailLoading />}>
+      <DetailBody ctx={ctx} detail={detail} />
+    </Suspense>
+  );
+}
+
+function DetailBody({ ctx, detail }: { ctx: WorkspaceContext; detail: Detail }) {
   switch (detail.kind) {
     case "diff":
       return (

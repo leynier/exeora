@@ -74,12 +74,11 @@ export async function dispatchMcpToDevice(
   }
   const deviceId = targetDevice(project, workspace);
   const relay = env.DEVICE_RELAY.getByName(relayName(userId, deviceId));
-  // The descriptor the caller resolved came from the project machine's
-  // catalog. A workspace on a machine of its own announced a catalog of its
-  // own, and whether this tool changes anything is read from there: the
-  // executor that runs it is the one whose hint counts.
-  const descriptor =
-    deviceId === project.deviceId ? tool : await descriptorOn(relay, projectId, tool);
+  // The descriptor the caller resolved came from a catalog read before the
+  // handler ran. Re-read it from the target even for the project's default
+  // machine: a reconnect or catalog update can happen between advertisement
+  // and dispatch, and the executor that runs it is the one whose hint counts.
+  const descriptor = await descriptorOn(relay, projectId, tool);
   const approved = call.approved && call.approvedWorkspaceId === workspaceKey(workspace);
   const readOnlyHint = descriptor.annotations?.readOnlyHint;
   const verdict = mcpPolicyAllows(project.policy, readOnlyHint);

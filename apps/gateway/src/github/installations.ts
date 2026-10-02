@@ -300,6 +300,7 @@ async function userInstallations(
   fetcher: typeof fetch,
 ): Promise<UserInstallation[]> {
   const found: UserInstallation[] = [];
+  let complete = false;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const response = await githubFetch(
       fetcher,
@@ -307,10 +308,33 @@ async function userInstallations(
       { headers: githubHeaders(`Bearer ${userToken}`) },
     );
     await expectOk(response);
-    const body = (await response.json()) as { installations?: UserInstallation[] };
-    const batch = Array.isArray(body.installations) ? body.installations : [];
+    const body = await response.json().catch(() => null);
+    if (!isRecord(body) || !Array.isArray(body.installations)) {
+      throw new GitHubError(
+        502,
+        "GitHub returned an incomplete installation list. Try again in a few minutes.",
+      );
+    }
+    const batch = body.installations;
+    if (!batch.every(isUserInstallation)) {
+      throw new GitHubError(
+        502,
+        "GitHub returned an incomplete installation list. Try again in a few minutes.",
+      );
+    }
     found.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length < 100) {
+      complete = true;
+      break;
+    }
+  }
+  // A full final page means the list may continue past the safety cap. Treat
+  // it as unavailable rather than pruning installations that were not seen.
+  if (!complete) {
+    throw new GitHubError(
+      502,
+      "GitHub returned too many installations to verify this connection. Try again in a few minutes.",
+    );
   }
   return found;
 }
@@ -340,4 +364,28 @@ function selection(value: string): GitHubRepositorySelection {
 
 function failure(reason: ConnectionFailure, message: string): Connection {
   return { ok: false, reason, message };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function isUserInstallation(value: unknown): value is UserInstallation {
+  if (!isRecord(value)) return false;
+  const account = value.account;
+  return (
+    typeof value.id === "number" &&
+    Number.isSafeInteger(value.id) &&
+    value.id > 0 &&
+    typeof value.app_id === "number" &&
+    Number.isSafeInteger(value.app_id) &&
+    value.app_id > 0 &&
+    (account === null ||
+      (isRecord(account) &&
+        typeof account.login === "string" &&
+        account.login !== "" &&
+        typeof account.type === "string")) &&
+    typeof value.repository_selection === "string" &&
+    (value.suspended_at === null || typeof value.suspended_at === "string")
+  );
 }

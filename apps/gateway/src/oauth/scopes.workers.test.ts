@@ -1,6 +1,7 @@
 import { createExecutionContext, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "../api/index.js";
+import { authenticated } from "../index.js";
 import {
   grantedScopes,
   hasEveryScope,
@@ -210,6 +211,59 @@ describe("OAuth scope ceilings", () => {
       body: mismatchBody,
     });
     expect((await inspectMcpAccess(mismatch)).required).toBe("tools:execute");
+  });
+
+  it("does not trust a read-only header when the POST body cannot be inspected", async () => {
+    const oversized = new Request("https://exeora.dev/mcp", {
+      method: "POST",
+      headers: {
+        "content-length": "65537",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/call" }),
+    });
+    expect((await inspectMcpAccess(oversized)).required).toBe("tools:execute");
+
+    const chunked = new Request("https://exeora.dev/mcp", {
+      method: "POST",
+      headers: {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "tools/call" }),
+    });
+    expect((await inspectMcpAccess(chunked)).required).toBe("tools:execute");
+  });
+
+  it("rejects an opaque tool call with a read-only token before the MCP handler", async () => {
+    const context = createExecutionContext();
+    (context as { props?: { userId: string; clientId: string; scopes: string[] } }).props = {
+      userId: "usr_scope_test",
+      clientId: "client_scope_test",
+      scopes: ["tools:read"],
+    };
+    const request = new Request("https://exeora.dev/p/prj_scope/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "run_command", arguments: { padding: "x".repeat(70_000) } },
+      }),
+    });
+
+    const response = await authenticated.fetch(request, env, context);
+
+    expect(response.status).toBe(403);
+    expect((await response.json()) as { error: string }).toMatchObject({
+      error: "insufficient_scope",
+    });
   });
 
   it("loads the proxied MCP catalog only when the call could name a proxied tool", async () => {

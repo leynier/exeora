@@ -3,15 +3,22 @@
 
 use super::GitWorkspace;
 use crate::error::{ErrorCode, ExeoraError};
+#[cfg(windows)]
+use process_wrap::tokio::JobObject;
+#[cfg(unix)]
+use process_wrap::tokio::ProcessGroup;
+use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use serde_json::{Value, json};
-use std::{path::Path, process::Stdio, time::Duration};
-use tokio::{io::AsyncWriteExt, process::Command};
+use std::{ffi::OsStr, path::Path, process::Stdio, time::Duration};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
 /// The most of one patch or output the dashboard is sent. Under the protocol's
 /// result limit with room for the JSON around it.
 pub(crate) const MAX_GIT_OUTPUT: usize = 900_000;
 const GIT_TIMEOUT: Duration = Duration::from_secs(300);
+const GIT_INPUT_TIMEOUT: Duration = Duration::from_secs(30);
+const GIT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 /// ssh reads host-key and passphrase prompts from the terminal, which
 /// `GIT_TERMINAL_PROMPT` does not cover; they would block until the timeout.
 pub(crate) const NON_INTERACTIVE_SSH: &str = "ssh -o BatchMode=yes";
@@ -124,53 +131,163 @@ pub(crate) async fn run_git<S: AsRef<std::ffi::OsStr>>(
     timeout: Duration,
     cancel: &CancellationToken,
 ) -> Result<GitOutput, ExeoraError> {
-    let mut command = Command::new("git");
-    crate::cgroup::drop_oom_exemption(&mut command);
-    command
-        .current_dir(cwd)
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("LC_ALL", "C")
-        .envs(env.iter().copied())
-        .stdin(if stdin.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let mut child = command
+    let mut wrapped = CommandWrap::with_new(OsStr::new("git"), |command| {
+        crate::cgroup::drop_oom_exemption(command);
+        command
+            .current_dir(cwd)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("LC_ALL", "C")
+            .envs(env.iter().copied())
+            .stdin(if stdin.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+    });
+    #[cfg(unix)]
+    wrapped.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    wrapped.wrap(JobObject);
+    wrapped.wrap(KillOnDrop);
+    let mut child = wrapped
         .spawn()
         .map_err(|error| ExeoraError::tool(format!("Could not start Git: {error}")))?;
+    let stdout = child.stdout().take();
+    let stderr = child.stderr().take();
+    let mut readers = vec![
+        tokio::spawn(read_bounded(stdout, MAX_GIT_OUTPUT)),
+        tokio::spawn(read_bounded(stderr, MAX_GIT_OUTPUT)),
+    ];
     if let Some(input) = stdin
-        && let Some(mut child_stdin) = child.stdin.take()
+        && let Some(mut child_stdin) = child.stdin().take()
     {
         // Git may answer before it has read everything, or without reading
         // at all, as `check-ignore` does outside a repository; its exit
         // status says what happened better than the closed pipe does.
-        if let Err(error) = child_stdin.write_all(input).await
-            && error.kind() != std::io::ErrorKind::BrokenPipe
-        {
+        let write = tokio::time::timeout(GIT_INPUT_TIMEOUT, async {
+            child_stdin.write_all(input).await
+        })
+        .await;
+        let write = match write {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Timed out while writing to Git.",
+            )),
+        };
+        if let Err(error) = write {
+            stop_git(child.as_mut()).await;
+            abort_readers(&mut readers);
             return Err(ExeoraError::tool(format!(
                 "Could not write to Git: {error}"
             )));
         }
     }
-    let output = tokio::select! {
-        _ = cancel.cancelled() => return Err(ExeoraError::new(ErrorCode::Cancelled, "Workspace operation cancelled.")),
-        result = tokio::time::timeout(timeout, child.wait_with_output()) => {
-            result.map_err(|_| ExeoraError::new(ErrorCode::ToolTimeout, "Git operation timed out."))?
-                .map_err(|error| ExeoraError::tool(format!("Git failed: {error}")))?
+    let status = tokio::select! {
+        _ = cancel.cancelled() => {
+            stop_git(child.as_mut()).await;
+            abort_readers(&mut readers);
+            return Err(ExeoraError::new(ErrorCode::Cancelled, "Workspace operation cancelled."));
+        }
+        result = tokio::time::timeout(timeout, child.wait()) => {
+            match result {
+                Ok(Ok(status)) => status,
+                Ok(Err(error)) => {
+                    stop_git(child.as_mut()).await;
+                    abort_readers(&mut readers);
+                    return Err(ExeoraError::tool(format!("Git failed: {error}")));
+                }
+                Err(_) => {
+                    stop_git(child.as_mut()).await;
+                    abort_readers(&mut readers);
+                    return Err(ExeoraError::new(ErrorCode::ToolTimeout, "Git operation timed out."));
+                }
+            }
         }
     };
+    // `wait` on the process-group/job wrapper already reaps descendants in
+    // the group. Do not signal a successfully reaped group id: it could have
+    // been recycled before this point.
+    let (stdout, stderr) = collect_readers(&mut readers).await?;
     Ok(GitOutput {
-        success: output.status.success(),
-        code: output.status.code(),
-        stdout: output.stdout,
-        stderr: output.stderr,
+        success: status.success(),
+        code: status.code(),
+        stdout,
+        stderr,
     })
+}
+
+type Reader = tokio::task::JoinHandle<std::io::Result<Vec<u8>>>;
+
+async fn read_bounded<R: AsyncRead + Unpin>(
+    reader: Option<R>,
+    limit: usize,
+) -> std::io::Result<Vec<u8>> {
+    let Some(mut reader) = reader else {
+        return Ok(Vec::new());
+    };
+    let mut output = Vec::with_capacity(limit.min(8192));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader.read(&mut buffer).await?;
+        if count == 0 {
+            break;
+        }
+        let room = limit.saturating_sub(output.len());
+        if room > 0 {
+            output.extend_from_slice(&buffer[..count.min(room)]);
+        }
+    }
+    Ok(output)
+}
+
+async fn collect_readers(readers: &mut [Reader]) -> Result<(Vec<u8>, Vec<u8>), ExeoraError> {
+    collect_readers_with_timeout(readers, GIT_DRAIN_TIMEOUT).await
+}
+
+async fn collect_readers_with_timeout(
+    readers: &mut [Reader],
+    drain_timeout: Duration,
+) -> Result<(Vec<u8>, Vec<u8>), ExeoraError> {
+    let joined = async {
+        let stdout = readers
+            .get_mut(0)
+            .expect("stdout reader")
+            .await
+            .map_err(|error| ExeoraError::tool(error.to_string()))?
+            .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        let stderr = readers
+            .get_mut(1)
+            .expect("stderr reader")
+            .await
+            .map_err(|error| ExeoraError::tool(error.to_string()))?
+            .map_err(|error| ExeoraError::tool(error.to_string()))?;
+        Ok::<_, ExeoraError>((stdout, stderr))
+    };
+    match tokio::time::timeout(drain_timeout, joined).await {
+        Ok(result) => result,
+        Err(_) => {
+            abort_readers(readers);
+            Err(ExeoraError::tool("Timed out while reading Git output."))
+        }
+    }
+}
+
+fn abort_readers(readers: &mut [Reader]) {
+    for reader in readers {
+        reader.abort();
+    }
+}
+
+async fn stop_git(child: &mut dyn ChildWrapper) {
+    let _ = child.start_kill();
+    let _ = tokio::time::timeout(GIT_DRAIN_TIMEOUT, child.wait()).await;
 }
 
 pub(super) fn ensure_success(output: &GitOutput) -> Result<(), ExeoraError> {
@@ -230,5 +347,44 @@ pub(super) fn validate_oid(value: &str) -> Result<(), ExeoraError> {
         Ok(())
     } else {
         Err(invalid("Invalid commit hash."))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_readers_with_timeout, read_bounded};
+    use crate::error::ErrorCode;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn git_output_reader_keeps_a_fixed_prefix_and_discards_the_rest() {
+        let (mut writer, reader) = tokio::io::duplex(32);
+        let writer = tokio::spawn(async move {
+            writer.write_all(&[b'x'; 128]).await.unwrap();
+            writer.shutdown().await.unwrap();
+        });
+
+        let output = read_bounded(Some(reader), 16).await.unwrap();
+
+        writer.await.unwrap();
+        assert_eq!(output, vec![b'x'; 16]);
+    }
+
+    #[tokio::test]
+    async fn a_git_output_drain_timeout_is_an_error_and_aborts_readers() {
+        let mut readers = vec![
+            tokio::spawn(async { std::future::pending::<std::io::Result<Vec<u8>>>().await }),
+            tokio::spawn(async { std::future::pending::<std::io::Result<Vec<u8>>>().await }),
+        ];
+
+        let error = collect_readers_with_timeout(&mut readers, std::time::Duration::ZERO)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::ToolFailed);
+        assert!(error.message.contains("Timed out while reading Git output"));
+        for reader in readers {
+            assert!(reader.await.unwrap_err().is_cancelled());
+        }
     }
 }

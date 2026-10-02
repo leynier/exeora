@@ -49,6 +49,9 @@ export class SpritesError extends Error {
   }
 }
 
+/** Keep a noisy command from turning one Worker invocation into a memory sink. */
+export const MAX_EXEC_OUTPUT_BYTES = 4 * 1024 * 1024;
+
 /** Idempotent: a name already taken is the same Sprite, looked up instead. */
 export async function createSprite(
   config: SpritesConfig,
@@ -60,11 +63,12 @@ export async function createSprite(
     headers: { "content-type": "application/json" },
   });
   if (response.status === 409) {
+    await response.body?.cancel().catch(() => undefined);
     const existing = await getSprite(config, name, fetcher);
     if (existing) return existing;
   }
   await expectOk(response, "create the machine");
-  return (await response.json()) as Sprite;
+  return readSprite(await response.json().catch(() => null), "create the machine");
 }
 
 export async function getSprite(
@@ -75,7 +79,7 @@ export async function getSprite(
   const response = await request(config, fetcher, "GET", `/v1/sprites/${encodeURIComponent(name)}`);
   if (response.status === 404) return null;
   await expectOk(response, "read the machine");
-  return (await response.json()) as Sprite;
+  return readSprite(await response.json().catch(() => null), "read the machine");
 }
 
 /** Idempotent: a machine that is already gone is a success. */
@@ -157,7 +161,7 @@ export async function execSprite(
     },
   );
   await expectOk(response, "run a command on the machine");
-  const raw = unframeExecOutput(new Uint8Array(await response.arrayBuffer()));
+  const raw = unframeExecOutput(await readLimitedBody(response));
   const mark = EXIT_MARK.exec(raw);
   return {
     output: mark ? raw.slice(0, mark.index) : raw,
@@ -236,20 +240,24 @@ async function request(
   path: string,
   options: { body?: string; headers?: Record<string, string>; timeoutMs?: number } = {},
 ): Promise<Response> {
-  const base = (config.apiBase ?? SPRITES_API).replace(/\/$/, "");
+  const base = spriteEndpoint(config.apiBase ?? SPRITES_API);
+  if (!base) {
+    throw new SpritesError(500, "", "The Sprites API configuration is invalid.");
+  }
   try {
     return await fetcher(`${base}${path}`, {
       method,
-      headers: { authorization: `Bearer ${config.token}`, ...options.headers },
+      // Callers may add content headers, but the provider credential always
+      // wins if a caller accidentally supplies Authorization too.
+      headers: { ...options.headers, authorization: `Bearer ${config.token}` },
       ...(options.body !== undefined ? { body: options.body } : {}),
+      // The organisation token is valid only for Sprites. Do not replay it at
+      // a host named by a redirect response.
+      redirect: "manual",
       signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
     });
-  } catch (error) {
-    throw new SpritesError(
-      0,
-      "",
-      `Could not reach the Sprites API: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    throw new SpritesError(0, "", "Could not reach the Sprites API. Try again in a few minutes.");
   }
 }
 
@@ -261,4 +269,70 @@ async function expectOk(response: Response, doing: string): Promise<void> {
       ? "the Sprites token was rejected"
       : `the Sprites API answered ${response.status}`;
   throw new SpritesError(response.status, body, `Could not ${doing}: ${why}.`);
+}
+
+function readSprite(value: unknown, doing: string): Sprite {
+  const url = isRecord(value) ? spriteEndpoint(value.url) : null;
+  if (!isRecord(value) || !url) {
+    throw new SpritesError(502, "", `Could not ${doing}: Sprites returned an invalid machine.`);
+  }
+  return { ...(value as unknown as Sprite), url };
+}
+
+/** Only HTTPS, authority-only URLs may receive the organisation bearer. */
+export function spriteEndpoint(value: unknown): string | null {
+  if (typeof value !== "string" || value === "") return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.pathname !== "/" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+async function readLimitedBody(response: Response): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      const chunk = part.value;
+      total += chunk.byteLength;
+      if (total > MAX_EXEC_OUTPUT_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new SpritesError(
+          502,
+          "",
+          "Could not run a command on the machine: its output was too large.",
+        );
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }

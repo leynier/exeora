@@ -87,12 +87,16 @@ workspaces.get("/api/projects/:projectId/workspaces", async (c) => {
 });
 
 /** Whether a workspace is a machine of Exeora Cloud, whose row is the machine's and nobody else's. */
-async function isCloudWorkspace(env: Pick<Env, "DB">, workspaceId: string): Promise<boolean> {
+async function isCloudWorkspace(
+  env: Pick<Env, "DB">,
+  projectId: string,
+  workspaceId: string,
+): Promise<boolean> {
   const row = await db(env)
     .select({ kind: schema.devices.kind })
     .from(schema.workspaces)
     .innerJoin(schema.devices, eq(schema.devices.id, schema.workspaces.deviceId))
-    .where(eq(schema.workspaces.id, workspaceId))
+    .where(and(eq(schema.workspaces.id, workspaceId), eq(schema.workspaces.projectId, projectId)))
     .get();
   return row?.kind === "cloud";
 }
@@ -120,7 +124,7 @@ workspaces.put(
     }
     // A cloud workspace is a machine, and its row is the machine's: the CLI
     // on a laptop has nothing to reconcile it with.
-    if (await isCloudWorkspace(c.env, workspaceId)) {
+    if (await isCloudWorkspace(c.env, projectId, workspaceId)) {
       return c.json({ error: "cloud_workspace" }, 409);
     }
 
@@ -164,6 +168,10 @@ workspaces.put(
       })
       .onConflictDoUpdate({
         target: schema.workspaces.id,
+        // The id is client supplied and the ownership read above can race a
+        // concurrent insert. Never let that race turn this upsert into a
+        // cross-project (and therefore potentially cross-tenant) overwrite.
+        where: eq(schema.workspaces.projectId, projectId),
         set: {
           slug,
           name: body.name,
@@ -188,7 +196,7 @@ workspaces.delete("/api/projects/:projectId/workspaces/:workspaceId", async (c) 
   // Deleting a cloud workspace's row here would take its machine record
   // with it and leave the machine itself running; that goes through the
   // Cloud routes, which take the machine down first.
-  if (await isCloudWorkspace(c.env, c.req.param("workspaceId"))) {
+  if (await isCloudWorkspace(c.env, projectId, c.req.param("workspaceId"))) {
     return c.json({ error: "cloud_workspace" }, 409);
   }
   await db(c.env)

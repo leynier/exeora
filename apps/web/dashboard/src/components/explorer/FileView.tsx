@@ -1,16 +1,22 @@
 import { IconButton } from "@exeora/design/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BookOpenText, Code, FileDiff, RotateCcw, Save } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { errorText } from "../../api.js";
 import { registerSave } from "../../hooks/saveRegistry.js";
 import { type Target, useFileContent, workspaceKeys } from "../../queries-workspace.js";
 import { useToast } from "../toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
 import type { WorkspaceContext } from "../workspace/context.js";
-import { Editor } from "./Editor.js";
 import { fileKind } from "./explorerModel.js";
-import { MarkdownPreview } from "./MarkdownPreview.js";
+
+// CodeMirror and its language catalogue are only needed after opening a text
+// file. Keep them out of the Workspace route's first chunk so browsing the
+// explorer does not pay for an editor the user may never open.
+const Editor = lazy(() => import("./Editor.js").then((module) => ({ default: module.Editor })));
+const MarkdownPreview = lazy(() =>
+  import("./MarkdownPreview.js").then((module) => ({ default: module.MarkdownPreview })),
+);
 
 /** Above this, the editor shows the file and refuses to change it. */
 const EDIT_LIMIT = 1_000_000;
@@ -185,19 +191,27 @@ function TextFile({
         </div>
       ) : null}
       {preview ? (
-        <MarkdownPreview source={text} />
+        <Suspense fallback={<FileLoading />}>
+          <MarkdownPreview source={text} />
+        </Suspense>
       ) : (
-        <Editor
-          path={path}
-          content={dirty ? text : content}
-          token={dirty ? `${token}:edited` : token}
-          readOnly={truncated}
-          onChange={setText}
-          onSave={() => void save()}
-        />
+        <Suspense fallback={<FileLoading />}>
+          <Editor
+            path={path}
+            content={dirty ? text : content}
+            token={dirty ? `${token}:edited` : token}
+            readOnly={truncated}
+            onChange={setText}
+            onSave={() => void save()}
+          />
+        </Suspense>
       )}
     </div>
   );
+}
+
+function FileLoading() {
+  return <Skeleton className="m-4 h-full min-h-32" />;
 }
 
 function ImageView({ target, path, mime }: { target: Target; path: string; mime: string | null }) {

@@ -380,6 +380,7 @@ pub async fn run(cli: Cli) -> Result<()> {
 
     let http = reqwest::Client::builder()
         .user_agent(format!("exeora/{CLI_VERSION}"))
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let gateway = config.gateway_url();
     let auth = Arc::new(AuthManager::new(gateway.clone(), http.clone()));
@@ -1993,7 +1994,9 @@ async fn switch_gateway(
         return Ok(true);
     }
     if !force {
-        let http = reqwest::Client::new();
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
         let _ = discover_client(&http, &target).await?;
     }
     let signed_in = load_credentials()?.is_some();

@@ -1,6 +1,8 @@
 import {
   createContext,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -21,7 +23,13 @@ import {
   terminalSessionKey,
 } from "../workspacePaths.js";
 import { type OpenTerminalSession, OpenTerminals, sessionLabel } from "./OpenTerminals.js";
-import { WebTerminal } from "./WebTerminal.js";
+
+// xterm is only needed once a terminal is actually opened. Keeping it behind
+// this boundary makes the Workspace route responsive for users who only browse
+// source control or files.
+const WebTerminal = lazy(() =>
+  import("./WebTerminal.js").then((module) => ({ default: module.WebTerminal })),
+);
 
 type TerminalsApi = {
   sessions: OpenTerminalSession[];
@@ -173,16 +181,18 @@ export function GlobalTerminals() {
             key={session.key}
             className={shown ? "flex min-h-0 flex-1 flex-col" : "pointer-events-none hidden"}
           >
-            <WebTerminal
-              projectId={session.projectId}
-              workspace={session.workspaceId}
-              targetLabel={sessionLabel(session, projects.data ?? [])}
-              available
-              active={shown}
-              autoConnect
-              kill={killing === session.key}
-              onExit={() => onExit(session.key)}
-            />
+            <Suspense fallback={<TerminalLoading />}>
+              <WebTerminal
+                projectId={session.projectId}
+                workspace={session.workspaceId}
+                targetLabel={sessionLabel(session, projects.data ?? [])}
+                available
+                active={shown}
+                autoConnect
+                kill={killing === session.key}
+                onExit={() => onExit(session.key)}
+              />
+            </Suspense>
           </div>
         );
       })}
@@ -194,6 +204,14 @@ export function GlobalTerminals() {
       <div ref={home} className={inSlot ? "hidden" : "contents"} />
       {createPortal(content, host)}
     </>
+  );
+}
+
+function TerminalLoading() {
+  return (
+    <div className="grid min-h-0 flex-1 place-items-center text-sm text-gray-500">
+      Loading terminal…
+    </div>
   );
 }
 

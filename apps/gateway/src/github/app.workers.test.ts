@@ -6,6 +6,7 @@ import {
   type GitHubConfig,
   GitHubError,
   githubConfig,
+  githubFetch,
   installationToken,
   pkcs8FromPkcs1,
 } from "./app.js";
@@ -189,5 +190,26 @@ describe("an installation token", () => {
     );
     expect(unreachable).toMatchObject({ status: 0 });
     expect((unreachable as GitHubError).message).toContain("could not be reached");
+  });
+});
+
+describe("requests to GitHub", () => {
+  it("does not replay a bearer at a redirect target", async () => {
+    let request: Request | undefined;
+    const response = await githubFetch(
+      async (input, init) => {
+        request = new Request(input, init);
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "https://attacker.example/collect" },
+        });
+      },
+      "https://api.github.com/user",
+      { headers: { Authorization: "Bearer user-token" } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(request?.redirect).toBe("manual");
+    expect(request?.headers.get("Authorization")).toBe("Bearer user-token");
   });
 });

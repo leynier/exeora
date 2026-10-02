@@ -2,7 +2,7 @@ import { repositoryKey } from "@exeora/protocol";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
 import "../env.js";
-import { type AccessEnv, repositoryAccess } from "./access.js";
+import { type AccessEnv, type RepositoryAccess, repositoryAccess } from "./access.js";
 import { githubConfig } from "./app.js";
 import { reachable } from "./repositories.js";
 
@@ -131,6 +131,9 @@ export async function linkMatching(
     .all();
 
   const statements: D1PreparedStatement[] = [];
+  // A webhook can name several projects that point to the same repository.
+  // Share one fresh GitHub check across them instead of multiplying API calls.
+  const accessByRepository = new Map<number, Promise<RepositoryAccess>>();
   for (const row of rows) {
     const repository = row.repoKey ? byKey.get(row.repoKey) : undefined;
     if (!repository) continue;
@@ -138,8 +141,13 @@ export async function linkMatching(
     // installation than the one being looked at.
     if (row.linked !== null && row.lostAccessAt === null) continue;
     if (!options.listedForUser) {
-      const access = await repositoryAccess(env, userId, repository.id, fetcher, { fresh: true });
-      if (!access.pull) continue;
+      let access = accessByRepository.get(repository.id);
+      if (!access) {
+        access = repositoryAccess(env, userId, repository.id, fetcher, { fresh: true });
+        accessByRepository.set(repository.id, access);
+      }
+      const result = await access;
+      if (!result.pull) continue;
     }
     statements.push(linkProjectStatement(env, userId, row.id, repository));
   }

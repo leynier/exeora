@@ -14,6 +14,7 @@ import { resolveMachineToken } from "./cloud/machine-tokens.js";
 import { reconcileCloud } from "./cloud/reconcile.js";
 import { listWorkspacesWithCloud } from "./cloud/workspace-tools.js";
 import { db, schema } from "./db/client.js";
+import { gatewayResponse } from "./gateway-response.js";
 import "./env.js";
 import { dispatchToDevice } from "./dispatch.js";
 import { answerAccountTool, dispatchAccountCall } from "./dispatch-account.js";
@@ -37,6 +38,7 @@ import {
   tooManyRequests,
   withinLimit,
 } from "./rate-limit.js";
+import { bodyTooLarge, limitRequestBody, requestBodyLimit } from "./request-body.js";
 import { site } from "./site.js";
 
 export { CloudMachine } from "./cloud/machine-do.js";
@@ -182,7 +184,7 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
   const { userId, clientId } = propsOf(c.executionCtx);
   if (userId && clientId) {
     c.executionCtx.waitUntil(
-      handshakeClientInfo(peek)
+      handshakeClientInfo(peek, method)
         .then((info) =>
           info ? rememberMcpClient(c.env, { userId, projectId, clientId }, info) : undefined,
         )
@@ -228,7 +230,7 @@ authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
 
   if (userId && clientId) {
     c.executionCtx.waitUntil(
-      handshakeClientInfo(peek)
+      handshakeClientInfo(peek, method)
         .then((info) =>
           info ? rememberAccountMcpClient(c.env, { userId, clientId }, info) : undefined,
         )
@@ -300,19 +302,30 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (isRateLimitedAuthRequest(request.method, pathname)) {
-      if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) return tooManyRequests();
+      if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) {
+        return gatewayResponse(request, tooManyRequests());
+      }
     }
+
+    const limit = requestBodyLimit(pathname);
+    const bounded = limit === undefined ? undefined : limitRequestBody(request, limit);
+    if (bounded?.exceeded()) return gatewayResponse(request, bodyTooLarge());
+    request = bounded?.request ?? request;
 
     // GitHub's callback and webhook, answered before the provider sees them.
     // Both are under `/api/`, an `apiRoute` the provider refuses without an
     // access token, and neither caller has one: the first is a browser coming
     // back from github.com, the second is GitHub. Two exact paths and no
     // prefix, so nothing else under `/api/` is reachable this way.
-    if (isGitHubPublicRequest(request.method, pathname)) {
-      return githubPublic.fetch(request, env, ctx);
+    try {
+      const response = isGitHubPublicRequest(request.method, pathname)
+        ? await githubPublic.fetch(request, env, ctx)
+        : await provider.fetch(request, env, ctx);
+      return gatewayResponse(request, bounded?.exceeded() ? bodyTooLarge() : response);
+    } catch (error) {
+      if (bounded?.exceeded()) return gatewayResponse(request, bodyTooLarge());
+      throw error;
     }
-
-    return provider.fetch(request, env, ctx);
   },
 
   /**

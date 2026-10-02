@@ -234,6 +234,25 @@ describe("connecting GitHub", () => {
     expect(await stored(USER)).toHaveLength(130);
   });
 
+  it("refuses to prune unseen installations when the safe page cap is reached", async () => {
+    const many = Array.from({ length: 1001 }, (_, index) =>
+      installation(2000 + index, `o${index}`),
+    );
+    const { fetcher, asked } = github(many);
+    const result = await completeConnection(
+      await envOn(),
+      USER,
+      { code: "the-code", installationId: null },
+      fetcher,
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: "github_unavailable" });
+    expect((result as { message: string }).message).toContain("too many installations");
+    expect(asked.filter((request) => request.url.includes("/user/installations"))).toHaveLength(10);
+    expect(await stored(USER)).toEqual([]);
+    expect(await token(USER)).toBeUndefined();
+  });
+
   it("stores nothing when GitHub does not accept the code", async () => {
     const { fetcher } = github([installation(101, "octocat")], { rejectCode: true });
     const result = await completeConnection(

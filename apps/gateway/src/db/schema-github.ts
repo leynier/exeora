@@ -89,6 +89,7 @@ export const githubRepositories = sqliteTable(
   (table) => [
     index("github_repositories_user").on(table.userId),
     index("github_repositories_repo").on(table.repoId),
+    index("github_repositories_installation").on(table.installationId),
   ],
 );
 

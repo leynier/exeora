@@ -1,12 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import {
-  type AccountChoice,
-  accountChoice,
-  rememberAccountAuthorization,
-} from "../account-access.js";
-import { rememberAuthorization } from "../clients.js";
+import { type AccountChoice, accountChoice } from "../account-access.js";
 import { db, schema } from "../db/client.js";
+import { callbackUri, complete, describe } from "./completion.js";
 import { askForConsent } from "./consent.js";
 import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
 import {
@@ -14,10 +10,10 @@ import {
   deviceCallbackSession,
   refuseUnboundDeviceGrant,
 } from "./device-continue.js";
-import { refusedExtension, rememberExtensionConsent, skipsConsent } from "./extension.js";
+import { refusedExtension, skipsConsent } from "./extension.js";
 import { accountConsentPage, deviceDonePage, errorPage, signInPage } from "./pages.js";
 import { claimAuthorization, parkAuthorization, peekAuthorization } from "./pending.js";
-import { configuredProviders, getProvider, UpstreamAuthError } from "./providers/index.js";
+import { configuredProviders, getProvider } from "./providers/index.js";
 import { grantedScopes } from "./scopes.js";
 import {
   clearSession,
@@ -79,12 +75,14 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
         return c.redirect(redirectTo);
       }
 
+      const state = await parkAuthorization(c.env, { authRequest });
+      await setSigninContinuation(c, state);
       return c.html(
         await askForConsent(c.env, {
           authRequest,
           userId,
           userEmail: user.email,
-          state: await parkAuthorization(c.env, { authRequest }),
+          state,
         }),
       );
     }
@@ -284,6 +282,10 @@ oauthRoutes.post("/oauth/approve", async (c) => {
   const pending = await peekAuthorization(c.env, state);
   if (!pending) return c.html(errorPage("This request has expired. Start again."), 400);
 
+  if (!pending.deviceCodeHash && !(await hasSigninContinuation(c, state))) {
+    return c.html(errorPage("This request could not be completed. Start again."), 400);
+  }
+
   const { authRequest } = pending;
 
   if (!approved) {
@@ -390,126 +392,3 @@ oauthRoutes.get("/oauth/logout", async (c) => {
   await clearSession(c);
   return c.redirect("/");
 });
-
-/**
- * Mints the authorization code, from the one place that decides what a token
- * carries.
- *
- * Reached from three directions: an explicit approval, a first-party client
- * with a session, and a first-party client that has just signed in. Splitting
- * the props across those would be how one of them quietly ends up different.
- *
- * It is also where a client becomes visible to the user, because this is the
- * only moment the gateway holds both the project the token is for and the
- * client's registered name at once.
- */
-async function complete(
-  env: Env,
-  authRequest: AuthRequest,
-  userId: string,
-  /** What the account screen answered. Absent for every other flow. */
-  account?: AccountChoice,
-) {
-  const client = await env.OAUTH_PROVIDER.lookupClient(authRequest.clientId).catch(() => null);
-  const scope = authScopeFromResource(authRequest.resource);
-  const scopes = await grantedScopes(env, authRequest);
-  // Checked again where the code is minted, so no way of arriving here can
-  // carry a request that `/oauth/authorize` would have turned away.
-  const refused = refusedResource(scopes, authRequest.resource);
-  if (refused) throw new Error(refused);
-  const identity = { clientName: client?.clientName, clientUri: client?.clientUri };
-  const extension = await rememberExtensionConsent(env, authRequest, userId);
-
-  const projectId =
-    scope?.kind === "project" ? await ownedProjectId(env, scope.projectId, userId) : null;
-  const projectIds = scope?.kind === "account" ? (account?.projectIds ?? []) : null;
-
-  if (projectId) {
-    await rememberAuthorization(env, {
-      userId,
-      projectId,
-      clientId: authRequest.clientId,
-      endpoint: "project",
-      ...identity,
-    });
-  }
-
-  if (projectIds) {
-    await rememberAccountAuthorization(env, {
-      userId,
-      clientId: authRequest.clientId,
-      projectIds,
-      allProjects: account?.allProjects ?? false,
-      ...identity,
-    });
-  }
-
-  return env.OAUTH_PROVIDER.completeAuthorization({
-    request: authRequest,
-    userId,
-    scope: scopes,
-    // Each Chrome signed in is a session of its own; one must not end another.
-    ...(extension ? { revokeExistingGrants: false } : {}),
-    // `projectId` is here because a grant summary does not carry the resource
-    // it was issued for, and revoking one client's access to one project means
-    // finding exactly the grants that named it. `projectIds` is the same fact
-    // for the account endpoint, where one grant covers several; which of the
-    // two is present is also how a grant says which endpoint it is for.
-    metadata: {
-      approvedAt: Date.now(),
-      projectId,
-      ...(projectIds ? { projectIds } : {}),
-      ...(extension ? { extensionId: extension } : {}),
-      clientName: client?.clientName ?? null,
-    },
-    // Everything a tool handler learns about the caller. Deliberately minimal:
-    // no upstream token, no email: just who they are, resolved again from D1
-    // on every call that needs more. The name rides along only so the audit
-    // log stays readable without a KV read per tool call.
-    props: {
-      userId,
-      clientId: authRequest.clientId,
-      clientName: client?.clientName,
-      scopes,
-    },
-  });
-}
-
-/**
- * The project this authorization is for, if it is one of the user's own.
- *
- * The CLI and the dashboard ask for no resource at all and never reach here,
- * which is why neither of them ever shows up as a client of a project.
- */
-async function ownedProjectId(
-  env: Pick<Env, "DB">,
-  projectId: string,
-  userId: string,
-): Promise<string | null> {
-  const project = await db(env)
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.userId, userId)))
-    .get();
-
-  return project?.id ?? null;
-}
-
-/**
- * Built from the configured base URL, never from the incoming request.
- *
- * Two reasons. The Host header is attacker-controlled, and a redirect_uri
- * derived from it is a redirect-injection surface. And it has to match the
- * callback registered with the upstream provider exactly, which is a fixed value
- * per environment, and `wrangler dev` rewrites the request host to the configured
- * route, so deriving it from the request breaks local development outright.
- */
-function callbackUri(env: Env, providerId: string): string {
-  return new URL(`/oauth/callback/${providerId}`, env.EXEORA_BASE_URL).toString();
-}
-
-function describe(error: unknown): string {
-  if (error instanceof UpstreamAuthError) return error.message;
-  if (error instanceof Error) return error.message;
-  return "Unexpected error.";
-}

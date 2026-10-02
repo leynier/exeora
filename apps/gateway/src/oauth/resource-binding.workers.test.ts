@@ -97,7 +97,12 @@ async function authorize(
   const cookie = await ownerCookie();
   const response = await fetchWorker(url, { headers: { cookie } });
   const html = await response.text();
-  return { status: response.status, html, cookie };
+  const continuation = response.headers.get("set-cookie")?.split(";")[0] ?? "";
+  return {
+    status: response.status,
+    html,
+    cookie: [cookie, continuation].filter(Boolean).join("; "),
+  };
 }
 
 /** Approves the screen and returns the code the client would receive. */

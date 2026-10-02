@@ -1,4 +1,5 @@
 import { CLOUD_WAKE_PATH } from "@exeora/protocol";
+import { spriteEndpoint } from "./cloud/sprites.js";
 import "./env.js";
 
 /**
@@ -138,17 +139,40 @@ async function wakeSprite(
   timeoutMs: number,
 ): Promise<WakeOutcome> {
   const deadline = Date.now() + timeoutMs;
-  const target = `${url.replace(/\/$/, "")}${CLOUD_WAKE_PATH}`;
+  const endpoint = spriteEndpoint(url);
+  if (!endpoint) {
+    return {
+      ok: false,
+      message: "The cloud machine URL is invalid; refusing to send its provider token.",
+    };
+  }
+  const target = `${endpoint}${CLOUD_WAKE_PATH}`;
 
   for (;;) {
     const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return {
+        ok: false,
+        waking: true,
+        message: "The machine was asleep and is still waking up. Try again in a few seconds.",
+      };
+    }
     try {
       const response = await fetcher(target, {
         headers: { authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(Math.max(1_000, Math.min(10_000, remaining))),
+        // The token is valid only for the provider URL. Never replay it at a
+        // host named by a redirect response.
+        redirect: "manual",
+        signal: AbortSignal.timeout(Math.min(10_000, remaining)),
       });
       // The body is a few bytes of JSON nobody here reads; let the socket go.
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => undefined);
+      if (response.status >= 300 && response.status < 400) {
+        return {
+          ok: false,
+          message: "The cloud machine wake endpoint redirected unexpectedly.",
+        };
+      }
       if (response.ok) return { ok: true };
     } catch {
       // A refused connection or a timeout: the VM may still be booting.

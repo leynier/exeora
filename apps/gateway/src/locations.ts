@@ -19,6 +19,12 @@ import { isDeviceOnline, presenceCutoff } from "./presence.js";
 export const CLOUD_LOCATION_SLUG = "cloud";
 export const CLOUD_LOCATION_NAME = "Exeora Cloud";
 
+// D1 rejects statements with more than one hundred bound parameters. A
+// location query also binds the owning user, so leave room for its scope (and
+// for a future predicate) rather than letting a large account fan out fail at
+// runtime.
+const PROJECT_ID_QUERY_BATCH = 80;
+
 /** What a location is doing, in the one vocabulary every surface uses. */
 export type LocationState =
   | "online"
@@ -91,8 +97,9 @@ export async function locationsOf(
   const byProject = new Map<string, LocationView[]>(projects.map((project) => [project.id, []]));
   if (projects.length === 0) return byProject;
   const database = db(env);
+  const projectIds = [...new Set(projects.map((project) => project.id))];
 
-  const read = () =>
+  const readBatch = (ids: readonly string[]) =>
     database
       .select({
         location: schema.projectLocations,
@@ -112,14 +119,19 @@ export async function locationsOf(
       .where(
         and(
           eq(schema.projectLocations.userId, userId),
-          inArray(
-            schema.projectLocations.projectId,
-            projects.map((project) => project.id),
-          ),
+          inArray(schema.projectLocations.projectId, ids),
         ),
       )
       .orderBy(schema.projectLocations.createdAt)
       .all();
+
+  const read = async () => {
+    const rows: Awaited<ReturnType<typeof readBatch>> = [];
+    for (let offset = 0; offset < projectIds.length; offset += PROJECT_ID_QUERY_BATCH) {
+      rows.push(...(await readBatch(projectIds.slice(offset, offset + PROJECT_ID_QUERY_BATCH))));
+    }
+    return rows;
+  };
 
   let rows = await read();
   const missing = projects.filter(
@@ -131,9 +143,12 @@ export async function locationsOf(
       ),
   );
   if (missing.length > 0) {
-    await env.DB.batch(
-      missing.map((project) => defaultLocationStatement(env, userId, project.id, project.deviceId)),
+    const statements = missing.map((project) =>
+      defaultLocationStatement(env, userId, project.id, project.deviceId),
     );
+    for (let offset = 0; offset < statements.length; offset += PROJECT_ID_QUERY_BATCH) {
+      await env.DB.batch(statements.slice(offset, offset + PROJECT_ID_QUERY_BATCH));
+    }
     rows = await read();
   }
 

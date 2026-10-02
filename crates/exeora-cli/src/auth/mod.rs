@@ -7,6 +7,7 @@ use axum::{
     response::Html,
     routing::get,
 };
+use futures_util::StreamExt;
 use keyring::Entry;
 use oauth2::{
     AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope, TokenUrl,
@@ -17,7 +18,6 @@ use std::{
     collections::HashMap,
     fs,
     io::ErrorKind,
-    path::Path,
     sync::{Arc, Mutex},
 };
 use tokio::sync::{Mutex as AsyncMutex, oneshot};
@@ -26,6 +26,7 @@ use url::Url;
 const SERVICE: &str = "exeora";
 const ACCOUNT: &str = "refresh-token";
 const EARLY_REFRESH_MS: u64 = 60_000;
+const MAX_CLIENT_METADATA_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +62,52 @@ pub struct AuthManager {
     machine_token_file: Option<std::path::PathBuf>,
 }
 
+pub(crate) fn trusted_gateway_url(gateway: &str) -> Result<Url> {
+    let url = Url::parse(gateway).context("The gateway URL is invalid")?;
+    let host = url.host_str().unwrap_or_default();
+    let host_for_ip = host.trim_matches(['[', ']']);
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host_for_ip
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    if url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && (url.scheme() == "https" || (url.scheme() == "http" && loopback))
+    {
+        Ok(url)
+    } else {
+        bail!("The gateway URL must use HTTPS, or HTTP on loopback.")
+    }
+}
+
+fn validate_endpoint(gateway: &Url, endpoint: &str) -> Result<()> {
+    let endpoint =
+        Url::parse(endpoint).context("The gateway returned an invalid OAuth endpoint")?;
+    if endpoint.origin() != gateway.origin()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+    {
+        bail!("The gateway returned an OAuth endpoint outside its own origin.");
+    }
+    Ok(())
+}
+
+fn validate_client_info(gateway: &Url, info: &CliClientInfo) -> Result<()> {
+    validate_endpoint(gateway, &info.authorization_endpoint)?;
+    validate_endpoint(gateway, &info.token_endpoint)?;
+    if let Some(endpoint) = &info.device_code_endpoint {
+        validate_endpoint(gateway, endpoint)?;
+    }
+    if let Some(endpoint) = &info.device_token_endpoint {
+        validate_endpoint(gateway, endpoint)?;
+    }
+    Ok(())
+}
+
 impl AuthManager {
     pub fn new(gateway: String, http: reqwest::Client) -> Self {
         Self {
@@ -93,6 +140,10 @@ impl AuthManager {
     }
 
     pub async fn access_token(&self) -> Result<String> {
+        // Validate even when a token is cached: ApiClient can be reused after
+        // a gateway setting changes, and a cached bearer must never be sent to
+        // a plain-text or credential-bearing URL.
+        let gateway = trusted_gateway_url(&self.gateway)?;
         if let Some(file) = &self.machine_token_file {
             return crate::cloud::token::read(file);
         }
@@ -107,7 +158,7 @@ impl AuthManager {
 
         let credentials = load_credentials()?
             .ok_or_else(|| anyhow!("Not signed in. Run `exeora login` first."))?;
-        let origin = Url::parse(&self.gateway)?.origin().ascii_serialization();
+        let origin = gateway.origin().ascii_serialization();
         if credentials.issuer != origin {
             bail!(
                 "You are signed in to {}, but the configured gateway is {}. Run `exeora login` again.",
@@ -305,7 +356,9 @@ impl AuthManager {
         code_verifier: &str,
         issuer: Option<String>,
     ) -> Result<LoginResult> {
-        let expected_issuer = Url::parse(&self.gateway)?.origin().ascii_serialization();
+        let expected_issuer = trusted_gateway_url(&self.gateway)?
+            .origin()
+            .ascii_serialization();
         if let Some(issuer) = issuer
             && issuer != expected_issuer
         {
@@ -390,7 +443,8 @@ fn retry_after_secs(response: &reqwest::Response) -> Option<u64> {
 }
 
 pub async fn discover_client(http: &reqwest::Client, gateway: &str) -> Result<CliClientInfo> {
-    let url = Url::parse(gateway)?.join("/oauth/cli-client")?;
+    let gateway_url = trusted_gateway_url(gateway)?;
+    let url = gateway_url.join("/oauth/cli-client")?;
     let response = http
         .get(url)
         .send()
@@ -402,7 +456,31 @@ pub async fn discover_client(http: &reqwest::Client, gateway: &str) -> Result<Cl
             response.status().as_u16()
         );
     }
-    Ok(response.json().await?)
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_CLIENT_METADATA_BYTES as u64)
+    {
+        bail!("The gateway returned OAuth metadata that is too large.");
+    }
+    let mut body = Vec::with_capacity(
+        response
+            .content_length()
+            .and_then(|length| usize::try_from(length).ok())
+            .unwrap_or(0)
+            .min(MAX_CLIENT_METADATA_BYTES),
+    );
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if chunk.len() > MAX_CLIENT_METADATA_BYTES.saturating_sub(body.len()) {
+            bail!("The gateway returned OAuth metadata that is too large.");
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let info: CliClientInfo = serde_json::from_slice(&body)
+        .context("The gateway returned invalid OAuth client metadata")?;
+    validate_client_info(&gateway_url, &info)?;
+    Ok(info)
 }
 
 pub fn save_credentials(credentials: &StoredCredentials) -> Result<()> {
@@ -410,14 +488,18 @@ pub fn save_credentials(credentials: &StoredCredentials) -> Result<()> {
     if let Ok(entry) = Entry::new(SERVICE, ACCOUNT)
         && entry.set_password(&serialized).is_ok()
     {
-        let _ = fs::remove_file(credential_fallback_path()?);
+        let _ = crate::private::remove(&credential_fallback_path()?);
         return Ok(());
     }
     let path = credential_fallback_path()?;
     if let Some(parent) = path.parent() {
+        // The path can be explicitly overridden for tests or a managed
+        // installation. Do not chmod an arbitrary existing parent (for
+        // example /tmp); private::write still rejects symlinked components
+        // before replacing the credential file.
         fs::create_dir_all(parent)?;
     }
-    write_secret_file(&path, serialized.as_bytes())?;
+    crate::private::write(&path, serialized.as_bytes(), 0o600)?;
     Ok(())
 }
 
@@ -428,7 +510,7 @@ pub fn load_credentials() -> Result<Option<StoredCredentials>> {
     {
         return Ok(Some(serde_json::from_str(&value)?));
     }
-    match fs::read(credential_fallback_path()?) {
+    match crate::private::read(&credential_fallback_path()?, 16 * 1024) {
         Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
@@ -439,7 +521,7 @@ pub fn clear_credentials() -> Result<()> {
     if let Ok(entry) = Entry::new(SERVICE, ACCOUNT) {
         let _ = entry.delete_credential();
     }
-    match fs::remove_file(credential_fallback_path()?) {
+    match crate::private::remove(&credential_fallback_path()?) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
@@ -450,25 +532,6 @@ pub fn using_file_fallback() -> bool {
     Entry::new(SERVICE, ACCOUNT)
         .and_then(|entry| entry.get_password())
         .is_err()
-}
-
-#[cfg(unix)]
-fn write_secret_file(path: &Path, bytes: &[u8]) -> Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .mode(0o600)
-        .open(path)?;
-    file.write_all(bytes)?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn write_secret_file(path: &Path, bytes: &[u8]) -> Result<()> {
-    fs::write(path, bytes).map_err(Into::into)
 }
 
 #[derive(Clone)]
@@ -552,5 +615,44 @@ async fn callback(
                 "<!doctype html><meta charset=utf-8><title>Exeora</title><p>Authorization failed. You can close this tab.</p>",
             ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CliClientInfo, trusted_gateway_url, validate_client_info};
+    use url::Url;
+
+    fn client(token_endpoint: &str) -> CliClientInfo {
+        CliClientInfo {
+            client_id: "cli".to_owned(),
+            authorization_endpoint: "https://gateway.example/oauth/authorize".to_owned(),
+            token_endpoint: token_endpoint.to_owned(),
+            device_code_endpoint: Some("https://gateway.example/oauth/device/code".to_owned()),
+            device_token_endpoint: Some("https://gateway.example/oauth/device/token".to_owned()),
+            scopes: vec!["executor:connect".to_owned()],
+        }
+    }
+
+    #[test]
+    fn oauth_metadata_cannot_redirect_tokens_to_another_origin() {
+        let gateway = Url::parse("https://gateway.example").unwrap();
+        validate_client_info(&gateway, &client("https://gateway.example/oauth/token")).unwrap();
+        assert!(validate_client_info(&gateway, &client("https://evil.example/token")).is_err());
+        assert!(
+            validate_client_info(
+                &gateway,
+                &client("https://gateway.example/oauth/token?next=evil"),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn gateway_transport_policy_allows_only_loopback_http() {
+        assert!(trusted_gateway_url("http://127.0.0.1:8787").is_ok());
+        assert!(trusted_gateway_url("https://gateway.example").is_ok());
+        assert!(trusted_gateway_url("http://gateway.example").is_err());
+        assert!(trusted_gateway_url("https://user:pass@gateway.example").is_err());
     }
 }

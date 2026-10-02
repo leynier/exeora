@@ -303,11 +303,16 @@ export function toolResult(value: unknown) {
  * `notifications/initialized` that comes in on its own request, later, to a
  * third instance.
  *
- * Bounded by content length rather than trusted: a handshake is a couple of
- * kilobytes, and refusing to buffer anything larger keeps this off the hot path
- * where a `write_file` carries a whole file.
+ * Bounded by bytes consumed rather than a trusted header: a handshake is a
+ * couple of kilobytes, and refusing to buffer anything larger keeps this off
+ * the hot path where a `write_file` carries a whole file.
  */
 const MAX_HANDSHAKE_BYTES = 64 * 1024;
+// Client identity is diagnostic metadata that is persisted with authorization
+// rows. Bound each field independently so a caller cannot turn a harmless
+// handshake into an oversized D1 value or audit record.
+const MAX_CLIENT_NAME_CHARS = 256;
+const MAX_CLIENT_VERSION_CHARS = 128;
 
 /**
  * The JSON-RPC method this request carries, when knowing it is cheap.
@@ -327,15 +332,8 @@ export async function peekMethod(
 ): Promise<{ method: string; name?: string } | undefined> {
   if (request.method !== "POST") return undefined;
 
-  const declared = Number(request.headers.get("Content-Length") ?? Number.NaN);
-  if (!Number.isFinite(declared) || declared > MAX_HANDSHAKE_BYTES) return undefined;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return undefined;
-  }
+  const body = await readJsonBody(request, MAX_HANDSHAKE_BYTES);
+  if (body === undefined) return undefined;
 
   // The tool's name too, for `tools/call`: only a proxied MCP tool needs the
   // catalog loaded before the call can be registered and answered.
@@ -346,23 +344,79 @@ export async function peekMethod(
   return { method, ...(typeof name === "string" ? { name } : {}) };
 }
 
-export async function handshakeClientInfo(request: Request): Promise<McpClientInfo | undefined> {
+export async function handshakeClientInfo(
+  request: Request,
+  knownMethod?: string,
+): Promise<McpClientInfo | undefined> {
   if (request.method !== "POST") return undefined;
+  // `inspectMcpAccess` already parsed this envelope on the route's clone. Do
+  // not tee and scan a large tool call again just to discover it is not a
+  // handshake; callers leave the argument undefined when the method could not
+  // be established from the bounded peek.
+  if (knownMethod !== undefined && knownMethod !== "initialize") return undefined;
 
-  const declared = Number(request.headers.get("Content-Length") ?? Number.NaN);
-  if (Number.isFinite(declared) && declared > MAX_HANDSHAKE_BYTES) return undefined;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return undefined;
-  }
+  const body = await readJsonBody(request, MAX_HANDSHAKE_BYTES);
+  if (body === undefined) return undefined;
 
   const message = body as { method?: unknown; params?: { clientInfo?: unknown } } | null;
   if (message?.method !== "initialize") return undefined;
 
   return readClientInfo(message.params?.clientInfo);
+}
+
+/**
+ * Parses a small JSON envelope without trusting Content-Length.
+ *
+ * MCP requests may use chunked transfer encoding, and a caller can also send a
+ * deliberately false length. Reading through a bounded stream keeps the two
+ * request peeks off the hot path for large tool arguments while retaining the
+ * useful behavior for ordinary handshakes. The body is consumed by the caller's
+ * clone, so the original request remains available to the MCP handler.
+ */
+async function readJsonBody(request: Request, maxBytes: number): Promise<unknown | undefined> {
+  const declared = Number(request.headers.get("Content-Length") ?? Number.NaN);
+  if (Number.isFinite(declared) && (declared < 0 || declared > maxBytes)) return undefined;
+
+  const body = request.body;
+  if (!body) return undefined;
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    reader = body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      size += chunk.byteLength;
+      if (size > maxBytes) {
+        // A cloned request can be a tee: awaiting cancellation here may wait
+        // for the handler's other branch, which has not started yet.
+        void reader.cancel().catch(() => undefined);
+        return undefined;
+      }
+      chunks.push(chunk);
+    }
+  } catch {
+    return undefined;
+  } finally {
+    reader?.releaseLock();
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -381,11 +435,15 @@ function readClientInfo(value: unknown): McpClientInfo | undefined {
   if (!value || typeof value !== "object") return undefined;
 
   const { name, version } = value as { name?: unknown; version?: unknown };
-  if (typeof name !== "string" && typeof version !== "string") return undefined;
+  const boundedName =
+    typeof name === "string" && name.length <= MAX_CLIENT_NAME_CHARS ? name : undefined;
+  const boundedVersion =
+    typeof version === "string" && version.length <= MAX_CLIENT_VERSION_CHARS ? version : undefined;
+  if (boundedName === undefined && boundedVersion === undefined) return undefined;
 
   return {
-    ...(typeof name === "string" ? { name } : {}),
-    ...(typeof version === "string" ? { version } : {}),
+    ...(boundedName !== undefined ? { name: boundedName } : {}),
+    ...(boundedVersion !== undefined ? { version: boundedVersion } : {}),
   };
 }
 

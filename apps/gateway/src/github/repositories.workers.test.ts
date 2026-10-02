@@ -233,6 +233,40 @@ describe("the repositories an account can pick", () => {
     expect(await listRepositories(testEnv, USER, {}, fetcher)).toHaveLength(50);
   });
 
+  it("fails closed instead of caching an installation list that reaches the page cap", async () => {
+    const many = Array.from({ length: 1_000 }, (_, index) =>
+      repository(20_000 + index, `octocat/capped-${index}`),
+    );
+    const { fetcher, asked } = githubWorld({
+      installations: { [MINE]: many, [ORG]: [] },
+      people: {
+        [tokenOf(USER)]: Object.fromEntries(many.map((entry) => [entry.id, { push: true }])),
+      },
+    });
+
+    await expect(listRepositories(await envOn(), USER, {}, fetcher)).rejects.toMatchObject({
+      status: 502,
+    });
+    expect(asked.filter((request) => request.url.includes(`/installations/${MINE}/`))).toHaveLength(
+      10,
+    );
+    expect(await env.OAUTH_KV.get(repositoriesCacheKey(USER, MINE))).toBeNull();
+  });
+
+  it("fails closed when GitHub omits the repository list", async () => {
+    const { fetcher } = githubWorld(
+      { installations: { [MINE]: [], [ORG]: [] }, people: { [tokenOf(USER)]: {} } },
+      (asked) =>
+        asked.url.includes(`/installations/${MINE}/repositories`)
+          ? Response.json({ message: "temporary provider response" })
+          : undefined,
+    );
+
+    await expect(listRepositories(await envOn(), USER, {}, fetcher)).rejects.toMatchObject({
+      status: 502,
+    });
+  });
+
   it("asks GitHub once a minute at most, however often the picker asks", async () => {
     const { fetcher, asked } = githubWorld(world());
     const testEnv = await envOn();

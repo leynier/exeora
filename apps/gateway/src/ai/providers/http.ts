@@ -11,6 +11,8 @@ import { AiError } from "./types.js";
 export const REQUEST_TIMEOUT_MS = 15_000;
 /** How long a generation may take, whatever the request's own signal says. */
 export const GENERATE_TIMEOUT_MS = 60_000;
+/** Keep a provider response from consuming unbounded isolate memory. */
+export const MAX_OUTPUT_TEXT_CHARS = 200_000;
 
 /** A signal that fires when either fires: the caller's, or the deadline. */
 export function withTimeout(ms: number, signal?: AbortSignal): AbortSignal {
@@ -100,7 +102,9 @@ export function formBody(fields: Record<string, string>): string {
 export function outputText(body: unknown): string {
   if (body === null || typeof body !== "object") return "";
   const raw = body as { output_text?: unknown; output?: unknown };
-  if (typeof raw.output_text === "string" && raw.output_text !== "") return raw.output_text;
+  if (typeof raw.output_text === "string" && raw.output_text !== "") {
+    return boundedOutput(raw.output_text);
+  }
   return outputItemsText(raw.output);
 }
 
@@ -108,6 +112,7 @@ export function outputText(body: unknown): string {
 export function outputItemsText(output: unknown): string {
   if (!Array.isArray(output)) return "";
   const parts: string[] = [];
+  let length = 0;
   for (const item of output) {
     if (item === null || typeof item !== "object") continue;
     const { type, content } = item as { type?: unknown; content?: unknown };
@@ -115,7 +120,11 @@ export function outputItemsText(output: unknown): string {
     for (const part of content) {
       if (part === null || typeof part !== "object") continue;
       const { type: partType, text } = part as { type?: unknown; text?: unknown };
-      if (partType === "output_text" && typeof text === "string") parts.push(text);
+      if (partType === "output_text" && typeof text === "string") {
+        length += text.length;
+        if (length > MAX_OUTPUT_TEXT_CHARS) throw outputTooLarge();
+        parts.push(text);
+      }
     }
   }
   return parts.join("");
@@ -128,7 +137,16 @@ export function chatCompletionText(body: unknown): string {
   if (!Array.isArray(choices)) return "";
   const first = choices[0] as { message?: { content?: unknown } } | undefined;
   const content = first?.message?.content;
-  return typeof content === "string" ? content : "";
+  return typeof content === "string" ? boundedOutput(content) : "";
+}
+
+function boundedOutput(value: string): string {
+  if (value.length > MAX_OUTPUT_TEXT_CHARS) throw outputTooLarge();
+  return value;
+}
+
+function outputTooLarge(): AiError {
+  return new AiError("unavailable", "The AI provider returned too much text. Try again.");
 }
 
 /** The Responses API request for one system and one user message. */

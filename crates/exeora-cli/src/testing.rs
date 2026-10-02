@@ -136,6 +136,7 @@ impl Gateway {
     pub async fn api(&self) -> ApiClient {
         let http = reqwest::Client::builder()
             .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("http client");
         let auth = Arc::new(AuthManager::new(self.url.clone(), http.clone()));

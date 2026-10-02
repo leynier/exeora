@@ -111,7 +111,8 @@ Stopping `connect` should make the next tool call fail immediately with `LOCAL_E
 ## Releasing the CLI
 
 ```bash
-# bump the workspace version in Cargo.toml, then
+# bump the workspace version in Cargo.toml while LATEST_CLI_VERSION remains
+# at the currently published stable version, then
 git commit -am "release: cli v0.8.4" && git tag cli-v0.8.4
 git push && git push --tags
 ```
@@ -120,15 +121,19 @@ The tag triggers `.github/workflows/release-cli.yml`, which runs the same CI, bu
 
 Linux binaries are linked against glibc 2.31 (Ubuntu 20.04 LTS) with `cargo zigbuild`, so they also run on 22.04 and later. Linking on the GitHub runner's own glibc would otherwise produce a binary that refuses to start on those machines.
 
-A stable tag must also agree with `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish otherwise, so bumping the var and letting it deploy is part of the release, not an afterthought. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
+A stable tag must be at least as new as `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc`; the release workflow refuses to publish a tag older than the gateway's advertised binary. This allows the gateway to keep advertising the currently published CLI while the new crate and release artifacts are being built. After the release workflow succeeds and its artifacts are verified, bump `LATEST_CLI_VERSION` to the new version and let the gateway deploy. Prerelease tags are exempt, since a prerelease should not be advertised as the newest CLI.
 
-Releases are deliberately not tied to `main`: the gateway deploys on every push, the CLI ships when a tag says so.
+Releases are deliberately not tied to `main`: the gateway deploys after CI on every push to `main`, while the CLI ships when a tag says so.
 
-Set `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc` to the version being published. The gateway tells it to every executor in the `hello.ack`, and `connect` prints a line when a newer one exists. It is told rather than looked up so connecting never depends on an external release service being reachable.
+## Deploying the gateway
 
-**Adding to the protocol does not break installed CLIs.** The relay serves the range `MIN_SUPPORTED_PROTOCOL_VERSION` to `PROTOCOL_VERSION`, and anything a newer CLI gained is negotiated: the executor announces `capabilities` in its `hello`, and the gateway advertises only the tools it named. Raise `MIN_SUPPORTED_PROTOCOL_VERSION` only for a change an old CLI would get actively *wrong*, as opposed to one it would merely not have, and expect that to disconnect everyone below it. Merge first so the gateway deploys, then tag, never the other way around.
+`.github/workflows/deploy.yml` runs for pushes to `main` and for a manual dispatch from `main`. Both paths first call the reusable `ci.yml` workflow on the exact commit selected for deployment; D1 migrations and the production Worker deployment run only after every CI job passes. The production environment remains the boundary for deployment credentials and any configured approval.
 
-The CLI version must agree between the workspace version in `Cargo.toml` and `LATEST_CLI_VERSION` for stable releases. Rust reads it from Cargo at compile time.
+After the release artifacts are verified, set `LATEST_CLI_VERSION` in `apps/gateway/wrangler.jsonc` to the published version and let the gateway deploy. It tells that version to every executor in the `hello.ack`, and `connect` prints a line when a newer one exists. It is told rather than looked up so connecting never depends on an external release service being reachable.
+
+**Adding to the protocol does not break installed CLIs.** The relay serves the range `MIN_SUPPORTED_PROTOCOL_VERSION` to `PROTOCOL_VERSION`, and anything a newer CLI gained is negotiated: the executor announces `capabilities` in its `hello`, and the gateway advertises only the tools it named. Raise `MIN_SUPPORTED_PROTOCOL_VERSION` only for a change an old CLI would get actively *wrong*, as opposed to one it would merely not have, and expect that to disconnect everyone below it. Merge code with the current advertisement first so the gateway deploys, tag and publish the CLI, verify the release artifacts, then bump `LATEST_CLI_VERSION` and deploy that advertisement.
+
+After the advertisement update, the CLI version must agree between the workspace version in `Cargo.toml` and `LATEST_CLI_VERSION` for stable releases. Rust reads it from Cargo at compile time.
 
 ## Releasing the Chrome extension
 
@@ -155,5 +160,5 @@ One-time setup for the workflow:
 ## Pull requests
 
 - Keep changes focused; match the tone and structure of nearby code.
-- Run `bun run check`, `bun run typecheck` and `bun run test` before opening a PR.
+- Run `bun run check`, `bun run typecheck` and `bun run test` before opening a PR. The dependency audit workflow also checks Bun and Rust advisories on dependency changes and nightly.
 - Security issues: email hello@exeora.dev (see [SECURITY.md](./SECURITY.md)), do not open a public issue.

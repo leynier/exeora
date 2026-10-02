@@ -372,6 +372,22 @@ describe("caller identity", () => {
     expect(await handshakeClientInfo(request)).toBeUndefined();
   });
 
+  it("does not scan a body when the bounded peek already found another method", async () => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "read_file", arguments: { path: "a.ts" } },
+    });
+    const request = new Request("https://exeora.dev/p/prj_abc/mcp", {
+      method: "POST",
+      body,
+    });
+
+    expect(await handshakeClientInfo(request, "tools/call")).toBeUndefined();
+    expect(await request.text()).toBe(body);
+  });
+
   it("skips a body too large to be a handshake, rather than buffering it", async () => {
     const request = initialize({
       protocolVersion: "2025-06-18",
@@ -383,12 +399,49 @@ describe("caller identity", () => {
     expect(await handshakeClientInfo(request)).toBeUndefined();
   });
 
+  it("bounds chunked handshake bodies when Content-Length is absent", async () => {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { clientInfo: { name: "chatgpt" }, padding: "x".repeat(70 * 1024) },
+    });
+    const request = new Request("https://exeora.dev/p/prj_abc/mcp", {
+      method: "POST",
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }),
+    });
+
+    expect(request.headers.get("Content-Length")).toBeNull();
+    // The real route inspects a clone before handing the original to the MCP
+    // handler. Cancellation of the over-limit clone must not wait for that
+    // untouched branch to be consumed.
+    expect(await handshakeClientInfo(request.clone())).toBeUndefined();
+    expect(await request.text()).toBe(body);
+  });
+
   it("tolerates a handshake that announces no client at all", async () => {
     const info = await handshakeClientInfo(
       initialize({ protocolVersion: "2025-06-18", capabilities: {} }),
     );
 
     expect(info).toBeUndefined();
+  });
+
+  it("bounds persisted client identity fields", async () => {
+    const info = await handshakeClientInfo(
+      initialize({
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "n".repeat(257), version: "1.0.0" },
+      }),
+    );
+
+    expect(info).toEqual({ version: "1.0.0" });
   });
 });
 

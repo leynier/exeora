@@ -1,12 +1,19 @@
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
-import { Workspace } from "../pages/Workspace.js";
 import { useMe } from "../queries.js";
 import type { Bridge } from "./bridge.js";
+
+// Keep the panel entry point small enough to paint its shell while the
+// workspace editor, source-control renderer and terminal code load. The
+// dashboard route already does this; the side panel used to preload the whole
+// 1 MB workspace chunk before the first frame could render.
+const Workspace = lazy(() =>
+  import("../pages/Workspace.js").then((module) => ({ default: module.Workspace })),
+);
 
 /**
  * The signed-in side panel: the dashboard's Workspace screen under a header of
@@ -65,11 +72,26 @@ function Shell({ bridge }: { bridge: Bridge }) {
       <Header bridge={bridge} open={open} />
       <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
         <Routes>
-          <Route path="/workspace" element={<Workspace />} />
+          <Route
+            path="/workspace"
+            element={
+              <Suspense fallback={<PanelLoading />}>
+                <Workspace />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<ElsewhereInDashboard open={open} />} />
         </Routes>
       </main>
       <GlobalTerminals />
+    </div>
+  );
+}
+
+function PanelLoading() {
+  return (
+    <div className="text-body-md text-foreground-muted grid min-h-0 flex-1 place-items-center">
+      Loading workspace…
     </div>
   );
 }

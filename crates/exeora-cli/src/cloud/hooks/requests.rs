@@ -27,6 +27,7 @@ const FOLDER: &str = "requests";
 const REQUEST_SUFFIX: &str = ".json";
 const ANSWER_SUFFIX: &str = ".answer.json";
 const MAX_REQUEST_BYTES: u64 = 1_024;
+const MAX_ANSWER_BYTES: usize = 64 * 1024;
 /// A request nobody took, or an answer nobody read, is cleared after this.
 const STALE: Duration = Duration::from_secs(3_600);
 
@@ -87,13 +88,15 @@ pub fn ask(directory: &Path, hook: Hook) -> std::io::Result<Request> {
 /// Whether the request is still where it was left, which is to say that
 /// the service has not taken it.
 pub fn is_waiting(directory: &Path, id: &str) -> bool {
-    request_path(directory, id).exists()
+    is_id(id)
+        && fs::symlink_metadata(request_path(directory, id))
+            .is_ok_and(|metadata| metadata.is_file())
 }
 
 /// Takes a request back, or out: true for whoever removed it, so of the
 /// service and the one who asked only one goes on with it.
 pub fn take(directory: &Path, id: &str) -> bool {
-    fs::remove_file(request_path(directory, id)).is_ok()
+    is_id(id) && private::remove(&request_path(directory, id)).is_ok()
 }
 
 /// The requests that are waiting, oldest first. What is in the folder and
@@ -117,7 +120,7 @@ pub fn waiting(directory: &Path) -> Vec<Request> {
             .and_then(|modified| SystemTime::now().duration_since(modified).ok())
             .is_some_and(|age| age > STALE);
         if old {
-            let _ = fs::remove_file(&path);
+            let _ = private::remove(&path);
             continue;
         }
         let id = match name.strip_suffix(REQUEST_SUFFIX) {
@@ -132,7 +135,7 @@ pub fn waiting(directory: &Path) -> Vec<Request> {
         match request {
             Some(request) => requests.push(request),
             None => {
-                let _ = fs::remove_file(&path);
+                let _ = private::remove(&path);
             }
         }
     }
@@ -145,6 +148,12 @@ pub fn waiting(directory: &Path) -> Vec<Request> {
 }
 
 pub fn answer(directory: &Path, answer: &Answer) -> std::io::Result<()> {
+    if !is_id(&answer.id) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "hook answer id is invalid",
+        ));
+    }
     private::directory(&folder(directory))?;
     let text = serde_json::to_vec(answer).map_err(std::io::Error::other)?;
     private::write(&answer_path(directory, &answer.id), &text, 0o600)
@@ -152,10 +161,13 @@ pub fn answer(directory: &Path, answer: &Answer) -> std::io::Result<()> {
 
 /// Reads the answer and takes it away: it is for the one who asked.
 pub fn collect(directory: &Path, id: &str) -> Option<Answer> {
+    if !is_id(id) {
+        return None;
+    }
     let path = answer_path(directory, id);
-    let bytes = fs::read(&path).ok()?;
+    let bytes = private::read(&path, MAX_ANSWER_BYTES).ok()?;
     let answer = serde_json::from_slice::<Answer>(&bytes).ok()?;
-    let _ = fs::remove_file(&path);
+    let _ = private::remove(&path);
     Some(answer)
 }
 

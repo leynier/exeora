@@ -1,12 +1,11 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { endAllProjects, everyProjectId, setAccountAccess } from "../account-access.js";
 import { rememberAuthorization, revokeAccountProjectsExcept } from "../clients.js";
 import { db, schema } from "../db/client.js";
 import "../env.js";
-import { ownedProjectIds } from "../oauth/target.js";
 import { revokeAccountGrants } from "./ops.js";
 import type { ApiEnv } from "./router.js";
 
@@ -21,6 +20,12 @@ import type { ApiEnv } from "./router.js";
  */
 
 export const accountClients = new Hono<ApiEnv>();
+
+// D1 supports at most one hundred bound parameters per statement. Account
+// plans may be unlimited, so the endpoint keeps a bounded request payload and
+// chunks the ownership query below instead of treating this as a plan limit.
+const MAX_ACCOUNT_PROJECT_IDS = 500;
+const PROJECT_ID_QUERY_BATCH = 80;
 
 /**
  * The clients connected through the account URL, one entry each.
@@ -100,8 +105,11 @@ accountClients.get("/api/account-clients", async (c) => {
 const accessInput = z.object({
   // In the body rather than the path: under CIMD a client id is a URL, and a
   // URL inside a path segment is a percent-encoding problem waiting to happen.
-  clientId: z.string().min(1),
-  projectIds: z.array(z.string().min(1)),
+  clientId: z.string().min(1).max(2000),
+  // Keep the intersection query and the one-row-per-project updates bounded.
+  // This is well above the current plan limits while preventing a large body
+  // from becoming an unbounded SQLite parameter list and write loop.
+  projectIds: z.array(z.string().min(1).max(200)).max(MAX_ACCOUNT_PROJECT_IDS),
   /**
    * "All of my projects, including the ones I add later." When set, the list
    * is ignored: everything the account has is granted, and what it gets next
@@ -173,7 +181,7 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
   // The same narrowing the consent screen does with its tick boxes, and for the
   // same reason: the list is caller-controlled, so an id that is not this
   // user's is dropped rather than refused.
-  const keep = await ownedProjectIds(c.env, userId, projectIds);
+  const keep = await ownedProjectIdsForAccount(c.env, userId, projectIds);
 
   // An empty list is how this page cuts a connection off, and the dashboard
   // asks before sending one. A list that arrives non-empty and narrows to
@@ -222,6 +230,32 @@ accountClients.put("/api/account-clients/projects", zValidator("json", accessInp
 
   return c.json({ ok: true });
 });
+
+/** Narrows an account edit to this user's projects without exceeding D1 binds. */
+async function ownedProjectIdsForAccount(
+  env: Pick<Env, "DB">,
+  userId: string,
+  candidates: readonly string[],
+): Promise<string[]> {
+  const wanted = [...new Set(candidates)];
+  if (wanted.length === 0) return [];
+
+  const owned = new Set<string>();
+  for (let offset = 0; offset < wanted.length; offset += PROJECT_ID_QUERY_BATCH) {
+    const rows = await db(env)
+      .select({ id: schema.projects.id })
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.userId, userId),
+          inArray(schema.projects.id, wanted.slice(offset, offset + PROJECT_ID_QUERY_BATCH)),
+        ),
+      )
+      .all();
+    for (const row of rows) owned.add(row.id);
+  }
+  return wanted.filter((id) => owned.has(id));
+}
 
 async function accountClientRow(env: Pick<Env, "DB">, userId: string, clientId: string) {
   return db(env)

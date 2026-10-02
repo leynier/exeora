@@ -51,7 +51,7 @@ AI agents are only as useful as the environment they can touch. Today you usuall
 1. **Expose the machine** - open a port, run a tunnel, hope the URL stays private.
 2. **Upload the code** - push the repo into a cloud sandbox that is never quite your machine.
 
-Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. The agent gets seventeen tools inside one project directory - not a shell on the whole box, and not a copy in someone else's cloud.
+Exeora is the third path. The CLI dials **out** to a gateway and holds a WebSocket open. Nothing ever dials in. Your files stay on the machine they already live on. Filesystem tools confine access to the project's registered roots. Commands and terminals run with the operating-system permissions of the account running Exeora; use command rules, approvals and a dedicated account or container to restrict that access.
 
 ```mermaid
 flowchart TD
@@ -94,7 +94,7 @@ flowchart TD
 |---|---|---|---|
 | Where your code lives | The machine you ran it on | The machine you ran it on | A copy on their infrastructure |
 | Inbound port | **None** | None, but a public URL is published | None |
-| What is reachable | Seventeen tools, confined to the project | Whatever is listening on that port | A full shell in the copy |
+| What is reachable | Project filesystem tools; commands under the executor's OS permissions | Whatever is listening on that port | A full shell in the copy |
 | Per-project isolation | Separate OAuth resource and token | You build it | One sandbox per project |
 | Authentication | OAuth 2.1, built in | Whatever your service does | The vendor's account |
 | Your real toolchain and state | **Yes** | Yes | Reinstalled, never quite the same |
@@ -105,7 +105,7 @@ flowchart TD
 - **No inbound network path** - outbound HTTPS is the only requirement. Home routers, corporate proxies and cloud VMs with no public address all work unconfigured.
 - **Your code stays where you put it** - on a machine of yours, Exeora routes tool calls and does not store the repository. Exeora Cloud holds a clone only of a project you put there.
 - **A token per endpoint** - a token minted for one project is refused at another. Ownership is checked in the database too.
-- **Paths stay in the project** - every path is resolved before anything touches disk. `..` and outward symlinks are rejected.
+- **Filesystem paths stay in registered roots** - filesystem tools reject `..` and outward symlinks. Commands, terminals and configured upstream MCP servers retain their operating-system permissions.
 - **Modes and command rules** - read only, allow list, deny list, per-tool restrictions. Shell metacharacters are refused whenever a list is in force.
 - **Confirm before it runs** - optional approval for edits and commands, in the conversation (MCP 2026-07-28) or on the terminal and dashboard.
 - **An audit log you can show someone** - which tool ran, how it ended, how long it took. Never the arguments, never the output.

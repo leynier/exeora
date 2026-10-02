@@ -16,6 +16,8 @@ import "./env.js";
 
 /** R2 SQL's maximum LIMIT; the engine defaults to 500 when omitted. */
 export const R2_SQL_PAGE_SIZE = 10_000;
+/** A warehouse read must not hold a Worker request open indefinitely. */
+export const R2_SQL_TIMEOUT_MS = 15_000;
 
 export interface WarehouseConfig {
   accountId: string;
@@ -101,21 +103,44 @@ export async function runQuery(
   query: string,
   fetcher: typeof fetch,
 ): Promise<Record<string, unknown>[]> {
-  const response = await fetcher(
-    `https://api.sql.cloudflarestorage.com/api/v1/accounts/${encodeURIComponent(config.accountId)}/r2-sql/query/${encodeURIComponent(config.bucket)}`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${config.token}`,
-        "content-type": "application/json",
+  let response: Response;
+  try {
+    response = await fetcher(
+      `https://api.sql.cloudflarestorage.com/api/v1/accounts/${encodeURIComponent(config.accountId)}/r2-sql/query/${encodeURIComponent(config.bucket)}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ warehouse: config.warehouse, query }),
+        // The bearer is valid for R2 SQL only. Never let a redirect replay it
+        // at a location named by an upstream response.
+        redirect: "manual",
+        signal: AbortSignal.timeout(R2_SQL_TIMEOUT_MS),
       },
-      body: JSON.stringify({ warehouse: config.warehouse, query }),
-    },
-  );
+    );
+  } catch {
+    throw new Error("R2 SQL could not be reached. Try again in a few minutes.");
+  }
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("R2 SQL redirected the request. Try again in a few minutes.");
+  }
 
-  const body = (await response.json()) as QueryResponse;
+  let body: QueryResponse;
+  try {
+    body = (await response.json()) as QueryResponse;
+  } catch {
+    throw new Error("R2 SQL returned an invalid response.");
+  }
   if (!response.ok || !body.success) {
-    throw new Error(body.errors?.[0]?.message ?? `R2 SQL returned ${response.status}`);
+    // The provider may echo SQL fragments or warehouse details. Keep that
+    // response out of user-facing errors and logs; the HTTP status is enough
+    // to distinguish a rejected query from an unavailable service.
+    throw new Error(
+      response.ok ? "R2 SQL rejected the query." : `R2 SQL returned ${response.status}`,
+    );
   }
   // An absent `rows` is not an empty result: it means the response did not have
   // the shape this code reads, and treating it as "no data" would silently

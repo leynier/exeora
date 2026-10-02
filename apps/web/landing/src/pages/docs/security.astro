@@ -189,9 +189,10 @@ import Doc from "../../layouts/Doc.astro";
 
   <ul>
     <li>
-      <strong>A project is a directory, not a sandbox.</strong> A command running inside it runs as
-      your user, with your environment and your network. It can reach anything that user can reach.
-      The confinement is on the paths the tools take, not on what a program does once it starts.
+      <strong>A project is a directory, not an operating-system sandbox.</strong> A command running
+      inside it runs with the connected machine account's environment, network and process
+      permissions. It can reach anything that account can reach. The confinement is on the paths
+      the tools take, not on what a program does once it starts.
     </li>
     <li>
       <strong>An allow list with <code>shell = true</code> is a suggestion.</strong> Turn it on only

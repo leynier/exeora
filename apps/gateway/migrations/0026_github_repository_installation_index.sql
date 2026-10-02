@@ -1,0 +1,1 @@
+CREATE INDEX `github_repositories_installation` ON `github_repositories` (`installation_id`);

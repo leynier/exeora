@@ -102,6 +102,7 @@ async fn answer(project: Option<&str>, request: &HashMap<String, String>) -> Res
         .user_agent(format!("exeora/{CLI_VERSION}"))
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let gateway = config.gateway_url();
     // The same choice `connect --cloud` makes: a machine Exeora runs has a
@@ -180,9 +181,16 @@ fn check(credential: &GitCredential, request: &HashMap<String, String>) -> Resul
     {
         bail!("the gateway answered with something that is not a credential.");
     }
-    if let Some(host) = request.get("host")
-        && !host.eq_ignore_ascii_case(&credential.host)
-    {
+    if !credential.host.eq_ignore_ascii_case("github.com") {
+        bail!(
+            "the gateway answered with a credential for {}, not github.com.",
+            credential.host
+        );
+    }
+    let Some(host) = request.get("host").filter(|host| !host.is_empty()) else {
+        bail!("git did not name a host for the credential.");
+    };
+    if !host.eq_ignore_ascii_case(&credential.host) {
         bail!(
             "the credential is for {}, and git asked about {host}.",
             credential.host
@@ -282,8 +290,18 @@ mod tests {
     fn passes_on_only_a_credential_for_the_host_that_was_asked_about() {
         let asked = |host: &str| HashMap::from([("host".to_owned(), host.to_owned())]);
         assert!(check(&credential(), &asked("github.com")).is_ok());
-        assert!(check(&credential(), &HashMap::new()).is_ok());
+        assert!(check(&credential(), &HashMap::new()).is_err());
         assert!(check(&credential(), &asked("evil.example")).is_err());
+        assert!(
+            check(
+                &GitCredential {
+                    host: "gitlab.com".to_owned(),
+                    ..credential()
+                },
+                &asked("gitlab.com")
+            )
+            .is_err()
+        );
         assert!(
             check(
                 &GitCredential {

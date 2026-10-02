@@ -162,15 +162,23 @@ async function rootSelectors(
   userId: string,
   projectIds: string[],
 ): Promise<Map<string, string>> {
-  const projects = await db(env)
-    .select({
-      id: schema.projects.id,
-      deviceId: schema.projects.deviceId,
-      localPath: schema.projects.localPath,
-    })
-    .from(schema.projects)
-    .where(and(eq(schema.projects.userId, userId), inArray(schema.projects.id, projectIds)))
-    .all();
+  const query = (ids: readonly string[]) =>
+    db(env)
+      .select({
+        id: schema.projects.id,
+        deviceId: schema.projects.deviceId,
+        localPath: schema.projects.localPath,
+      })
+      .from(schema.projects)
+      .where(and(eq(schema.projects.userId, userId), inArray(schema.projects.id, ids)))
+      .all();
+  const projects: Awaited<ReturnType<typeof query>> = [];
+  const uniqueProjectIds = [...new Set(projectIds)];
+  // D1 allows at most one hundred bound variables. The user id consumes one,
+  // so keep the project-id batches below that ceiling for terminal listings.
+  for (let offset = 0; offset < uniqueProjectIds.length; offset += 80) {
+    projects.push(...(await query(uniqueProjectIds.slice(offset, offset + 80))));
+  }
   const locations = await locationsOf(env, userId, projects);
   const selectors = new Map<string, string>();
   for (const project of projects) {
