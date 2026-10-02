@@ -130,7 +130,7 @@ AI Assist writes commit messages and pull requests with a provider chosen by the
 
 #### ChatGPT plan on a local machine
 
-OpenAI documents a separate [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source). Exeora keeps that flow in the CLI on the machine that will run the request. The upcoming CLI 0.21.0 exposes:
+OpenAI documents a separate [Sign in with ChatGPT flow for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source). Exeora keeps that flow in the CLI on the machine that will run the request. CLI [0.21.0](https://github.com/leynier/exeora/releases/tag/cli-v0.21.0) exposes:
 
 ```sh
 exeora chatgpt login

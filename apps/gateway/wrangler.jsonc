@@ -121,7 +121,7 @@
     // source, so releasing the CLI is one line here and not a code change; and
     // told by us rather than looked up on npm, so connecting never depends on
     // the registry being reachable.
-    "LATEST_CLI_VERSION": "0.20.0",
+    "LATEST_CLI_VERSION": "0.21.0",
 
     // AI Assist: which providers an account may link from Settings, as a
     // comma list of `openai`, `xai` and `chatgpt`. OpenAI API keys and xAI
