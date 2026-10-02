@@ -40,12 +40,18 @@ export function AiOperationSettingsForm({
   const client = useQueryClient();
   const toast = useToast();
   const [draft, setDraft] = useState<AiSettings>(settings);
+  const unresolvedChoice = (
+    previous: AiSettingsProviderId | null,
+    next: AiSettingsProviderId | null,
+  ) => next === "chatgpt" || (previous === "chatgpt" && next === null);
+  const unresolvedPlan =
+    unresolvedChoice(settings.defaultProvider, draft.defaultProvider) ||
+    OPERATIONS.some(({ id }) =>
+      unresolvedChoice(settings.operations[id].provider, draft.operations[id].provider),
+    );
   const save = useMutation({
     mutationFn: () => {
-      if (
-        draft.defaultProvider === "chatgpt" ||
-        OPERATIONS.some(({ id }) => draft.operations[id].provider === "chatgpt")
-      ) {
+      if (draft.defaultProvider === "chatgpt" || unresolvedPlan) {
         throw new Error(
           "Choose a linked provider to replace the previous ChatGPT plan connection.",
         );
@@ -90,9 +96,6 @@ export function AiOperationSettingsForm({
         item.id ===
         (provider ?? draft.defaultProvider ?? (providers.length === 1 ? providers[0]?.id : null)),
     )?.models ?? [];
-  const unresolvedPlan =
-    draft.defaultProvider === "chatgpt" ||
-    OPERATIONS.some(({ id }) => draft.operations[id].provider === "chatgpt");
   const setOperation = (
     operation: AiOperation,
     patch: Partial<AiSettings["operations"][AiOperation]>,
@@ -121,7 +124,11 @@ export function AiOperationSettingsForm({
               label="Default provider"
               value={draft.defaultProvider ?? ""}
               options={[
-                { value: "", label: "Automatic (first linked account)" },
+                {
+                  value: "",
+                  label: "Automatic (first linked account)",
+                  disabled: settings.defaultProvider === "chatgpt",
+                },
                 ...providerOptions.filter((option) => option.value !== ""),
               ]}
               onChange={(value) =>
@@ -149,7 +156,12 @@ export function AiOperationSettingsForm({
                     <Select
                       label={`${operation.label} provider`}
                       value={current.provider ?? ""}
-                      options={providerOptions}
+                      options={providerOptions.map((option) =>
+                        option.value === "" &&
+                        settings.operations[operation.id].provider === "chatgpt"
+                          ? { ...option, disabled: true }
+                          : option,
+                      )}
                       onChange={(value) =>
                         setOperation(operation.id, {
                           provider: value ? (value as AiProviderId) : null,

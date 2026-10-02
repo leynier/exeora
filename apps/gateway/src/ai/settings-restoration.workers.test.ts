@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, expect, it } from "vitest";
-import { aiOn, call, seedUser } from "./fixtures.js";
+import { storeCredential } from "./credentials.js";
+import { aiOn, CREDENTIALS_KEY, call, seedUser } from "./fixtures.js";
 
 const USER = "usr_ai_restoration";
 beforeEach(() => seedUser(USER));
@@ -99,5 +100,54 @@ it.each(["default", "override"])(
     expect(await status.json()).toMatchObject({
       settings: { operations: { commit: { model: "gpt-5.5-mini" } } },
     });
+  },
+);
+
+it.each(["default", "commit", "pull_request"] as const)(
+  "requires a named linked replacement for the retired %s preference before any settings writes",
+  async (choice) => {
+    await storeCredential(env, { credentialsKey: CREDENTIALS_KEY }, USER, "openai", "api_key", {
+      access: "sk-simulated",
+    });
+    await env.DB.prepare("INSERT INTO ai_settings (user_id, default_provider) VALUES (?, ?)")
+      .bind(USER, choice === "default" ? "chatgpt" : "openai")
+      .run();
+    await env.DB.prepare(
+      "INSERT INTO ai_operation_settings (user_id, operation, provider, instructions) VALUES (?, ?, ?, 'Original instructions')",
+    )
+      .bind(USER, choice === "default" ? "commit" : choice, choice === "default" ? null : "chatgpt")
+      .run();
+    const before = await (await call("/api/ai", { userId: USER, env: aiOn() })).json();
+    for (const replacement of [null, "xai"] as const) {
+      const patch =
+        choice === "default"
+          ? {
+              defaultProvider: replacement,
+              operations: { commit: { instructions: "Must not save" } },
+            }
+          : {
+              defaultProvider: null,
+              operations: { [choice]: { provider: replacement, instructions: "Must not save" } },
+            };
+      const refused = await call("/api/ai/settings", {
+        method: "PUT",
+        body: patch,
+        userId: USER,
+        env: aiOn(),
+      });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ error: "ai_provider_choice_required" });
+      expect(await (await call("/api/ai", { userId: USER, env: aiOn() })).json()).toEqual(before);
+    }
+    const accepted = await call("/api/ai/settings", {
+      method: "PUT",
+      body:
+        choice === "default"
+          ? { defaultProvider: "openai" }
+          : { operations: { [choice]: { provider: "openai" } } },
+      userId: USER,
+      env: aiOn(),
+    });
+    expect(accepted.status).toBe(200);
   },
 );

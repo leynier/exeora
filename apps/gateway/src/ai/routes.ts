@@ -16,7 +16,7 @@ import {
   offeredProvider,
 } from "./providers/index.js";
 import { AiError } from "./providers/types.js";
-import { readSettings, SettingsPatch, writeSettings } from "./settings.js";
+import { RetiredPlanChoiceError, readSettings, SettingsPatch, writeSettings } from "./settings.js";
 
 /**
  * AI Assist for an account: which providers it may link and has linked, how
@@ -213,5 +213,12 @@ ai.put("/api/ai/settings", zValidator("json", SettingsPatch), async (c) => {
       400,
     );
   }
-  return c.json(await writeSettings(c.env, c.get("userId"), patch));
+  try {
+    return c.json(await writeSettings(c.env, c.get("userId"), patch));
+  } catch (error) {
+    if (error instanceof RetiredPlanChoiceError) {
+      return c.json({ error: "ai_provider_choice_required", message: error.message }, 400);
+    }
+    throw error;
+  }
 });

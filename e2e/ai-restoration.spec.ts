@@ -26,12 +26,54 @@ test("requires replacing a retired plan preference explicitly before saving API-
   await expect(choice).toContainText("Previous ChatGPT plan (not linked)");
   await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
   await choice.click();
+  await expect(
+    page.getByRole("option", { name: "Automatic (first linked account)", exact: true }),
+  ).toBeDisabled();
   await page
     .getByRole("listbox", { name: "Default provider", exact: true })
     .getByRole("option", { name: "ChatGPT (API key)", exact: true })
     .click();
   await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled();
 });
+
+for (const [operation, label] of [
+  ["commit", "Commit messages"],
+  ["pull_request", "Pull requests"],
+] as const) {
+  test(`requires a named provider for the retired ${operation} override`, async ({ page }) => {
+    await signedIn(page);
+    await mockWorkspaceV2(page, { ai: true });
+    await page.route("**/api/ai", (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          ...aiStatus,
+          providers: aiStatus.providers.map((provider) =>
+            provider.id === "openai"
+              ? { ...provider, linked: { kind: "api_key", accountLabel: null } }
+              : provider,
+          ),
+          settings: {
+            ...aiStatus.settings,
+            operations: {
+              ...aiStatus.settings.operations,
+              [operation]: { ...aiStatus.settings.operations[operation], provider: "chatgpt" },
+            },
+          },
+        },
+      }),
+    );
+    await openWorkspace(page, "/dashboard/settings");
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: new RegExp(`^${label} provider`) }).click();
+    const options = page.getByRole("listbox", { name: `${label} provider`, exact: true });
+    await expect(
+      options.getByRole("option", { name: "Default provider", exact: true }),
+    ).toBeDisabled();
+    await options.getByRole("option", { name: "ChatGPT (API key)", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled();
+  });
+}
 
 test("shows an automatic default honestly when provider order differs", async ({ page }) => {
   await signedIn(page);

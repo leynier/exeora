@@ -49,6 +49,12 @@ export const SettingsPatch = z.object({
 
 export type SettingsPatch = z.infer<typeof SettingsPatch>;
 
+export class RetiredPlanChoiceError extends Error {
+  constructor() {
+    super("Choose a linked provider to replace the previous ChatGPT plan connection.");
+  }
+}
+
 const EMPTY: OperationSettings = { provider: null, model: null, instructions: null };
 
 export async function readSettings(env: Pick<Env, "DB">, userId: string): Promise<AiSettingsView> {
@@ -118,6 +124,24 @@ export async function writeSettings(
   patch: SettingsPatch,
 ): Promise<AiSettingsView> {
   const database = db(env);
+  const saved = await readSettings(env, userId);
+  const replacements = [
+    [saved.defaultProvider, patch.defaultProvider],
+    ...AI_OPERATIONS.map((operation) => [
+      saved.operations[operation].provider,
+      patch.operations?.[operation]?.provider,
+    ]),
+  ].filter(([previous, next]) => previous === "chatgpt" && next !== undefined);
+  if (replacements.length > 0) {
+    const linked = await database
+      .select({ provider: schema.aiProviders.provider })
+      .from(schema.aiProviders)
+      .where(eq(schema.aiProviders.userId, userId))
+      .all();
+    if (replacements.some(([, next]) => !linked.some((row) => row.provider === next))) {
+      throw new RetiredPlanChoiceError();
+    }
+  }
   // Canonicalize before applying patches: a newly supplied model must survive.
   // D1 batches are atomic, and this only updates the retired provider's choices.
   await env.DB.batch([
