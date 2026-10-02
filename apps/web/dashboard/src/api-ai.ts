@@ -103,10 +103,11 @@ export type ChatgptLoginError =
 
 export interface ChatgptAccount {
   label: string;
-  email: string;
+  email: string | null;
   scopes: string[];
   planUsage: boolean;
   newRegistration: boolean;
+  noticeId?: string;
 }
 
 export interface ChatgptPending {
@@ -169,6 +170,11 @@ export const aiApi = {
     request<ChatgptStatus>(
       `/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/login/cancel`,
       json({}),
+    ),
+  chatgptWelcomeAck: (deviceId: string, noticeId: string) =>
+    request<{ acknowledged: boolean }>(
+      `/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/welcome`,
+      json({ noticeId }),
     ),
   chatgptLogout: (deviceId: string) =>
     request<ChatgptLogout>(

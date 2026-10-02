@@ -103,6 +103,7 @@ export type ChatgptStatusFixture = {
     scopes: string[];
     planUsage: boolean;
     newRegistration: boolean;
+    noticeId?: string;
   } | null;
   pending?: { expiresAt: number } | null;
   loginError?: string | null;

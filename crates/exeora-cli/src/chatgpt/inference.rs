@@ -812,6 +812,7 @@ mod tests {
                 label: Some("user@example.com".to_owned()),
                 state: None,
                 new_registration: false,
+                welcome_notice_id: None,
             })
             .unwrap();
         (directory, service)

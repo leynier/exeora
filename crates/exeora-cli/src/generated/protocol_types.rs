@@ -2176,6 +2176,11 @@ pub mod error {
 ///                                "newRegistration": {
 ///                                  "type": "boolean"
 ///                                },
+///                                "noticeId": {
+///                                  "type": "string",
+///                                  "format": "uuid",
+///                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///                                },
 ///                                "planUsage": {
 ///                                  "type": "boolean"
 ///                                },
@@ -2280,6 +2285,23 @@ pub mod error {
 ///                            },
 ///                            "revocationConfirmed": {
 ///                              "type": "boolean"
+///                            }
+///                          },
+///                          "additionalProperties": false
+///                        },
+///                        {
+///                          "type": "object",
+///                          "required": [
+///                            "acknowledged",
+///                            "kind"
+///                          ],
+///                          "properties": {
+///                            "acknowledged": {
+///                              "type": "boolean"
+///                            },
+///                            "kind": {
+///                              "type": "string",
+///                              "const": "chatgpt_welcome_ack"
 ///                            }
 ///                          },
 ///                          "additionalProperties": false
@@ -4298,6 +4320,25 @@ pub mod error {
 ///                    "action": {
 ///                      "type": "string",
 ///                      "const": "chatgpt_logout"
+///                    }
+///                  },
+///                  "additionalProperties": false
+///                },
+///                {
+///                  "type": "object",
+///                  "required": [
+///                    "action",
+///                    "noticeId"
+///                  ],
+///                  "properties": {
+///                    "action": {
+///                      "type": "string",
+///                      "const": "chatgpt_welcome_ack"
+///                    },
+///                    "noticeId": {
+///                      "type": "string",
+///                      "format": "uuid",
+///                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
 ///                    }
 ///                  },
 ///                  "additionalProperties": false
@@ -8270,6 +8311,11 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                            "newRegistration": {
 ///                              "type": "boolean"
 ///                            },
+///                            "noticeId": {
+///                              "type": "string",
+///                              "format": "uuid",
+///                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///                            },
 ///                            "planUsage": {
 ///                              "type": "boolean"
 ///                            },
@@ -8374,6 +8420,23 @@ impl ::std::convert::TryFrom<::std::string::String> for ExeoraProtocolTypesComma
 ///                        },
 ///                        "revocationConfirmed": {
 ///                          "type": "boolean"
+///                        }
+///                      },
+///                      "additionalProperties": false
+///                    },
+///                    {
+///                      "type": "object",
+///                      "required": [
+///                        "acknowledged",
+///                        "kind"
+///                      ],
+///                      "properties": {
+///                        "acknowledged": {
+///                          "type": "boolean"
+///                        },
+///                        "kind": {
+///                          "type": "string",
+///                          "const": "chatgpt_welcome_ack"
 ///                        }
 ///                      },
 ///                      "additionalProperties": false
@@ -10946,6 +11009,11 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///            "newRegistration": {
 ///              "type": "boolean"
 ///            },
+///            "noticeId": {
+///              "type": "string",
+///              "format": "uuid",
+///              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///            },
 ///            "planUsage": {
 ///              "type": "boolean"
 ///            },
@@ -11050,6 +11118,23 @@ pub enum ExeoraProtocolTypesExecutorMessageResult {
 ///        },
 ///        "revocationConfirmed": {
 ///          "type": "boolean"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
+///        "acknowledged",
+///        "kind"
+///      ],
+///      "properties": {
+///        "acknowledged": {
+///          "type": "boolean"
+///        },
+///        "kind": {
+///          "type": "string",
+///          "const": "chatgpt_welcome_ack"
 ///        }
 ///      },
 ///      "additionalProperties": false
@@ -11400,18 +11485,22 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0Value {
         revocation_confirmed: bool,
     },
     Variant21 {
+        acknowledged: bool,
+        kind: ::std::string::String,
+    },
+    Variant22 {
         kind: ::std::string::String,
         models: ::std::vec::Vec<
-            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItem,
+            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItem,
         >,
     },
-    Variant22(ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22),
+    Variant23(ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23),
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23>
     for ExeoraProtocolTypesExecutorMessageResultVariant0Value
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22) -> Self {
-        Self::Variant22(value)
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23) -> Self {
+        Self::Variant23(value)
     }
 }
 ///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant0BranchesItem`
@@ -13139,6 +13228,11 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///    "newRegistration": {
 ///      "type": "boolean"
 ///    },
+///    "noticeId": {
+///      "type": "string",
+///      "format": "uuid",
+///      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///    },
 ///    "planUsage": {
 ///      "type": "boolean"
 ///    },
@@ -13165,6 +13259,12 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant18Account
     pub label: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant18AccountLabel,
     #[serde(rename = "newRegistration")]
     pub new_registration: bool,
+    #[serde(
+        rename = "noticeId",
+        default,
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub notice_id: ::std::option::Option<::uuid::Uuid>,
     #[serde(rename = "planUsage")]
     pub plan_usage: bool,
     pub scopes: ::std::vec::Vec<
@@ -13960,7 +14060,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItem`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItem`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -13990,11 +14090,11 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItem {
-    pub id: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId,
-    pub label: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel,
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItem {
+    pub id: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId,
+    pub label: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel,
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14009,11 +14109,11 @@ pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsI
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
@@ -14021,17 +14121,17 @@ impl ::std::ops::Deref
     }
 }
 impl
-    ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId>
+    ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId>
     for ::std::string::String
 {
     fn from(
-        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId,
+        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::str::FromStr
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14052,7 +14152,7 @@ impl ::std::str::FromStr
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14060,7 +14160,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14070,7 +14170,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14080,7 +14180,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemId
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14093,7 +14193,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14107,11 +14207,11 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel(
     ::std::string::String,
 );
 impl ::std::ops::Deref
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
@@ -14120,17 +14220,17 @@ impl ::std::ops::Deref
 }
 impl
     ::std::convert::From<
-        ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel,
+        ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel,
     > for ::std::string::String
 {
     fn from(
-        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel,
+        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel,
     ) -> Self {
         value.0
     }
 }
 impl ::std::str::FromStr
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14144,7 +14244,7 @@ impl ::std::str::FromStr
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14152,7 +14252,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14162,7 +14262,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14172,7 +14272,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant21ModelsItemLabel
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22ModelsItemLabel
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14185,7 +14285,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14286,18 +14386,18 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(tag = "outcome", deny_unknown_fields)]
-pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22 {
+pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23 {
     #[serde(rename = "completed")]
     Completed {
         kind: ::std::string::String,
-        model: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model,
-        text: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text,
+        model: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model,
+        text: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text,
     },
     #[serde(rename = "failed")]
     Failed {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         code: ::std::option::Option<
-            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code,
+            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code,
         >,
         #[serde(
             rename = "httpStatus",
@@ -14308,20 +14408,20 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22 {
         kind: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         param: ::std::option::Option<
-            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param,
+            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param,
         >,
-        reason: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason,
+        reason: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason,
         #[serde(
             rename = "requestId",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         request_id: ::std::option::Option<
-            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId,
+            ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId,
         >,
     },
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14335,23 +14435,23 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22 {
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 128usize {
@@ -14364,7 +14464,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14372,7 +14472,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14382,7 +14482,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14392,7 +14492,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Code
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Code
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14405,7 +14505,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14420,23 +14520,23 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 128usize {
@@ -14456,7 +14556,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14464,7 +14564,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14474,7 +14574,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14484,7 +14584,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Model
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Model
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14497,7 +14597,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14511,23 +14611,23 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 128usize {
@@ -14540,7 +14640,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14548,7 +14648,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14558,7 +14658,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14568,7 +14668,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Param
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Param
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14581,7 +14681,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14619,7 +14719,7 @@ impl<'de> ::serde::Deserialize<'de>
     PartialEq,
     PartialOrd,
 )]
-pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason {
+pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason {
     #[serde(rename = "usage_limit")]
     UsageLimit,
     #[serde(rename = "not_eligible")]
@@ -14649,7 +14749,7 @@ pub enum ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason {
     #[serde(rename = "failed")]
     Failed,
 }
-impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason {
+impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             Self::UsageLimit => f.write_str("usage_limit"),
@@ -14669,7 +14769,7 @@ impl ::std::fmt::Display for ExeoraProtocolTypesExecutorMessageResultVariant0Val
         }
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         match value {
@@ -14692,7 +14792,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14700,7 +14800,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14710,7 +14810,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Reason
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Reason
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14719,7 +14819,7 @@ impl ::std::convert::TryFrom<::std::string::String>
         value.parse()
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14733,26 +14833,26 @@ impl ::std::convert::TryFrom<::std::string::String>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId>
     for ::std::string::String
 {
     fn from(
-        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId,
+        value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId,
     ) -> Self {
         value.0
     }
 }
 impl ::std::str::FromStr
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId
 {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14766,7 +14866,7 @@ impl ::std::str::FromStr
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14774,7 +14874,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14784,7 +14884,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14794,7 +14894,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22RequestId
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23RequestId
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -14807,7 +14907,7 @@ impl<'de> ::serde::Deserialize<'de>
             })
     }
 }
-///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text`
+///`ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text`
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -14820,23 +14920,23 @@ impl<'de> ::serde::Deserialize<'de>
 /// </details>
 #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[serde(transparent)]
-pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text(
+pub struct ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text(
     ::std::string::String,
 );
-impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text {
+impl ::std::ops::Deref for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text {
     type Target = ::std::string::String;
     fn deref(&self) -> &::std::string::String {
         &self.0
     }
 }
-impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text>
+impl ::std::convert::From<ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text>
     for ::std::string::String
 {
-    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text) -> Self {
+    fn from(value: ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text) -> Self {
         value.0
     }
 }
-impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text {
+impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text {
     type Err = self::error::ConversionError;
     fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
         if value.chars().count() > 200000usize {
@@ -14846,7 +14946,7 @@ impl ::std::str::FromStr for ExeoraProtocolTypesExecutorMessageResultVariant0Val
     }
 }
 impl ::std::convert::TryFrom<&str>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text
 {
     type Error = self::error::ConversionError;
     fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
@@ -14854,7 +14954,7 @@ impl ::std::convert::TryFrom<&str>
     }
 }
 impl ::std::convert::TryFrom<&::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14864,7 +14964,7 @@ impl ::std::convert::TryFrom<&::std::string::String>
     }
 }
 impl ::std::convert::TryFrom<::std::string::String>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text
 {
     type Error = self::error::ConversionError;
     fn try_from(
@@ -14874,7 +14974,7 @@ impl ::std::convert::TryFrom<::std::string::String>
     }
 }
 impl<'de> ::serde::Deserialize<'de>
-    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant22Text
+    for ExeoraProtocolTypesExecutorMessageResultVariant0ValueVariant23Text
 {
     fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
     where
@@ -20213,6 +20313,25 @@ impl ::std::convert::TryFrom<::std::string::String>
 ///            {
 ///              "type": "object",
 ///              "required": [
+///                "action",
+///                "noticeId"
+///              ],
+///              "properties": {
+///                "action": {
+///                  "type": "string",
+///                  "const": "chatgpt_welcome_ack"
+///                },
+///                "noticeId": {
+///                  "type": "string",
+///                  "format": "uuid",
+///                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///                }
+///              },
+///              "additionalProperties": false
+///            },
+///            {
+///              "type": "object",
+///              "required": [
 ///                "action"
 ///              ],
 ///              "properties": {
@@ -21889,6 +22008,25 @@ pub enum ExeoraProtocolTypesRelayMessage {
 ///    {
 ///      "type": "object",
 ///      "required": [
+///        "action",
+///        "noticeId"
+///      ],
+///      "properties": {
+///        "action": {
+///          "type": "string",
+///          "const": "chatgpt_welcome_ack"
+///        },
+///        "noticeId": {
+///          "type": "string",
+///          "format": "uuid",
+///          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+///        }
+///      },
+///      "additionalProperties": false
+///    },
+///    {
+///      "type": "object",
+///      "required": [
 ///        "action"
 ///      ],
 ///      "properties": {
@@ -22172,6 +22310,11 @@ pub enum ExeoraProtocolTypesRelayMessageAction {
     ChatgptLoginCancel,
     #[serde(rename = "chatgpt_logout")]
     ChatgptLogout,
+    #[serde(rename = "chatgpt_welcome_ack")]
+    ChatgptWelcomeAck {
+        #[serde(rename = "noticeId")]
+        notice_id: ::uuid::Uuid,
+    },
     #[serde(rename = "chatgpt_models")]
     ChatgptModels,
     #[serde(rename = "chatgpt_generate")]

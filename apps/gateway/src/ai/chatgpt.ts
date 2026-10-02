@@ -6,6 +6,7 @@ import {
   ChatgptLogout as ProtocolChatgptLogout,
   ChatgptModels as ProtocolChatgptModels,
   ChatgptStatus as ProtocolChatgptStatus,
+  ChatgptWelcomeAck as ProtocolChatgptWelcomeAck,
   type WorkspaceAction,
 } from "@exeora/protocol";
 import { zValidator } from "@hono/zod-validator";
@@ -282,6 +283,26 @@ chatgpt.post("/api/devices/:deviceId/ai/chatgpt/login/cancel", async (c) => {
   const result = await invoke(c, resolved, { action: "chatgpt_login_cancel" });
   return result.response ?? statusResponse(c, result.value);
 });
+
+chatgpt.post(
+  "/api/devices/:deviceId/ai/chatgpt/welcome",
+  zValidator("json", z.object({ noticeId: z.uuid() })),
+  async (c) => {
+    const disabledResponse = ensureEnabled(c);
+    if (disabledResponse) return disabledResponse;
+    const resolved = await deviceTarget(c);
+    if (resolved.missing) return c.json({ error: "not_found" }, 404);
+    if (resolved.cloud) return invalidDevice(c);
+    const result = await invoke(c, resolved, {
+      action: "chatgpt_welcome_ack",
+      noticeId: c.req.valid("json").noticeId,
+    });
+    if (result.response) return result.response;
+    const parsed = ProtocolChatgptWelcomeAck.safeParse(result.value);
+    if (!parsed.success) return c.json({ error: "ai_unavailable" }, 502);
+    return c.json({ acknowledged: parsed.data.acknowledged });
+  },
+);
 
 chatgpt.post("/api/devices/:deviceId/ai/chatgpt/logout", async (c) => {
   const disabledResponse = ensureEnabled(c);

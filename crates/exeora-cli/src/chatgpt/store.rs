@@ -48,6 +48,8 @@ pub(crate) struct StoredAccount {
     pub state: Option<String>,
     #[serde(default)]
     pub new_registration: bool,
+    #[serde(default)]
+    pub welcome_notice_id: Option<String>,
 }
 
 fn default_token_type() -> String {
@@ -319,7 +321,11 @@ impl Store {
 
     pub(crate) fn save_unlocked(&self, account: &StoredAccount) -> Result<()> {
         self.ensure_directories()?;
-        self.save_record_unlocked(account)?;
+        let mut account = account.clone();
+        if account.new_registration && account.welcome_notice_id.is_none() {
+            account.welcome_notice_id = Some(Uuid::new_v4().to_string());
+        }
+        self.save_record_unlocked(&account)?;
         self.activate_unlocked(&account.client_id)
     }
 
@@ -348,16 +354,6 @@ impl Store {
         }
         crate::private::write(&self.root.join(ACTIVE_FILE), &bytes, 0o600)?;
         Ok(())
-    }
-
-    pub(crate) async fn clear_new_registration(&self, client_id: &str) -> Result<StoredAccount> {
-        let _lock = self.lock(client_id).await?;
-        let mut account = self.load(client_id)?;
-        if account.new_registration {
-            account.new_registration = false;
-            self.save_record_unlocked(&account)?;
-        }
-        Ok(account)
     }
 
     pub(crate) async fn lock(&self, client_id: &str) -> Result<RecordLock> {
@@ -499,6 +495,7 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: false,
+            welcome_notice_id: None,
         }
     }
 

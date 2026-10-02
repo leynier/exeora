@@ -22,6 +22,7 @@ import {
   chatgptLoginModeForStatus,
   chatgptStatusIsActionable,
 } from "./chatgpt-state.js";
+import { useChatgptWelcome } from "./useChatgptWelcome.js";
 
 /**
  * The assistant's button beside a field: one click asks the linked
@@ -84,7 +85,7 @@ export function GenerateButton({
     mode: ChatgptLoginMode;
   } | null>(null);
   const [usageLimit, setUsageLimit] = useState(false);
-  const [welcome, setWelcome] = useState(false);
+  const { welcome, showWelcome, closeWelcome } = useChatgptWelcome();
   const controller = useRef<AbortController | null>(null);
   const localMachines = (machines.data ?? []).filter(
     (machine): machine is LocalMachine => machine.kind === "local" && machine.revokedAt === null,
@@ -272,15 +273,15 @@ export function GenerateButton({
         mode={loginDevice?.mode ?? "new"}
         open={loginDevice !== null}
         onComplete={(result) => {
+          if (loginDevice) showWelcome(loginDevice.id, result);
           setLoginDevice(null);
-          if (result.account?.newRegistration && result.account.planUsage) setWelcome(true);
           void status.refetch();
           void machines.refetch();
           void projectStatus.refetch();
         }}
         onCancel={() => setLoginDevice(null)}
       />
-      <ChatgptWelcomeDialog open={welcome} onDone={() => setWelcome(false)} />
+      <ChatgptWelcomeDialog welcome={welcome} onDone={closeWelcome} />
     </span>
   );
 }

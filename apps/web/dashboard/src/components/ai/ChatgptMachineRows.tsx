@@ -185,7 +185,8 @@ function ChatgptMachineRow({
           ) : availability === "status_error" ||
             availability === "offline" ||
             availability === "unavailable" ||
-            !machine.online ? null : (
+            !machine.online ||
+            state === undefined ? null : (
             <button
               type="button"
               className="btn btn-primary"

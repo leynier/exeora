@@ -502,6 +502,7 @@ async fn finish(
         label: Some(label),
         state: None,
         new_registration: matches!(pending.mode, LoginMode::New),
+        welcome_notice_id: None,
     };
     match service
         .activate_account_inner(
@@ -680,6 +681,7 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: false,
+            welcome_notice_id: None,
         }
     }
 

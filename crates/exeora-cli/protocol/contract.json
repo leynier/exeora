@@ -1991,6 +1991,11 @@
                                 },
                                 "newRegistration": {
                                   "type": "boolean"
+                                },
+                                "noticeId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                 }
                               },
                               "required": [
@@ -2080,6 +2085,23 @@
                           "required": [
                             "kind",
                             "revocationConfirmed"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "chatgpt_welcome_ack"
+                            },
+                            "acknowledged": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "acknowledged"
                           ],
                           "additionalProperties": false
                         },
@@ -4054,6 +4076,25 @@
                   },
                   "required": [
                     "action"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "const": "chatgpt_welcome_ack"
+                    },
+                    "noticeId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "noticeId"
                   ],
                   "additionalProperties": false
                 },

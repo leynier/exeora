@@ -69,6 +69,7 @@ export const WORKSPACE_ACTION_FEATURES: Record<WorkspaceAction["action"], string
   chatgpt_login_start: CHATGPT_V1,
   chatgpt_login_cancel: CHATGPT_V1,
   chatgpt_logout: CHATGPT_V1,
+  chatgpt_welcome_ack: CHATGPT_V1,
   chatgpt_models: CHATGPT_V1,
   chatgpt_generate: CHATGPT_V1,
 };

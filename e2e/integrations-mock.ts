@@ -180,6 +180,10 @@ export async function mockIntegrations(
         await route.fulfill({ status: 200, json: { state: "signed_out" } });
         return;
       }
+      if (action === "welcome" && request.method() === "POST") {
+        await route.fulfill({ status: 200, json: { acknowledged: true } });
+        return;
+      }
       if (action === "logout" && request.method() === "POST") {
         await route.fulfill({
           status: 200,

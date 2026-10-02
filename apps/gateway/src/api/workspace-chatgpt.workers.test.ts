@@ -7,6 +7,7 @@ const actions = [
   { action: "chatgpt_login_start", mode: "new" },
   { action: "chatgpt_login_cancel" },
   { action: "chatgpt_logout" },
+  { action: "chatgpt_welcome_ack", noticeId: "123e4567-e89b-42d3-a456-426614174000" },
   { action: "chatgpt_models" },
   { action: "chatgpt_generate", instructions: "Describe the change.", input: "A staged patch." },
 ];

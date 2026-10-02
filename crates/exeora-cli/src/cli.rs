@@ -1388,7 +1388,24 @@ async fn chatgpt_login(
     if no_browser && json_output {
         emit(value)
     } else {
-        print_chatgpt_status(&value, json_output)
+        print_chatgpt_status(&value, json_output)?;
+        if !json_output
+            && value["account"]["planUsage"] == true
+            && value["account"]["newRegistration"] == true
+            && let Some(notice_id) = value["account"]["noticeId"].as_str()
+        {
+            println!(
+                "When you choose ChatGPT, eligible AI requests on this machine use your ChatGPT plan. Exeora never receives your ChatGPT tokens."
+            );
+            println!("Manage usage: https://chatgpt.com/settings/usage");
+            std::io::Write::flush(&mut std::io::stdout())?;
+            chatgpt_action(
+                service,
+                json!({"action":"chatgpt_welcome_ack", "noticeId":notice_id}),
+            )
+            .await?;
+        }
+        Ok(())
     }
 }
 

@@ -146,6 +146,39 @@ describe("the machine-bound ChatGPT provider", () => {
     expect(keylessBody.providers.map(({ id }) => id)).toEqual(["chatgpt"]);
   });
 
+  it("acknowledges a welcome only through the owned local machine and validates its revision", async () => {
+    const noticeId = "123e4567-e89b-42d3-a456-426614174000";
+    const machine = await connectMachine(() => ({
+      kind: "chatgpt_welcome_ack",
+      acknowledged: true,
+    }));
+    const endpoint = `/api/devices/${DEVICE}/ai/chatgpt/welcome`;
+    expect(
+      (await call(endpoint, { userId: OTHER, method: "POST", body: { noticeId }, env: on() }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await call(endpoint, {
+          userId: OWNER,
+          method: "POST",
+          body: { noticeId: "client-private" },
+          env: on(),
+        })
+      ).status,
+    ).toBe(400);
+    expect(machine.seen).toHaveLength(0);
+    const response = await call(endpoint, {
+      userId: OWNER,
+      method: "POST",
+      body: { noticeId },
+      env: on(),
+    });
+    expect(await response.json()).toEqual({ acknowledged: true });
+    expect(machine.seen).toEqual([{ action: "chatgpt_welcome_ack", noticeId }]);
+    machine.socket.close(1000, "done");
+  });
+
   it("dispatches status, login and models only to the owned local machine", async () => {
     const machine = await connectMachine((action) => {
       switch ((action as { action: string }).action) {

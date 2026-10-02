@@ -175,6 +175,33 @@ impl ChatgptService {
                 self.status().await
             }
             "chatgpt_logout" => self.logout().await,
+            "chatgpt_welcome_ack" => {
+                let notice_id = action
+                    .get("noticeId")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("A ChatGPT welcome notice is required."))?;
+                uuid::Uuid::parse_str(notice_id)?;
+                let _session_lock = self.store.session_lock().await?;
+                let acknowledged = if !self.store.was_logged_out()? {
+                    if let Some(account) = self.store.load_active()? {
+                        let _record_lock = self.store.lock(&account.client_id).await?;
+                        let mut current = self.store.load(&account.client_id)?;
+                        if current.welcome_notice_id.as_deref() == Some(notice_id) {
+                            current.new_registration = false;
+                            // Retain the ID so retries after a lost response are idempotent.
+                            self.store.save_record_unlocked(&current)?;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                Ok(json!({"kind":"chatgpt_welcome_ack", "acknowledged":acknowledged}))
+            }
             "chatgpt_models" => {
                 let cancellation = self.request_cancellation().await;
                 let revision = session::revision(&self.store)?;
@@ -252,7 +279,7 @@ impl ChatgptService {
                 },
             }));
         }
-        let Some(mut account) = self.store.load_active()? else {
+        let Some(account) = self.store.load_active()? else {
             let mut result = json!({
                 "kind": "chatgpt_status",
                 "state": "signed_out",
@@ -266,12 +293,11 @@ impl ChatgptService {
         };
         let logged_out = self.store.was_logged_out()?;
         let new_registration = account.new_registration && !logged_out;
-        if new_registration {
-            account = self
-                .store
-                .clear_new_registration(&account.client_id)
-                .await?;
-        }
+        let notice_id = if new_registration {
+            account.welcome_notice_id.clone()
+        } else {
+            None
+        };
         let state = if logged_out {
             "signed_out"
         } else {
@@ -292,6 +318,9 @@ impl ChatgptService {
                 "newRegistration": new_registration,
             },
         });
+        if let Some(notice_id) = notice_id {
+            result["account"]["noticeId"] = Value::String(notice_id);
+        }
         if let Some(error) = self.last_error.lock().await.clone()
             && !error.is_empty()
         {
@@ -376,12 +405,15 @@ impl ChatgptService {
             return Ok(false);
         }
         let _record_lock = self.store.lock(&account.client_id).await?;
-        if let Some(existing) = self.store.load_if_exists(&account.client_id)?
-            && (existing.issuer != account.issuer || existing.subject != account.subject)
-        {
-            return Ok(false);
+        let mut account = account.clone();
+        if let Some(existing) = self.store.load_if_exists(&account.client_id)? {
+            if existing.issuer != account.issuer || existing.subject != account.subject {
+                return Ok(false);
+            }
+            account.new_registration |= existing.new_registration;
+            account.welcome_notice_id = existing.welcome_notice_id;
         }
-        self.store.save_unlocked(account)?;
+        self.store.save_unlocked(&account)?;
         self.models_cache.lock().await.clear();
         Ok(true)
     }
@@ -571,7 +603,7 @@ impl ChatgptService {
                 let mut account = self.store.load(&client_id)?;
                 let refresh_token = account.refresh_token.clone();
                 account.clear_tokens("signed_out");
-                account.new_registration = false;
+                // Keep the welcome pending until the user explicitly acknowledges it.
                 self.store.save_record_unlocked(&account)?;
                 Some((client_id, refresh_token))
             } else {
@@ -825,7 +857,105 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: true,
+            welcome_notice_id: None,
         }
+    }
+
+    #[tokio::test]
+    async fn status_reads_preserve_welcome_until_revision_bound_acknowledgement() {
+        let dir = tempdir().unwrap();
+        let service =
+            ChatgptService::new_test(&dir.path().join("config.json"), "http://127.0.0.1:1");
+        let account = test_account("client", "https://auth.openai.com", "subject", None);
+        service.activate_account(&account).await.unwrap();
+        let status = service.status().await.unwrap();
+        let notice_id = status["account"]["noticeId"].as_str().unwrap();
+        let other = ChatgptService::new_test(&dir.path().join("config.json"), "http://127.0.0.1:1");
+        assert_eq!(
+            other.status().await.unwrap()["account"]["newRegistration"],
+            true
+        );
+        assert!(
+            service
+                .store
+                .load_active()
+                .unwrap()
+                .unwrap()
+                .new_registration
+        );
+        // Reauthentication preserves the same welcome notice.
+        let mut reauth = account.clone();
+        reauth.new_registration = false;
+        other.activate_account(&reauth).await.unwrap();
+        assert_eq!(
+            other.status().await.unwrap()["account"]["noticeId"],
+            notice_id
+        );
+        // An older UI cannot acknowledge a different registration.
+        other
+            .activate_account(&test_account(
+                "new-client",
+                "https://auth.openai.com",
+                "new-subject",
+                None,
+            ))
+            .await
+            .unwrap();
+        let stale = service
+            .handle(json!({"action":"chatgpt_welcome_ack", "noticeId":notice_id}))
+            .await
+            .unwrap();
+        assert_eq!(stale["acknowledged"], false);
+        let current = other.status().await.unwrap();
+        assert_eq!(current["account"]["newRegistration"], true);
+        let action =
+            json!({"action":"chatgpt_welcome_ack", "noticeId":current["account"]["noticeId"]});
+        assert_eq!(
+            service.handle(action.clone()).await.unwrap()["acknowledged"],
+            true
+        );
+        assert_eq!(other.handle(action).await.unwrap()["acknowledged"], true);
+        assert_eq!(
+            other.status().await.unwrap()["account"]["newRegistration"],
+            false
+        );
+        assert!(
+            other.status().await.unwrap()["account"]
+                .get("noticeId")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_and_cloud_reject_welcome_acknowledgement() {
+        let dir = tempdir().unwrap();
+        let service =
+            ChatgptService::new_test(&dir.path().join("config.json"), "http://127.0.0.1:1");
+        service
+            .activate_account(&test_account(
+                "client",
+                "https://auth.openai.com",
+                "subject",
+                None,
+            ))
+            .await
+            .unwrap();
+        let status = service.status().await.unwrap();
+        service.logout().await.unwrap();
+        let action =
+            json!({"action":"chatgpt_welcome_ack", "noticeId":status["account"]["noticeId"]});
+        assert_eq!(
+            service.handle(action.clone()).await.unwrap()["acknowledged"],
+            false
+        );
+        let cloud = ChatgptService::new(&dir.path().join("config.json"), false).unwrap();
+        assert!(cloud.handle(action).await.is_err());
+        assert!(
+            service
+                .handle(json!({"action":"chatgpt_welcome_ack", "noticeId":"bad"}))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1295,6 +1425,7 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: true,
+            welcome_notice_id: None,
         };
         service.store.save(&account).unwrap();
         let first = service.access_account();
@@ -1329,6 +1460,14 @@ mod tests {
         );
         assert_eq!(requests.load(Ordering::SeqCst), 2);
         assert_eq!(status.unwrap()["account"]["newRegistration"], true);
+        assert!(
+            service
+                .store
+                .load_active()
+                .unwrap()
+                .unwrap()
+                .new_registration
+        );
         assert_eq!(
             service.store.load_active().unwrap().unwrap().scopes,
             vec!["chatgpt.tokens.use.direct"]
@@ -1730,6 +1869,7 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: false,
+            welcome_notice_id: None,
         };
         service.store.save(&account).unwrap();
         assert!(service.access_account().await.is_err());
@@ -1777,6 +1917,7 @@ mod tests {
             label: Some("person@example.test".to_owned()),
             state: None,
             new_registration: false,
+            welcome_notice_id: None,
         };
         service.store.save(&account).unwrap();
 

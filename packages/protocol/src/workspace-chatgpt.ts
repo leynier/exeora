@@ -103,6 +103,8 @@ export const ChatgptAccount = z.strictObject({
   scopes: z.array(z.string().min(1).max(128)).max(16),
   planUsage: z.boolean(),
   newRegistration: z.boolean(),
+  /** Opaque registration notice ID for acknowledging the displayed welcome. */
+  noticeId: z.uuid().optional(),
 });
 
 export type ChatgptAccount = z.infer<typeof ChatgptAccount>;
@@ -141,6 +143,11 @@ export const ChatgptLogout = z.object({
 });
 
 export type ChatgptLogout = z.infer<typeof ChatgptLogout>;
+
+export const ChatgptWelcomeAck = z.object({
+  kind: z.literal("chatgpt_welcome_ack"),
+  acknowledged: z.boolean(),
+});
 
 export const ChatgptModel = z.object({
   id: modelId,
@@ -204,6 +211,7 @@ export const CHATGPT_ACTIONS = [
   z.object({ action: z.literal("chatgpt_login_start"), mode: ChatgptLoginMode }),
   z.object({ action: z.literal("chatgpt_login_cancel") }),
   z.object({ action: z.literal("chatgpt_logout") }),
+  z.object({ action: z.literal("chatgpt_welcome_ack"), noticeId: z.uuid() }),
   z.object({ action: z.literal("chatgpt_models") }),
   z.object({
     action: z.literal("chatgpt_generate"),
@@ -219,6 +227,7 @@ export const CHATGPT_VALUES = [
   ChatgptStatus,
   ChatgptLogin,
   ChatgptLogout,
+  ChatgptWelcomeAck,
   ChatgptModels,
   ChatgptGeneration,
 ] as const;

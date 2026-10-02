@@ -25,6 +25,7 @@ function readyStatus(newRegistration = false, email = "ada@example.com"): Chatgp
       scopes: ["openid", "chatgpt.tokens.use.direct"],
       planUsage: true,
       newRegistration,
+      ...(newRegistration ? { noticeId: "123e4567-e89b-42d3-a456-426614174000" } : {}),
     },
   };
 }
