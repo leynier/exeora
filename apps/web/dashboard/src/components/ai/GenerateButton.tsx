@@ -15,7 +15,6 @@ import { type LocalMachine, projectsApi } from "../../api-projects.js";
 import type { Target } from "../../queries-workspace.js";
 import { useToast } from "../toast.js";
 import { ChatgptLoginDialog } from "./ChatgptLoginDialog.js";
-import { ChatgptWelcomeDialog } from "./ChatgptWelcomeDialog.js";
 import {
   CHATGPT_USAGE_URL,
   chatgptAccountLabel,
@@ -85,13 +84,17 @@ export function GenerateButton({
     mode: ChatgptLoginMode;
   } | null>(null);
   const [usageLimit, setUsageLimit] = useState(false);
-  const { welcome, showWelcome, closeWelcome } = useChatgptWelcome();
+  const { showWelcome } = useChatgptWelcome();
   const controller = useRef<AbortController | null>(null);
   const localMachines = (machines.data ?? []).filter(
     (machine): machine is LocalMachine => machine.kind === "local" && machine.revokedAt === null,
   );
   const chatgptProvider = status.data?.providers.find((provider) => provider.id === "chatgpt");
   const targetChatgpt = chatgptStatusIsActionable(projectStatus.data) ? projectStatus.data : null;
+  useEffect(() => {
+    const result = projectStatus.data;
+    if (result?.deviceId && !projectStatus.isError) showWelcome(result.deviceId, result);
+  }, [projectStatus.data, projectStatus.isError, showWelcome]);
   const linked: AiProviderView[] = [
     ...(status.data?.providers.filter((provider) => provider.linked && !provider.linked.legacy) ??
       []),
@@ -281,7 +284,6 @@ export function GenerateButton({
         }}
         onCancel={() => setLoginDevice(null)}
       />
-      <ChatgptWelcomeDialog welcome={welcome} onDone={closeWelcome} />
     </span>
   );
 }

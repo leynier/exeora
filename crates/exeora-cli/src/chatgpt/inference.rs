@@ -4,14 +4,25 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-use super::{ChatgptService, MAX_API_BYTES, MAX_OUTPUT_CHARS, MAX_SSE_BYTES, errors, models};
+use super::{
+    ChatgptService, MAX_API_BYTES, MAX_OUTPUT_CHARS, MAX_SSE_BYTES, errors, models, session,
+};
 use crate::chatgpt::store::StoredAccount;
 
 const MAX_INSTRUCTIONS_UTF16: usize = 4_000;
 const MAX_INPUT_UTF16: usize = 220_000;
 const STREAM_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[cfg(test)]
 pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result<Value> {
+    generate_for_revision(service, action, &session::revision(&service.store)?).await
+}
+
+pub(crate) async fn generate_for_revision(
+    service: &ChatgptService,
+    action: &Value,
+    expected: &session::Revision,
+) -> Result<Value> {
     let Some(instructions) = action.get("instructions").and_then(Value::as_str) else {
         return Ok(failure(
             "failed",
@@ -64,7 +75,7 @@ pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result
         },
     };
 
-    let account = match service.access_account().await {
+    let account = match service.access_account_for_revision(expected).await {
         Ok(account) => account,
         Err(_) => return Ok(access_failure(service).await),
     };
@@ -78,7 +89,7 @@ pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result
         ));
     }
 
-    let catalog = match models::list_for(service, &account).await {
+    let catalog = match models::list_for(service, &account, expected).await {
         Ok(catalog) => catalog,
         Err(error) => return Ok(provider_error_value(&error)),
     };
@@ -119,7 +130,7 @@ pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result
         "stream": true,
     });
 
-    let outcome = match send_once(service, &account, &body).await {
+    let outcome = match send_once(service, &account, &body, expected).await {
         Ok(first) if first.status == StatusCode::UNAUTHORIZED => {
             let refreshed = match service.force_refresh(&account).await {
                 Ok(account) => account,
@@ -141,7 +152,7 @@ pub(crate) async fn generate(service: &ChatgptService, action: &Value) -> Result
                     first.request_id.as_deref(),
                 ));
             }
-            match send_once(service, &refreshed, &body).await {
+            match send_once(service, &refreshed, &body, expected).await {
                 Ok(second) => second,
                 Err(_) => {
                     return Ok(failure(
@@ -216,7 +227,9 @@ async fn send_once(
     service: &ChatgptService,
     account: &StoredAccount,
     body: &Value,
+    expected: &session::Revision,
 ) -> Result<ResponseStart> {
+    session::ensure_current(&service.store, expected)?;
     let token = account
         .access_token
         .as_deref()

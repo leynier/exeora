@@ -184,7 +184,7 @@ export const aiApi = {
   chatgptModels: (deviceId: string) =>
     request<ChatgptModels>(`/api/devices/${encodeURIComponent(deviceId)}/ai/chatgpt/models`),
   chatgptProjectStatus: (projectId: string, workspace?: string) =>
-    request<ChatgptStatus>(
+    request<ChatgptStatus & { deviceId?: string }>(
       `/api/projects/${encodeURIComponent(projectId)}/ai/chatgpt${target(workspace)}`,
     ),
   chatgptProjectLogin: (projectId: string, mode: ChatgptLoginMode, workspace?: string) =>

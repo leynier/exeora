@@ -206,14 +206,13 @@ impl ChatgptService {
                 let cancellation = self.request_cancellation().await;
                 let revision = session::revision(&self.store)?;
                 tokio::select! {
-                    models = models::list(self) => {
-                        let models = models?;
+                    models = models::list_for_revision(self, &revision) => {
                         if session::revision(&self.store)? != revision {
                             bail!("The ChatGPT model request was interrupted.");
                         }
                         Ok(json!({
                             "kind": "chatgpt_models",
-                            "models": models,
+                            "models": models?,
                         }))
                     }
                     _ = session::changed(self, &revision, &cancellation) => {
@@ -225,7 +224,7 @@ impl ChatgptService {
                 let cancellation = self.request_cancellation().await;
                 let revision = session::revision(&self.store)?;
                 tokio::select! {
-                    result = inference::generate(self, &action) => {
+                    result = inference::generate_for_revision(self, &action, &revision) => {
                         if session::revision(&self.store)? != revision {
                             return Ok(errors::Failure::new("interrupted", Some("request_cancelled"), None, None, None).value("chatgpt_generation"));
                         }
@@ -329,8 +328,18 @@ impl ChatgptService {
         Ok(result)
     }
 
+    #[cfg(test)]
     pub(crate) async fn access_account(&self) -> Result<store::StoredAccount> {
+        self.access_account_for_revision(&session::revision(&self.store)?)
+            .await
+    }
+
+    pub(crate) async fn access_account_for_revision(
+        &self,
+        expected: &session::Revision,
+    ) -> Result<store::StoredAccount> {
         let session_lock = self.store.session_lock().await?;
+        session::ensure_current(&self.store, expected)?;
         let Some(account) = self.store.load_active()? else {
             bail!("ChatGPT sign-in is required.");
         };
@@ -353,10 +362,11 @@ impl ChatgptService {
         let now = store::now_secs();
         if expires_at <= now.saturating_add(300) && now >= earliest {
             self.refresh_account(&account.client_id, None).await?;
-            return self
-                .store
-                .load_active()?
-                .ok_or_else(|| anyhow!("ChatGPT sign-in is required."));
+            // Refresh can finish after another CLI process activates a different
+            // session. Never switch this request to that session's credentials.
+            let _session_lock = self.store.session_lock().await?;
+            session::ensure_current(&self.store, expected)?;
+            return self.store.load(&account.client_id);
         }
         Ok(account)
     }
@@ -1592,6 +1602,147 @@ mod tests {
             "signed_out"
         );
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn proactive_refresh_cannot_send_requests_using_a_replacement_account() {
+        for action in [
+            json!({"action":"chatgpt_generate", "instructions":"Commit", "input":"private diff"}),
+            json!({"action":"chatgpt_models"}),
+        ] {
+            let received = Arc::new(tokio::sync::Notify::new());
+            let release = Arc::new(tokio::sync::Notify::new());
+            let sent = Arc::new(AtomicUsize::new(0));
+            let app = Router::new()
+                .route("/token", post({
+                    let received = received.clone();
+                    let release = release.clone();
+                    move || {
+                        let received = received.clone();
+                        let release = release.clone();
+                        async move {
+                            received.notify_one();
+                            release.notified().await;
+                            axum::Json(json!({"access_token":"old-rotated", "refresh_token":"rotated-refresh", "expires_in":3600, "token_type":"Bearer"}))
+                        }
+                    }
+                }))
+                .route("/v1/models", axum::routing::get({
+                    let sent = sent.clone();
+                    move || { let sent = sent.clone(); async move {
+                        sent.fetch_add(1, Ordering::SeqCst);
+                        axum::Json(json!({"models":[{"slug":"test-model", "visibility":"list"}]}))
+                    }}
+                }))
+                .route("/v1/responses", post({
+                    let sent = sent.clone();
+                    move || { let sent = sent.clone(); async move {
+                        sent.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::BAD_REQUEST
+                    }}
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move {
+                let _ = axum::serve(listener, app).await;
+            });
+            let dir = tempdir().unwrap();
+            let config = dir.path().join("config.json");
+            let daemon = ChatgptService::new_test(&config, &base);
+            let terminal = ChatgptService::new_test(&config, &base);
+            let mut original = test_account(
+                "old-client",
+                "https://auth.openai.com",
+                "old-subject",
+                Some("old-refresh"),
+            );
+            original.expires_at = Some(store::now_secs() + 1);
+            daemon.store.save(&original).unwrap();
+            let request = {
+                let daemon = daemon.clone();
+                tokio::spawn(async move { daemon.handle(action).await })
+            };
+            tokio::time::timeout(Duration::from_secs(2), received.notified())
+                .await
+                .unwrap();
+            let mut replacement = test_account(
+                "new-client",
+                "https://auth.openai.com",
+                "new-subject",
+                Some("new-refresh"),
+            );
+            replacement.access_token = Some("replacement-access".to_owned());
+            terminal.activate_account(&replacement).await.unwrap();
+            release.notify_one();
+            let result = tokio::time::timeout(Duration::from_secs(2), request)
+                .await
+                .unwrap()
+                .unwrap();
+            match result {
+                Ok(value) => assert_eq!(value["reason"], "interrupted"),
+                Err(error) => assert!(error.to_string().contains("interrupted")),
+            }
+            // Detached refresh still persists rotation for the original account.
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while daemon
+                    .store
+                    .load("old-client")
+                    .unwrap()
+                    .access_token
+                    .as_deref()
+                    != Some("old-rotated")
+                {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                sent.load(Ordering::SeqCst),
+                0,
+                "superseded requests must stop before model/Responses HTTP"
+            );
+            assert_eq!(
+                daemon.store.load_active().unwrap().unwrap().client_id,
+                "new-client"
+            );
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn credentials_cannot_be_selected_after_the_captured_session_changed() {
+        let dir = tempdir().unwrap();
+        let config = dir.path().join("config.json");
+        let daemon = ChatgptService::new_test(&config, "http://127.0.0.1:1");
+        let terminal = ChatgptService::new_test(&config, "http://127.0.0.1:1");
+        daemon
+            .store
+            .save(&test_account(
+                "client",
+                "https://auth.openai.com",
+                "subject",
+                None,
+            ))
+            .unwrap();
+        let revision = session::revision(&daemon.store).unwrap();
+        terminal
+            .activate_account(&test_account(
+                "client",
+                "https://auth.openai.com",
+                "subject",
+                None,
+            ))
+            .await
+            .unwrap();
+        assert!(
+            daemon
+                .access_account_for_revision(&revision)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("interrupted")
+        );
     }
 
     #[tokio::test]

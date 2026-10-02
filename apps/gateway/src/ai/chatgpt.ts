@@ -153,16 +153,16 @@ function expiryMs(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 }
 
-function statusResponse(c: Context<ApiEnv>, value: unknown) {
+function statusResponse(c: Context<ApiEnv>, value: unknown, extra?: { deviceId: string }) {
   const parsed = ProtocolChatgptStatus.safeParse(value);
   if (!parsed.success)
     return c.json({ error: "ai_unavailable", message: "ChatGPT returned an invalid status." }, 502);
   const { kind: _kind, pending, ...status } = parsed.data;
-  if (!pending) return c.json(status);
+  if (!pending) return c.json({ ...status, ...extra });
   const expiresAt = expiryMs(pending.expiresAt);
   if (expiresAt === null)
     return c.json({ error: "ai_unavailable", message: "ChatGPT returned an invalid status." }, 502);
-  return c.json({ ...status, pending: { expiresAt } });
+  return c.json({ ...status, ...extra, pending: { expiresAt } });
 }
 
 function loginResponse(c: Context<ApiEnv>, value: unknown) {
@@ -331,7 +331,7 @@ chatgpt.get("/api/projects/:id/ai/chatgpt", zValidator("query", targetQuery), as
   if (resolved.missing) return c.json({ error: "not_found" }, 404);
   if (resolved.cloud) return invalidDevice(c);
   const result = await invoke(c, resolved, { action: "chatgpt_status" });
-  return result.response ?? statusResponse(c, result.value);
+  return result.response ?? statusResponse(c, result.value, { deviceId: resolved.target.deviceId });
 });
 
 chatgpt.get("/api/projects/:id/ai/chatgpt/models", zValidator("query", targetQuery), async (c) => {

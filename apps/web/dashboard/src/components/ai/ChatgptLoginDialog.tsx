@@ -12,6 +12,8 @@ import { CopyButton } from "../CopyButton.js";
 import { Dialog, DialogActions, DialogError, DialogProgress } from "../Dialog.js";
 import { chatgptAuthorizeUrl, chatgptLoginErrorCopy, chatgptStateCopy } from "./chatgpt-state.js";
 
+import { useChatgptWelcome } from "./useChatgptWelcome.js";
+
 const POLL_MS = 2_000;
 
 /**
@@ -34,6 +36,10 @@ export function ChatgptLoginDialog({
   onComplete: (status: ChatgptStatus) => void;
   onCancel: () => void;
 }) {
+  const { holdWelcome } = useChatgptWelcome();
+  useLayoutEffect(() => {
+    if (open && deviceId !== null) return holdWelcome();
+  }, [open, deviceId, holdWelcome]);
   const cancelAttempt = useRef<(() => void) | null>(null);
   const cancelFromEscape = () => {
     if (cancelAttempt.current) cancelAttempt.current();

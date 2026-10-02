@@ -23,7 +23,6 @@ import {
 } from "./AiOperationSettingsForm.js";
 import { ChatgptLoginDialog } from "./ChatgptLoginDialog.js";
 import { ChatgptRow } from "./ChatgptMachineRows.js";
-import { ChatgptWelcomeDialog } from "./ChatgptWelcomeDialog.js";
 import { chatgptAccountLabel, chatgptStatusCanConfigure } from "./chatgpt-state.js";
 import { useChatgptWelcome } from "./useChatgptWelcome.js";
 
@@ -49,7 +48,7 @@ export function AiProvidersCard({ className = "" }: { className?: string }) {
   const [keying, setKeying] = useState<AiProviderView | null>(null);
   const [unlinking, setUnlinking] = useState<AiProviderView | null>(null);
   const [chatgptLogin, setChatgptLogin] = useState<ChatgptLoginTarget | null>(null);
-  const { welcome, showWelcome, closeWelcome } = useChatgptWelcome();
+  const { showWelcome } = useChatgptWelcome();
   const [revocationWarning, setRevocationWarning] = useState<string | null>(null);
 
   const providers = status.data?.providers ?? [];
@@ -78,11 +77,10 @@ export function AiProvidersCard({ className = "" }: { className?: string }) {
   const availableMachines = machineRows.filter((row) => row.machine.online && !row.query.error);
   const readyMachines = availableMachines.filter((row) => row.query.data?.state === "ready");
   useEffect(() => {
-    if (chatgptLogin || welcome) return;
-    for (const row of readyMachines) {
+    for (const row of availableMachines) {
       if (row.query.data) showWelcome(row.machine.deviceId, row.query.data);
     }
-  }, [readyMachines, chatgptLogin, welcome, showWelcome]);
+  }, [availableMachines, showWelcome]);
   const [selectedChatgptMachineId, setSelectedChatgptMachineId] = useState("");
   useEffect(() => {
     if (!readyMachines.some((row) => row.machine.deviceId === selectedChatgptMachineId)) {
@@ -252,7 +250,6 @@ export function AiProvidersCard({ className = "" }: { className?: string }) {
         onComplete={(result) => chatgptLogin && completeChatgptLogin(chatgptLogin.deviceId, result)}
         onCancel={cancelChatgptLogin}
       />
-      <ChatgptWelcomeDialog welcome={welcome} onDone={closeWelcome} />
       <ConfirmDialog
         open={unlinking !== null}
         title={`${unlinking?.linked?.legacy ? "Remove old sign-in" : `Unlink ${unlinking?.label ?? ""}`}?`}

@@ -2,10 +2,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { errorText } from "../../api.js";
 import { aiApi, type ChatgptStatus } from "../../api-ai.js";
+import type { projectsApi } from "../../api-projects.js";
 import { Dialog, DialogActions } from "../Dialog.js";
 import { CHATGPT_USAGE_URL } from "./chatgpt-state.js";
 
-export type ChatgptWelcome = { deviceId: string; noticeId: string };
+export type ChatgptWelcome = { deviceId: string; noticeId: string; accountLabel: string };
 
 /** A welcome stays pending on the machine until the displayed explanation is acknowledged. */
 export function ChatgptWelcomeDialog({
@@ -27,6 +28,9 @@ export function ChatgptWelcomeDialog({
 
 function WelcomeNotice({ welcome, onDone }: { welcome: ChatgptWelcome; onDone: () => void }) {
   const client = useQueryClient();
+  const machine = client
+    .getQueryData<Awaited<ReturnType<typeof projectsApi.machines>>>(["machines", "stored"])
+    ?.machines.find((item) => item.deviceId === welcome.deviceId);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const acknowledge = async () => {
@@ -62,6 +66,9 @@ function WelcomeNotice({ welcome, onDone }: { welcome: ChatgptWelcome; onDone: (
       description="When you choose ChatGPT, eligible AI requests on this machine use your ChatGPT plan. Exeora never receives your ChatGPT tokens."
       onCancel={() => void acknowledge()}
     >
+      <p className="text-body-md text-foreground-muted mt-4">
+        {welcome.accountLabel} on {machine?.name ?? "your machine"}.
+      </p>
       <p className="text-body-md text-foreground-muted mt-4">
         Manage usage in{" "}
         <a

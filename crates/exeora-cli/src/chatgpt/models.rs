@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::time::{Duration, Instant};
 
-use super::{ChatgptService, MAX_API_BYTES, errors, store::StoredAccount};
+use super::{ChatgptService, MAX_API_BYTES, errors, session, store::StoredAccount};
 
 const MODEL_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const MAX_MODELS: usize = 50;
@@ -31,10 +31,19 @@ struct RawModel {
     visibility: Option<String>,
 }
 
+#[cfg(test)]
 pub(crate) async fn list(service: &ChatgptService) -> Result<Vec<Model>> {
-    let account = match service.access_account().await {
+    list_for_revision(service, &session::revision(&service.store)?).await
+}
+
+pub(crate) async fn list_for_revision(
+    service: &ChatgptService,
+    expected: &session::Revision,
+) -> Result<Vec<Model>> {
+    let account = match service.access_account_for_revision(expected).await {
         Ok(account) => account,
         Err(error) => {
+            session::ensure_current(&service.store, expected)?;
             // A still-valid local credential can remain in the ready state
             // when a proactive refresh fails because the network or the
             // provider is temporarily unavailable. Preserve that distinction
@@ -55,7 +64,7 @@ pub(crate) async fn list(service: &ChatgptService) -> Result<Vec<Model>> {
             return Err(error);
         }
     };
-    list_for(service, &account).await
+    list_for(service, &account, expected).await
 }
 
 /// Fetch the account-specific catalog. The returned order is the server order;
@@ -63,7 +72,9 @@ pub(crate) async fn list(service: &ChatgptService) -> Result<Vec<Model>> {
 pub(crate) async fn list_for(
     service: &ChatgptService,
     account: &StoredAccount,
+    expected: &session::Revision,
 ) -> Result<Vec<Model>> {
+    session::ensure_current(&service.store, expected)?;
     if let Some((cached_at, models)) = service
         .models_cache
         .lock()
@@ -75,7 +86,7 @@ pub(crate) async fn list_for(
         return Ok(models);
     }
 
-    let mut response = request(service, account).await?;
+    let mut response = request(service, account, expected).await?;
     if response.status == reqwest::StatusCode::UNAUTHORIZED {
         let refreshed = match service.force_refresh(account).await {
             Ok(account) => account,
@@ -89,7 +100,7 @@ pub(crate) async fn list_for(
                 }));
             }
         };
-        response = request(service, &refreshed).await?;
+        response = request(service, &refreshed, expected).await?;
     }
     let models = parse_response(response)?;
     service
@@ -106,7 +117,12 @@ struct ModelResponse {
     body: Vec<u8>,
 }
 
-async fn request(service: &ChatgptService, account: &StoredAccount) -> Result<ModelResponse> {
+async fn request(
+    service: &ChatgptService,
+    account: &StoredAccount,
+    expected: &session::Revision,
+) -> Result<ModelResponse> {
+    session::ensure_current(&service.store, expected)?;
     let token = account
         .access_token
         .as_deref()

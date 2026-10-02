@@ -225,6 +225,7 @@ describe("the machine-bound ChatGPT provider", () => {
       env: on(),
     });
     expect(projectStatus.status).toBe(200);
+    expect(await projectStatus.json()).toMatchObject({ deviceId: DEVICE, state: "ready" });
     const projectModels = await call(`/api/projects/${PROJECT}/ai/chatgpt/models`, {
       userId: OWNER,
       env: on(),

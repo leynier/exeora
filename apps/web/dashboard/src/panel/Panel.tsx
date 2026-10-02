@@ -2,6 +2,7 @@ import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-qu
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
+import { ChatgptWelcomeProvider } from "../components/ai/ChatgptWelcomeProvider.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
 import { useMe } from "../queries.js";
@@ -54,7 +55,9 @@ export function Panel({ bridge }: { bridge: Bridge }) {
       <MemoryRouter initialEntries={["/workspace"]}>
         <ToastProvider>
           <TerminalsProvider>
-            <Shell bridge={bridge} />
+            <ChatgptWelcomeProvider>
+              <Shell bridge={bridge} />
+            </ChatgptWelcomeProvider>
           </TerminalsProvider>
         </ToastProvider>
       </MemoryRouter>
