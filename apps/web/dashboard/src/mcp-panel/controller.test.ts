@@ -9,6 +9,10 @@ const HERE: WorkspaceSnapshot = {
   projectId: "p1",
   workspace: null,
   targetKey: "main",
+  locations: [
+    { slug: "laptop", default: true },
+    { slug: "desktop", default: false },
+  ],
   view: "explorer",
   openPaths: ["src/a.ts"],
   active: { kind: "file", path: "src/a.ts" },
@@ -204,5 +208,66 @@ describe("PanelController", () => {
       lastConfirmation: null,
     });
     expect(JSON.stringify(state)).not.toContain("SECRET");
+  });
+
+  describe("the root of the default location under any of its names", () => {
+    it.each([["main"], ["MAIN"], ["main@laptop"], [null]])(
+      "applies %j on the root without asking about unsaved edits",
+      async (workspace) => {
+        bufferStore.set("p1", "main", "src/a.ts", { text: "edited", token: "t" });
+        const controller = following(
+          answering(selected({ workspace, tab: "explorer", path: "src/b.ts" })),
+        );
+        const pending = controller.navigate({
+          workspace: workspace ?? undefined,
+          path: "src/b.ts",
+        });
+        await vi.waitFor(() => expect(controller.route().route).not.toBeNull());
+        expect(controller.state().pendingConfirmation).toBeNull();
+        controller.report({
+          ...HERE,
+          openPaths: ["src/a.ts", "src/b.ts"],
+          active: { kind: "file", path: "src/b.ts" },
+        });
+        expect((await pending).status).toBe("applied");
+      },
+    );
+
+    it("keeps the search on screen when the gateway spells the root main", async () => {
+      searchStore.update("p1", "main", { query: "old", include: "src/**" });
+      const call = answering(
+        selected({ workspace: "main", tab: "search", search: { query: "new", include: "src/**" } }),
+      );
+      const controller = following(call, 20);
+      await controller.navigate({ workspace: "main", search: { query: "new" } });
+      expect(call.mock.calls[0]?.[1]).toMatchObject({
+        search: { query: "new", include: "src/**" },
+      });
+    });
+
+    it("still asks before the root of another location", async () => {
+      bufferStore.set("p1", "main", "src/a.ts", { text: "edited", token: "t" });
+      const controller = following(
+        answering(selected({ workspace: "main@desktop", tab: "explorer" })),
+      );
+      const result = await controller.navigate({ workspace: "main@desktop" });
+      expect(result.status).toBe("needs_confirmation");
+      expect(result.state.pendingConfirmation).toMatchObject({ workspace: "main@desktop" });
+    });
+
+    it("tells another location's root apart from the default's once both are named", () => {
+      const controller = new PanelController(answering(), 20);
+      controller.report({ ...HERE, workspace: "main@desktop", targetKey: "main@desktop" });
+      bufferStore.set("p1", "main@desktop", "x.ts", { text: "e", token: "t" });
+      const proceed = vi.fn();
+      expect(controller.changeTarget({ projectId: "p1", workspace: "main@DESKTOP" }, proceed)).toBe(
+        "applied",
+      );
+      expect(controller.changeTarget({ projectId: "p1", workspace: "main" }, proceed)).toBe(
+        "needs_confirmation",
+      );
+      controller.cancel();
+      bufferStore.clear("p1", "main@desktop", "x.ts");
+    });
   });
 });

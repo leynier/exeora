@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { gitStatus, otherProject } from "./dashboard-mock.js";
-import { appRequest, callAppTool, hostLog, openInHost } from "./mcp-host.js";
+import { appRequest, callAgain, callAppTool, hostLog, openInHost } from "./mcp-host.js";
 import { mockWorkspaceV2, project, workspace } from "./workspace-v2-mock.js";
 
 /**
@@ -275,4 +275,79 @@ test("keeps a search asked for before a project is chosen", async ({ page }) => 
     tab: "search",
     search: { query: "answer" },
   });
+});
+
+test("takes the gateway's main for the root on screen, unsaved edits and all", async ({ page }) => {
+  const panel = await openPanel(page, [
+    place({ workspace: "main", tab: "explorer", path: "readme.md" }),
+    place({ workspace: "main@laptop", tab: "search", search: { query: "answer" } }),
+  ]);
+  const editor = panel.locator(".cm-content");
+  await expect(editor).toContainText("answer");
+  await editor.click();
+  await page.keyboard.type("// draft ");
+  const dialog = panel.getByRole("dialog", { name: "Leave unsaved edits?" });
+
+  const file = await callAppTool(page, "exeora_workspace_navigate", { path: "readme.md" });
+  expect(file.structuredContent).toMatchObject({
+    status: "applied",
+    state: { workspace: null, tab: "explorer", path: "readme.md", dirtyPaths: ["src/main.ts"] },
+  });
+  const search = await callAppTool(page, "exeora_workspace_navigate", {
+    search: { query: "answer" },
+  });
+  expect(search.structuredContent).toMatchObject({
+    status: "applied",
+    state: { workspace: null, tab: "search", search: { query: "answer" } },
+  });
+  await expect(panel.getByRole("searchbox", { name: "Search" })).toHaveValue("answer");
+
+  // A later host result naming main lands on the same root too.
+  await callAgain(page, { path: "src/main.ts" }, place({ workspace: "main", path: "src/main.ts" }));
+  await expect(editor).toContainText("// draft");
+  await expect(dialog).toHaveCount(0);
+  expect((await callAppTool(page, "exeora_workspace_get_state")).structuredContent).toMatchObject({
+    workspace: null,
+    tab: "explorer",
+    path: "src/main.ts",
+    pendingConfirmation: null,
+  });
+});
+
+test("still asks before the root of another location", async ({ page }) => {
+  await mockWorkspaceV2(page);
+  const desktop = {
+    ...project.locations[0],
+    id: "loc_desktop",
+    deviceId: "dev_desktop",
+    name: "Desktop",
+    slug: "desktop",
+    localPath: "/srv/e2e",
+    default: false,
+  };
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({ json: [{ ...project, locations: [...project.locations, desktop] }] }),
+  );
+  const panel = await openInHost(page, {
+    context: FULLSCREEN,
+    input: { project: project.id, path: "src/main.ts" },
+    result: place({ path: "src/main.ts", tab: "explorer" }),
+    tools: { exeora_open_panel: [place({ workspace: "main@desktop", tab: "explorer" })] },
+  });
+  const editor = panel.locator(".cm-content");
+  await expect(editor).toContainText("answer");
+  await editor.click();
+  await page.keyboard.type("// draft ");
+
+  const result = await callAppTool(page, "exeora_workspace_navigate", {
+    workspace: "main@desktop",
+  });
+  expect(result.structuredContent).toMatchObject({
+    status: "needs_confirmation",
+    state: { pendingConfirmation: { workspace: "main@desktop", dirtyPaths: ["src/main.ts"] } },
+  });
+  const dialog = panel.getByRole("dialog", { name: "Leave unsaved edits?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(editor).toContainText("// draft");
 });

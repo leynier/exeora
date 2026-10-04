@@ -7,6 +7,7 @@ import {
 import { bufferStore } from "../components/workspace/bufferStore.js";
 import type { WorkspaceSnapshot, WorkspaceTarget } from "../components/workspace/surface.js";
 import type { WorkspaceView } from "../components/workspace/workspaceLayout.js";
+import { canonicalSelector } from "../selectors.js";
 import { OPEN_PANEL_TOOL } from "./opening.js";
 import { type PanelSelection, readAnswer, selectionRoute } from "./selection.js";
 import { answerText, type CallTool } from "./transport.js";
@@ -133,10 +134,7 @@ export class PanelController {
     const dirtyPaths = current?.projectId
       ? bufferStore.dirtyPaths(current.projectId, current.targetKey)
       : [];
-    const leaving =
-      current !== null &&
-      ((current.projectId ?? null) !== (to.projectId ?? null) ||
-        (current.workspace || null) !== (to.workspace || null));
+    const leaving = current !== null && !sameTarget(current, to.projectId, to.workspace);
     if (!leaving || dirtyPaths.length === 0) {
       proceed();
       this.emit();
@@ -205,7 +203,8 @@ export class PanelController {
     const current = this.snapshot;
     const moving =
       (args.project !== undefined && args.project !== current?.projectId) ||
-      (args.workspace !== undefined && args.workspace !== current?.workspace);
+      (args.workspace !== undefined &&
+        (!current || !sameTarget(current, current.projectId, args.workspace)));
     const content = args.path ?? args.diff ?? args.search;
     const project = args.project ?? current?.projectId ?? undefined;
     const workspace = args.workspace ?? (moving ? undefined : (current?.workspace ?? undefined));
@@ -303,10 +302,24 @@ export class PanelController {
   };
 }
 
+/**
+ * Whether a project and selector name the working copy the Workspace shows.
+ * The root of the default location answers to `main`, to nothing and to
+ * `main@<its slug>`; the root of another location stays its own.
+ */
+function sameTarget(
+  snapshot: WorkspaceSnapshot,
+  projectId: string | null | undefined,
+  workspace: string | null | undefined,
+): boolean {
+  if ((snapshot.projectId ?? null) !== (projectId ?? null)) return false;
+  const project = snapshot.locations ? { locations: snapshot.locations } : undefined;
+  return canonicalSelector(snapshot.workspace, project) === canonicalSelector(workspace, project);
+}
+
 /** Whether the Workspace shows what a selection named. */
 function shows(snapshot: WorkspaceSnapshot, selection: PanelSelection): boolean {
-  if ((snapshot.projectId ?? null) !== (selection.projectId ?? null)) return false;
-  if ((snapshot.workspace || null) !== (selection.workspace || null)) return false;
+  if (!sameTarget(snapshot, selection.projectId, selection.workspace)) return false;
   const view =
     selection.tab ??
     (selection.path ? "explorer" : selection.diff ? "source" : selection.search ? "search" : null);

@@ -283,16 +283,22 @@ export function Workspace() {
   );
   const openKey = openPaths.join("\n");
   const active = opener.selected;
+  const locationsKey = project
+    ? JSON.stringify(project.locations.map(({ slug, default: main }) => ({ slug, default: main })))
+    : null;
   useEffect(() => {
     report?.({
       projectId: projectId || null,
       workspace: workspaceSlug ?? null,
       targetKey,
+      locations: locationsKey
+        ? (JSON.parse(locationsKey) as { slug: string; default: boolean }[])
+        : null,
       view,
       openPaths: openKey ? openKey.split("\n") : [],
       active,
     });
-  }, [report, projectId, workspaceSlug, targetKey, view, openKey, active]);
+  }, [report, projectId, workspaceSlug, targetKey, view, openKey, active, locationsKey]);
 
   if (projects.isLoading) {
     return <Skeleton className="h-full w-full rounded-xl" />;

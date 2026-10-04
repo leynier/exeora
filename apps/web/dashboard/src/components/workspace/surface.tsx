@@ -34,6 +34,11 @@ export interface WorkspaceTarget {
 export interface WorkspaceSnapshot extends WorkspaceTarget {
   /** What its tabs, buffers and searches are kept under. */
   targetKey: string;
+  /**
+   * The project's locations, once known: what tells the root of the default
+   * location (`main`, nothing, `main@<its slug>`) from another's.
+   */
+  locations: { slug: string; default: boolean }[] | null;
   view: WorkspaceView;
   openPaths: string[];
   active: Detail | null;
