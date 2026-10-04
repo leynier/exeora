@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useContext } from "react";
 import { useLocation } from "react-router";
 import { EmptyState } from "../ui.js";
+import type { Detail, WorkspaceView } from "./workspaceLayout.js";
 
 /**
  * Where the Workspace screen is shown, when that is not the dashboard.
@@ -13,6 +14,33 @@ import { EmptyState } from "../ui.js";
 export interface WorkspaceSurface {
   /** Opens a dashboard path (starting with `/`) outside the frame. */
   openDashboard: (path: string) => void;
+  /** Hears what the Workspace shows, as it changes. */
+  report?: (snapshot: WorkspaceSnapshot) => void;
+  /**
+   * Stands between a change of project or working copy and its unsaved
+   * edits: `proceed` runs now, after the person confirms, or never.
+   */
+  changeTarget?: (to: WorkspaceTarget, proceed: () => void) => void;
+}
+
+/** A project and the working copy in it, as the address names them. */
+export interface WorkspaceTarget {
+  projectId: string | null;
+  /** The selector in `?workspace=`; null for the default root. */
+  workspace: string | null;
+}
+
+/** What the Workspace shows: where, which view, and which files are open. */
+export interface WorkspaceSnapshot extends WorkspaceTarget {
+  /** What its tabs, buffers and searches are kept under. */
+  targetKey: string;
+  view: WorkspaceView;
+  openPaths: string[];
+  active: Detail | null;
+}
+
+export function useWorkspaceSurface(): WorkspaceSurface | null {
+  return useContext(SurfaceContext);
 }
 
 const SurfaceContext = createContext<WorkspaceSurface | null>(null);

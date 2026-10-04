@@ -1,4 +1,14 @@
-import { encodeDetail, type WorkspaceView } from "../components/workspace/workspaceLayout.js";
+import {
+  EMPTY_SEARCH,
+  type SearchState,
+  searchToParams,
+} from "../components/search/searchStore.js";
+import {
+  type DiffArea,
+  encodeDetail,
+  WORKSPACE_VIEWS,
+  type WorkspaceView,
+} from "../components/workspace/workspaceLayout.js";
 import { type DiffStyle, workspacePrefs } from "../components/workspace/workspacePrefs.js";
 
 /**
@@ -24,6 +34,12 @@ export interface PanelSelection {
   workspace: string | null;
   /** Relative to the working copy, with forward slashes. */
   path: string | null;
+  /** The view to show; otherwise the one its content implies, or the default. */
+  tab?: WorkspaceView | null;
+  /** A changed file's diff, in the Source Control view. */
+  diff?: { path: string; area: DiffArea } | null;
+  /** A search to run, in the Search view. */
+  search?: SearchState | null;
   settings: PanelSettings;
   /** Where the full dashboard lives, for links out of the panel. */
   gatewayOrigin: string | null;
@@ -60,7 +76,12 @@ export function readAnswer(structured: unknown): PanelAnswer | null {
     selection: {
       projectId,
       workspace: projectId ? workspace : null,
-      path: named && projectId ? relativePath(structured.path) : null,
+      // An explicit null project still carries what was asked to be seen: it
+      // opens once the person picks a project.
+      path: named ? relativePath(structured.path) : null,
+      tab: readTab(structured.tab),
+      diff: named ? readDiff(structured.diff) : null,
+      search: readSearch(structured.search),
       settings,
       gatewayOrigin: httpOrigin(structured.gatewayOrigin),
     },
@@ -119,14 +140,52 @@ export function selectionRoute(selection: PanelSelection): string {
   const params = new URLSearchParams();
   if (selection.projectId) params.set("project", selection.projectId);
   if (selection.workspace) params.set("workspace", selection.workspace);
+  const view =
+    selection.tab ??
+    (selection.path
+      ? "explorer"
+      : selection.diff
+        ? "source"
+        : selection.search
+          ? "search"
+          : selection.settings.view);
+  if (view) params.set("view", view);
   if (selection.path) {
-    params.set("view", "explorer");
     params.set("detail", encodeDetail({ kind: "file", path: selection.path }));
-  } else if (selection.settings.view) {
-    params.set("view", selection.settings.view);
+  } else if (selection.diff) {
+    params.set("detail", encodeDetail({ kind: "diff", ...selection.diff }));
   }
+  if (selection.search) searchToParams(selection.search, params);
   const query = params.toString();
   return query ? `/workspace?${query}` : "/workspace";
+}
+
+function readTab(value: unknown): WorkspaceView | null {
+  return (WORKSPACE_VIEWS as readonly unknown[]).includes(value) ? (value as WorkspaceView) : null;
+}
+
+function readDiff(value: unknown): { path: string; area: DiffArea } | null {
+  if (!isRecord(value)) return null;
+  const path = relativePath(value.path);
+  if (!path) return null;
+  return { path, area: value.area === "staged" ? "staged" : "working" };
+}
+
+/** A search, whole: what the gateway left out is the default. */
+export function readSearch(value: unknown): SearchState | null {
+  if (!isRecord(value) || typeof value.query !== "string") return null;
+  const flag = (name: string) => value[name] === true;
+  const filter = (name: string) => (typeof value[name] === "string" ? (value[name] as string) : "");
+  return {
+    ...EMPTY_SEARCH,
+    query: value.query,
+    regex: flag("regex"),
+    caseSensitive: flag("caseSensitive"),
+    wholeWord: flag("wholeWord"),
+    include: filter("include"),
+    exclude: filter("exclude"),
+    includeIgnored: flag("includeIgnored"),
+  };
 }
 
 /**
@@ -145,6 +204,24 @@ export function deepLinkRoute(value: unknown): string | null {
   if (parsed.origin !== "https://panel.invalid" || parsed.hash) return null;
   if (parsed.pathname !== "/" && parsed.pathname !== "/workspace") return null;
   return `/workspace${parsed.search}`;
+}
+
+/**
+ * The Dashboard route a ChatGPT deep link names: any of its own paths, with
+ * its query, written with or without the `/dashboard` the browser uses.
+ */
+export function dashboardDeepLink(value: unknown): string | null {
+  const url = isRecord(value) ? value.url : null;
+  if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url, "https://panel.invalid");
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== "https://panel.invalid" || parsed.hash) return null;
+  const path = parsed.pathname.replace(/^\/dashboard(?=\/|$)/, "") || "/";
+  return `${path}${parsed.search}`;
 }
 
 /**

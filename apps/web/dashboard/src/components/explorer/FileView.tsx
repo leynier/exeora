@@ -7,6 +7,7 @@ import { registerSave } from "../../hooks/saveRegistry.js";
 import { type Target, useFileContent, workspaceKeys } from "../../queries-workspace.js";
 import { useToast } from "../toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
+import { bufferStore } from "../workspace/bufferStore.js";
 import type { WorkspaceContext } from "../workspace/context.js";
 import { fileKind } from "./explorerModel.js";
 
@@ -73,13 +74,22 @@ function TextFile({
 }) {
   const client = useQueryClient();
   const toast = useToast();
-  const [text, setText] = useState(content);
+  const { setDirty, actions, target } = ctx;
+  // Edits made before this editor last unmounted (another tab, another
+  // place) come back. Against a file that moved on since, they come back
+  // with the conflict banner rather than being saved over the change.
+  const [kept] = useState(() => bufferStore.get(target.projectId, target.targetKey, path));
+  const [text, setText] = useState(kept?.text ?? content);
   const [saving, setSaving] = useState(false);
-  const [conflict, setConflict] = useState(false);
-  const [preview, setPreview] = useState(markdown);
+  const [conflict, setConflict] = useState(kept !== undefined && kept.token !== token);
+  const [preview, setPreview] = useState(markdown && kept === undefined);
   const dirty = text !== content;
   const changed = ctx.status.data?.files.some((item) => item.path === path) ?? false;
-  const { setDirty, actions, target } = ctx;
+
+  useEffect(() => {
+    if (dirty) bufferStore.set(target.projectId, target.targetKey, path, { text, token });
+    else bufferStore.clear(target.projectId, target.targetKey, path);
+  }, [dirty, text, token, target.projectId, target.targetKey, path]);
 
   useEffect(() => {
     setDirty({ kind: "file", path }, dirty);

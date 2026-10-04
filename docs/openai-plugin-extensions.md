@@ -16,7 +16,7 @@ Preferences are isolated by user, OAuth client, and endpoint. They persist in `p
 
 `exeora_open_panel` preserves its original tool name and resource URI. `tab` accepts `explorer`, `search`, `source`, `pr`, `terminal` and `logs`. `path` opens an Explorer file. `diff: { path, area: "working" | "staged" }` opens Source Control, defaulting to `working`. `search: { query, regex?, caseSensitive?, wholeWord?, include?, exclude?, includeIgnored? }` applies the Search query and filters; omitted filters are false or empty strings. An empty query clears Search. Search strings are bounded to 1,000 characters. A content target infers its tab, and conflicting targets or an incompatible explicit tab are rejected.
 
-The Workspace instance exposes native MCP App tools `exeora_workspace_get_state({})` and `exeora_workspace_navigate({ ...selection })`. These address the open instance in the current conversation. Omitted routing fields preserve the current project/workspace. UI state and model context contain navigation metadata, not file contents or credentials. Later host tool results and deep links use the same navigation controller. Changing tabs or opening another file keeps unsaved buffers; leaving a project/workspace with dirty buffers requires user confirmation. State is isolated by instance, project and workspace.
+The Workspace instance exposes native MCP App tools `exeora_workspace_get_state({})` and `exeora_workspace_navigate({ ...selection })`. These address the open instance in the current conversation. Omitted routing fields preserve the current project/workspace. UI state and model context contain navigation metadata, not file contents or credentials. Navigation returns `applied` with the actual UI state once shown, `queued` if rendering has not settled within five seconds, `needs_confirmation` while user confirmation is pending, `error` on refusal, or `superseded` when a newer navigation wins. The state reports whether the last confirmation was applied or cancelled. Later host tool results and deep links use the same navigation controller. Changing tabs or opening another file keeps unsaved buffers; leaving a project/workspace with dirty buffers requires user confirmation. State is isolated by instance, project and workspace.
 
 ## Authorization and transport
 
@@ -46,9 +46,11 @@ Files without a registered suffix can still be opened from the Workspace explore
 
 Automated coverage checks legacy initialization, modern discovery, tool/resource metadata, host file resolution, traversal and grant isolation, native settings persistence and concurrent partial edits, the API boundary, restrictive policies, static asset CORS, and the shared panel transport. Browser tests use a simulated MCP Apps host; they do not prove availability or account eligibility in live ChatGPT.
 
-Validation performed in this workspace: full Vitest suite, Playwright browser suite, Biome, file-length check, TypeScript checks, web and Chrome extension builds, a Worker deployment dry run, and frozen dependency installation with CI's Bun 1.3.14. Argent checked automatic fullscreen, file opening, a later file in the same panel, and dashboard links against a simulated host. The gateway socket tests verify sandbox-origin binding and one-use tickets; live ChatGPT terminal/log connections still require activation testing.
+Validation of the initial Workspace implementation: full Vitest suite, Playwright browser suite, Biome, file-length check, TypeScript checks, web and Chrome extension builds, a Worker deployment dry run, and frozen dependency installation with CI's Bun 1.3.14. Argent checked automatic fullscreen, file opening, a later file in the same panel, and dashboard links against a simulated host. The gateway socket tests verify sandbox-origin binding and one-use tickets; live ChatGPT terminal/log connections still require activation testing.
 
 Results: 1,616 tests in the full Vitest run, 156 browser scenarios, and 44 consecutive passes of the 11 MCP panel scenarios. Final targeted runs passed all 16 gateway extension tests and 56 panel unit tests after the last routing and stale-default repairs. Temporary browser/server resources were removed; the one Claude Opus Dev terminal is retained for reuse.
+
+Validation of the Dashboard and navigation follow-up: the final full Vitest run passed 1,720 tests in 171 files with CI's Bun 1.3.14. The full browser suite passed 169 scenarios before the final opening-intent repairs; the final affected MCP suite passed all 26 scenarios, including the two new picker cases. TypeScript, Biome, file-length checks, web and Chrome extension builds, and a Worker deployment dry run passed. Real OAuth-provider tests cover device consent, PKCE exchange, replay, denial and scope isolation. Argent verified navigation, preserved edits, Dashboard sign-in and logout against a simulated host. No gateway deployment or live ChatGPT validation was performed for this follow-up, and no new database migration is required. Temporary browser and server resources were removed; the existing Claude Opus Dev terminal was reused and retained.
 
 Implementation tracking:
 
@@ -60,7 +62,7 @@ Implementation tracking:
 - [x] Production D1 migration `0028_plugin_settings.sql`, applied on 2026-10-04 at 07:52:22 UTC. Verified the table, composite primary key, defaults, cascading user foreign key and no pending migrations.
 - [x] Extended Workspace navigation contract and global Dashboard resource registration.
 - [x] Independent Sideapp PKCE device login and scoped sandbox CORS.
-- [ ] Workspace native navigation, preserved buffers and Dashboard UI integration validation.
+- [x] Workspace native navigation, preserved buffers and Dashboard UI integration validation.
 - [ ] Gateway deployment and live ChatGPT proof.
 
 Sources: [OpenAI extensions guide](https://developers.openai.com/plugins/build/extensions), [MCP Extensions specification](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md), [MCP Apps](https://github.com/modelcontextprotocol/ext-apps).

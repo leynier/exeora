@@ -22,6 +22,32 @@ export function configureExternalOpener(open: (url: string) => void): void {
   openUrl = open;
 }
 
+let leaveFor: ((url: string) => void) | null = null;
+
+/**
+ * Where a page that would send the browser away (to GitHub, to connect it)
+ * sends it instead. A host frame cannot be navigated away from: it opens the
+ * address outside and stays, and the page says so.
+ */
+export function configureLeave(open: (url: string) => void): void {
+  leaveFor = open;
+}
+
+/**
+ * Sends the browser to an integration URL. Says whether this page stays,
+ * because the address opened somewhere else.
+ */
+export function leaveForExternalUrl(value: string): "left" | "opened" | "refused" {
+  const url = externalHttpsUrl(value);
+  if (!url) return "refused";
+  if (leaveFor) {
+    leaveFor(url);
+    return "opened";
+  }
+  window.location.assign(url);
+  return "left";
+}
+
 /** Opens an integration URL after applying the same scheme check as anchors. */
 export function openExternalUrl(value: string | null | undefined): void {
   const url = externalHttpsUrl(value);

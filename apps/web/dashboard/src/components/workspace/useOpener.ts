@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GitStatus } from "../../api.js";
 import {
   closeTab,
@@ -28,9 +28,16 @@ export function useOpener({
   search,
   setSearch,
   status,
+  isDirty,
+  hold = false,
 }: {
   wide: boolean;
+  /** Leave a detail in the address for now: there is nowhere to open it yet. */
+  hold?: boolean;
+  /** Where the tabs are remembered. */
   targetKey: string;
+  /** Whether a file has edits waiting elsewhere, for tabs read back from storage. */
+  isDirty?: (path: string) => boolean;
   search: URLSearchParams;
   setSearch: (params: URLSearchParams, options?: { replace?: boolean }) => void;
   status: GitStatus | undefined;
@@ -39,8 +46,20 @@ export function useOpener({
   const detailParam = search.get("detail");
   const detail = useMemo(() => parseDetail(detailParam), [detailParam]);
 
+  // Asked when the tabs are read back, once per working copy.
+  const dirtyCheck = useRef(isDirty);
+  dirtyCheck.current = isDirty;
+
   useEffect(() => {
-    setTabs(readTabs(sessionStorage, targetKey));
+    const read = readTabs(sessionStorage, targetKey);
+    setTabs({
+      ...read,
+      tabs: read.tabs.map((tab) =>
+        tab.detail.kind === "file" && dirtyCheck.current?.(tab.detail.path)
+          ? { ...tab, dirty: true }
+          : tab,
+      ),
+    });
   }, [targetKey]);
 
   useEffect(() => {
@@ -52,12 +71,12 @@ export function useOpener({
   // The router's own address, not the window's: in a side panel or a ChatGPT
   // frame the router lives in memory and the window's says nothing.
   useEffect(() => {
-    if (!wide || !detail) return;
+    if (!wide || !detail || hold) return;
     setTabs((current) => openTab(current, detail, true));
     const params = new URLSearchParams(search);
     params.delete("detail");
     setSearch(params, { replace: true });
-  }, [wide, detail, search, setSearch]);
+  }, [wide, detail, hold, search, setSearch]);
 
   // A diff of a file that is clean now has nothing left to show.
   useEffect(() => {

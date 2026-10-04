@@ -89,4 +89,29 @@ describe("resolveOpening", () => {
     const opening = await open({ input: { file: FILE }, result: null }, call, false);
     expect(opening.kind).toBe("ready");
   });
+
+  it.each([
+    [{ project: "p1", tab: "source", diff: { path: "src/a.ts", area: "staged" } }],
+    [{ project: "p1", search: { query: "todo", regex: true, include: "src/**" } }],
+    [{ tab: "terminal" }],
+  ])("asks again with what the opening asked to see (%j)", async (input) => {
+    const call = caller({ structuredContent: SELECTED });
+    // No result from the host, or a retry, which ignores the one it had.
+    await open({ input, result: null }, call);
+    expect(call).toHaveBeenCalledExactlyOnceWith(OPEN_PANEL_TOOL, input);
+  });
+
+  it.each([
+    [{ project: "p1", path: "../secret" }, "relative to the workspace"],
+    [{ path: "/etc/passwd" }, "relative to the workspace"],
+    [{ path: "a.ts", search: { query: "x" } }, "at most one of path, diff or search"],
+    [{ tab: "search", path: "a.ts" }, "opens in the explorer tab, not search"],
+    [{ tab: "admin" }, "tab must be one of"],
+    [{ search: { query: "x", replace: "y" } }, "Unknown field search.replace."],
+  ])("refuses a malformed opening without asking the gateway (%j)", async (input, message) => {
+    const call = caller({ structuredContent: SELECTED });
+    const opening = await open({ input, result: null }, call);
+    expect(opening).toMatchObject({ kind: "failed", message: expect.stringContaining(message) });
+    expect(call).not.toHaveBeenCalled();
+  });
 });

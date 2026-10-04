@@ -61,7 +61,7 @@ Signing in asks for consent once per account and extension id, so approving one 
 
 ### Working on the ChatGPT plugin panel
 
-The MCP plugin panel is a third dashboard build entry, `/dashboard/mcp-panel`, and reuses the Chrome panel's `Workspace` screen. It uses the MCP Apps bridge and app-only gateway tools rather than the Chrome shell's token bridge. See [OpenAI plugin extensions](docs/openai-plugin-extensions.md) for the tool contracts, settings, file routing, host limitations and activation checks. Apply migration `0028_plugin_settings.sql` before deploying this panel; no CLI or Chrome extension release is required.
+Exeora Workspace is a dashboard build entry at `/dashboard/mcp-panel` and reuses the Chrome panel's `Workspace` screen. It uses the MCP Apps bridge and app-only gateway tools rather than the Chrome shell's token bridge. Exeora Dashboard is a separate Sideapp entry at `/dashboard/mcp-dashboard`, sharing the full dashboard shell and routes with its own PKCE code sign-in. The Workspace instance exposes navigation and state tools; the Dashboard session never expands the MCP connection's permissions. See [OpenAI plugin extensions](docs/openai-plugin-extensions.md) for the tool contracts, settings, file routing, host limitations and activation checks. Apply migration `0028_plugin_settings.sql` before deploying this panel; no CLI or Chrome extension release is required.
 
 ### Checks
 

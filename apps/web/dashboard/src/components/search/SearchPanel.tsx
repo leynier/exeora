@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { type SearchInput, useSearch } from "../../queries-workspace.js";
 import { ErrorBanner } from "../ui.js";
 import type { WorkspaceContext } from "../workspace/context.js";
@@ -19,6 +20,13 @@ import { workspacePrefs } from "../workspace/workspacePrefs.js";
 import { ReplaceBar } from "./ReplaceBar.js";
 import { SearchResults } from "./SearchResults.js";
 import { summary } from "./searchModel.js";
+import {
+  type SearchState,
+  searchFromParams,
+  searchStore,
+  useSearchState,
+  withoutSearchParams,
+} from "./searchStore.js";
 
 /** A keystroke's grace before the machine is asked. */
 const DEBOUNCE_MS = 250;
@@ -34,14 +42,31 @@ const toggleClass = "border-border bg-bg flex items-center gap-0.5 rounded-lg bo
  * everything at a time.
  */
 export function SearchPanel({ ctx }: { ctx: WorkspaceContext }) {
-  const [query, setQuery] = useState("");
-  const [regex, setRegex] = useState(false);
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [wholeWord, setWholeWord] = useState(false);
-  const [details, setDetails] = useState(false);
-  const [include, setInclude] = useState("");
-  const [exclude, setExclude] = useState("");
-  const [includeIgnored, setIncludeIgnored] = useState(false);
+  // Held outside the view, so a search asked for elsewhere shows up here.
+  const [state, set] = useSearchState(ctx.target.projectId, ctx.target.targetKey);
+  const { query, regex, caseSensitive, wholeWord, include, exclude, includeIgnored } = state;
+  const setQuery = (value: string) => set("query", value);
+  const setRegex = (value: (current: boolean) => boolean) => set("regex", value);
+  const setCaseSensitive = (value: (current: boolean) => boolean) => set("caseSensitive", value);
+  const setWholeWord = (value: (current: boolean) => boolean) => set("wholeWord", value);
+  const setInclude = (value: string) => set("include", value);
+  const setExclude = (value: string) => set("exclude", value);
+  const setIncludeIgnored = (value: (current: boolean) => boolean) => set("includeIgnored", value);
+  // A search the address carries (a link, a navigation) becomes this view's.
+  const [params, setParams] = useSearchParams();
+  const asked = searchFromParams(params);
+  const askedKey = asked ? JSON.stringify(asked) : null;
+  const { projectId, targetKey } = ctx.target;
+  useEffect(() => {
+    if (!askedKey) return;
+    searchStore.update(projectId, targetKey, JSON.parse(askedKey) as SearchState);
+    setParams((current) => withoutSearchParams(current), { replace: true });
+  }, [askedKey, projectId, targetKey, setParams]);
+  const [details, setDetails] = useState(Boolean(include || exclude));
+  // Filters set from outside the view are shown, not left folded away.
+  useEffect(() => {
+    if (include || exclude) setDetails(true);
+  }, [include, exclude]);
   const [replacing, setReplacing] = useState(false);
   const [replacement, setReplacement] = useState("");
   const [preserveCase, setPreserveCase] = useState(false);

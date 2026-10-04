@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
-import { signOut } from "../auth.js";
+import { useAuth } from "../authContext.js";
 import { ApprovalBanner } from "../components/ApprovalBanner.js";
 import { GlobalTerminals } from "../components/Terminals.js";
 import { ErrorBanner } from "../components/ui.js";
@@ -43,6 +43,7 @@ import {
  * document that grows under a terminal.
  */
 export function AppShell() {
+  const { signOut } = useAuth();
   const me = useMe();
   const location = useLocation();
   const workspace = location.pathname === "/workspace";
@@ -62,7 +63,7 @@ export function AppShell() {
 
   useEffect(() => {
     if (unauthorized) signOut();
-  }, [unauthorized]);
+  }, [unauthorized, signOut]);
 
   // pathname is the signal that a navigation happened, including Back. It is
   // not read inside: the drawer just has to close, wherever we landed.

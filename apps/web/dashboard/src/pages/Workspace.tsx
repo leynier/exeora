@@ -6,8 +6,11 @@ import { useWorkspaceLogs } from "../components/logs/useWorkspaceLogs.js";
 import { NoRoot } from "../components/NoRoot.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
 import { WorkspaceRootSelector } from "../components/WorkspaceRootSelector.js";
+import { bufferStore } from "../components/workspace/bufferStore.js";
 import type { WorkspaceContext } from "../components/workspace/context.js";
 import { DetailContent, detailHeading } from "../components/workspace/DetailContent.js";
+import { scopedKey, targetScopedKey } from "../components/workspace/scope.js";
+import { useWorkspaceSurface } from "../components/workspace/surface.js";
 import { useAutoRefresh } from "../components/workspace/useAutoRefresh.js";
 import { useOpener } from "../components/workspace/useOpener.js";
 import { useWorkspaceActions } from "../components/workspace/useWorkspaceActions.js";
@@ -51,7 +54,7 @@ type LastWorkspace = { projectId: string; workspace: string | null };
 
 function readLast(): LastWorkspace | null {
   try {
-    const raw = localStorage.getItem(LAST_KEY);
+    const raw = localStorage.getItem(scopedKey(LAST_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as LastWorkspace;
     if (typeof parsed.projectId !== "string") return null;
@@ -65,7 +68,15 @@ function readLast(): LastWorkspace | null {
 }
 
 function writeLast(value: LastWorkspace) {
-  localStorage.setItem(LAST_KEY, JSON.stringify(value));
+  localStorage.setItem(scopedKey(LAST_KEY), JSON.stringify(value));
+}
+
+/** What the address asks to see, without the project and working copy it names. */
+function pendingIntent(params: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.delete("project");
+  next.delete("workspace");
+  return next;
 }
 
 /**
@@ -168,7 +179,19 @@ export function Workspace() {
       ? otherRootLabel(home ?? { name: parsed.root ? (parsed.location ?? "") : "" })
       : rootLabel(rootBranch));
 
-  const opener = useOpener({ wide, targetKey, search, setSearch, status: status.data });
+  // Tabs are kept per project and working copy, and per panel when the
+  // Workspace is embedded; a tab with edits still waiting comes back dirty.
+  const surface = useWorkspaceSurface();
+  const opener = useOpener({
+    wide,
+    // A detail asked for before a project is chosen waits for one.
+    hold: !projectId,
+    targetKey: targetScopedKey(projectId, targetKey),
+    search,
+    setSearch,
+    status: status.data,
+    isDirty: (path) => bufferStore.get(projectId, targetKey, path) !== undefined,
+  });
   const target = useMemo(
     () => ({ projectId, workspace: targetId, targetKey }),
     [projectId, targetId, targetKey],
@@ -224,21 +247,52 @@ export function Workspace() {
 
   useEffect(() => {
     if (!restored) return;
-    const params = new URLSearchParams();
-    params.set("project", restored.projectId);
-    if (restored.workspace) params.set("workspace", restored.workspace);
-    setSearch(params, { replace: true });
+    setSearch(
+      (current) => {
+        const params = pendingIntent(current);
+        params.set("project", restored.projectId);
+        if (restored.workspace) params.set("workspace", restored.workspace);
+        return params;
+      },
+      { replace: true },
+    );
   }, [restored, setSearch]);
 
   const select = (nextProject: string, nextWorkspace: string | null) => {
-    const params = new URLSearchParams();
-    if (nextProject) params.set("project", nextProject);
-    if (nextWorkspace) params.set("workspace", nextWorkspace);
-    const param = viewParam(view);
-    if (param) params.set("view", param);
-    setSearch(params, { replace: true });
-    if (nextProject) writeLast({ projectId: nextProject, workspace: nextWorkspace });
+    const go = () => {
+      // Without a project yet, what the address asked to see (a file, a diff,
+      // a search) is still to come, and opens in the project picked now. A
+      // file of another project means nothing here, so a switch keeps the view.
+      const params = projectId ? new URLSearchParams() : pendingIntent(search);
+      if (nextProject) params.set("project", nextProject);
+      if (nextWorkspace) params.set("workspace", nextWorkspace);
+      const param = viewParam(view);
+      if (param) params.set("view", param);
+      setSearch(params, { replace: true });
+      if (nextProject) writeLast({ projectId: nextProject, workspace: nextWorkspace });
+    };
+    // An embedding may ask first when edits are waiting where this leaves.
+    if (surface?.changeTarget) {
+      surface.changeTarget({ projectId: nextProject || null, workspace: nextWorkspace }, go);
+    } else go();
   };
+
+  const report = surface?.report;
+  const openPaths = opener.tabs.tabs.flatMap((tab) =>
+    tab.detail.kind === "file" || tab.detail.kind === "diff" ? [tab.detail.path] : [],
+  );
+  const openKey = openPaths.join("\n");
+  const active = opener.selected;
+  useEffect(() => {
+    report?.({
+      projectId: projectId || null,
+      workspace: workspaceSlug ?? null,
+      targetKey,
+      view,
+      openPaths: openKey ? openKey.split("\n") : [],
+      active,
+    });
+  }, [report, projectId, workspaceSlug, targetKey, view, openKey, active]);
 
   if (projects.isLoading) {
     return <Skeleton className="h-full w-full rounded-xl" />;

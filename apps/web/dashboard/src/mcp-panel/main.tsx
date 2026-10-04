@@ -4,24 +4,35 @@ import { configureApiSession } from "../api.js";
 import { configureExternalOpener } from "../external-url.js";
 import { configureTicketOrigin } from "../socket-url.js";
 import "../index.css";
+import { configureWorkspaceScope } from "../components/workspace/scope.js";
+import { PanelController } from "./controller.js";
 import { connectHost } from "./host.js";
 import { McpPanel } from "./McpPanel.js";
 import { ensureStorage, routeLinksToHost } from "./sandbox.js";
 import { gatewayOrigin } from "./selection.js";
+import { APP_TOOLS, callAppTool } from "./tools.js";
 import { toolTransport } from "./transport.js";
 
 /**
  * The Workspace as an MCP App in ChatGPT, served by the gateway as the
  * `ui://exeora/workspace` resource. Unlike the Chrome side panel it never
  * holds a token: the host carries every request to the gateway as a call to
- * an app-only tool, on the connection the user already authorized.
+ * an app-only tool, on the connection the user already authorized. It
+ * answers two tools of its own, for the model to read and move this panel.
  */
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
 ensureStorage(window);
-const host = connectHost();
+// This panel's tabs, buffers and searches are its own, even where another
+// panel shares the sandbox's storage.
+configureWorkspaceScope(`panel-${crypto.randomUUID()}`);
+const controller = new PanelController((name, args, signal) => host.call(name, args, signal));
+// The tools are registered before connecting, as the host may list them at once.
+const host = connectHost({
+  tools: { list: () => APP_TOOLS, call: (name, args) => callAppTool(controller, name, args) },
+});
 // An opaque sandbox reports "null", which is no origin to bind a ticket to.
 const origin = window.location.origin.startsWith("https://") ? window.location.origin : undefined;
 configureApiSession({ transport: toolTransport(host.call, origin) });
@@ -34,6 +45,6 @@ routeLinksToHost(document, open);
 
 createRoot(root).render(
   <StrictMode>
-    <McpPanel host={host} />
+    <McpPanel host={host} controller={controller} />
   </StrictMode>,
 );

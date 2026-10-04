@@ -1,4 +1,6 @@
+import type { NavigateArgs } from "./controller.js";
 import { failureText, type PanelSelection, readAnswer } from "./selection.js";
+import { navigateArgs } from "./tools.js";
 import { answerText, type CallTool, type ToolAnswer } from "./transport.js";
 
 /**
@@ -59,9 +61,14 @@ async function openFrom(
     const opened = settle(invocation.result, file);
     if (opened) return opened;
   }
-  const answer = file
-    ? await call(RESOLVE_FILE_TOOL, { file, ...place(invocation.input) })
-    : await call(OPEN_PANEL_TOOL, { ...place(invocation.input), ...pathOf(invocation.input) });
+  let answer: ToolAnswer;
+  if (file) {
+    answer = await call(RESOLVE_FILE_TOOL, { file, ...place(invocation.input) });
+  } else {
+    const intent = intentOf(invocation.input);
+    if (typeof intent === "string") return { kind: "failed", message: intent, file };
+    answer = await call(OPEN_PANEL_TOOL, { ...place(invocation.input), ...intent });
+  }
   return settle(answer, file) ?? { kind: "failed", message: failureText("error"), file };
 }
 
@@ -92,6 +99,17 @@ function place(input: Record<string, unknown> | null): Record<string, string> {
   return out;
 }
 
-function pathOf(input: Record<string, unknown> | null): Record<string, string> {
-  return typeof input?.path === "string" && input.path ? { path: input.path } : {};
+/**
+ * What the opening call asked to see (a tab, a file, a diff or a search),
+ * passed on whole when the panel asks again, so a retry or a host that sent
+ * no result lands where the model meant. Checked as the navigate tool checks
+ * its own: anything malformed is refused with the reason, never dropped
+ * into a plainer request.
+ */
+export function intentOf(input: Record<string, unknown> | null): NavigateArgs | string {
+  const asked: Record<string, unknown> = {};
+  for (const field of ["tab", "path", "diff", "search"] as const) {
+    if (input?.[field] !== undefined) asked[field] = input[field];
+  }
+  return navigateArgs(asked);
 }

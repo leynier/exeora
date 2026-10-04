@@ -368,12 +368,14 @@ export function deviceCodePage(options: { userCode?: string; problem?: string } 
       <div class="card">
         <h1>Sign in from another device</h1>
         <p class="lede">
-          Enter the code shown in the terminal running <code>exeora login --code</code>.
+          Enter the code shown in the terminal running <code>exeora login --code</code>, or in the
+          Exeora Dashboard in ChatGPT.
         </p>
 
         <div class="warn">
-          Only enter a code displayed on a terminal you control. A code from a chat, an email or
-          another website would sign <em>their</em> machine in as you.
+          Only enter a code displayed on a terminal you control, or in an Exeora Dashboard you opened
+          in ChatGPT yourself. A code someone sent you in a message, an email or on another website
+          would sign <em>their</em> device in as you.
         </div>
 
         ${options.problem ? html`<div class="warn">${options.problem}</div>` : ""}
@@ -412,8 +414,8 @@ export function deviceDonePage(outcome: "authorized" | "denied") {
         <p class="lede">
           ${
             authorized
-              ? "You can close this tab and return to the terminal."
-              : "The terminal will stop waiting. Run the command again if you still want to sign in."
+              ? "You can close this tab and return to the terminal, or to ChatGPT."
+              : "The terminal will stop waiting, and so will the Exeora Dashboard in ChatGPT. Start again there if you still want to sign in."
           }
         </p>
       </div>
