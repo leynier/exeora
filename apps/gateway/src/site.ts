@@ -9,6 +9,7 @@ import {
   getCliClientId,
   getDashboardClientId,
   getExtensionClientId,
+  getSideappClientId,
 } from "./oauth/clients.js";
 import { deviceRoutes } from "./oauth/device-routes.js";
 import { oauthRoutes } from "./oauth/routes.js";
@@ -57,6 +58,11 @@ site.get("/oauth/dashboard-client", async (c) =>
     redirectUri: new URL("/dashboard/callback", c.env.EXEORA_BASE_URL).toString(),
     scopes: DASHBOARD_SCOPES,
   }),
+);
+
+/** The Sideapp authenticates its own user through PKCE code sign-in, never through MCP. */
+site.get("/oauth/sideapp-client", async (c) =>
+  c.json({ client_id: await getSideappClientId(c.env) }),
 );
 
 /**

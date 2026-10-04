@@ -4,7 +4,8 @@ import { ownedTarget } from "./api/workspace-target.js";
 import { accountProjects, resolveTarget } from "./client-targets.js";
 import { db, schema } from "./db/client.js";
 import { locationsOf } from "./locations.js";
-import { relativeWorkspacePath, safeRelativePath } from "./plugin-paths.js";
+import { navigationSelection, type PanelNavigationInput } from "./plugin-navigation.js";
+import { relativeWorkspacePath } from "./plugin-paths.js";
 import { readPluginSettings } from "./plugin-settings.js";
 import type { Props } from "./props.js";
 
@@ -43,17 +44,14 @@ export class PluginAccess {
     return selected;
   }
 
-  async selection(args: {
-    project?: string | undefined;
-    workspace?: string | undefined;
-    path?: string | undefined;
-  }) {
+  async selection(args: PanelNavigationInput) {
+    const navigation = navigationSelection(args);
     const settings = await readPluginSettings(this.env, this.props, this.projectId);
     const named = args.project ?? (settings.defaultProject || undefined);
     const projects = await this.projects();
     const gatewayOrigin = new URL(this.env.EXEORA_BASE_URL).origin;
     if (!named && projects.length !== 1)
-      return { projectId: null, workspace: null, settings, gatewayOrigin };
+      return { projectId: null, workspace: null, ...navigation, settings, gatewayOrigin };
     const project = named
       ? projects.find((row) => row.id === named || row.slug === named)
       : projects[0];
@@ -61,7 +59,7 @@ export class PluginAccess {
     if (!project) {
       if (args.project)
         throw new ExeoraError("UNKNOWN_PROJECT", "Choose a project available on this connection.");
-      return { projectId: null, workspace: null, settings, gatewayOrigin };
+      return { projectId: null, workspace: null, ...navigation, settings, gatewayOrigin };
     }
     let workspace =
       args.workspace ??
@@ -77,12 +75,10 @@ export class PluginAccess {
         throw new ExeoraError("UNKNOWN_WORKSPACE", "That workspace is not available.");
       workspace = "main";
     }
-    if (args.path !== undefined && !safeRelativePath(args.path))
-      throw new ExeoraError("INVALID_ARGUMENTS", "Use a path relative to the selected workspace.");
     return {
       projectId: project.id,
       workspace,
-      ...(args.path ? { path: args.path } : {}),
+      ...navigation,
       settings,
       gatewayOrigin,
     };

@@ -3,6 +3,7 @@ import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
 import { PluginAccess } from "./plugin-access.js";
+import { PanelDiff, PanelNavigation, PanelSearch, WorkspaceTab } from "./plugin-navigation.js";
 import { panelRequest } from "./plugin-panel-api.js";
 import {
   PluginSettings,
@@ -14,6 +15,7 @@ import {
 import type { Props } from "./props.js";
 
 export const PANEL_RESOURCE = "ui://exeora/workspace";
+export const DASHBOARD_RESOURCE = "ui://exeora/dashboard";
 const MIME = "text/html;profile=mcp-app";
 const routing = {
   project: z.string().min(1).max(128).optional(),
@@ -26,6 +28,9 @@ const selectionSchema = z.object({
   projectId: z.string().nullable(),
   workspace: z.string().nullable(),
   path: z.string().optional(),
+  tab: WorkspaceTab.optional(),
+  diff: PanelDiff.optional(),
+  search: PanelSearch.optional(),
   settings: PluginSettings,
   gatewayOrigin: z.string(),
 });
@@ -129,7 +134,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
   server.registerResource(
     "exeora_workspace",
     PANEL_RESOURCE,
-    { title: "Workspace", mimeType: MIME },
+    { title: "Exeora Workspace", mimeType: MIME },
     async () => {
       await access().projects();
       const origin = new URL(env.EXEORA_BASE_URL).origin;
@@ -169,15 +174,80 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
   server.registerTool(
     "exeora_open_panel",
     {
-      title: "Workspace",
+      title: "Exeora Workspace",
       description:
-        "Open the Exeora workspace panel beside this conversation. Select a project/workspace and optionally open a relative file path.",
-      inputSchema: z.object({ ...routing, path: z.string().min(1).max(4096).optional() }).strict(),
+        "Open Exeora Workspace beside this conversation. Select its project/workspace and tab, a relative Explorer file, a working or staged diff, or a Search query with filters. When already open, use the instance's exeora_workspace_navigate tool to change its view.",
+      inputSchema: PanelNavigation,
       outputSchema: selectionSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: { ...uiMeta, "openai/ui": { entrypoints: [{ type: "thread" }] } },
     },
     (args) => guarded(() => access().selection(args)),
+  );
+
+  server.registerResource(
+    "exeora_dashboard",
+    DASHBOARD_RESOURCE,
+    { title: "Exeora Dashboard", mimeType: MIME },
+    async () => {
+      await access().projects();
+      const origin = new URL(env.EXEORA_BASE_URL).origin;
+      const asset = await env.ASSETS.fetch(new Request(`${origin}/dashboard/mcp-dashboard`));
+      if (!asset.ok || !(asset.headers.get("content-type") ?? "").includes("text/html"))
+        throw new Error("Build the Exeora Dashboard Sideapp before using its resource.");
+      const html = (await asset.text())
+        .replace("<!--exeora:base-->", `<base href="${origin}/dashboard/" target="_blank">`)
+        .replace(/(src|href)="\/(?!\/)/g, `$1="${origin}/`);
+      return {
+        contents: [
+          {
+            uri: DASHBOARD_RESOURCE,
+            mimeType: MIME,
+            text: html,
+            _meta: {
+              ui: {
+                csp: {
+                  resourceDomains: [origin],
+                  connectDomains: [origin, origin.replace(/^http/, "ws")],
+                  baseUriDomains: [origin],
+                },
+              },
+              "openai/ui": {
+                preferredDisplayMode: "fullscreen",
+                availableDisplayModes: ["fullscreen"],
+              },
+              "openai/widgetDescription": "The full Exeora dashboard with its own user sign-in.",
+            },
+          },
+        ],
+      };
+    },
+  );
+  server.registerTool(
+    "exeora_open_dashboard",
+    {
+      title: "Exeora Dashboard",
+      description:
+        "Open the full Exeora Dashboard Sideapp. The user signs in independently; this does not give the agent additional account permissions.",
+      icons: [
+        {
+          src: `${new URL(env.EXEORA_BASE_URL).origin}/brand/exeora-plugin.svg`,
+          mimeType: "image/svg+xml",
+        },
+      ],
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.object({ gatewayOrigin: z.string() }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: {
+        ui: { resourceUri: DASHBOARD_RESOURCE },
+        "openai/ui": { entrypoints: [{ type: "global" }] },
+      },
+    },
+    () =>
+      guarded(async () => {
+        await access().projects();
+        return { gatewayOrigin: new URL(env.EXEORA_BASE_URL).origin };
+      }),
   );
 
   server.registerTool(

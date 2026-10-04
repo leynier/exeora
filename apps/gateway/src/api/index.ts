@@ -4,12 +4,14 @@ import { ai } from "../ai/routes.js";
 import { aiGenerate } from "../ai/routes-generate.js";
 import { pullRequests } from "../github/pull-requests/routes.js";
 import { github } from "../github/routes.js";
+import { isSideappClient } from "../oauth/clients.js";
 import {
   hasScope,
   insufficientScope,
   isExecutorApiRequest,
   isMachineApiRequest,
 } from "../oauth/scopes.js";
+import { trustedPanelOrigin } from "../plugin-panel-routes.js";
 import { propsOf } from "../props.js";
 import { accountClients } from "./account-clients.js";
 import { admin } from "./admin.js";
@@ -67,6 +69,15 @@ api.use("/api/*", async (c, next) => {
     }
   }
   c.set("userId", userId);
+  // Only a validated Sideapp UI bearer may bind user-owned live tickets to ChatGPT's sandbox.
+  const origin = trustedPanelOrigin(c.req.header("Origin"));
+  if (
+    origin &&
+    hasScope(props, "dashboard:manage") &&
+    props.clientId &&
+    (await isSideappClient(c.env, props.clientId))
+  )
+    (c.executionCtx as unknown as { _exeoraPanelOrigin?: string })._exeoraPanelOrigin = origin;
   await next();
 });
 

@@ -39,6 +39,7 @@ import {
   withinLimit,
 } from "./rate-limit.js";
 import { bodyTooLarge, limitRequestBody, requestBodyLimit } from "./request-body.js";
+import { sideappPreflight, withSideappCors } from "./sideapp-cors.js";
 import { site } from "./site.js";
 
 export { CloudMachine } from "./cloud/machine-do.js";
@@ -302,16 +303,20 @@ const provider = new OAuthProvider({
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const respond = (response: Response) =>
+      gatewayResponse(request, withSideappCors(request, response));
+    const preflight = sideappPreflight(request);
+    if (preflight) return respond(preflight);
     const { pathname } = new URL(request.url);
     if (isRateLimitedAuthRequest(request.method, pathname)) {
       if (!(await withinLimit(env.RL_AUTH, callerAddress(request)))) {
-        return gatewayResponse(request, tooManyRequests());
+        return respond(tooManyRequests());
       }
     }
 
     const limit = requestBodyLimit(pathname);
     const bounded = limit === undefined ? undefined : limitRequestBody(request, limit);
-    if (bounded?.exceeded()) return gatewayResponse(request, bodyTooLarge());
+    if (bounded?.exceeded()) return respond(bodyTooLarge());
     request = bounded?.request ?? request;
 
     // GitHub's callback and webhook, answered before the provider sees them.
@@ -323,9 +328,9 @@ export default {
       const response = isGitHubPublicRequest(request.method, pathname)
         ? await githubPublic.fetch(request, env, ctx)
         : await provider.fetch(request, env, ctx);
-      return gatewayResponse(request, bounded?.exceeded() ? bodyTooLarge() : response);
+      return respond(bounded?.exceeded() ? bodyTooLarge() : response);
     } catch (error) {
-      if (bounded?.exceeded()) return gatewayResponse(request, bodyTooLarge());
+      if (bounded?.exceeded()) return respond(bodyTooLarge());
       throw error;
     }
   },
