@@ -29,7 +29,7 @@ export function panelTicketResult(
   pairing = false,
 ) {
   const url = new URL("/panel-relay/connect", env.EXEORA_BASE_URL);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  // Keep the gateway's HTTP(S) origin; the UI validates it before upgrading to WS(S).
   url.searchParams.set("panelId", panelId);
   if (!pairing) url.searchParams.set("ticket", ticket.ticket);
   return {

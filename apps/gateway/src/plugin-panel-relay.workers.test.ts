@@ -219,13 +219,13 @@ describe("trusted plugin connection and independent Dashboard pairing", () => {
       expiresAt: expect.any(Number),
     });
     const url = new URL(ticket?.url as string);
-    expect(url.origin).toBe("wss://exeora.dev");
+    expect(url.origin).toBe("https://exeora.dev");
     expect(url.pathname).toBe("/panel-relay/connect");
     await dialPanel(panel, url.searchParams.get("ticket") as string);
     expect(
       (
         await panelSockets.fetch(
-          new Request(url.toString().replace("wss:", "https:"), {
+          new Request(url.toString(), {
             headers: { Upgrade: "websocket", Origin: PANEL_ORIGIN },
           }),
           pluginEnv,
@@ -241,6 +241,11 @@ describe("trusted plugin connection and independent Dashboard pairing", () => {
       origin: PANEL_ORIGIN,
       surface: "dashboard",
     });
+    const pairingUrl = new URL(result.structuredContent?.url as string);
+    expect(pairingUrl.origin).toBe("https://exeora.dev");
+    expect(pairingUrl.pathname).toBe("/panel-relay/connect");
+    expect(pairingUrl.searchParams.get("panelId")).toBe(panel.panelId);
+    expect(pairingUrl.searchParams.has("ticket")).toBe(false);
     const ticket = result.structuredContent?.pairingTicket as string;
     const request = () =>
       new Request("https://exeora.dev/api/panel-relay/ticket", {
@@ -261,7 +266,11 @@ describe("trusted plugin connection and independent Dashboard pairing", () => {
     const exchanged = await exchange(USER);
     expect(exchanged.status).toBe(200);
     const body = (await exchanged.json()) as { url: string };
-    await dialPanel(panel, new URL(body.url).searchParams.get("ticket") as string);
+    const socketUrl = new URL(body.url);
+    expect(socketUrl.origin).toBe("https://exeora.dev");
+    expect(socketUrl.pathname).toBe("/panel-relay/connect");
+    expect(socketUrl.searchParams.get("panelId")).toBe(panel.panelId);
+    await dialPanel(panel, socketUrl.searchParams.get("ticket") as string);
     expect((await exchange(USER)).status).toBe(403);
   });
 });
