@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./panel-relay": "./src/panel-relay.ts"
   },
   "dependencies": {
     "zod": "4.4.3"

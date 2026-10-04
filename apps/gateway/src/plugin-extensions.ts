@@ -1,10 +1,12 @@
 import { ExeoraError } from "@exeora/protocol";
+import { PanelId } from "@exeora/protocol/panel-relay";
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { getMcpAuthContext } from "agents/mcp/server";
 import { z } from "zod";
 import { PluginAccess } from "./plugin-access.js";
 import { PanelDiff, PanelNavigation, PanelSearch, WorkspaceTab } from "./plugin-navigation.js";
 import { panelRequest } from "./plugin-panel-api.js";
+import { createPanel, panelPrincipal, registerPanelRelayTools } from "./plugin-panel-relay.js";
 import {
   PluginSettings,
   PluginSettingsPatch,
@@ -14,8 +16,8 @@ import {
 } from "./plugin-settings.js";
 import type { Props } from "./props.js";
 
-export const PANEL_RESOURCE = "ui://exeora/workspace";
-export const DASHBOARD_RESOURCE = "ui://exeora/dashboard";
+export const PANEL_RESOURCE = "ui://exeora/workspace/v2";
+export const DASHBOARD_RESOURCE = "ui://exeora/dashboard/v2";
 const MIME = "text/html;profile=mcp-app";
 const routing = {
   project: z.string().min(1).max(128).optional(),
@@ -25,6 +27,7 @@ const file = z
   .object({ name: z.string().min(1).max(255), resourceUri: z.string().min(1).max(4096) })
   .strict();
 const selectionSchema = z.object({
+  panelId: PanelId.optional(),
   projectId: z.string().nullable(),
   workspace: z.string().nullable(),
   path: z.string().optional(),
@@ -122,6 +125,7 @@ export function openedResourcePath(ctx: ServerContext): string | undefined {
 export function registerPluginExtensions(server: McpServer, env: Env, projectId?: string) {
   const access = () =>
     new PluginAccess(env, (getMcpAuthContext()?.props ?? {}) as Props, projectId);
+  registerPanelRelayTools(server, access);
   const settingsCapability = {
     readTool: "exeora_settings_read",
     updateTool: "exeora_settings_update",
@@ -131,11 +135,11 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     extensions: { "openai/settings": settingsCapability },
   });
 
-  server.registerResource(
-    "exeora_workspace",
-    PANEL_RESOURCE,
-    { title: "Exeora Workspace", mimeType: MIME },
-    async () => {
+  for (const [name, uri] of [
+    ["exeora_workspace", PANEL_RESOURCE],
+    ["exeora_workspace_legacy", "ui://exeora/workspace"],
+  ] as const)
+    server.registerResource(name, uri, { title: "Exeora Workspace", mimeType: MIME }, async () => {
       await access().projects();
       const origin = new URL(env.EXEORA_BASE_URL).origin;
       const asset = await env.ASSETS.fetch(new Request(`${origin}/dashboard/mcp-panel`));
@@ -147,7 +151,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       return {
         contents: [
           {
-            uri: PANEL_RESOURCE,
+            uri,
             mimeType: MIME,
             text: html,
             _meta: {
@@ -169,28 +173,32 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
           },
         ],
       };
-    },
-  );
+    });
 
   server.registerTool(
     "exeora_open_panel",
     {
       title: "Exeora Workspace",
       description:
-        "Open or navigate Exeora Workspace beside this conversation. Select its project/workspace and tab, a relative Explorer file, a working or staged diff, or a Search query with filters. When already open, prefer the instance's exeora_workspace_navigate tool. If that tool is unavailable, call this tool again with the explicit project/workspace and desired tab, path, diff or search; the open panel receives the new selection. Omitted routing uses the connection defaults, not the panel's current selection.",
+        "Open Exeora Workspace beside this conversation with an initial project/workspace and tab, Explorer file, working/staged diff or Search query. Returns panelId identifying the instance. After opening, use the public exeora_workspace_navigate or exeora_workspace_get_state tool with that panelId to control the same instance without another widget. Omitted initial routing uses connection defaults.",
       inputSchema: PanelNavigation,
       outputSchema: selectionSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: { ...uiMeta, "openai/ui": { entrypoints: [{ type: "thread" }] } },
     },
-    (args) => guarded(() => access().selection(args)),
+    (args) =>
+      guarded(async () => {
+        const a = access();
+        const selection = await a.selection(args);
+        return { ...selection, panelId: await createPanel(a) };
+      }),
   );
 
-  server.registerResource(
-    "exeora_dashboard",
-    DASHBOARD_RESOURCE,
-    { title: "Exeora Dashboard", mimeType: MIME },
-    async () => {
+  for (const [name, uri] of [
+    ["exeora_dashboard", DASHBOARD_RESOURCE],
+    ["exeora_dashboard_legacy", "ui://exeora/dashboard"],
+  ] as const)
+    server.registerResource(name, uri, { title: "Exeora Dashboard", mimeType: MIME }, async () => {
       await access().projects();
       const origin = new URL(env.EXEORA_BASE_URL).origin;
       const asset = await env.ASSETS.fetch(new Request(`${origin}/dashboard/mcp-dashboard`));
@@ -202,7 +210,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       return {
         contents: [
           {
-            uri: DASHBOARD_RESOURCE,
+            uri,
             mimeType: MIME,
             text: html,
             _meta: {
@@ -223,8 +231,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
           },
         ],
       };
-    },
-  );
+    });
   server.registerTool(
     "exeora_open_dashboard",
     {
@@ -238,7 +245,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
         },
       ],
       inputSchema: z.object({}).strict(),
-      outputSchema: z.object({ gatewayOrigin: z.string() }),
+      outputSchema: z.object({ gatewayOrigin: z.string(), panelId: PanelId }),
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: {
         ui: { resourceUri: DASHBOARD_RESOURCE },
@@ -247,8 +254,10 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     },
     () =>
       guarded(async () => {
-        await access().projects();
-        return { gatewayOrigin: new URL(env.EXEORA_BASE_URL).origin };
+        return {
+          gatewayOrigin: new URL(env.EXEORA_BASE_URL).origin,
+          panelId: await createPanel(access()),
+        };
       }),
   );
 
@@ -267,9 +276,11 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     (args, ctx) =>
       guarded(async () => {
         const path = openedResourcePath(ctx);
-        if (path) return access().resolveFile(path, {});
-        await access().projects();
-        return { needsResolve: true, file: args.file };
+        const a = access();
+        const selection = path
+          ? await a.resolveFile(path, {})
+          : { needsResolve: true, file: args.file };
+        return { ...selection, panelId: await createPanel(a) };
       }),
   );
 
@@ -279,7 +290,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       title: "Resolve workspace file",
       description:
         "Resolve a host-provided filesystem path to a project/workspace this connection may access. For the Exeora UI only; an opaque resource URI or filename alone cannot identify a workspace file.",
-      inputSchema: z.object({ file, ...routing }).strict(),
+      inputSchema: z.object({ file, ...routing, panelId: PanelId.optional() }).strict(),
       outputSchema: selectionSchema,
       annotations: { readOnlyHint: true },
       _meta: appOnly,
@@ -292,7 +303,16 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
             "INVALID_ARGUMENTS",
             "ChatGPT did not provide a workspace file path. Select the workspace and open the file from its explorer.",
           );
-        return access().resolveFile(path, args);
+        const a = access();
+        if (
+          args.panelId &&
+          !(await env.WORKSPACE_PANEL_RELAY.getByName(args.panelId).authorized(panelPrincipal(a)))
+        )
+          throw new ExeoraError("FORBIDDEN", "This panel is not available on this connection.");
+        return {
+          ...(await a.resolveFile(path, args)),
+          panelId: args.panelId ?? (await createPanel(a)),
+        };
       }),
   );
 
@@ -307,11 +327,15 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       _meta: appOnly,
     },
     () =>
-      guarded(async () => ({
-        protocol: 1,
-        dashboardUrl: `${new URL(env.EXEORA_BASE_URL).origin}/dashboard/`,
-        ...(await access().selection({})),
-      })),
+      guarded(async () => {
+        const a = access();
+        return {
+          protocol: 1,
+          dashboardUrl: `${new URL(env.EXEORA_BASE_URL).origin}/dashboard/`,
+          ...(await a.selection({})),
+          panelId: await createPanel(a),
+        };
+      }),
   );
 
   server.registerTool(

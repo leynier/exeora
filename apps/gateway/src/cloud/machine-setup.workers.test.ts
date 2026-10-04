@@ -81,7 +81,7 @@ function fakeSprites(tools: () => string) {
 const machine = () => env.CLOUD_MACHINE.getByName(DEVICE);
 
 async function useFetcher(fetcher: typeof fetch) {
-  await runInDurableObject(machine(), (instance: CloudMachine) => {
+  await runInDurableObject<CloudMachine, void>(machine(), (instance) => {
     const inside = instance as unknown as { fetcher: typeof fetch; alarmFloorMs: number };
     inside.fetcher = fetcher;
     inside.alarmFloorMs = 3_600_000;

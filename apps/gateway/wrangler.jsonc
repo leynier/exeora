@@ -20,7 +20,8 @@
       { "name": "DEVICE_RELAY", "class_name": "DeviceRelay" },
       // One per Exeora Cloud machine, keyed by device id: provisions it step by
       // step on alarms and tears it down the same way.
-      { "name": "CLOUD_MACHINE", "class_name": "CloudMachine" }
+      { "name": "CLOUD_MACHINE", "class_name": "CloudMachine" },
+      { "name": "WORKSPACE_PANEL_RELAY", "class_name": "WorkspacePanelRelay" }
     ]
   },
   "migrations": [
@@ -31,6 +32,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["CloudMachine"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["WorkspacePanelRelay"]
     }
   ],
 

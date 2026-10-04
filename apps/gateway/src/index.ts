@@ -43,6 +43,7 @@ import { sideappPreflight, withSideappCors } from "./sideapp-cors.js";
 import { site } from "./site.js";
 
 export { CloudMachine } from "./cloud/machine-do.js";
+export { WorkspacePanelRelay } from "./panel-relay-do.js";
 export { DeviceRelay } from "./relay-do.js";
 
 /**

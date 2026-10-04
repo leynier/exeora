@@ -298,7 +298,7 @@ describe("Exeora Cloud routes", () => {
 
   it("refuses to build a machine with a CLI release that has no cloud mode", async () => {
     // The var is typed as the literal wrangler.jsonc announces today.
-    const old = { ...env, LATEST_CLI_VERSION: "0.16.0" } as typeof env;
+    const old = { ...env, LATEST_CLI_VERSION: "0.16.0" } as unknown as typeof env;
     const response = await call("/api/cloud/projects", { body: project("early"), env: old });
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ error: "cli_unsupported" });

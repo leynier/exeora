@@ -11,6 +11,7 @@ import {
   isExecutorApiRequest,
   isMachineApiRequest,
 } from "../oauth/scopes.js";
+import { panelPairing } from "../panel-relay-routes.js";
 import { trustedPanelOrigin } from "../plugin-panel-routes.js";
 import { propsOf } from "../props.js";
 import { accountClients } from "./account-clients.js";
@@ -86,6 +87,7 @@ api.use("/api/*", async (c, next) => {
 api.get("/api/health", (c) => c.json({ ok: true, service: "exeora-gateway" }));
 
 api.route("/", me);
+api.route("/", panelPairing);
 api.route("/", devices);
 api.route("/", projects);
 api.route("/", locations);

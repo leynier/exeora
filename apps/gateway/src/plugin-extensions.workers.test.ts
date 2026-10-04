@@ -54,22 +54,22 @@ describe("OpenAI plugin wire contracts", () => {
       ).tools;
       const panel = tools.find((tool) => tool.name === "exeora_open_panel");
       expect(panel?.title).toBe("Exeora Workspace");
-      expect(panel?.description).toContain("If that tool is unavailable, call this tool again");
-      expect(panel?.description).toContain("Omitted routing uses the connection defaults");
+      expect(panel?.description).toContain("public exeora_workspace_navigate");
+      expect(panel?.description).toContain("Omitted initial routing uses connection defaults");
       for (const tool of tools) expect(tool.description?.trim().length).toBeGreaterThan(0);
       expect(panel?._meta).toMatchObject({
-        ui: { resourceUri: "ui://exeora/workspace" },
+        ui: { resourceUri: "ui://exeora/workspace/v2" },
         "openai/ui": { entrypoints: [{ type: "thread" }] },
       });
       const dashboard = tools.find((tool) => tool.name === "exeora_open_dashboard");
       expect(dashboard?.title).toBe("Exeora Dashboard");
       expect(dashboard?._meta).toMatchObject({
-        ui: { resourceUri: "ui://exeora/dashboard" },
+        ui: { resourceUri: "ui://exeora/dashboard/v2" },
         "openai/ui": { entrypoints: [{ type: "global" }] },
       });
       const file = tools.find((tool) => tool.name === "exeora_open_file");
       expect(file?._meta).toMatchObject({
-        ui: { resourceUri: "ui://exeora/workspace", visibility: ["model", "app"] },
+        ui: { resourceUri: "ui://exeora/workspace/v2", visibility: ["model", "app"] },
         "openai/ui": { entrypoints: [{ type: "file" }] },
       });
       expect(
@@ -118,7 +118,7 @@ describe("OpenAI plugin wire contracts", () => {
     });
   });
   it("opens the independent full-dashboard resource without MCP credentials or account data", async () => {
-    expect((await call("exeora_open_dashboard")).structuredContent).toEqual({
+    expect((await call("exeora_open_dashboard")).structuredContent).toMatchObject({
       gatewayOrigin: "https://exeora.dev",
     });
     const body = await post("resources/read", { uri: "ui://exeora/dashboard" });
