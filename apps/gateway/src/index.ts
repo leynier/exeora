@@ -304,8 +304,8 @@ const provider = new OAuthProvider({
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const respond = (response: Response) =>
-      gatewayResponse(request, withSideappCors(request, response));
-    const preflight = sideappPreflight(request);
+      gatewayResponse(request, withSideappCors(request, response, env));
+    const preflight = sideappPreflight(request, env);
     if (preflight) return respond(preflight);
     const { pathname } = new URL(request.url);
     if (isRateLimitedAuthRequest(request.method, pathname)) {

@@ -72,6 +72,36 @@ describe("Sideapp authentication", () => {
     );
   });
 
+  it("overrides provider origin reflection only for the account API", async () => {
+    const foreign = "https://evil.example";
+    for (const method of ["GET", "OPTIONS"]) {
+      const response = await worker.fetch(
+        new Request("https://exeora.dev/api/projects", {
+          method,
+          headers: { Origin: foreign, "Access-Control-Request-Method": "GET" },
+        }),
+        bindings,
+        createExecutionContext(),
+      );
+      expect(response.status).toBe(method === "GET" ? 401 : 403);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+      expect(response.headers.get("Access-Control-Allow-Headers")).toBeNull();
+    }
+    // Browser MCP clients still need the provider's public OAuth and MCP CORS.
+    for (const path of ["/mcp", "/p/example/mcp", "/oauth/token"]) {
+      const response = await worker.fetch(
+        new Request(`https://exeora.dev${path}`, {
+          method: "OPTIONS",
+          headers: { Origin: foreign, "Access-Control-Request-Method": "POST" },
+        }),
+        bindings,
+        createExecutionContext(),
+      );
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(foreign);
+    }
+  });
+
   it("restricts UI and MCP clients to their distinct ceilings", async () => {
     const scope = ["dashboard:manage", "executor:connect", "tools:read", "tools:execute"];
     expect(await grantedScopes(bindings, { clientId: "sideapp", scope })).toEqual([
