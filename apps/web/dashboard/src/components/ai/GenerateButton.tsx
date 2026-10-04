@@ -5,6 +5,7 @@ import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import { errorText } from "../../api.js";
 import { type AiProviderId, aiApi, aiKeys } from "../../api-ai.js";
 import { useToast } from "../toast.js";
+import { useAccountFeatures } from "../workspace/surface.js";
 
 /**
  * The assistant's button beside a field: one click asks the linked
@@ -36,7 +37,12 @@ export function GenerateButton({
   reason?: string;
   size?: "sm" | "md";
 }) {
-  const status = useQuery({ queryKey: aiKeys.status, queryFn: aiApi.status, staleTime: 60_000 });
+  const status = useQuery({
+    queryKey: aiKeys.status,
+    queryFn: aiApi.status,
+    staleTime: 60_000,
+    enabled: useAccountFeatures(),
+  });
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);

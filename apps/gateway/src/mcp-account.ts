@@ -16,6 +16,7 @@ import "./env.js";
 import { mcpClientInfo, propsOf, registerAgentPrompt, toolResult } from "./mcp.js";
 import { type ProjectMcpCatalog, registerAccountMcpProxyTools } from "./mcp-proxy-account-tools.js";
 import { answerMcpProxyCall, type McpProxyDispatcher } from "./mcp-proxy-tools.js";
+import { registerPluginExtensions } from "./plugin-extensions.js";
 
 /**
  * The account endpoint: one URL, `exeora.dev/mcp`, the same for everyone.
@@ -109,6 +110,7 @@ export function createAccountMcpHandler(
    */
   advertised?: ReadonlySet<ToolName>,
   mcpProxy?: AccountMcpProxyOptions,
+  pluginEnv?: Env,
 ) {
   return createMcpHandler(
     (request) => {
@@ -126,6 +128,7 @@ export function createAccountMcpHandler(
       );
 
       registerAgentPrompt(server, true);
+      if (pluginEnv) registerPluginExtensions(server, pluginEnv);
 
       /**
        * One executor tool, forwarded to whichever machine serves the project this

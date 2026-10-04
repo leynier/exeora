@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ticketSocketUrl } from "./socket-url.js";
+import { configureTicketOrigin, ticketSocketUrl } from "./socket-url.js";
 
 describe("ticketSocketUrl", () => {
   const origin = "https://exeora.example";
@@ -27,5 +27,21 @@ describe("ticketSocketUrl", () => {
     "not a URL",
   ])("rejects ticket URL %s", (value) => {
     expect(ticketSocketUrl(value, origin)).toBeUndefined();
+  });
+});
+
+describe("configureTicketOrigin", () => {
+  it("binds tickets to the configured gateway instead of the page", () => {
+    configureTicketOrigin("https://exeora.dev");
+    try {
+      expect(ticketSocketUrl("https://exeora.dev/terminal/connect?ticket=one")?.toString()).toBe(
+        "wss://exeora.dev/terminal/connect?ticket=one",
+      );
+      expect(
+        ticketSocketUrl("https://sandbox.example/terminal/connect?ticket=one"),
+      ).toBeUndefined();
+    } finally {
+      configureTicketOrigin(null);
+    }
   });
 });

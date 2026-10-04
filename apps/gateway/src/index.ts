@@ -166,6 +166,7 @@ authenticated.all("/p/:projectId/mcp", async (c) => {
       tools: mcpTools,
       dispatch: (call) => dispatchMcpToDevice(c.env, { ...call, projectId, signal }),
     },
+    c.env,
   );
 
   // Cloned, not consumed: the handler needs the body intact. The clone is read
@@ -223,6 +224,7 @@ authenticated.all(ACCOUNT_MCP_ROUTE, async (c) => {
       catalogs: mcpCatalogs,
       dispatch: (call) => dispatchMcpToDevice(c.env, { ...call, signal, endpoint: "account" }),
     },
+    c.env,
   );
 
   const peek = c.req.raw.clone();

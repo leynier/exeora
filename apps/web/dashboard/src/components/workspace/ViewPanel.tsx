@@ -2,6 +2,7 @@ import { lazy, type ReactNode, Suspense } from "react";
 import { ErrorBanner } from "../ui.js";
 import { WorkspaceTerminals } from "../WorkspaceTerminals.js";
 import type { WorkspaceContext } from "./context.js";
+import { DashboardOnly } from "./surface.js";
 import { TabUnavailable } from "./TabUnavailable.js";
 import type { WorkspaceView } from "./workspaceLayout.js";
 
@@ -133,9 +134,11 @@ export function viewPanel(
       return {
         layout: "split",
         panel: unavailable("Pull Request", ctx.capabilities?.sourceControl) ?? (
-          <Suspense fallback={<ViewLoading />}>
-            <PullRequestPanel key={ctx.target.targetKey} ctx={ctx} />
-          </Suspense>
+          <DashboardOnly feature="Pull requests">
+            <Suspense fallback={<ViewLoading />}>
+              <PullRequestPanel key={ctx.target.targetKey} ctx={ctx} />
+            </Suspense>
+          </DashboardOnly>
         ),
       };
   }

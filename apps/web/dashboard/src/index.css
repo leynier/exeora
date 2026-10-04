@@ -42,6 +42,14 @@
     overflow: hidden;
   }
 
+  /* Inline in a ChatGPT thread, the host sizes the frame to the page, so the
+     page takes its content's height instead of the frame's. */
+  html.mcp-inline,
+  html.mcp-inline body,
+  html.mcp-inline #root {
+    height: auto;
+  }
+
   a,
   button:not(:disabled),
   summary {

@@ -16,7 +16,7 @@ import { db, schema } from "../db/client.js";
 import { rootSelector } from "../location-roots.js";
 import { locationsOf } from "../locations.js";
 import { firstPartyOrigin } from "../oauth/clients.js";
-import { uiClientName } from "../props.js";
+import { panelSocketOrigin, uiClientName } from "../props.js";
 import { isCloudMachine } from "../workspace-placement.js";
 import { relayName } from "./ops.js";
 import type { ApiEnv } from "./router.js";
@@ -217,7 +217,9 @@ workspace.post("/api/projects/:id/terminal-ticket", zValidator("query", targetQu
   // origin; a side panel from before that, bundled in the extension, from the
   // extension's. A request from neither still gets the gateway's.
   const origin =
-    firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
+    panelSocketOrigin(c.executionCtx) ??
+    firstPartyOrigin(c.env, c.req.header("Origin")) ??
+    new URL(c.env.EXEORA_BASE_URL).origin;
   const ticket = await relay.createTerminalTicket(
     projectId,
     target.workspaceId,
@@ -258,7 +260,9 @@ workspace.post("/api/projects/:id/logs-ticket", zValidator("query", targetQuery)
   if (!target) return c.json({ error: "not_found" }, 404);
   const relay = c.env.DEVICE_RELAY.getByName(relayName(userId, target.deviceId));
   const origin =
-    firstPartyOrigin(c.env, c.req.header("Origin")) ?? new URL(c.env.EXEORA_BASE_URL).origin;
+    panelSocketOrigin(c.executionCtx) ??
+    firstPartyOrigin(c.env, c.req.header("Origin")) ??
+    new URL(c.env.EXEORA_BASE_URL).origin;
   const ticket = await relay.createLogsTicket(
     projectId,
     target.workspaceId,

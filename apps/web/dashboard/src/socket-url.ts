@@ -1,3 +1,15 @@
+let gatewayOrigin: string | null = null;
+
+/**
+ * Names the gateway when the page is not served from it. The ChatGPT app runs
+ * on a sandbox origin of its own, while its tickets still come from the
+ * gateway; it sets the origin the gateway's resource was served with, never
+ * one a ticket response names.
+ */
+export function configureTicketOrigin(origin: string | null): void {
+  gatewayOrigin = origin;
+}
+
 /**
  * Converts a gateway-issued HTTP ticket URL into a WebSocket URL.
  *
@@ -8,7 +20,7 @@
  */
 export function ticketSocketUrl(
   value: string,
-  pageOrigin = window.location.origin,
+  pageOrigin = gatewayOrigin ?? window.location.origin,
 ): URL | undefined {
   try {
     const page = new URL(pageOrigin);

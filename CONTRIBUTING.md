@@ -59,6 +59,10 @@ The `key` in `apps/extension/wxt.config.ts` pins the extension id to `helnfgncjg
 
 Signing in asks for consent once per account and extension id, so approving one build never lets another sign in without asking. Taking an id off `EXEORA_EXTENSION_IDS` refuses its next sign-in. Revoking the extension from Settings in the dashboard signs every browser out and asks again next time, and still works after the list is emptied.
 
+### Working on the ChatGPT plugin panel
+
+The MCP plugin panel is a third dashboard build entry, `/dashboard/mcp-panel`, and reuses the Chrome panel's `Workspace` screen. It uses the MCP Apps bridge and app-only gateway tools rather than the Chrome shell's token bridge. See [OpenAI plugin extensions](docs/openai-plugin-extensions.md) for the tool contracts, settings, file routing, host limitations and activation checks. Apply migration `0028_plugin_settings.sql` before deploying this panel; no CLI or Chrome extension release is required.
+
 ### Checks
 
 ```bash

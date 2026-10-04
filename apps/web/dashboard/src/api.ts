@@ -62,12 +62,19 @@ export function errorText(error: unknown, fallback: string): string {
  * Where requests go and what they carry. The dashboard is served by the
  * gateway and keeps its token in the tab; the Chrome extension's side panel
  * reuses these screens from another origin, with a token it refreshes itself.
+ * The ChatGPT app holds no token at all: its host carries each request to the
+ * gateway as a tool call, which `transport` stands for.
  */
-export interface ApiSession {
-  /** Prefixed to every path. Empty for the dashboard, which is same-origin. */
-  origin: string;
-  token: () => Promise<string | null>;
-}
+export type ApiSession =
+  | {
+      /** Prefixed to every path. Empty for the dashboard, which is same-origin. */
+      origin: string;
+      token: () => Promise<string | null>;
+    }
+  | {
+      /** Answers a gateway path as the gateway would, already signed in. */
+      transport: (path: string, init: RequestInit) => Promise<Response>;
+    };
 
 let session: ApiSession = { origin: "", token: async () => storedToken() };
 
@@ -76,13 +83,7 @@ export function configureApiSession(next: ApiSession): void {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = await session.token();
-  if (!token) throw new Unauthorized("Not signed in.");
-
-  const response = await fetch(`${session.origin}${path}`, {
-    ...init,
-    headers: { ...init.headers, Authorization: `Bearer ${token}` },
-  });
+  const response = await send(path, init);
 
   // The token expired or was revoked while the tab was open; the caller sends
   // the user back through sign-in rather than showing a broken page.
@@ -97,6 +98,17 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   }
 
   return (await response.json()) as T;
+}
+
+async function send(path: string, init: RequestInit): Promise<Response> {
+  if ("transport" in session) return session.transport(path, init);
+
+  const token = await session.token();
+  if (!token) throw new Unauthorized("Not signed in.");
+  return fetch(`${session.origin}${path}`, {
+    ...init,
+    headers: { ...init.headers, Authorization: `Bearer ${token}` },
+  });
 }
 
 function apiError(body: Record<string, unknown> | null): string {

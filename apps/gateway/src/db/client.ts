@@ -4,9 +4,10 @@ import * as ai from "./schema-ai.js";
 import * as cloud from "./schema-cloud.js";
 import * as github from "./schema-github.js";
 import * as locations from "./schema-locations.js";
+import * as plugin from "./schema-plugin.js";
 
 /** Every schema module as one object, so `schema.cloudMachines` reads like `schema.devices`. */
-const schema = { ...core, ...cloud, ...locations, ...github, ...ai };
+const schema = { ...core, ...cloud, ...locations, ...github, ...ai, ...plugin };
 
 /**
  * Narrowed to the one binding it uses rather than taking the whole `Env`.

@@ -20,6 +20,7 @@ import {
   type McpProxyDispatcher,
   registerMcpProxyTools,
 } from "./mcp-proxy-tools.js";
+import { registerPluginExtensions } from "./plugin-extensions.js";
 
 /**
  * One MCP endpoint per project: `exeora.dev/p/:projectId/mcp`.
@@ -117,6 +118,7 @@ export function createProjectMcpHandler(
     context: Pick<McpToolContext, "userId" | "projectId" | "caller">,
   ) => Promise<unknown>,
   mcpProxy?: McpProxyOptions,
+  pluginEnv?: Env,
 ) {
   return createMcpHandler(
     (request) => {
@@ -135,6 +137,7 @@ export function createProjectMcpHandler(
       );
 
       registerAgentPrompt(server, false);
+      if (pluginEnv) registerPluginExtensions(server, pluginEnv, projectId);
 
       if (listWorkspaces) {
         server.registerTool(

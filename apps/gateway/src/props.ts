@@ -35,3 +35,8 @@ export function propsOf(ctx: unknown): Props {
 export function uiClientName(ctx: unknown): string {
   return propsOf(ctx).clientName ?? "Exeora Dashboard";
 }
+
+/** Set only by the internal, grant-checked MCP panel router. Never read from token props. */
+export function panelSocketOrigin(ctx: unknown): string | undefined {
+  return (ctx as { _exeoraPanelOrigin?: string })._exeoraPanelOrigin;
+}
