@@ -73,6 +73,8 @@ api.use("/api/*", async (c, next) => {
   const origin = trustedPanelOrigin(c.req.header("Origin"));
   if (
     origin &&
+    c.req.method === "POST" &&
+    /^\/api\/projects\/[^/]+\/(?:terminal|logs)-ticket$/.test(c.req.path) &&
     hasScope(props, "dashboard:manage") &&
     props.clientId &&
     (await isSideappClient(c.env, props.clientId))

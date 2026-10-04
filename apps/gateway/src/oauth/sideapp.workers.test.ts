@@ -165,13 +165,16 @@ describe("Sideapp authentication", () => {
         scopes,
       };
       const response = await api.fetch(
-        new Request("https://exeora.dev/api/health", { headers: { Origin: requestOrigin } }),
+        new Request("https://exeora.dev/api/projects/unknown/logs-ticket", {
+          method: "POST",
+          headers: { Origin: requestOrigin },
+        }),
         bindings,
         ctx,
       );
       return { status: response.status, origin: panelSocketOrigin(ctx) };
     }
-    expect(await run("sideapp", ["dashboard:manage"], origin)).toEqual({ status: 200, origin });
+    expect(await run("sideapp", ["dashboard:manage"], origin)).toEqual({ status: 404, origin });
     expect(await run("sideapp", ["tools:execute"], origin)).toEqual({
       status: 403,
       origin: undefined,
