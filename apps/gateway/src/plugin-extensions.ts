@@ -152,6 +152,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
             text: html,
             _meta: {
               ui: {
+                permissions: { clipboardWrite: {} },
                 csp: {
                   resourceDomains: [origin],
                   connectDomains: [origin, origin.replace(/^http/, "ws")],
@@ -206,6 +207,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
             text: html,
             _meta: {
               ui: {
+                permissions: { clipboardWrite: {} },
                 csp: {
                   resourceDomains: [origin],
                   connectDomains: [origin, origin.replace(/^http/, "ws")],
