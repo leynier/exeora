@@ -2,6 +2,7 @@ import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-qu
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { Unauthorized } from "../api.js";
+import { AnnotationsProvider } from "../components/comments/annotations.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
 import { useMe } from "../queries.js";
@@ -54,7 +55,10 @@ export function Panel({ bridge }: { bridge: Bridge }) {
       <MemoryRouter initialEntries={["/workspace"]}>
         <ToastProvider>
           <TerminalsProvider>
-            <Shell bridge={bridge} />
+            {/* The side panel's waiting comments, for as long as it is open. */}
+            <AnnotationsProvider>
+              <Shell bridge={bridge} />
+            </AnnotationsProvider>
           </TerminalsProvider>
         </ToastProvider>
       </MemoryRouter>

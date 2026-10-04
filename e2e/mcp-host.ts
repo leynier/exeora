@@ -36,6 +36,10 @@ export interface HostScenario {
    * the page's own origin stands in for the gateway.
    */
   sameOrigin?: boolean;
+  /** Leave out `updateModelContext` from the host's capabilities. */
+  noModelContext?: boolean;
+  /** ChatGPT's per-widget state, as `window.openai` exposes it in the frame. */
+  widgetState?: Record<string, unknown>;
 }
 
 export interface HostLog {
@@ -44,8 +48,17 @@ export interface HostLog {
   modes: string[];
   /** Panel requests the gateway's allowlist refused, as "METHOD /path". */
   refused: string[];
-  /** What the panel told the model, in order. */
+  /** What the panel told the model, in order: its structured content. */
   contexts: Record<string, unknown>[];
+  /** Every model context update in full: content blocks and structured content. */
+  modelContexts: {
+    content?: { type: string; text?: string; _meta?: Record<string, unknown> }[];
+    structuredContent?: Record<string, unknown>;
+  }[];
+  /** `ui/message` requests; the comments flow never sends one. */
+  messages: unknown[];
+  /** What the panel saved as its widget state. */
+  widgetStates: Record<string, unknown>[];
 }
 
 export const HOST_PATH = "/mcp-host";
@@ -66,9 +79,12 @@ export async function openInHost(page: Page, scenario: HostScenario) {
   await page.route(`**${HOST_PATH}`, (route) =>
     route.fulfill({ contentType: "text/html", body: HOST_HTML }),
   );
-  await page.exposeFunction("allowedPanelRoute", (path: string, method: string) =>
-    allowedPanelRoute(path, method),
-  );
+  // Once per page: a second panel on the same page asks the same allowlist.
+  await page
+    .exposeFunction("allowedPanelRoute", (path: string, method: string) =>
+      allowedPanelRoute(path, method),
+    )
+    .catch(() => undefined);
   await page.addInitScript((value) => {
     (window as unknown as { scenario: HostScenario }).scenario = value;
   }, scenario);
@@ -127,7 +143,12 @@ export const HOST_HTML = `<!doctype html>
     <iframe sandbox="allow-scripts" style="display:block;border:0;width:100vw;height:100vh"></iframe>
     <script type="module">
       const scenario = window.scenario;
-      const log = (window.hostLog = { calls: [], links: [], modes: [], refused: [], contexts: [] });
+      const log = (window.hostLog = {
+        calls: [], links: [], modes: [], refused: [], contexts: [],
+        modelContexts: [], messages: [], widgetStates: [],
+      });
+      let updates = 0;
+      window.failModelContext = false;
       const waiting = new Map();
       let nextId = 1000;
       // Host to app: what ChatGPT does to list and call the app's own tools.
@@ -166,6 +187,10 @@ export const HOST_HTML = `<!doctype html>
 
       window.addEventListener("message", async (event) => {
         if (event.source !== frame.contentWindow) return;
+        if (event.data && event.data.exeoraWidgetState) {
+          log.widgetStates.push(event.data.exeoraWidgetState);
+          return;
+        }
         const message = event.data;
         if (message?.jsonrpc === "2.0" && !message.method && waiting.has(message.id)) {
           const { resolve, reject } = waiting.get(message.id);
@@ -183,7 +208,13 @@ export const HOST_HTML = `<!doctype html>
             hostCapabilities: {
               openLinks: {},
               serverTools: {},
-              experimental: scenario.fileAccess === false ? {} : { "openai/resource": {} },
+              experimental: {
+                ...(scenario.fileAccess === false ? {} : { "openai/resource": {} }),
+                "openai/modelContext": {},
+              },
+              ...(scenario.noModelContext
+                ? {}
+                : { updateModelContext: { text: {}, structuredContent: {} } }),
             },
             hostContext: context,
           });
@@ -202,7 +233,18 @@ export const HOST_HTML = `<!doctype html>
           reply(id, { mode });
           send({ method: "ui/notifications/host-context-changed", params: { displayMode: mode } });
         } else if (method === "ui/update-model-context") {
+          if (window.failModelContext) {
+            send({ id, error: { code: -32000, message: "The host refused the context." } });
+            return;
+          }
           log.contexts.push(params.structuredContent);
+          log.modelContexts.push(structuredClone(params));
+          updates += 1;
+          const updateId = "update-" + updates;
+          context = { ...context, "openai/modelContext": { updateId, ...params } };
+          reply(id, { _meta: { "openai/modelContext": { updateId } } });
+        } else if (method === "ui/message") {
+          log.messages.push(params);
           reply(id, {});
         } else if (id !== undefined) {
           reply(id, {});
@@ -222,8 +264,13 @@ export const HOST_HTML = `<!doctype html>
       if (scenario.sameOrigin) frame.sandbox.add("allow-same-origin");
       const html = await (await fetch(scenario.resource ?? "/dashboard/mcp-panel.html")).text();
       const origin = location.origin;
+      // ChatGPT's widget API, where the scenario gives the widget a state.
+      const widget = scenario.widgetState
+        ? "<script>window.openai={widgetState:" + JSON.stringify(scenario.widgetState) +
+          ",setWidgetState(s){this.widgetState=s;parent.postMessage({exeoraWidgetState:s},'*');return Promise.resolve();}};</" + "script>"
+        : "";
       frame.srcdoc = html
-        .replace("<!--exeora:base-->", '<base href="' + origin + '/dashboard/" target="_blank">')
+        .replace("<!--exeora:base-->", '<base href="' + origin + '/dashboard/" target="_blank">' + widget)
         .replace(/(src|href)="\\/(?!\\/)/g, '$1="' + origin + "/");
     </script>
   </body>

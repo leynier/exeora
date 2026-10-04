@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { mockApi, project, user } from "./dashboard-mock.js";
 import { changeHostContext, hostLog, openInHost } from "./mcp-host.js";
+import { mockWorkspaceV2 } from "./workspace-v2-mock.js";
 
 /**
  * The full Dashboard behind the plugin's global entrypoint, framed by the
@@ -189,4 +190,72 @@ test("connects GitHub in the browser and stays in the frame", async ({ page }) =
   await expect(frame.getByText("Finish connecting in the browser")).toBeVisible();
   await expect.poll(async () => (await hostLog(page)).links).toContain(connectUrl);
   await expect(frame.getByRole("button", { name: "Connect GitHub" }).first()).toBeEnabled();
+});
+
+test("adds Workspace comments to the conversation from the Dashboard in ChatGPT", async ({
+  page,
+}) => {
+  await mockWorkspaceV2(page);
+  await mockDeviceLogin(page);
+  const frame = await openInHost(page, {
+    context: FULLSCREEN,
+    resource: "/dashboard/mcp-dashboard.html",
+    sameOrigin: true,
+  });
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  await expect(frame.getByRole("link", { name: "Workspace", exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await frame.getByRole("link", { name: "Workspace", exact: true }).click();
+  await frame.getByRole("button", { name: "Explorer" }).first().click();
+  const files = frame.getByRole("tree", { name: "Files" });
+  await files.getByRole("treeitem", { name: "src" }).click();
+  await files.getByRole("treeitem", { name: "main.ts" }).click();
+  const editor = frame.locator(".cm-content");
+  await expect(editor).toContainText("export const answer = 42;");
+  await editor.locator(".cm-line").first().click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  await frame.getByRole("button", { name: "Comment on the selection" }).click();
+  const composer = frame.getByRole("dialog", { name: "Comment on the selection" });
+  await composer.getByLabel("Comment").fill("From the Dashboard app");
+  await composer.getByRole("button", { name: "Add comment" }).click();
+  await frame.getByRole("button", { name: "Comments, 1 waiting" }).click();
+  const review = frame.getByRole("dialog", { name: "Comments" });
+  await review.getByRole("button", { name: "Add to context" }).click();
+  await expect(review.getByRole("region", { name: "Attached to context" })).toBeVisible();
+  expect((await hostLog(page)).modelContexts.at(-1)?.content?.[0]?.text).toContain(
+    "Comment: From the Dashboard app",
+  );
+});
+
+test("does not restore drafts from widget state for whoever signs in next", async ({ page }) => {
+  await mockWorkspaceV2(page);
+  await mockDeviceLogin(page);
+  const draft = {
+    id: "left-behind",
+    source: {
+      kind: "file",
+      projectId: project.id,
+      workspace: null,
+      path: "src/main.ts",
+      version: "tok1",
+      unsaved: false,
+      start: { line: 1, column: 1 },
+      end: { line: 1, column: 6 },
+    },
+    snippet: "export",
+    comment: "Another account's draft",
+    createdAt: 1,
+  };
+  const frame = await openInHost(page, {
+    context: FULLSCREEN,
+    resource: "/dashboard/mcp-dashboard.html",
+    sameOrigin: true,
+    widgetState: { privateContent: { exeoraComments: { v: 1, drafts: [draft] } } },
+  });
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  await frame.getByRole("link", { name: "Workspace", exact: true }).click({ timeout: 10_000 });
+  await expect(frame.getByRole("button", { name: "Comments, 0 waiting" })).toBeVisible();
+  await expect(frame.getByText("Another account's draft")).toHaveCount(0);
 });

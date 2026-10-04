@@ -21,6 +21,27 @@ import { useEffect, useRef } from "react";
 import { takeLine } from "../../hooks/editorTargets.js";
 import { editorHighlighting, editorTheme } from "./editorTheme.js";
 
+/** A selection in the editor: its text, and where it runs, 1-based. */
+export interface EditorSelectionInfo {
+  text: string;
+  start: { line: number; column: number };
+  end: { line: number; column: number };
+}
+
+function selectionInfo(state: EditorState): EditorSelectionInfo | null {
+  const range = state.selection.main;
+  if (range.empty) return null;
+  const at = (position: number) => {
+    const line = state.doc.lineAt(position);
+    return { line: line.number, column: position - line.from + 1 };
+  };
+  return {
+    text: state.sliceDoc(range.from, range.to),
+    start: at(range.from),
+    end: at(range.to),
+  };
+}
+
 /**
  * The text of a file, editable.
  *
@@ -36,6 +57,7 @@ export function Editor({
   readOnly = false,
   onChange,
   onSave,
+  onSelection,
 }: {
   path: string;
   content: string;
@@ -44,13 +66,15 @@ export function Editor({
   readOnly?: boolean;
   onChange: (text: string) => void;
   onSave: () => void;
+  /** The text selected, with where it starts and ends; null when none is. */
+  onSelection?: (selection: EditorSelectionInfo | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
   const editable = useRef(new Compartment());
-  const latest = useRef({ onChange, onSave });
-  latest.current = { onChange, onSave };
+  const latest = useRef({ onChange, onSave, onSelection });
+  latest.current = { onChange, onSave, onSelection };
 
   // The editor is built once per file; later content arrives through the
   // token effect below, and the handlers through the ref.
@@ -90,6 +114,9 @@ export function Editor({
         editable.current.of(EditorState.readOnly.of(readOnly)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) latest.current.onChange(update.state.doc.toString());
+          if (update.docChanged || update.selectionSet) {
+            latest.current.onSelection?.(selectionInfo(update.state));
+          }
         }),
       ],
     });

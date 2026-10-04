@@ -1,6 +1,7 @@
 import { lazy, type ReactNode, Suspense } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router";
 import { useAuth } from "./authContext.js";
+import { EnsureAnnotations } from "./components/comments/annotations.js";
 import { TerminalsProvider } from "./components/Terminals.js";
 import { AppShell } from "./layouts/AppShell.js";
 import { Activity } from "./pages/Activity.js";
@@ -38,7 +39,12 @@ export function DashboardRoutes() {
         element={
           <RequireAuth>
             <TerminalsProvider>
-              <AppShell />
+              {/* One account's waiting comments, for as long as it is signed in
+                  here: across Workspace tabs, files and other screens. An
+                  embedding that gave its own (ChatGPT's) keeps it. */}
+              <EnsureAnnotations>
+                <AppShell />
+              </EnsureAnnotations>
             </TerminalsProvider>
           </RequireAuth>
         }
