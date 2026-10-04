@@ -82,6 +82,8 @@ Validation of the Dashboard and navigation follow-up: the final full Vitest run 
 
 Validation of selection comments and file-widget registration: the final `bun run ci` passed with Bun 1.3.14, including 1,780 Vitest tests in 175 files, Biome, file-length checks, TypeScript, and both web and Chrome extension builds. All 197 browser scenarios passed, covering pending file and diff comments, copy and denied-clipboard fallback, explicit context attachment, unsupported or refusing hosts, multiple batches, remounts and host removals, private drafts, account isolation and mobile widths. Writer regressions cover a first batch removed before a delayed acknowledgement without an echo, snapshots omitting the new batch, and full resource-link comparison. Wire tests cover both MCP endpoints, model-visible file-widget registration and app-only transport/resolution. The browser host and Chrome shell are simulated; deployment and live ChatGPT checks remain separate work. The same Claude Opus Dev terminal was reused for UI work. No migration is needed for this change.
 
+Validation of the command relay: final `bun run ci` passed with CI's Bun 1.3.14, including 1,846 Vitest tests in 179 files, TypeScript, Biome, file-length checks, and web and Chrome extension builds. All 209 Playwright scenarios passed, including a host that never discovers instance tools, same-panel file/Search navigation without another `exeora_open_panel`, Stop/Resume, reconnect, signed-in Sideapp pairing, phone widths, comment preservation, and host teardown while its iframe remains mounted. Delayed resolver regressions cover both leaving Workspace and moving between other Dashboard screens; pre-aborted requests leave no timers/listeners. The 20 real workerd relay/MCP tests cover owner/client/endpoint isolation, one-use origin/expiry-bound tickets, concurrent ticket limits, stale generations, cancellation, a real 12-second timeout, revoked grants, public registration without resource metadata, and same-account Sideapp exchange. Frozen dependency installation and the final Worker deployment dry run passed. Rust protocol regeneration produced no changes, confirming this UI relay is outside the native executor contract. Browser host/socket behavior is simulated; the gateway tests use the actual Cloudflare runtime. Relay deployment and live ChatGPT validation remain pending. The same existing Claude Opus Dev terminal was reused for UI implementation and follow-up fixes.
+
 Implementation tracking:
 
 - [x] MCP thread entrypoint and model-callable open tool.
@@ -97,8 +99,8 @@ Implementation tracking:
 - [x] Model-visible file-widget registration, with wire regression coverage.
 - [x] Shared relay protocol, instance ownership, public server tools and private ticket/resolver registration.
 - [x] Real workerd relay and MCP wire regression tests, including independent same-account Sideapp pairing.
-- [ ] UI integration, deadline/Stop behavior, comment preservation and simulated-host browser validation.
-- [ ] Full repository validation and reviewable relay PR.
+- [x] UI integration, deadline/Stop/teardown behavior, comment preservation and simulated-host browser validation.
+- [x] Full repository validation and reviewable relay implementation prepared for a draft PR.
 - [ ] Relay deployment with Wrangler migration `v3` and live ChatGPT proof.
 
 Sources: [OpenAI extensions guide](https://developers.openai.com/plugins/build/extensions), [MCP Extensions specification](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md), [MCP Apps](https://github.com/modelcontextprotocol/ext-apps).
