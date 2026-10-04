@@ -441,6 +441,19 @@ describe("panel authorization", () => {
         ).status,
       ).toBe(403);
     }
+    for (const route of [
+      { path: `/api/projects/${PROJECT}/logs-ticket`, method: "POST" },
+      { path: `/api/projects/${PROJECT}/workspace/capabilities`, method: "GET" },
+    ]) {
+      expect(
+        (
+          await panelRequest(access, {
+            ...route,
+            origin: "https://exeora.web-sandbox.oaiusercontent.com",
+          })
+        ).status,
+      ).toBe(403);
+    }
   });
   it("refuses access after revocation and never trusts a file URI as a path", async () => {
     await db(env)

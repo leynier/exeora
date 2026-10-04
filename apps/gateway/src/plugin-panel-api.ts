@@ -1,5 +1,7 @@
 import {
   policyAllows,
+  TOOL_DEFINITIONS,
+  TOOL_NAMES,
   type ToolName,
   WorkspaceAction,
   WorkspaceReadAction,
@@ -14,7 +16,7 @@ import { workspaceReads } from "./api/workspace-reads.js";
 import { ownedTarget } from "./api/workspace-target.js";
 import { workspaces } from "./api/workspaces.js";
 import { resolveAccountTarget, resolveTarget } from "./client-targets.js";
-import type { MachineView } from "./machines-view.js";
+import type { CloudMachineView, MachineView } from "./machines-view.js";
 import type { PluginAccess } from "./plugin-access.js";
 import { allowedPanelRoute, trustedPanelOrigin } from "./plugin-panel-routes.js";
 
@@ -103,6 +105,24 @@ export async function panelRequest(
       if (!verdict.allowed)
         return fail(verdict.reason ?? "This read is not permitted by the project policy.");
     }
+    // Logs include paths and search patterns from all readers, even when the host
+    // ignores the app-only tool metadata. Check every reader before issuing a ticket.
+    if (url.pathname.endsWith("/logs-ticket")) {
+      for (const tool of ["list_files", "read_file", "grep"] as const) {
+        const verdict = policyAllows(policy, tool, undefined);
+        if (!verdict.allowed)
+          return fail(verdict.reason ?? "Logs are not permitted by the project policy.");
+      }
+    }
+    // Capability discovery wakes the machine. A connection with no permitted
+    // workspace tools must be refused before reaching the dashboard router.
+    if (
+      url.pathname.endsWith("/workspace/capabilities") &&
+      !(policy.tools ?? TOOL_NAMES).some(
+        (tool) => policy.mode !== "read_only" || TOOL_DEFINITIONS[tool].readOnly,
+      )
+    )
+      return fail("This connection does not permit any workspace tool.");
     if (url.pathname.endsWith("/workspace/actions")) {
       const action = WorkspaceAction.safeParse(args.body);
       if (!action.success) return { status: 400, body: { error: "invalid_arguments" } };
@@ -169,7 +189,20 @@ export async function panelRequest(
   ) {
     body = {
       machines: (body as { machines: MachineView[] }).machines.flatMap<MachineView>((machine) => {
-        if (machine.kind === "cloud") return ids.has(machine.project.id) ? [machine] : [];
+        if (machine.kind === "cloud")
+          return ids.has(machine.project.id)
+            ? [
+                {
+                  ...machine,
+                  errorDetail: null,
+                  hooks: {
+                    ...machine.hooks,
+                    install: withoutHookOutput(machine.hooks.install),
+                    resume: withoutHookOutput(machine.hooks.resume),
+                  },
+                },
+              ]
+            : [];
         const projects = machine.projects.filter((project) => ids.has(project.projectId));
         return projects.length > 0 ? [{ ...machine, projects }] : [];
       }),
@@ -196,4 +229,10 @@ export async function panelRequest(
   )
     body = { ...body, terminal: unrestricted && "terminal" in body && body.terminal };
   return { status: response.status, body };
+}
+
+function withoutHookOutput(run: CloudMachineView["hooks"]["install"]) {
+  if (!run) return null;
+  const { output: _output, ...metadata } = run;
+  return metadata;
 }
