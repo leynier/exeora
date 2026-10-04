@@ -9,6 +9,7 @@ export const CLIENT = "client_plugin_extensions";
 export const props = { userId: USER, clientId: CLIENT, scopes: ["tools:read", "tools:execute"] };
 export const pluginEnv = {
   ...env,
+  EXEORA_BASE_URL: "https://exeora.dev",
   REQUEST_STATE_SECRET: "test-plugin-secret-that-is-at-least-32-bytes-long",
   ASSETS: {
     fetch: async () =>
