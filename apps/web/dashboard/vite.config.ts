@@ -12,13 +12,15 @@ export default defineConfig({
   build: {
     outDir: "../public/dashboard",
     emptyOutDir: true,
-    // The dashboard, and the side panel Exeora for Chrome frames from here
+    // The dashboard, the side panel Exeora for Chrome frames from here
     // (`/dashboard/panel`), so a deploy updates the panel with no new version
-    // of the extension. The two share their chunks.
+    // of the extension, and the Workspace the gateway serves to ChatGPT as an
+    // MCP App resource (`mcp-panel.html`). All three share their chunks.
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         panel: fileURLToPath(new URL("./panel.html", import.meta.url)),
+        "mcp-panel": fileURLToPath(new URL("./mcp-panel.html", import.meta.url)),
       },
     },
   },

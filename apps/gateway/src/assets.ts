@@ -190,7 +190,12 @@ function withAssetHeaders(response: Response, pathname: string, requestUrl: URL)
   if (IMMUTABLE_ASSET.test(pathname)) {
     options.cacheControl = "public, max-age=31536000, immutable";
   }
-  return withSecurityHeaders(response, options);
+  const result = withSecurityHeaders(response, options);
+  // These are public static modules/fonts, fetched by the isolated MCP Apps iframe.
+  if (pathname.startsWith("/dashboard/assets/") || pathname.startsWith("/fonts/")) {
+    result.headers.set("Access-Control-Allow-Origin", "*");
+  }
+  return result;
 }
 
 function contentSecurityPolicyForDashboard(url: URL): string {

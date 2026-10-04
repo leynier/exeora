@@ -5,6 +5,7 @@ import { relayName } from "./api/ops.js";
 import { db, schema } from "./db/client.js";
 import "./env.js";
 import { firstPartyOrigin } from "./oauth/clients.js";
+import { trustedPanelOrigin } from "./plugin-panel-routes.js";
 
 /**
  * The two sockets a dashboard tab opens straight to a machine's relay: a
@@ -73,9 +74,10 @@ async function ticketedTarget(
   if (c.req.header("Upgrade") !== "websocket") {
     return c.text("Expected a WebSocket upgrade.", 426);
   }
-  // The dashboard's origin or an allowed extension's. Which of them may use
+  // The dashboard, an allowed extension or the isolated ChatGPT panel. Which may use
   // this ticket was decided when it was issued, and is checked with it below.
-  const expectedOrigin = firstPartyOrigin(c.env, c.req.header("Origin"));
+  const expectedOrigin =
+    firstPartyOrigin(c.env, c.req.header("Origin")) ?? trustedPanelOrigin(c.req.header("Origin"));
   if (!expectedOrigin) return c.text("Invalid origin.", 403);
   const projectId = c.req.query("projectId");
   const deviceId = c.req.query("deviceId");

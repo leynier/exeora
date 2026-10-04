@@ -19,6 +19,7 @@
     "@exeora/design": "workspace:*",
     "@exeora/protocol": "workspace:*",
     "@lezer/highlight": "1.2.4",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
     "@pierre/diffs": "1.3.6",
     "@tanstack/react-query": "5.102.6",
     "@xterm/addon-fit": "0.11.0",

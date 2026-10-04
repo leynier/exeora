@@ -174,8 +174,13 @@ export const useProjects = () =>
  * which is a page load. A gateway that predates GitHub answers 404, and the
  * pages that ask treat no answer as not enabled rather than as a failure.
  */
-export const useGitHub = () =>
-  useQuery({ queryKey: keys.githubStatus, queryFn: projectsApi.github, staleTime: 60_000 });
+export const useGitHub = (enabled = true) =>
+  useQuery({
+    queryKey: keys.githubStatus,
+    queryFn: projectsApi.github,
+    staleTime: 60_000,
+    enabled,
+  });
 
 /**
  * The repositories a connected account can pick from, narrowed by the server.

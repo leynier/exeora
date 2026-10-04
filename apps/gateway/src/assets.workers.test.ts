@@ -24,6 +24,18 @@ async function assetPathFromShell(): Promise<string> {
 }
 
 describe("static files", () => {
+  it("allows the MCP sandbox to fetch public modules and fonts without opening HTML to framing", async () => {
+    const script = await get(await assetPathFromShell());
+    expect(script.headers.get("access-control-allow-origin")).toBe("*");
+    const font = await get("/fonts/inter-latin.woff2");
+    expect(font.status).toBe(200);
+    expect(font.headers.get("access-control-allow-origin")).toBe("*");
+    const shell = await get("/dashboard/panel");
+    expect(shell.headers.has("access-control-allow-origin")).toBe(false);
+    expect(shell.headers.get("content-security-policy")).toContain(
+      "frame-ancestors chrome-extension:",
+    );
+  });
   it("serves the landing at the root", async () => {
     const response = await get("/");
     expect(response.status).toBe(200);

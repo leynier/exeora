@@ -53,6 +53,8 @@ export default defineConfig({
       miniflare: {
         bindings: {
           TEST_MIGRATIONS: migrations,
+          // Route-level MCP tests must not depend on a developer's .dev.vars secrets.
+          REQUEST_STATE_SECRET: "test-only-request-state-secret-at-least-32-bytes",
           // Exeora Cloud switched on, so its routes and the relay's wake path
           // can be exercised. Neither value ever leaves workerd: the outbound
           // service above refuses every request they could be sent with.

@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/db/schema-locations.ts",
     "./src/db/schema-github.ts",
     "./src/db/schema-ai.ts",
+    "./src/db/schema-plugin.ts",
   ],
   out: "./migrations",
 });

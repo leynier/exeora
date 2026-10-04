@@ -20,6 +20,7 @@ import { ShipDialog } from "../ship/ShipDialog.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
 import type { WorkspaceSelection } from "../WorkspaceFileGroup.js";
 import type { WorkspaceContext } from "../workspace/context.js";
+import { useAccountFeatures } from "../workspace/surface.js";
 import type { Confirmation } from "../workspace/useWorkspaceActions.js";
 import type { Detail } from "../workspace/workspaceLayout.js";
 import { workspacePrefs } from "../workspace/workspacePrefs.js";
@@ -93,8 +94,14 @@ export function SourceControl({
   const [creatingWorkspace, setCreatingWorkspace] = useState<string | null>(null);
   const [shipping, setShipping] = useState(false);
   const { pending, run, setConfirm } = actions;
-  const github = useGitHub();
-  const ai = useQuery({ queryKey: aiKeys.status, queryFn: aiApi.status, staleTime: 60_000 });
+  const account = useAccountFeatures();
+  const github = useGitHub(account);
+  const ai = useQuery({
+    queryKey: aiKeys.status,
+    queryFn: aiApi.status,
+    staleTime: 60_000,
+    enabled: account,
+  });
   const assistant = ai.data?.enabled && ai.data.providers.some((provider) => provider.linked);
   const ship: string | true | undefined = !assistant
     ? undefined

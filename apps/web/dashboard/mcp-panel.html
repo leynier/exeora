@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <!--
+      ChatGPT renders this page from the MCP resource's text, in a sandbox on
+      an origin of its own, so the root-relative asset URLs below would point
+      at the sandbox. The gateway replaces the marker with a <base> naming its
+      own /dashboard/ when it serves the resource, and every script, style,
+      lazy chunk and font then loads from it.
+    -->
+    <!--exeora:base-->
+    <title>Exeora Workspace</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/mcp-panel/main.tsx"></script>
+  </body>
+</html>

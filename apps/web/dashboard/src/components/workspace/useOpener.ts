@@ -49,13 +49,15 @@ export function useOpener({
 
   // A link that names a detail lands on a wide screen too: it opens as a
   // pinned tab, and the address goes back to naming only the view.
+  // The router's own address, not the window's: in a side panel or a ChatGPT
+  // frame the router lives in memory and the window's says nothing.
   useEffect(() => {
     if (!wide || !detail) return;
     setTabs((current) => openTab(current, detail, true));
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(search);
     params.delete("detail");
     setSearch(params, { replace: true });
-  }, [wide, detail, setSearch]);
+  }, [wide, detail, search, setSearch]);
 
   // A diff of a file that is clean now has nothing left to show.
   useEffect(() => {
