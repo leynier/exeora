@@ -38,6 +38,7 @@ export function WorkingFileDiff({
       loading={diff.isLoading}
       binary={diff.data?.binary}
       truncated={diff.data?.truncated}
+      comment={{ area, commit: null }}
       toolbar={
         <>
           {code && file ? (
@@ -111,6 +112,7 @@ export function AllChangesDiff({ target, area }: { target: Target; area: DiffAre
       patch={diff.data?.patch}
       loading={diff.isLoading}
       truncated={diff.data?.truncated}
+      comment={{ area, commit: null }}
       note={
         diff.data?.untrackedOmitted
           ? "Untracked files did not fit under the output limit and are left out."
@@ -139,6 +141,7 @@ export function CommitFileDiff({
       loading={diff.isLoading}
       binary={diff.data?.binary}
       truncated={diff.data?.truncated}
+      comment={{ area: null, commit: oid }}
       emptyTitle="No textual diff"
       emptyBody="The commit changed nothing textual here."
     />

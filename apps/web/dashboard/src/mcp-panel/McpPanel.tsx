@@ -13,9 +13,11 @@ import {
 } from "react";
 import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { type Annotations, AnnotationsProvider } from "../components/comments/annotations.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
 import { WorkspaceSurfaceProvider } from "../components/workspace/surface.js";
+import type { ContextWriter } from "./comments/contextWriter.js";
 import type { PanelController } from "./controller.js";
 import type { Host } from "./host.js";
 import { dashboardUrl, deepLinkRoute, gatewayOrigin, selectionRoute } from "./selection.js";
@@ -31,11 +33,22 @@ const Workspace = lazy(() =>
  * fullscreen; a model's call starts inline, where the panel is a card that
  * asks for fullscreen rather than a cramped editor.
  */
-export function McpPanel({ host, controller }: { host: Host; controller: PanelController }) {
+export function McpPanel({
+  host,
+  controller,
+  annotations,
+  writer,
+}: {
+  host: Host;
+  controller: PanelController;
+  /** This conversation's comments, and adding them to the model's context. */
+  annotations: Annotations;
+  writer: ContextWriter;
+}) {
   const state = useSyncExternalStore(host.subscribe, host.state);
   const phase = useOpening(host, state);
   const pending = useSyncExternalStore(controller.subscribe, controller.pendingConfirmation);
-  useModelContext(host, controller);
+  useWorkspaceContext(controller, writer);
 
   const inline = state.context.displayMode === "inline";
   const canFullscreen = state.context.availableDisplayModes?.includes("fullscreen") === true;
@@ -112,6 +125,7 @@ export function McpPanel({ host, controller }: { host: Host; controller: PanelCo
       <PanelWorkspace
         host={host}
         controller={controller}
+        annotations={annotations}
         fallback={deepLink ?? selectionRoute(phase.selection)}
         gatewayOrigin={gatewayOrigin(phase.selection)}
         title={phase.file?.name ?? null}
@@ -145,6 +159,7 @@ export function McpPanel({ host, controller }: { host: Host; controller: PanelCo
 function PanelWorkspace({
   host,
   controller,
+  annotations,
   fallback,
   gatewayOrigin,
   title,
@@ -152,6 +167,7 @@ function PanelWorkspace({
 }: {
   host: Host;
   controller: PanelController;
+  annotations: Annotations;
   /** Where to start if the controller has not been asked anywhere yet. */
   fallback: string;
   gatewayOrigin: string | null;
@@ -188,22 +204,24 @@ function PanelWorkspace({
           <TerminalsProvider>
             <Follow controller={controller} />
             <WorkspaceSurfaceProvider value={surface}>
-              <div className={`flex flex-col ${fixedHeight ? "h-[640px]" : "h-full"}`}>
-                <Header title={title} open={gatewayOrigin ? open : undefined} />
-                <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
-                  <Routes>
-                    <Route
-                      path="/workspace"
-                      element={
-                        <Suspense fallback={<Notice text="Loading workspace…" />}>
-                          <Workspace />
-                        </Suspense>
-                      }
-                    />
-                    <Route path="*" element={<ElsewhereInDashboard open={open} />} />
-                  </Routes>
-                </main>
-              </div>
+              <AnnotationsProvider value={annotations}>
+                <div className={`flex flex-col ${fixedHeight ? "h-[640px]" : "h-full"}`}>
+                  <Header title={title} open={gatewayOrigin ? open : undefined} />
+                  <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
+                    <Routes>
+                      <Route
+                        path="/workspace"
+                        element={
+                          <Suspense fallback={<Notice text="Loading workspace…" />}>
+                            <Workspace />
+                          </Suspense>
+                        }
+                      />
+                      <Route path="*" element={<ElsewhereInDashboard open={open} />} />
+                    </Routes>
+                  </main>
+                </div>
+              </AnnotationsProvider>
             </WorkspaceSurfaceProvider>
             <GlobalTerminals />
           </TerminalsProvider>
@@ -229,27 +247,24 @@ function Follow({ controller }: { controller: PanelController }) {
   return null;
 }
 
-/** Keeps the model told what the panel shows, a moment after it settles. */
-function useModelContext(host: Host, controller: PanelController) {
+/**
+ * Keeps the model told what the panel shows: places and names, through the
+ * one writer that also carries the comment batches, so neither undoes the
+ * other.
+ */
+function useWorkspaceContext(controller: PanelController, writer: ContextWriter) {
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     let sent = "";
     const push = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        const state = controller.state();
-        const next = JSON.stringify(state);
-        if (next === sent) return;
-        sent = next;
-        void host.updateModelContext({ "exeora/workspace": state });
-      }, 300);
+      const state = controller.state();
+      const next = JSON.stringify(state);
+      if (next === sent) return;
+      sent = next;
+      writer.setWorkspace({ ...state });
     };
-    const stop = controller.subscribe(push);
-    return () => {
-      stop();
-      clearTimeout(timer);
-    };
-  }, [host, controller]);
+    push();
+    return controller.subscribe(push);
+  }, [controller, writer]);
 }
 
 function Header({ title, open }: { title: string | null; open?: (path: string) => void }) {

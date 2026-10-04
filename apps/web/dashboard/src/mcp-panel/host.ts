@@ -1,4 +1,5 @@
 import { App, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-with-deps";
+import type { ContextHost } from "./comments/contextWriter.js";
 import type { CallTool, ToolAnswer } from "./transport.js";
 
 /**
@@ -39,11 +40,19 @@ export interface Host {
   call: CallTool;
   openLink: (url: string) => Promise<boolean>;
   requestDisplayMode: (mode: DisplayMode) => Promise<DisplayMode | null>;
-  /** Tells the model what the app shows; structured, never contents. */
-  updateModelContext: (structured: Record<string, unknown>) => Promise<void>;
+  /** This app's model context, written strictly: a failure is a failure. */
+  modelContext: ContextHost;
+  /**
+   * What the host says this app has in model context
+   * (`hostContext["openai/modelContext"]`): once connected, and on each change.
+   * `null` means it was removed.
+   */
+  onModelContext: (listener: (context: unknown) => void) => () => void;
 }
 
 /** Tools the app itself answers, for the host and its model. */
+const MODEL_CONTEXT = "openai/modelContext";
+
 export interface AppToolHandlers {
   list: () => { name: string; [key: string]: unknown }[];
   call: (name: string, args: Record<string, unknown> | undefined) => Promise<ToolAnswer>;
@@ -85,17 +94,27 @@ export function connectHost(options: { name?: string; tools?: AppToolHandlers } 
   app.ontoolresult = (params) => update({ result: params as ToolAnswer });
   app.ontoolcancelled = () => update({ cancelled: true });
   // A change carries only what changed, the deep link among it.
-  app.onhostcontextchanged = (params) =>
+  const contextListeners = new Set<(context: unknown) => void>();
+  const tellModelContext = (context: unknown) => {
+    for (const listener of contextListeners) listener(context);
+  };
+  app.onhostcontextchanged = (params) => {
     update({ context: { ...state.context, ...(params as HostContext) } });
+    if (MODEL_CONTEXT in params)
+      tellModelContext((params as Record<string, unknown>)[MODEL_CONTEXT]);
+  };
   app.onteardown = async () => ({});
 
   app.connect(new PostMessageTransport(window.parent, window.parent)).then(
-    () =>
+    () => {
+      const initial = (app.getHostContext() as HostContext | undefined) ?? {};
       update({
         connection: "connected",
-        context: { ...((app.getHostContext() as HostContext | undefined) ?? {}), ...state.context },
+        context: { ...initial, ...state.context },
         fileAccess: app.getHostCapabilities()?.experimental?.["openai/resource"] !== undefined,
-      }),
+      });
+      if (MODEL_CONTEXT in initial) tellModelContext(initial[MODEL_CONTEXT]);
+    },
     (error: unknown) =>
       update({
         connection: "failed",
@@ -122,13 +141,23 @@ export function connectHost(options: { name?: string; tools?: AppToolHandlers } 
         return false;
       }
     },
-    updateModelContext: async (structured) => {
-      if (state.connection !== "connected") return;
-      try {
-        await app.updateModelContext({ structuredContent: structured });
-      } catch {
-        // A host that does not take context still has the tools to ask.
-      }
+    modelContext: {
+      connected: () => state.connection === "connected",
+      supportsText: () => app.getHostCapabilities()?.updateModelContext?.text !== undefined,
+      update: async (params) => {
+        if (state.connection !== "connected") {
+          throw new Error("ChatGPT is not connected to this panel.");
+        }
+        const result = await app.updateModelContext(params as never);
+        const meta = result?._meta?.[MODEL_CONTEXT] as { updateId?: unknown } | undefined;
+        return typeof meta?.updateId === "string" ? meta.updateId : null;
+      },
+    },
+    onModelContext: (listener) => {
+      contextListeners.add(listener);
+      return () => {
+        contextListeners.delete(listener);
+      };
     },
     requestDisplayMode: async (mode) => {
       try {

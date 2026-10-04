@@ -2,6 +2,11 @@ import { Files, GitBranch, GitPullRequest, ScrollText, Search, SquareTerminal } 
 import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import {
+  CommentScope,
+  CommentsHeaderButton,
+  EnsureAnnotations,
+} from "../components/comments/annotations.js";
 import { useWorkspaceLogs } from "../components/logs/useWorkspaceLogs.js";
 import { NoRoot } from "../components/NoRoot.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../components/ui.js";
@@ -92,7 +97,16 @@ export function WorkspaceRedirect() {
   return <Navigate to={{ pathname: "/workspace", search: params.toString() }} replace />;
 }
 
+/** Every Workspace comments, on whatever annotations its embedding gave it, or its own. */
 export function Workspace() {
+  return (
+    <EnsureAnnotations>
+      <WorkspaceScreen />
+    </EnsureAnnotations>
+  );
+}
+
+function WorkspaceScreen() {
   const [search, setSearch] = useSearchParams();
   const projects = useProjects();
   const machines = useMachines();
@@ -387,97 +401,100 @@ export function Workspace() {
   const heading = detail ? detailHeading(detail) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header
-        className={
-          wide
-            ? "mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3"
-            : "mb-2 flex shrink-0 items-center gap-2"
-        }
-      >
-        {wide ? (
-          <div className="min-w-0">
-            <h1 className="text-headline-md">Workspace</h1>
-            <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
-              {project
-                ? [
-                    home?.name,
-                    home?.kind === "cloud"
-                      ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
-                      : (selectedWorkspace?.localPath ??
-                        home?.localPath ??
-                        // The path a project that lives nowhere still carries is
-                        // of a machine that is gone.
-                        (project.nowhere ? repositoryLabel(project.repoUrl) : project.localPath)),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")
-                : "Choose a project to open its git client."}
-            </p>
-          </div>
-        ) : null}
-        <WorkspaceRootSelector
-          projects={projects.data ?? []}
-          projectId={project?.id ?? ""}
-          options={
-            project
-              ? workspaceOptions(project, workspaces.data ?? [], machines.data ?? [], rootBranch)
-              : []
+    <CommentScope projectId={project?.id ?? null} workspace={workspaceSlug ?? null}>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <header
+          className={
+            wide
+              ? "mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3"
+              : "mb-2 flex shrink-0 items-center gap-2"
           }
-          selectedSlug={workspaceSlug}
-          compact={!wide}
-          onSelectProject={(id) => select(id, null)}
-          onSelectWorkspace={(slug) => select(projectId, slug)}
-        />
-      </header>
-
-      {!project || !ctx ? (
-        <div className="border-border bg-surface flex-1 rounded-xl border">
-          <EmptyState title={projects.data?.length ? "Select a project" : "No projects yet"}>
-            {projects.data?.length ? (
-              "The dropdowns above switch project and workspace without leaving this tab."
-            ) : (
-              <>
-                This is where a project's changes are reviewed and committed.{" "}
-                <Link to="/projects?add=1" className="underline">
-                  Add project
-                </Link>
-                .
-              </>
-            )}
-          </EmptyState>
-        </div>
-      ) : (
-        <>
-          <WorkspaceShell
-            views={views}
-            view={view}
-            onViewChange={setView}
-            layout={blocked ? "full" : shown.layout}
-            panel={blocked ?? shown.panel}
-            main={<WorkspaceMain ctx={ctx} opener={opener} />}
-            detail={
-              detail && heading
-                ? {
-                    title: heading.title,
-                    subtitle: heading.subtitle,
-                    content: <DetailContent ctx={ctx} detail={detail} />,
-                  }
-                : null
+        >
+          {wide ? (
+            <div className="min-w-0">
+              <h1 className="text-headline-md">Workspace</h1>
+              <p className="text-body-md text-foreground-muted mt-1 truncate font-mono">
+                {project
+                  ? [
+                      home?.name,
+                      home?.kind === "cloud"
+                        ? repositoryLabel(project.cloud?.repoUrl ?? project.repoUrl)
+                        : (selectedWorkspace?.localPath ??
+                          home?.localPath ??
+                          // The path a project that lives nowhere still carries is
+                          // of a machine that is gone.
+                          (project.nowhere ? repositoryLabel(project.repoUrl) : project.localPath)),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : "Choose a project to open its git client."}
+              </p>
+            </div>
+          ) : null}
+          <WorkspaceRootSelector
+            projects={projects.data ?? []}
+            projectId={project?.id ?? ""}
+            options={
+              project
+                ? workspaceOptions(project, workspaces.data ?? [], machines.data ?? [], rootBranch)
+                : []
             }
-            onBack={back}
+            selectedSlug={workspaceSlug}
+            compact={!wide}
+            onSelectProject={(id) => select(id, null)}
+            onSelectWorkspace={(slug) => select(projectId, slug)}
           />
-          <ConfirmDialog
-            open={actions.confirm !== null}
-            title={actions.confirm?.title ?? "Confirm action"}
-            body={actions.confirm?.body ?? ""}
-            confirmLabel={actions.confirm?.label ?? "Confirm"}
-            pending={actions.pending}
-            onConfirm={() => actions.confirm && void actions.run(actions.confirm.action)}
-            onCancel={() => actions.setConfirm(null)}
-          />
-        </>
-      )}
-    </div>
+          <CommentsHeaderButton />
+        </header>
+
+        {!project || !ctx ? (
+          <div className="border-border bg-surface flex-1 rounded-xl border">
+            <EmptyState title={projects.data?.length ? "Select a project" : "No projects yet"}>
+              {projects.data?.length ? (
+                "The dropdowns above switch project and workspace without leaving this tab."
+              ) : (
+                <>
+                  This is where a project's changes are reviewed and committed.{" "}
+                  <Link to="/projects?add=1" className="underline">
+                    Add project
+                  </Link>
+                  .
+                </>
+              )}
+            </EmptyState>
+          </div>
+        ) : (
+          <>
+            <WorkspaceShell
+              views={views}
+              view={view}
+              onViewChange={setView}
+              layout={blocked ? "full" : shown.layout}
+              panel={blocked ?? shown.panel}
+              main={<WorkspaceMain ctx={ctx} opener={opener} />}
+              detail={
+                detail && heading
+                  ? {
+                      title: heading.title,
+                      subtitle: heading.subtitle,
+                      content: <DetailContent ctx={ctx} detail={detail} />,
+                    }
+                  : null
+              }
+              onBack={back}
+            />
+            <ConfirmDialog
+              open={actions.confirm !== null}
+              title={actions.confirm?.title ?? "Confirm action"}
+              body={actions.confirm?.body ?? ""}
+              confirmLabel={actions.confirm?.label ?? "Confirm"}
+              pending={actions.pending}
+              onConfirm={() => actions.confirm && void actions.run(actions.confirm.action)}
+              onCancel={() => actions.setConfirm(null)}
+            />
+          </>
+        )}
+      </div>
+    </CommentScope>
   );
 }

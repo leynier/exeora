@@ -46,6 +46,7 @@ describe("OpenAI plugin wire contracts", () => {
           tools: {
             name: string;
             title?: string;
+            description?: string;
             _meta?: Record<string, unknown>;
             outputSchema?: unknown;
           }[];
@@ -53,6 +54,9 @@ describe("OpenAI plugin wire contracts", () => {
       ).tools;
       const panel = tools.find((tool) => tool.name === "exeora_open_panel");
       expect(panel?.title).toBe("Exeora Workspace");
+      expect(panel?.description).toContain("If that tool is unavailable, call this tool again");
+      expect(panel?.description).toContain("Omitted routing uses the connection defaults");
+      for (const tool of tools) expect(tool.description?.trim().length).toBeGreaterThan(0);
       expect(panel?._meta).toMatchObject({
         ui: { resourceUri: "ui://exeora/workspace" },
         "openai/ui": { entrypoints: [{ type: "thread" }] },
@@ -65,7 +69,7 @@ describe("OpenAI plugin wire contracts", () => {
       });
       const file = tools.find((tool) => tool.name === "exeora_open_file");
       expect(file?._meta).toMatchObject({
-        ui: { visibility: ["app"] },
+        ui: { resourceUri: "ui://exeora/workspace", visibility: ["model", "app"] },
         "openai/ui": { entrypoints: [{ type: "file" }] },
       });
       expect(
@@ -74,6 +78,13 @@ describe("OpenAI plugin wire contracts", () => {
       expect(tools.find((tool) => tool.name === "exeora_panel_request")?._meta).toMatchObject({
         ui: { visibility: ["app"] },
       });
+      expect(tools.find((tool) => tool.name === "exeora_resolve_file")?._meta).toMatchObject({
+        ui: { visibility: ["app"] },
+      });
+      for (const tool of tools) {
+        const ui = tool._meta?.ui as { resourceUri?: string; visibility?: string[] } | undefined;
+        if (ui?.resourceUri && ui.visibility) expect(ui.visibility).toContain("model");
+      }
     }
   });
   it("advertises native settings in the legacy handshake", async () => {
@@ -100,7 +111,10 @@ describe("OpenAI plugin wire contracts", () => {
     expect(content?.text).toContain('src="https://exeora.dev/dashboard/assets/panel.js"');
     expect(content?._meta).toMatchObject({
       "openai/ui": { preferredDisplayMode: "fullscreen" },
-      ui: { csp: { resourceDomains: ["https://exeora.dev"] } },
+      ui: {
+        permissions: { clipboardWrite: {} },
+        csp: { resourceDomains: ["https://exeora.dev"] },
+      },
     });
   });
   it("opens the independent full-dashboard resource without MCP credentials or account data", async () => {
@@ -111,7 +125,10 @@ describe("OpenAI plugin wire contracts", () => {
     const content = (body.result as { contents: { text: string; _meta: unknown }[] }).contents[0];
     expect(content?.text).toContain('<base href="https://exeora.dev/dashboard/"');
     expect(content?._meta).toMatchObject({
-      ui: { csp: { connectDomains: ["https://exeora.dev", "wss://exeora.dev"] } },
+      ui: {
+        permissions: { clipboardWrite: {} },
+        csp: { connectDomains: ["https://exeora.dev", "wss://exeora.dev"] },
+      },
     });
   });
   it("passes navigation targets through the public tool wire contract", async () => {

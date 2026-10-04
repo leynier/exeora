@@ -1,11 +1,15 @@
 import { IconButton } from "@exeora/design/react";
+import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
-import { Columns2, Rows2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Columns2, MessageSquarePlus, Rows2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { DiffArea } from "../../api-types-workspace.js";
 import { useWide } from "../../hooks/useBreakpoint.js";
+import { useCommentCompose } from "../comments/annotations.js";
+import { diffSelection, type LineRange, patchNames } from "../comments/diffSelection.js";
 import { EmptyState, Skeleton } from "../ui.js";
 import { type DiffStyle, workspacePrefs } from "../workspace/workspacePrefs.js";
-import { splitPatch } from "./patchSplit.js";
+import { type FilePatch, splitPatch } from "./patchSplit.js";
 
 /**
  * A patch on screen.
@@ -24,6 +28,7 @@ export function DiffView({
   emptyTitle = "No textual diff",
   emptyBody = "The file may be untracked, binary, or unchanged in this area.",
   toolbar,
+  comment,
 }: {
   patch: string | undefined;
   loading?: boolean;
@@ -35,13 +40,46 @@ export function DiffView({
   emptyBody?: string;
   /** Controls drawn beside the style toggle. */
   toolbar?: React.ReactNode;
+  /**
+   * Which changes these are, for a comment on selected lines: the working
+   * tree, the index, or a commit. Comments are offered only where the
+   * Workspace is embedded to take them.
+   */
+  comment?: { area: DiffArea | null; commit: string | null };
 }) {
   const wide = useWide();
   const [style, setStyle] = useState<DiffStyle>(workspacePrefs.diffStyle.read);
   const diffStyle: DiffStyle = wide ? style : "unified";
   // The renderer takes one file at a time; an aggregate patch is many.
   const files = useMemo(() => (patch ? splitPatch(patch) : []), [patch]);
-  const options = {
+  // Lines picked in one file of the patch, for a comment.
+  const compose = useCommentCompose();
+  const commenting = compose && comment ? comment : null;
+  const [picked, setPicked] = useState<{ file: FilePatch; range: LineRange } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new patch or layout is the trigger
+  useEffect(() => setPicked(null), [patch, diffStyle]);
+  const optionsFor = (file: FilePatch) =>
+    commenting
+      ? {
+          ...options,
+          enableLineSelection: true,
+          onLineSelectionEnd: (range: LineRange | null) =>
+            setPicked(range ? { file, range } : null),
+        }
+      : options;
+  const commentOnLines = () => {
+    if (!picked || !commenting) return;
+    // The Workspace adds the project and working copy; the patch names the file.
+    const names = patchNames(picked.file.patch, picked.file.path);
+    const selected = diffSelection(
+      picked.file.patch,
+      picked.range,
+      { ...names, area: commenting.area, commit: commenting.commit },
+      diffStyle,
+    );
+    if (selected) compose?.(selected);
+  };
+  const options: FileDiffOptions<undefined> = {
     // Pierre still follows the OS unless themeType is dark.
     // Naming both slots pierre-dark is not enough on a light laptop.
     theme: { dark: "pierre-dark", light: "pierre-dark" },
@@ -61,9 +99,18 @@ export function DiffView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {wide || toolbar ? (
+      {wide || toolbar || commenting ? (
         <div className="border-border-subtle flex shrink-0 items-center justify-end gap-1 border-b px-2 py-1">
           {toolbar}
+          {commenting ? (
+            <IconButton
+              label="Comment on the selected lines"
+              icon={MessageSquarePlus}
+              size="sm"
+              disabled={!picked}
+              onClick={commentOnLines}
+            />
+          ) : null}
           {wide ? (
             <IconButton
               label={diffStyle === "split" ? "Show as one column" : "Show side by side"}
@@ -89,7 +136,7 @@ export function DiffView({
               key={diffStyle}
               patch={files[0].patch}
               disableWorkerPool
-              options={options}
+              options={optionsFor(files[0])}
             />
           </div>
         ) : files.length > 1 ? (
@@ -99,7 +146,12 @@ export function DiffView({
                 <h3 className="border-border-subtle bg-surface text-title-md sticky top-0 z-10 border-y px-4 py-1.5 font-mono text-xs">
                   {file.path}
                 </h3>
-                <PatchDiff key={diffStyle} patch={file.patch} disableWorkerPool options={options} />
+                <PatchDiff
+                  key={diffStyle}
+                  patch={file.patch}
+                  disableWorkerPool
+                  options={optionsFor(file)}
+                />
               </section>
             ))}
           </div>

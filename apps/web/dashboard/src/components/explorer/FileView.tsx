@@ -1,14 +1,16 @@
 import { IconButton } from "@exeora/design/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Code, FileDiff, RotateCcw, Save } from "lucide-react";
+import { BookOpenText, Code, FileDiff, MessageSquarePlus, RotateCcw, Save } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { errorText } from "../../api.js";
 import { registerSave } from "../../hooks/saveRegistry.js";
 import { type Target, useFileContent, workspaceKeys } from "../../queries-workspace.js";
+import { useCommentCompose } from "../comments/annotations.js";
 import { useToast } from "../toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
 import { bufferStore } from "../workspace/bufferStore.js";
 import type { WorkspaceContext } from "../workspace/context.js";
+import type { EditorSelectionInfo } from "./Editor.js";
 import { fileKind } from "./explorerModel.js";
 
 // CodeMirror and its language catalogue are only needed after opening a text
@@ -91,6 +93,12 @@ function TextFile({
   const [preview, setPreview] = useState(markdown && kept === undefined);
   const dirty = text !== content;
   const conflict = reported || (dirty && base !== token);
+  // What is selected now, for a comment; a new version of the file starts
+  // with nothing selected.
+  const compose = useCommentCompose();
+  const [selection, setSelection] = useState<EditorSelectionInfo | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new version or file is the trigger
+  useEffect(() => setSelection(null), [path, token]);
   const changed = ctx.status.data?.files.some((item) => item.path === path) ?? false;
 
   // Nothing edited: an edit would start from the file as it is now.
@@ -176,6 +184,28 @@ function TextFile({
         ) : dirty ? (
           <span className="text-label-md text-foreground-faint mr-auto">Unsaved changes</span>
         ) : null}
+        {compose && !preview ? (
+          <IconButton
+            label="Comment on the selection"
+            icon={MessageSquarePlus}
+            size="sm"
+            disabled={!selection}
+            onClick={() => {
+              if (!selection) return;
+              compose({
+                snippet: selection.text,
+                source: {
+                  kind: "file",
+                  path,
+                  version: base,
+                  unsaved: dirty,
+                  start: selection.start,
+                  end: selection.end,
+                },
+              });
+            }}
+          />
+        ) : null}
         {markdown ? (
           <IconButton
             label={preview ? "Edit the source" : "Preview"}
@@ -241,6 +271,7 @@ function TextFile({
             readOnly={truncated}
             onChange={setText}
             onSave={() => void save()}
+            onSelection={setSelection}
           />
         </Suspense>
       )}

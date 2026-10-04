@@ -10,6 +10,10 @@ import { bufferStore } from "../components/workspace/bufferStore.js";
 import { configureWorkspaceScope } from "../components/workspace/scope.js";
 import { configureExternalOpener, configureLeave } from "../external-url.js";
 import "../index.css";
+import { AnnotationsProvider } from "../components/comments/annotations.js";
+import { CommentStore } from "../components/comments/store.js";
+import { ContextWriter } from "../mcp-panel/comments/contextWriter.js";
+import { panelAnnotations } from "../mcp-panel/comments/PanelComments.js";
 import { connectHost } from "../mcp-panel/host.js";
 import { ensureStorage, routeLinksToHost } from "../mcp-panel/sandbox.js";
 import { dashboardDeepLink, gatewayOrigin } from "../mcp-panel/selection.js";
@@ -43,6 +47,14 @@ const open = (url: string) => void host.openLink(url);
 configureExternalOpener(open);
 configureLeave(open);
 routeLinksToHost(document, open);
+// Inside ChatGPT, the Dashboard's Workspace can add comments to the
+// conversation too, through the same writer as the Workspace panel. Its
+// waiting comments stay in memory only: widget state outlives a sign-in, and
+// whoever signs in next must not find the last account's drafts there.
+const writer = new ContextWriter(host.modelContext);
+host.onModelContext((context) => writer.fromHost(context));
+const comments = new CommentStore();
+const annotations = panelAnnotations(comments, writer);
 
 const adapter: AuthAdapter = {
   token: session.token,
@@ -88,7 +100,9 @@ function Sideapp({ env }: { env: SideappEnv }) {
           <MemoryRouter initialEntries={[generation === 0 ? first : "/"]}>
             <FollowDeepLink route={deepLink} />
             <ToastProvider>
-              <DashboardRoutes />
+              <AnnotationsProvider value={annotations}>
+                <DashboardRoutes />
+              </AnnotationsProvider>
             </ToastProvider>
           </MemoryRouter>
         </QueryClientProvider>
@@ -127,6 +141,7 @@ function useAccountClient(session: SideappSession, generation: number): QueryCli
       if (session.generation() !== generation) {
         bufferStore.clearAll();
         searchStore.clearAll();
+        comments.clear();
       }
     };
   }, [clients, generation, session]);

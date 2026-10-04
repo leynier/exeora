@@ -152,6 +152,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
             text: html,
             _meta: {
               ui: {
+                permissions: { clipboardWrite: {} },
                 csp: {
                   resourceDomains: [origin],
                   connectDomains: [origin, origin.replace(/^http/, "ws")],
@@ -176,7 +177,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     {
       title: "Exeora Workspace",
       description:
-        "Open Exeora Workspace beside this conversation. Select its project/workspace and tab, a relative Explorer file, a working or staged diff, or a Search query with filters. When already open, use the instance's exeora_workspace_navigate tool to change its view.",
+        "Open or navigate Exeora Workspace beside this conversation. Select its project/workspace and tab, a relative Explorer file, a working or staged diff, or a Search query with filters. When already open, prefer the instance's exeora_workspace_navigate tool. If that tool is unavailable, call this tool again with the explicit project/workspace and desired tab, path, diff or search; the open panel receives the new selection. Omitted routing uses the connection defaults, not the panel's current selection.",
       inputSchema: PanelNavigation,
       outputSchema: selectionSchema,
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -206,6 +207,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
             text: html,
             _meta: {
               ui: {
+                permissions: { clipboardWrite: {} },
                 csp: {
                   resourceDomains: [origin],
                   connectDomains: [origin, origin.replace(/^http/, "ws")],
@@ -258,7 +260,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       inputSchema: z.object({ file }).strict(),
       annotations: { readOnlyHint: true },
       _meta: {
-        ui: { resourceUri: PANEL_RESOURCE, visibility: ["app"] },
+        ui: { resourceUri: PANEL_RESOURCE, visibility: ["model", "app"] },
         "openai/ui": { entrypoints: [{ type: "file", extensions: FILE_EXTENSIONS }] },
       },
     },
@@ -275,6 +277,8 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     "exeora_resolve_file",
     {
       title: "Resolve workspace file",
+      description:
+        "Resolve a host-provided filesystem path to a project/workspace this connection may access. For the Exeora UI only; an opaque resource URI or filename alone cannot identify a workspace file.",
       inputSchema: z.object({ file, ...routing }).strict(),
       outputSchema: selectionSchema,
       annotations: { readOnlyHint: true },
@@ -296,6 +300,8 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     "exeora_panel_session",
     {
       title: "Initialize workspace panel",
+      description:
+        "Initialize the Exeora Workspace UI with this connection's authorized default selection and dashboard URL. For the UI only; returns no account credentials.",
       inputSchema: z.object({}).strict(),
       annotations: { readOnlyHint: true },
       _meta: appOnly,
@@ -312,6 +318,8 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     "exeora_panel_request",
     {
       title: "Workspace panel request",
+      description:
+        "Carry an Exeora Workspace UI API request over this MCP connection. For the UI only; rechecks project grants and the panel route allowlist. Do not use it instead of the model's file, Git or command tools.",
       inputSchema: z
         .object({
           path: z.string().min(1).max(8192),
@@ -330,6 +338,8 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     "exeora_settings_read",
     {
       title: "Exeora plugin settings",
+      description:
+        "Read the native Exeora plugin settings schema, layout and effective values for this user, connection and endpoint. For the plugin settings UI only; does not change the open panel.",
       inputSchema: z.object({}).strict(),
       outputSchema: z.object({
         schema: z.record(z.string(), z.unknown()),
@@ -351,6 +361,8 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
     "exeora_settings_update",
     {
       title: "Update Exeora plugin settings",
+      description:
+        "Save only the supplied plugin preferences, merging them with this connection's existing values. Validates the default project and workspace against authorized locations. For the settings UI only; use workspace navigation to change the open panel.",
       inputSchema: z.object({ set: PluginSettingsPatch }).strict(),
       outputSchema: z.object({ values: PluginSettings }),
       annotations: { readOnlyHint: false, destructiveHint: false },
