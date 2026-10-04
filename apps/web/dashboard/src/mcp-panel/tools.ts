@@ -64,14 +64,23 @@ export const APP_TOOLS = [
   },
 ];
 
+/** Why a navigation is refused while the person has stopped ChatGPT's control. */
+export const CONTROL_STOPPED =
+  "The person stopped ChatGPT from moving this Workspace panel. Ask them to resume it from the panel.";
+
+/** Why a navigation is refused once the host has closed this panel. */
+export const PANEL_CLOSED = "This Workspace panel was closed. Open the Workspace again to move it.";
+
 export async function callAppTool(
   controller: PanelController,
   name: string,
   args: Record<string, unknown> | undefined,
+  /** Why navigating is refused now, if it is: stopped by the person, or closed. */
+  refusal: () => string | null = () => null,
 ): Promise<ToolAnswer> {
   if (name === GET_STATE_TOOL) return stateAnswer(controller.state());
   if (name === NAVIGATE_TOOL) {
-    const checked = navigateArgs(args);
+    const checked = refusal() ?? navigateArgs(args);
     if (typeof checked === "string") {
       return {
         isError: true,

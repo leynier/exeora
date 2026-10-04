@@ -43,6 +43,8 @@ export interface PanelSelection {
   settings: PanelSettings;
   /** Where the full dashboard lives, for links out of the panel. */
   gatewayOrigin: string | null;
+  /** The address the gateway gave this panel, for the model's commands. */
+  panelId?: string | null;
 }
 
 export type PanelAnswer =
@@ -84,8 +86,16 @@ export function readAnswer(structured: unknown): PanelAnswer | null {
       search: readSearch(structured.search),
       settings,
       gatewayOrigin: httpOrigin(structured.gatewayOrigin),
+      panelId: readPanelId(structured.panelId),
     },
   };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A panel id as the gateway allocates them: a UUID, nothing else. */
+export function readPanelId(value: unknown): string | null {
+  return typeof value === "string" && UUID.test(value) ? value : null;
 }
 
 export function failureText(reason: "outside" | "offline" | "not_found" | "error"): string {

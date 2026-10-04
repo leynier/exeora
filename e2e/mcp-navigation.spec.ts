@@ -6,7 +6,8 @@ import { mockWorkspaceV2, project, workspace } from "./workspace-v2-mock.js";
 /**
  * The panel's own tools, as ChatGPT's model would use them, against the
  * simulated MCP Apps host (not ChatGPT itself). Every navigation is checked
- * through `exeora_open_panel`, whose answers the scenario supplies in order.
+ * through the private `exeora_panel_resolve_navigation`, whose answers the
+ * scenario supplies in order; none opens the panel again.
  */
 
 const FULLSCREEN = { displayMode: "fullscreen", availableDisplayModes: ["inline", "fullscreen"] };
@@ -21,14 +22,17 @@ async function openPanel(page: Page, answers: Record<string, unknown>[] = []) {
     context: FULLSCREEN,
     input: { project: project.id, path: "src/main.ts" },
     result: place({ path: "src/main.ts", tab: "explorer" }),
-    tools: { exeora_open_panel: answers },
+    tools: { exeora_panel_resolve_navigation: answers },
   });
 }
 
-function openPanelCalls(page: Page) {
-  return hostLog(page).then((log) =>
-    log.calls.filter((call) => call.name === "exeora_open_panel").map((call) => call.arguments),
-  );
+function resolverCalls(page: Page) {
+  return hostLog(page).then((log) => {
+    expect(log.calls.map((call) => call.name)).not.toContain("exeora_open_panel");
+    return log.calls
+      .filter((call) => call.name === "exeora_panel_resolve_navigation")
+      .map((call) => call.arguments);
+  });
 }
 
 test("lists its own tools and describes what it shows, without contents", async ({ page }) => {
@@ -78,7 +82,7 @@ test("searches, and a later search updates the same Search view", async ({ page 
   expect(second.structuredContent?.status).toBe("applied");
   await expect(box).toHaveValue("console");
   // The filter set by the first search stayed, and went to the gateway again.
-  expect((await openPanelCalls(page)).at(-1)).toMatchObject({
+  expect((await resolverCalls(page)).at(-1)).toMatchObject({
     project: project.id,
     search: { query: "console", include: "src/**" },
   });
@@ -117,9 +121,9 @@ test("opens a file's working and staged diffs on request", async ({ page }) => {
     status: "applied",
     state: { tab: "source", diff: { path: "main.txt", area: "staged" } },
   });
-  expect((await openPanelCalls(page)).slice(-2)).toEqual([
-    { project: project.id, diff: { area: "working", path: "main.txt" } },
-    { project: project.id, diff: { area: "staged", path: "main.txt" } },
+  expect((await resolverCalls(page)).slice(-2)).toEqual([
+    { project: project.id, workspace: "main", diff: { area: "working", path: "main.txt" } },
+    { project: project.id, workspace: "main", diff: { area: "staged", path: "main.txt" } },
   ]);
   await expect(panel.getByText(/main\.txt · staged/i)).toBeVisible();
 });
@@ -332,7 +336,9 @@ test("still asks before the root of another location", async ({ page }) => {
     context: FULLSCREEN,
     input: { project: project.id, path: "src/main.ts" },
     result: place({ path: "src/main.ts", tab: "explorer" }),
-    tools: { exeora_open_panel: [place({ workspace: "main@desktop", tab: "explorer" })] },
+    tools: {
+      exeora_panel_resolve_navigation: [place({ workspace: "main@desktop", tab: "explorer" })],
+    },
   });
   const editor = panel.locator(".cm-content");
   await expect(editor).toContainText("answer");

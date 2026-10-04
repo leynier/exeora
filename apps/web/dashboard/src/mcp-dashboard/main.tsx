@@ -20,6 +20,7 @@ import { dashboardDeepLink, gatewayOrigin } from "../mcp-panel/selection.js";
 import { DashboardRoutes } from "../routes.js";
 import { configureTicketOrigin } from "../socket-url.js";
 import { DeviceSignIn, NoCallback, SideappContext, type SideappEnv } from "./DeviceSignIn.js";
+import { SideappControl } from "./SideappControl.js";
 import { createSession, type SideappSession } from "./session.js";
 
 /**
@@ -101,7 +102,9 @@ function Sideapp({ env }: { env: SideappEnv }) {
             <FollowDeepLink route={deepLink} />
             <ToastProvider>
               <AnnotationsProvider value={annotations}>
-                <DashboardRoutes />
+                <SideappControl host={host} session={env.session} writer={writer}>
+                  <DashboardRoutes />
+                </SideappControl>
               </AnnotationsProvider>
             </ToastProvider>
           </MemoryRouter>

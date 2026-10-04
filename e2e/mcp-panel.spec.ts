@@ -135,7 +135,10 @@ test("follows a later call in the same thread without reloading", async ({ page 
   await expect(panel.getByText("A project for the specs.")).toBeVisible();
   // The second opening used the result it was handed; nothing asked again.
   const names = (await hostLog(page)).calls.map((call) => call.name);
-  expect(names.filter((name) => name !== "exeora_panel_request")).toEqual([]);
+  const asked = names.filter(
+    (name) => name !== "exeora_panel_request" && name !== "exeora_panel_relay_ticket",
+  );
+  expect(asked).toEqual([]);
 });
 
 test("resolves a file clicked later in the same thread, not the earlier result", async ({

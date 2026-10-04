@@ -50,4 +50,16 @@ describe("callAppTool", () => {
     ]);
     for (const tool of APP_TOOLS) expect(tool.inputSchema.additionalProperties).toBe(false);
   });
+
+  it("refuses to navigate while the person stopped control, or once the panel is closed", async () => {
+    const call = vi.fn();
+    const controller = new PanelController(call, 20);
+    for (const refusal of ["Stopped by the person.", "Closed."]) {
+      const answer = await callAppTool(controller, "exeora_workspace_navigate", {}, () => refusal);
+      expect(answer).toMatchObject({ isError: true, structuredContent: { message: refusal } });
+    }
+    expect(call).not.toHaveBeenCalled();
+    const state = await callAppTool(controller, "exeora_workspace_get_state", {}, () => "Closed.");
+    expect(state.isError).toBeUndefined();
+  });
 });

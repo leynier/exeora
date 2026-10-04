@@ -11,15 +11,17 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
-import { ConfirmDialog } from "../components/ConfirmDialog.js";
+import { MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { type Annotations, AnnotationsProvider } from "../components/comments/annotations.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
 import { WorkspaceSurfaceProvider } from "../components/workspace/surface.js";
+import { AgentControl } from "./AgentControl.js";
 import type { ContextWriter } from "./comments/contextWriter.js";
+import { Follow, LeaveDialog, useWorkspaceContext } from "./control.js";
 import type { PanelController } from "./controller.js";
 import type { Host } from "./host.js";
+import type { PanelRelay } from "./relay.js";
 import { dashboardUrl, deepLinkRoute, gatewayOrigin, selectionRoute } from "./selection.js";
 import { useOpening } from "./useOpening.js";
 
@@ -38,17 +40,19 @@ export function McpPanel({
   controller,
   annotations,
   writer,
+  relay,
 }: {
   host: Host;
   controller: PanelController;
   /** This conversation's comments, and adding them to the model's context. */
   annotations: Annotations;
   writer: ContextWriter;
+  /** How the model's public Workspace tools reach this panel. */
+  relay: PanelRelay;
 }) {
   const state = useSyncExternalStore(host.subscribe, host.state);
   const phase = useOpening(host, state);
-  const pending = useSyncExternalStore(controller.subscribe, controller.pendingConfirmation);
-  useWorkspaceContext(controller, writer);
+  useWorkspaceContext(controller, writer, relay);
 
   const inline = state.context.displayMode === "inline";
   const canFullscreen = state.context.availableDisplayModes?.includes("fullscreen") === true;
@@ -74,6 +78,12 @@ export function McpPanel({
     requested.current = sequence;
     controller.request(route);
   }, [sequence, route, controller]);
+  // The relay answers as the panel each opening names: the model holds the
+  // newest id. A panel opened without one gets one from the gateway.
+  const panelId = phase.kind === "ready" ? (phase.selection.panelId ?? null) : undefined;
+  useEffect(() => {
+    if (panelId !== undefined) relay.start(panelId);
+  }, [panelId, relay]);
   const deepLink = deepLinkRoute(state.context["openai/deepLink"]);
   useEffect(() => {
     if (deepLink) controller.request(deepLink);
@@ -126,6 +136,7 @@ export function McpPanel({
         host={host}
         controller={controller}
         annotations={annotations}
+        relay={relay}
         fallback={deepLink ?? selectionRoute(phase.selection)}
         gatewayOrigin={gatewayOrigin(phase.selection)}
         title={phase.file?.name ?? null}
@@ -137,21 +148,7 @@ export function McpPanel({
   return (
     <div className="flex h-full flex-col" style={style}>
       {body}
-      <ConfirmDialog
-        open={pending !== null}
-        title="Leave unsaved edits?"
-        body={`${pending?.dirtyPaths.length === 1 ? "A file has" : `${pending?.dirtyPaths.length ?? 0} files have`} unsaved edits in this workspace. They stay in this panel if you come back, but are not saved.`}
-        details={
-          <ul className="font-mono text-xs">
-            {pending?.dirtyPaths.map((path) => (
-              <li key={path}>{path}</li>
-            ))}
-          </ul>
-        }
-        confirmLabel="Leave and switch"
-        onConfirm={controller.confirm}
-        onCancel={controller.cancel}
-      />
+      <LeaveDialog controller={controller} />
     </div>
   );
 }
@@ -160,6 +157,7 @@ function PanelWorkspace({
   host,
   controller,
   annotations,
+  relay,
   fallback,
   gatewayOrigin,
   title,
@@ -168,6 +166,7 @@ function PanelWorkspace({
   host: Host;
   controller: PanelController;
   annotations: Annotations;
+  relay: PanelRelay;
   /** Where to start if the controller has not been asked anywhere yet. */
   fallback: string;
   gatewayOrigin: string | null;
@@ -206,7 +205,7 @@ function PanelWorkspace({
             <WorkspaceSurfaceProvider value={surface}>
               <AnnotationsProvider value={annotations}>
                 <div className={`flex flex-col ${fixedHeight ? "h-[640px]" : "h-full"}`}>
-                  <Header title={title} open={gatewayOrigin ? open : undefined} />
+                  <Header title={title} open={gatewayOrigin ? open : undefined} relay={relay} />
                   <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3">
                     <Routes>
                       <Route
@@ -231,43 +230,15 @@ function PanelWorkspace({
   );
 }
 
-/**
- * Moves the open Workspace where the controller asks next, without
- * reloading the panel. Where it asked before this mounted is where it began.
- */
-function Follow({ controller }: { controller: PanelController }) {
-  const navigate = useNavigate();
-  const { route, version } = useSyncExternalStore(controller.subscribe, controller.route);
-  const seen = useRef(version);
-  useEffect(() => {
-    if (!route || seen.current === version) return;
-    seen.current = version;
-    navigate(route);
-  }, [route, version, navigate]);
-  return null;
-}
-
-/**
- * Keeps the model told what the panel shows: places and names, through the
- * one writer that also carries the comment batches, so neither undoes the
- * other.
- */
-function useWorkspaceContext(controller: PanelController, writer: ContextWriter) {
-  useEffect(() => {
-    let sent = "";
-    const push = () => {
-      const state = controller.state();
-      const next = JSON.stringify(state);
-      if (next === sent) return;
-      sent = next;
-      writer.setWorkspace({ ...state });
-    };
-    push();
-    return controller.subscribe(push);
-  }, [controller, writer]);
-}
-
-function Header({ title, open }: { title: string | null; open?: (path: string) => void }) {
+function Header({
+  title,
+  open,
+  relay,
+}: {
+  title: string | null;
+  open?: (path: string) => void;
+  relay: PanelRelay;
+}) {
   const location = useLocation();
   return (
     <header className="border-border-subtle flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3">
@@ -275,7 +246,8 @@ function Header({ title, open }: { title: string | null; open?: (path: string) =
         {title ? <FileText aria-hidden className="size-4 shrink-0" /> : null}
         <span className="truncate">{title ?? "Exeora Workspace"}</span>
       </span>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex min-w-0 shrink items-center gap-2">
+        <AgentControl relay={relay} />
         {open ? (
           <button
             type="button"
