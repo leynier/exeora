@@ -260,7 +260,7 @@ export function registerPluginExtensions(server: McpServer, env: Env, projectId?
       inputSchema: z.object({ file }).strict(),
       annotations: { readOnlyHint: true },
       _meta: {
-        ui: { resourceUri: PANEL_RESOURCE, visibility: ["app"] },
+        ui: { resourceUri: PANEL_RESOURCE, visibility: ["model", "app"] },
         "openai/ui": { entrypoints: [{ type: "file", extensions: FILE_EXTENSIONS }] },
       },
     },

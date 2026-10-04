@@ -65,7 +65,7 @@ describe("OpenAI plugin wire contracts", () => {
       });
       const file = tools.find((tool) => tool.name === "exeora_open_file");
       expect(file?._meta).toMatchObject({
-        ui: { visibility: ["app"] },
+        ui: { resourceUri: "ui://exeora/workspace", visibility: ["model", "app"] },
         "openai/ui": { entrypoints: [{ type: "file" }] },
       });
       expect(
@@ -74,6 +74,13 @@ describe("OpenAI plugin wire contracts", () => {
       expect(tools.find((tool) => tool.name === "exeora_panel_request")?._meta).toMatchObject({
         ui: { visibility: ["app"] },
       });
+      expect(tools.find((tool) => tool.name === "exeora_resolve_file")?._meta).toMatchObject({
+        ui: { visibility: ["app"] },
+      });
+      for (const tool of tools) {
+        const ui = tool._meta?.ui as { resourceUri?: string; visibility?: string[] } | undefined;
+        if (ui?.resourceUri && ui.visibility) expect(ui.visibility).toContain("model");
+      }
     }
   });
   it("advertises native settings in the legacy handshake", async () => {
