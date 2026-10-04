@@ -167,7 +167,7 @@ test("comments on old and new diff lines, unified and split, in one batch with a
 }) => {
   const panel = await openPanel(page, {
     tools: {
-      exeora_open_panel: [
+      exeora_panel_resolve_navigation: [
         place({ tab: "source", diff: { path: "main.txt", area: "staged" } }),
         place({ tab: "source", diff: { path: "main.txt", area: "staged" } }),
       ],
@@ -281,7 +281,7 @@ test("keeps added batches through navigation, appends new ones, and respects rem
 }) => {
   const panel = await openPanel(page, {
     tools: {
-      exeora_open_panel: [
+      exeora_panel_resolve_navigation: [
         place({ tab: "search" }),
         place({ tab: "explorer", path: "src/main.ts" }),
         place({ tab: "logs" }),
@@ -367,7 +367,9 @@ test("keeps waiting comments in the widget's private state only, and restores th
 
 test("pins a comment to the working copy it was written in", async ({ page }) => {
   const panel = await openPanel(page, {
-    tools: { exeora_open_panel: [place({ workspace: workspace.slug, tab: "explorer" })] },
+    tools: {
+      exeora_panel_resolve_navigation: [place({ workspace: workspace.slug, tab: "explorer" })],
+    },
   });
   await selectFirstLine(page, panel);
   await comment(panel, "Comment on the selection", "On the root");

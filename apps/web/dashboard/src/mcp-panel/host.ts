@@ -32,6 +32,8 @@ export interface HostState {
    * (`openai/resource`). ChatGPT does on desktop only.
    */
   fileAccess: boolean;
+  /** The host tore this view down (`ui/resource-teardown`); it may stay mounted, but is done. */
+  tornDown: boolean;
 }
 
 export interface Host {
@@ -48,6 +50,11 @@ export interface Host {
    * `null` means it was removed.
    */
   onModelContext: (listener: (context: unknown) => void) => () => void;
+  /**
+   * Runs, synchronously and once, when the host tears this view down, or at
+   * once if it already has.
+   */
+  onTeardown: (listener: () => void) => () => void;
 }
 
 /** Tools the app itself answers, for the host and its model. */
@@ -80,6 +87,7 @@ export function connectHost(options: { name?: string; tools?: AppToolHandlers } 
     result: null,
     cancelled: false,
     fileAccess: false,
+    tornDown: false,
   };
   const listeners = new Set<() => void>();
   const update = (patch: Partial<HostState>) => {
@@ -103,7 +111,17 @@ export function connectHost(options: { name?: string; tools?: AppToolHandlers } 
     if (MODEL_CONTEXT in params)
       tellModelContext((params as Record<string, unknown>)[MODEL_CONTEXT]);
   };
-  app.onteardown = async () => ({});
+  // A torn-down view may stay mounted; everything that acts for the model
+  // ends now, before the host hears it is done.
+  const teardownListeners = new Set<() => void>();
+  app.onteardown = async () => {
+    if (!state.tornDown) {
+      update({ tornDown: true });
+      for (const listener of [...teardownListeners]) listener();
+      teardownListeners.clear();
+    }
+    return {};
+  };
 
   app.connect(new PostMessageTransport(window.parent, window.parent)).then(
     () => {
@@ -152,6 +170,16 @@ export function connectHost(options: { name?: string; tools?: AppToolHandlers } 
         const meta = result?._meta?.[MODEL_CONTEXT] as { updateId?: unknown } | undefined;
         return typeof meta?.updateId === "string" ? meta.updateId : null;
       },
+    },
+    onTeardown: (listener) => {
+      if (state.tornDown) {
+        listener();
+        return () => undefined;
+      }
+      teardownListeners.add(listener);
+      return () => {
+        teardownListeners.delete(listener);
+      };
     },
     onModelContext: (listener) => {
       contextListeners.add(listener);

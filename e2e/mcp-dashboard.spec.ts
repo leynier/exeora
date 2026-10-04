@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { mockApi, project, user } from "./dashboard-mock.js";
-import { changeHostContext, hostLog, openInHost } from "./mcp-host.js";
+import { appRequest, changeHostContext, hostLog, openInHost, releaseHeld } from "./mcp-host.js";
+import { relayGateway } from "./panel-relay.js";
 import { mockWorkspaceV2 } from "./workspace-v2-mock.js";
 
 /**
@@ -258,4 +259,222 @@ test("does not restore drafts from widget state for whoever signs in next", asyn
   await frame.getByRole("link", { name: "Workspace", exact: true }).click({ timeout: 10_000 });
   await expect(frame.getByRole("button", { name: "Comments, 0 waiting" })).toBeVisible();
   await expect(frame.getByText("Another account's draft")).toHaveCount(0);
+});
+
+const PANEL = "5c4b3a29-1807-4f6e-8d5c-4b3a29180706";
+
+/** The Dashboard opened with a panel id, a relay, and a pairing route answering `pair`. */
+/** The resolver's answer naming the Workspace on `path`. */
+const destination = (path: string, extra: Record<string, unknown> = {}) => ({
+  structuredContent: {
+    projectId: project.id,
+    workspace: null,
+    tab: "explorer",
+    path,
+    panelId: PANEL,
+  },
+  ...extra,
+});
+
+async function openRelayedDashboard(
+  page: Page,
+  pair: (body: Record<string, unknown>) => { status: number; json: unknown },
+  answers: Record<string, unknown>[] = [destination("src/main.ts")],
+) {
+  await mockWorkspaceV2(page);
+  await mockDeviceLogin(page);
+  const gateway = await relayGateway(page);
+  const pairings: { auth: string | null; body: Record<string, unknown> }[] = [];
+  await page.route("**/api/panel-relay/ticket", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    pairings.push({ auth: route.request().headers().authorization ?? null, body });
+    await route.fulfill(pair(body));
+  });
+  const frame = await openInHost(page, {
+    context: FULLSCREEN,
+    resource: "/dashboard/mcp-dashboard.html",
+    sameOrigin: true,
+    result: { structuredContent: { panelId: PANEL } },
+    relay: { panelId: PANEL },
+    tools: { exeora_panel_resolve_navigation: answers },
+  });
+  return { frame, gateway, pairings };
+}
+
+const tickets = async (page: Page) =>
+  (await hostLog(page)).calls.filter((call) => call.name === "exeora_panel_relay_ticket");
+
+test("lets ChatGPT move its Workspace only once its own sign-in is paired, until signing out", async ({
+  page,
+}) => {
+  // The page plays the gateway; its origin is known once the host is open.
+  let origin = "";
+  const { frame, gateway, pairings } = await openRelayedDashboard(page, () => ({
+    status: 200,
+    json: {
+      panelId: PANEL,
+      protocol: 1,
+      url: `${origin}/relay-socket?ticket=paired`,
+      expiresAt: Date.now() + 60_000,
+    },
+  }));
+  origin = new URL(page.url()).origin;
+  // Signed out, ChatGPT controls nothing here and nothing is asked for.
+  await expect(
+    frame.getByRole("heading", { name: "Sign in to the Exeora Dashboard" }),
+  ).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await tickets(page)).toEqual([]);
+  expect(gateway.sockets).toHaveLength(0);
+  await expect(frame.getByRole("region", { name: "ChatGPT control" })).toHaveCount(0);
+
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  const socket = await gateway.connect(0, PANEL);
+  expect((await tickets(page))[0]?.arguments).toEqual({
+    panelId: PANEL,
+    origin,
+    surface: "dashboard",
+  });
+  // The pairing ticket went to the gateway with the Dashboard's own sign-in.
+  expect(pairings).toEqual([
+    { auth: "Bearer sideapp-token", body: { panelId: PANEL, ticket: "pair-1", origin } },
+  ]);
+  const chip = frame.getByRole("region", { name: "ChatGPT control" });
+  await expect(chip.getByRole("status")).toHaveText("ChatGPT can move this panel");
+
+  const moved = await gateway.call(socket, PANEL, "navigate", {
+    project: project.id,
+    path: "src/main.ts",
+  });
+  expect(moved).toMatchObject({ status: "applied", state: { path: "src/main.ts" } });
+  await expect(frame.locator(".cm-content")).toContainText("export const answer = 42;");
+  await expect
+    .poll(async () => (await hostLog(page)).contexts.at(-1)?.["exeora/workspace"])
+    .toMatchObject({ panelId: PANEL, relay: "connected", path: "src/main.ts" });
+
+  // Elsewhere in the Dashboard, no Workspace is described as shown.
+  await frame.getByRole("link", { name: "Projects", exact: true }).click();
+  await expect
+    .poll(async () => (await gateway.call(socket, PANEL, "get_state")).state)
+    .toMatchObject({ projectId: null, tab: null, path: null });
+
+  // Signing out ends the control with the session, and nothing reconnects.
+  await frame.getByRole("link", { name: "Settings", exact: true }).click();
+  await frame.getByRole("button", { name: "Sign out" }).click();
+  await expect.poll(() => socket.closed).not.toBeNull();
+  await expect(chip).toHaveCount(0);
+  await page.waitForTimeout(1_500);
+  expect(gateway.sockets).toHaveLength(1);
+  expect(pairings).toHaveLength(1);
+});
+
+test("leaves ChatGPT without control when the Dashboard is signed in as another account", async ({
+  page,
+}) => {
+  const { frame, gateway, pairings } = await openRelayedDashboard(page, () => ({
+    status: 403,
+    json: { error: "forbidden" },
+  }));
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  const chip = frame.getByRole("region", { name: "ChatGPT control" });
+  await expect(chip.getByRole("status")).toHaveText(/another Exeora account/, {
+    timeout: 10_000,
+  });
+  await expect(chip.getByRole("button", { name: "Try again" })).toBeVisible();
+  await page.waitForTimeout(1_500);
+  expect(pairings).toHaveLength(1);
+  expect(gateway.sockets).toHaveLength(0);
+});
+
+test("lands no move the model asked for once the person has gone elsewhere in the Dashboard", async ({
+  page,
+}) => {
+  let origin = "";
+  const { frame, gateway } = await openRelayedDashboard(
+    page,
+    () => ({
+      status: 200,
+      json: {
+        panelId: PANEL,
+        protocol: 1,
+        url: `${origin}/relay-socket?ticket=paired`,
+        expiresAt: Date.now() + 60_000,
+      },
+    }),
+    [
+      destination("src/main.ts"),
+      destination("readme.md", { held: true }),
+      destination("src/main.ts", { held: true }),
+    ],
+  );
+  origin = new URL(page.url()).origin;
+  const resolutions = async () =>
+    (await hostLog(page)).calls.filter((call) => call.name === "exeora_panel_resolve_navigation")
+      .length;
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  const socket = await gateway.connect(0, PANEL);
+  const editor = frame.locator(".cm-content");
+  expect(
+    await gateway.call(socket, PANEL, "navigate", { project: project.id, path: "src/main.ts" }),
+  ).toMatchObject({ status: "applied" });
+  await expect(editor).toContainText("export const answer = 42;");
+
+  // The model asks to move; while the gateway checks, the person leaves for Projects.
+  const fromWorkspace = gateway.send(socket, PANEL, "navigate", { path: "readme.md" });
+  await expect.poll(resolutions).toBe(2);
+  await frame.getByRole("link", { name: "Projects", exact: true }).click();
+  await expect(frame.getByRole("link", { name: project.name }).first()).toBeVisible();
+  await releaseHeld(page);
+  await expect.poll(() => gateway.replies(socket, fromWorkspace).length).toBe(1);
+  expect(gateway.replies(socket, fromWorkspace)[0]?.result).toMatchObject({
+    status: "superseded",
+    state: { projectId: null, path: null },
+  });
+  await page.waitForTimeout(300);
+  await expect(editor).toHaveCount(0);
+  await expect(frame.getByRole("link", { name: project.name }).first()).toBeVisible();
+
+  // From Projects the model asks again; the person goes on to Settings.
+  const fromProjects = gateway.send(socket, PANEL, "navigate", {
+    project: project.id,
+    path: "src/main.ts",
+  });
+  await expect.poll(resolutions).toBe(3);
+  await frame.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(frame.getByText(user.email).first()).toBeVisible();
+  await releaseHeld(page);
+  await expect.poll(() => gateway.replies(socket, fromProjects).length).toBe(1);
+  expect(gateway.replies(socket, fromProjects)[0]?.result).toMatchObject({
+    status: "superseded",
+  });
+  await page.waitForTimeout(300);
+  await expect(editor).toHaveCount(0);
+  await expect(frame.getByText(user.email).first()).toBeVisible();
+});
+
+test("ends ChatGPT's control, and never pairs again, once the host tears the Dashboard down", async ({
+  page,
+}) => {
+  let origin = "";
+  const { frame, gateway, pairings } = await openRelayedDashboard(page, () => ({
+    status: 200,
+    json: {
+      panelId: PANEL,
+      protocol: 1,
+      url: `${origin}/relay-socket?ticket=paired`,
+      expiresAt: Date.now() + 60_000,
+    },
+  }));
+  origin = new URL(page.url()).origin;
+  await frame.getByRole("button", { name: "Sign in with a code" }).click();
+  const socket = await gateway.connect(0, PANEL);
+  await appRequest(page, "ui/resource-teardown", {});
+  await expect.poll(() => socket.closed).not.toBeNull();
+  await expect(frame.getByRole("region", { name: "ChatGPT control" })).toHaveCount(0);
+  await page.waitForTimeout(1_500);
+  expect(gateway.sockets).toHaveLength(1);
+  expect(pairings).toHaveLength(1);
+  await expect
+    .poll(async () => (await hostLog(page)).modelContexts.at(-1)?.structuredContent)
+    .toEqual({});
 });

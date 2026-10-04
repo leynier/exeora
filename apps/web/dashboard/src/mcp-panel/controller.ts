@@ -8,14 +8,14 @@ import { bufferStore } from "../components/workspace/bufferStore.js";
 import type { WorkspaceSnapshot, WorkspaceTarget } from "../components/workspace/surface.js";
 import type { WorkspaceView } from "../components/workspace/workspaceLayout.js";
 import { canonicalSelector } from "../selectors.js";
-import { OPEN_PANEL_TOOL } from "./opening.js";
 import { type PanelSelection, readAnswer, selectionRoute } from "./selection.js";
 import { answerText, type CallTool } from "./transport.js";
 
 /**
  * Where the panel goes, whoever asks: a later call ChatGPT hands over, a deep
- * link, the model through `exeora_workspace_navigate`, or the person picking
- * another project or working copy in the Workspace itself.
+ * link, the model through `exeora_workspace_navigate` (over the relay, or as
+ * this panel's own tool), or the person picking another project or working
+ * copy in the Workspace itself.
  *
  * Every request becomes a route the panel's router follows. One that leaves
  * the working copy while edits there are unsaved waits for the person to
@@ -27,8 +27,24 @@ import { answerText, type CallTool } from "./transport.js";
  * panel: the person answers first.
  *
  * A navigation reports `applied` once the Workspace shows it, as it says in
- * its own report; one the Workspace has not shown in time is `queued`.
+ * its own report; one the Workspace has not shown in time is `queued`. One
+ * given a deadline or a signal is never applied after either: an answer
+ * from the gateway that comes too late is dropped, and the navigation is
+ * `cancelled`.
  */
+
+/** The gateway's private check of where a navigation goes; it opens nothing. */
+export const RESOLVE_NAVIGATION_TOOL = "exeora_panel_resolve_navigation";
+
+/** Kept back from a deadline, so the answer still has time to travel. */
+const DEADLINE_MARGIN_MS = 500;
+
+export interface NavigateOptions {
+  /** Aborted when whoever asked stops waiting: nothing is applied after. */
+  signal?: AbortSignal;
+  /** Epoch milliseconds after which the navigation is no longer wanted. */
+  deadline?: number;
+}
 
 export type NavigateStatus =
   | "applied"
@@ -80,6 +96,8 @@ interface Pending {
   to: WorkspaceTarget;
   dirtyPaths: string[];
   proceed: () => void;
+  /** Asked by the model, which a Stop takes back. */
+  byModel?: boolean;
 }
 
 export class PanelController {
@@ -98,6 +116,8 @@ export class PanelController {
   constructor(
     private readonly call: CallTool,
     private readonly settleMs = 5_000,
+    /** The gateway's address for this panel, once known: it checks the panel is the caller's. */
+    private readonly panelId: () => string | null = () => null,
   ) {}
 
   subscribe = (listener: () => void): (() => void) => {
@@ -172,30 +192,78 @@ export class PanelController {
     this.emit();
   };
 
-  async navigate(args: NavigateArgs): Promise<NavigateResult> {
+  /**
+   * The person stopped the model, or the session it acted for ended: no
+   * answer still on its way from the gateway is applied, and a question
+   * about unsaved edits the model raised is taken back.
+   */
+  stopModel = (): void => {
+    this.epoch++;
+    if (this.pending?.byModel) this.cancel();
+    this.changed();
+  };
+
+  /**
+   * The person took the Dashboard to a screen without the Workspace, or
+   * from one such screen to another: nothing is described as on screen until
+   * the Workspace reports again, and no move the model asked for that is
+   * still being checked lands over where the person went. A question the
+   * model raised goes with it; one the person raised stays theirs to answer.
+   */
+  forget = (): void => {
+    this.snapshot = null;
+    this.stopSearch?.();
+    this.stopSearch = null;
+    this.stopModel();
+  };
+
+  async navigate(args: NavigateArgs, options: NavigateOptions = {}): Promise<NavigateResult> {
     if (this.pending) return this.result("needs_confirmation", "The person has not answered yet.");
+    const late = lateness(options);
+    if (late.expired()) {
+      late.done();
+      return this.result("cancelled", late.reason());
+    }
     const epoch = ++this.epoch;
     const request = this.requestFor(args);
 
     let answer: Awaited<ReturnType<CallTool>>;
     try {
-      answer = await this.call(OPEN_PANEL_TOOL, request);
+      answer = await this.call(RESOLVE_NAVIGATION_TOOL, request, late.signal);
     } catch (error) {
+      if (late.expired()) return this.result("cancelled", late.reason());
       if (epoch !== this.epoch) return this.result("superseded");
       return this.result(
         "error",
         error instanceof Error ? error.message : "Exeora did not answer.",
       );
+    } finally {
+      late.done();
     }
+    // Too late is never applied, whatever the gateway said.
+    if (late.expired()) return this.result("cancelled", late.reason());
     if (epoch !== this.epoch) return this.result("superseded");
     if (answer.isError) return this.result("error", answerText(answer) || "Not a place to go.");
     const read = readAnswer(answer.structuredContent);
     if (read?.kind !== "selection") return this.result("error", "Exeora did not name a place.");
     const selection = read.selection;
     if (this.request(selectionRoute(selection)) === "needs_confirmation") {
+      // Narrowed to null above, before the await: the question is new.
+      const asked = this.pending as Pending | null;
+      if (asked) asked.byModel = true;
       return this.result("needs_confirmation");
     }
-    return this.result(await this.settled(this.epoch, (snapshot) => shows(snapshot, selection)));
+    const wait = options.deadline
+      ? Math.min(this.settleMs, Math.max(0, options.deadline - Date.now() - DEADLINE_MARGIN_MS))
+      : this.settleMs;
+    return this.result(
+      await this.settled(
+        this.epoch,
+        (snapshot) => shows(snapshot, selection),
+        wait,
+        options.signal,
+      ),
+    );
   }
 
   /** What to ask the gateway: the request, with what it left out as it is now. */
@@ -207,7 +275,10 @@ export class PanelController {
         (!current || !sameTarget(current, current.projectId, args.workspace)));
     const content = args.path ?? args.diff ?? args.search;
     const project = args.project ?? current?.projectId ?? undefined;
-    const workspace = args.workspace ?? (moving ? undefined : (current?.workspace ?? undefined));
+    // The root on screen is named, never left for the gateway to fill with
+    // the connection's saved default, which may be another working copy.
+    const workspace =
+      args.workspace ?? (moving || !current?.projectId ? undefined : (current.workspace ?? "main"));
     // A search changes what it names and keeps the rest of the one on screen.
     const search = args.search
       ? {
@@ -218,7 +289,9 @@ export class PanelController {
           ...args.search,
         }
       : undefined;
+    const panelId = this.panelId();
     return {
+      ...(panelId ? { panelId } : {}),
       ...(project ? { project } : {}),
       ...(workspace ? { workspace } : {}),
       // Without content to imply one, the view on screen stays.
@@ -232,25 +305,31 @@ export class PanelController {
   /**
    * Waits for the Workspace to say it shows what was asked: `applied`, or
    * `superseded` if something else moved the panel first, or `queued` when
-   * it has not in `settleMs`.
+   * it has not in `waitMs`, or once whoever asked stops waiting.
    */
   private settled(
     epoch: number,
     shown: (snapshot: WorkspaceSnapshot) => boolean,
+    waitMs: number,
+    signal?: AbortSignal,
   ): Promise<"applied" | "queued" | "superseded"> {
     return new Promise((resolve) => {
       const finish = (outcome: "applied" | "queued" | "superseded") => {
         clearTimeout(timer);
         this.waiters.delete(check);
+        signal?.removeEventListener("abort", stop);
         resolve(outcome);
       };
+      const stop = () => finish("queued");
       const check = () => {
         if (epoch !== this.epoch) finish("superseded");
         else if (this.snapshot && shown(this.snapshot)) finish("applied");
       };
-      const timer = setTimeout(() => finish("queued"), this.settleMs);
+      const timer = setTimeout(() => finish("queued"), waitMs);
+      signal?.addEventListener("abort", stop, { once: true });
       this.waiters.add(check);
       check();
+      if (signal?.aborted) stop();
     });
   }
 
@@ -299,6 +378,33 @@ export class PanelController {
 
   private emit = (): void => {
     for (const listener of this.listeners) listener();
+  };
+}
+
+/**
+ * One signal for a navigation's own `signal` and its `deadline`, whichever
+ * comes first, and the sentence for having missed it.
+ */
+function lateness({ signal, deadline }: NavigateOptions) {
+  const controller = new AbortController();
+  const stop = () => controller.abort();
+  signal?.addEventListener("abort", stop, { once: true });
+  if (signal?.aborted) stop();
+  const timer =
+    deadline === undefined ? undefined : setTimeout(stop, Math.max(0, deadline - Date.now()));
+  const expired = () =>
+    controller.signal.aborted || (deadline !== undefined && Date.now() >= deadline);
+  return {
+    signal: controller.signal,
+    expired,
+    reason: () =>
+      signal?.aborted
+        ? "The navigation was stopped before the Workspace moved; it did not move."
+        : "The navigation ran out of time before the Workspace moved; it did not move.",
+    done: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", stop);
+    },
   };
 }
 

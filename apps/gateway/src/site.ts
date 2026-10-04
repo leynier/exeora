@@ -13,6 +13,7 @@ import {
 } from "./oauth/clients.js";
 import { deviceRoutes } from "./oauth/device-routes.js";
 import { oauthRoutes } from "./oauth/routes.js";
+import { panelSockets } from "./panel-relay-routes.js";
 import { sockets } from "./site-sockets.js";
 
 /**
@@ -82,6 +83,7 @@ site.get("/oauth/extension-client", async (c) => {
 });
 
 site.route("/", sockets);
+site.route("/", panelSockets);
 
 // Registered last, so it only sees paths no OAuth route claimed.
 site.all("*", (c) => serveAssets(c.req.raw, c.env));

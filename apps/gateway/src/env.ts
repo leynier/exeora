@@ -117,7 +117,7 @@ declare global {
      * may stop working without notice. Credentials are kept under
      * `CLOUD_CREDENTIALS_KEY`, without which this is off as well.
      */
-    AI_ASSIST_PROVIDERS?: string;
+    // AI_ASSIST_PROVIDERS is generated from the plain var in wrangler.jsonc.
     /** `off` keeps only the API keys: no device login is offered for any provider. */
     AI_ASSIST_OAUTH?: string;
     /**

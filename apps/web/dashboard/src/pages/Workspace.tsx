@@ -15,7 +15,7 @@ import { bufferStore } from "../components/workspace/bufferStore.js";
 import type { WorkspaceContext } from "../components/workspace/context.js";
 import { DetailContent, detailHeading } from "../components/workspace/DetailContent.js";
 import { scopedKey, targetScopedKey } from "../components/workspace/scope.js";
-import { useWorkspaceSurface } from "../components/workspace/surface.js";
+import { useWorkspaceControl } from "../components/workspace/surface.js";
 import { useAutoRefresh } from "../components/workspace/useAutoRefresh.js";
 import { useOpener } from "../components/workspace/useOpener.js";
 import { useWorkspaceActions } from "../components/workspace/useWorkspaceActions.js";
@@ -195,7 +195,7 @@ function WorkspaceScreen() {
 
   // Tabs are kept per project and working copy, and per panel when the
   // Workspace is embedded; a tab with edits still waiting comes back dirty.
-  const surface = useWorkspaceSurface();
+  const surface = useWorkspaceControl();
   const opener = useOpener({
     wide,
     // A detail asked for before a project is chosen waits for one.

@@ -53,6 +53,23 @@ const SurfaceContext = createContext<WorkspaceSurface | null>(null);
 export const WorkspaceSurfaceProvider = SurfaceContext.Provider;
 
 /**
+ * Who hears what the Workspace shows and stands between it and a change of
+ * working copy, without limiting it: the full Dashboard in ChatGPT, while
+ * ChatGPT may move it. An embedding's surface does both too.
+ */
+export type WorkspaceControl = Pick<WorkspaceSurface, "report" | "changeTarget">;
+
+const ControlContext = createContext<WorkspaceControl | null>(null);
+
+export const WorkspaceControlProvider = ControlContext.Provider;
+
+export function useWorkspaceControl(): WorkspaceControl | null {
+  const surface = useContext(SurfaceContext);
+  const control = useContext(ControlContext);
+  return surface ?? control;
+}
+
+/**
  * Whether account features (AI Assist, GitHub) are out of reach here, so the
  * views do not ask the gateway for them only to be refused.
  */

@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { allowedPanelRoute } from "../apps/gateway/src/plugin-panel-routes.js";
 
 /**
@@ -22,7 +22,10 @@ export interface HostScenario {
   /** The entrypoint's arguments and result, sent once the panel is initialized. */
   input?: Record<string, unknown>;
   result?: Record<string, unknown>;
-  /** Answers for the panel's own calls, in order, per tool. */
+  /**
+   * Answers for the panel's own calls, in order, per tool. One marked
+   * `held: true` waits for `releaseHeld` before it is given.
+   */
   tools?: Record<string, Record<string, unknown>[]>;
   /** Whether the host hands files over as resources (ChatGPT desktop). Defaults to true. */
   fileAccess?: boolean;
@@ -40,6 +43,12 @@ export interface HostScenario {
   noModelContext?: boolean;
   /** ChatGPT's per-widget state, as `window.openai` exposes it in the frame. */
   widgetState?: Record<string, unknown>;
+  /**
+   * Answer `exeora_panel_relay_ticket` as the gateway would: a fresh one-use
+   * ticket each time, for the socket `relayGateway` stands in for. A panel
+   * asking without an id is given `panelId`.
+   */
+  relay?: { panelId: string };
 }
 
 export interface HostLog {
@@ -59,6 +68,8 @@ export interface HostLog {
   messages: unknown[];
   /** What the panel saved as its widget state. */
   widgetStates: Record<string, unknown>[];
+  /** What the host asked of the app itself (`tools/list`, `tools/call`), by method. */
+  appRequests: string[];
 }
 
 export const HOST_PATH = "/mcp-host";
@@ -116,6 +127,19 @@ export async function callAppTool(page: Page, name: string, args: Record<string,
   return result;
 }
 
+/** Gives the answers marked `held` that calls are waiting on. */
+export async function releaseHeld(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { heldAnswers: unknown[] }).heldAnswers.length),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const waiting = (window as unknown as { heldAnswers: (() => void)[] }).heldAnswers;
+    for (const resolve of waiting.splice(0)) resolve();
+  });
+}
+
 /** The host's context changes, as when a ChatGPT deep link is clicked. */
 export function changeHostContext(page: Page, patch: Record<string, unknown>) {
   return page.evaluate(
@@ -145,15 +169,18 @@ export const HOST_HTML = `<!doctype html>
       const scenario = window.scenario;
       const log = (window.hostLog = {
         calls: [], links: [], modes: [], refused: [], contexts: [],
-        modelContexts: [], messages: [], widgetStates: [],
+        modelContexts: [], messages: [], widgetStates: [], appRequests: [],
       });
+      let tickets = 0;
       let updates = 0;
       window.failModelContext = false;
+      window.heldAnswers = [];
       const waiting = new Map();
       let nextId = 1000;
       // Host to app: what ChatGPT does to list and call the app's own tools.
       window.appRequest = (method, params) =>
         new Promise((resolve, reject) => {
+          log.appRequests.push(method);
           const id = nextId++;
           waiting.set(id, { resolve, reject });
           send({ id, method, params });
@@ -181,7 +208,21 @@ export const HOST_HTML = `<!doctype html>
           const text = await response.text();
           return { content: [], structuredContent: { status: response.status, body: text ? JSON.parse(text) : null } };
         }
+        if (name === "exeora_panel_relay_ticket" && scenario.relay) {
+          tickets += 1;
+          const pairing = args.surface === "dashboard" ? { pairingTicket: "pair-" + tickets } : {};
+          return { content: [], structuredContent: {
+            panelId: args.panelId ?? scenario.relay.panelId, protocol: 1,
+            url: location.origin + "/relay-socket?ticket=" + tickets,
+            expiresAt: Date.now() + 60000, ...pairing,
+          } };
+        }
         const next = queued[name]?.shift();
+        if (next?.held) {
+          await new Promise((resolve) => window.heldAnswers.push(resolve));
+          const { held, ...answer } = next;
+          return answer;
+        }
         return next ?? { isError: true, content: [{ type: "text", text: "No answer for " + name }] };
       }
 

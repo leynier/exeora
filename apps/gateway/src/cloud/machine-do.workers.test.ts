@@ -89,7 +89,7 @@ const machine = () => env.CLOUD_MACHINE.getByName(DEVICE);
  * runs only when the test says so rather than the moment it is scheduled.
  */
 async function useFetcher(fetcher: typeof fetch) {
-  await runInDurableObject(machine(), (instance: CloudMachine) => {
+  await runInDurableObject<CloudMachine, void>(machine(), (instance) => {
     const inside = instance as unknown as { fetcher: typeof fetch; alarmFloorMs: number };
     inside.fetcher = fetcher;
     inside.alarmFloorMs = 3_600_000;
@@ -243,7 +243,7 @@ describe("provisioning a cloud machine", () => {
         },
       },
     );
-    await runInDurableObject(machine(), (instance: CloudMachine) => {
+    await runInDurableObject<CloudMachine, void>(machine(), (instance) => {
       (instance as unknown as { env: Env }).env = {
         ...env,
         DB: broken as D1Database,
@@ -255,7 +255,7 @@ describe("provisioning a cloud machine", () => {
       runInDurableObject(machine(), (_instance, state) => state.storage.get("secrets")),
     ).resolves.toBeDefined();
 
-    await runInDurableObject(machine(), (instance: CloudMachine) => {
+    await runInDurableObject<CloudMachine, void>(machine(), (instance) => {
       (instance as unknown as { env: Env }).env = env as unknown as Env;
     });
     expect(await step()).toBe(true);
@@ -363,7 +363,7 @@ describe("provisioning a cloud machine", () => {
         status: "ready",
       })
       .run();
-    await runInDurableObject(env.CLOUD_MACHINE.getByName(child), (instance: CloudMachine) => {
+    await runInDurableObject<CloudMachine, void>(env.CLOUD_MACHINE.getByName(child), (instance) => {
       const inside = instance as unknown as { fetcher: typeof fetch; alarmFloorMs: number };
       inside.fetcher = sprites.fetcher;
       inside.alarmFloorMs = 3_600_000;

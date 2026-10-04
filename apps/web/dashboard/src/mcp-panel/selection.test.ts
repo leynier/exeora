@@ -35,6 +35,7 @@ describe("readAnswer", () => {
           diffStyle: "split",
         },
         gatewayOrigin: "https://exeora.dev",
+        panelId: null,
       },
     });
   });

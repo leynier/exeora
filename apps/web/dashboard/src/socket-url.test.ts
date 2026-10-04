@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { panelTicketResult } from "../../../gateway/src/plugin-panel-relay.js";
 import { configureTicketOrigin, ticketSocketUrl } from "./socket-url.js";
 
 describe("ticketSocketUrl", () => {
@@ -44,4 +45,37 @@ describe("configureTicketOrigin", () => {
       configureTicketOrigin(null);
     }
   });
+});
+
+describe("the gateway's panel relay tickets", () => {
+  // The gateway's own ticket answer, through the panel's own policy: an
+  // HTTP(S) ticket URL on the gateway, which the panel turns into the socket.
+  const panelId = "7d0f2c8e-4a51-4b8e-9b0e-1f2a3b4c5d6e";
+  const ticket = { ticket: "one-use", expiresAt: 1_900_000_000_000 };
+  const env = (base: string) =>
+    ({ EXEORA_BASE_URL: base }) as unknown as Parameters<typeof panelTicketResult>[0];
+
+  it.each([
+    ["https://exeora.example", "wss:"],
+    ["http://localhost:8787", "ws:"],
+  ])("opens a Workspace or exchanged Sideapp ticket from %s as %s", (base, scheme) => {
+    const origin = new URL(base).origin;
+    // The Workspace's ticket and the Sideapp's exchanged one share this shape.
+    const result = panelTicketResult(env(base), panelId, ticket);
+    const socket = ticketSocketUrl(result.url, origin);
+    expect(socket?.protocol).toBe(scheme);
+    expect(socket?.origin.replace(/^ws/, "http")).toBe(origin);
+    expect(socket?.searchParams.get("ticket")).toBe("one-use");
+    expect(socket?.searchParams.get("panelId")).toBe(panelId);
+  });
+
+  it.each(["https://exeora.example", "http://localhost:8787"])(
+    "gives the Sideapp's pairing from %s no socket ticket",
+    (base) => {
+      const result = panelTicketResult(env(base), panelId, ticket, true);
+      expect(result.pairingTicket).toBe("one-use");
+      expect(new URL(result.url).searchParams.has("ticket")).toBe(false);
+      expect(result.url).not.toContain("one-use");
+    },
+  );
 });

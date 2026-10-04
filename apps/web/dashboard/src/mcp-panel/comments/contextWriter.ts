@@ -139,8 +139,11 @@ export class ContextWriter {
     this.changed();
   }
 
-  /** The workspace's state, contents-free, written a moment after it settles. */
-  setWorkspace(state: Record<string, unknown>): void {
+  /**
+   * The workspace's state, contents-free, written a moment after it settles;
+   * `null` takes it out.
+   */
+  setWorkspace(state: Record<string, unknown> | null): void {
     this.workspace = state;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
