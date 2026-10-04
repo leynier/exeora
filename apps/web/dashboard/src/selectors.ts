@@ -46,7 +46,7 @@ export function rootSelectorOf(location: Pick<ProjectLocation, "slug" | "default
  */
 export function canonicalSelector(
   selector: string | null | undefined,
-  project: Pick<Project, "locations"> | undefined,
+  project: { locations: readonly Pick<ProjectLocation, "slug" | "default">[] } | undefined,
 ): string | null {
   const parsed = parseSelector(selector);
   if (!parsed.root) return parsed.slug;

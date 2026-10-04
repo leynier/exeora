@@ -12,9 +12,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { GlobalTerminals, TerminalsProvider } from "../components/Terminals.js";
 import { ToastProvider } from "../components/toast.js";
 import { WorkspaceSurfaceProvider } from "../components/workspace/surface.js";
+import type { PanelController } from "./controller.js";
 import type { Host } from "./host.js";
 import { dashboardUrl, deepLinkRoute, gatewayOrigin, selectionRoute } from "./selection.js";
 import { useOpening } from "./useOpening.js";
@@ -29,9 +31,11 @@ const Workspace = lazy(() =>
  * fullscreen; a model's call starts inline, where the panel is a card that
  * asks for fullscreen rather than a cramped editor.
  */
-export function McpPanel({ host }: { host: Host }) {
+export function McpPanel({ host, controller }: { host: Host; controller: PanelController }) {
   const state = useSyncExternalStore(host.subscribe, host.state);
   const phase = useOpening(host, state);
+  const pending = useSyncExternalStore(controller.subscribe, controller.pendingConfirmation);
+  useModelContext(host, controller);
 
   const inline = state.context.displayMode === "inline";
   const canFullscreen = state.context.availableDisplayModes?.includes("fullscreen") === true;
@@ -47,6 +51,21 @@ export function McpPanel({ host }: { host: Host }) {
     askedFor.current = sequence;
     void host.requestDisplayMode("fullscreen");
   }, [sequence, card, host]);
+  // Every opening, and every deep link, goes where the controller says, so
+  // unsaved edits are asked about whoever moves the panel. A deep link
+  // present from the start wins over the opening, as it is asked for last.
+  const route = phase.kind === "ready" ? selectionRoute(phase.selection) : null;
+  const requested = useRef<number | null>(null);
+  useEffect(() => {
+    if (sequence === null || route === null || requested.current === sequence) return;
+    requested.current = sequence;
+    controller.request(route);
+  }, [sequence, route, controller]);
+  const deepLink = deepLinkRoute(state.context["openai/deepLink"]);
+  useEffect(() => {
+    if (deepLink) controller.request(deepLink);
+  }, [deepLink, controller]);
+
   // Inline, the host sizes the frame to the page; elsewhere the page fills it.
   useEffect(() => {
     document.documentElement.classList.toggle("mcp-inline", inline);
@@ -89,14 +108,11 @@ export function McpPanel({ host }: { host: Host }) {
       />
     );
   } else {
-    const deepLink = deepLinkRoute(state.context["openai/deepLink"]);
-    const route = selectionRoute(phase.selection);
     body = (
       <PanelWorkspace
         host={host}
-        initial={deepLink ?? route}
-        deepLink={deepLink}
-        selection={{ route, sequence: phase.sequence }}
+        controller={controller}
+        fallback={deepLink ?? selectionRoute(phase.selection)}
         gatewayOrigin={gatewayOrigin(phase.selection)}
         title={phase.file?.name ?? null}
         fixedHeight={inline}
@@ -107,24 +123,37 @@ export function McpPanel({ host }: { host: Host }) {
   return (
     <div className="flex h-full flex-col" style={style}>
       {body}
+      <ConfirmDialog
+        open={pending !== null}
+        title="Leave unsaved edits?"
+        body={`${pending?.dirtyPaths.length === 1 ? "A file has" : `${pending?.dirtyPaths.length ?? 0} files have`} unsaved edits in this workspace. They stay in this panel if you come back, but are not saved.`}
+        details={
+          <ul className="font-mono text-xs">
+            {pending?.dirtyPaths.map((path) => (
+              <li key={path}>{path}</li>
+            ))}
+          </ul>
+        }
+        confirmLabel="Leave and switch"
+        onConfirm={controller.confirm}
+        onCancel={controller.cancel}
+      />
     </div>
   );
 }
 
 function PanelWorkspace({
   host,
-  initial,
-  deepLink,
-  selection,
+  controller,
+  fallback,
   gatewayOrigin,
   title,
   fixedHeight,
 }: {
   host: Host;
-  initial: string;
-  deepLink: string | null;
-  /** Where the latest opening points; a new `sequence` moves there. */
-  selection: { route: string; sequence: number };
+  controller: PanelController;
+  /** Where to start if the controller has not been asked anywhere yet. */
+  fallback: string;
   gatewayOrigin: string | null;
   title: string | null;
   fixedHeight: boolean;
@@ -142,15 +171,22 @@ function PanelWorkspace({
     },
     [host, gatewayOrigin],
   );
-  const surface = useMemo(() => ({ openDashboard: open }), [open]);
+  const surface = useMemo(
+    () => ({
+      openDashboard: open,
+      report: controller.report,
+      changeTarget: controller.changeTarget,
+    }),
+    [open, controller],
+  );
+  const [initial] = useState(() => controller.route().route ?? fallback);
 
   return (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initial]}>
         <ToastProvider>
           <TerminalsProvider>
-            <Follow route={deepLink} version={deepLink} />
-            <Follow route={selection.route} version={selection.sequence} />
+            <Follow controller={controller} />
             <WorkspaceSurfaceProvider value={surface}>
               <div className={`flex flex-col ${fixedHeight ? "h-[640px]" : "h-full"}`}>
                 <Header title={title} open={gatewayOrigin ? open : undefined} />
@@ -178,18 +214,42 @@ function PanelWorkspace({
 }
 
 /**
- * Moves the open Workspace when `version` changes: a deep link clicked, or a
- * later call that opened another file, without reloading the panel.
+ * Moves the open Workspace where the controller asks next, without
+ * reloading the panel. Where it asked before this mounted is where it began.
  */
-function Follow({ route, version }: { route: string | null; version: unknown }) {
+function Follow({ controller }: { controller: PanelController }) {
   const navigate = useNavigate();
+  const { route, version } = useSyncExternalStore(controller.subscribe, controller.route);
   const seen = useRef(version);
   useEffect(() => {
-    if (!route || Object.is(seen.current, version)) return;
+    if (!route || seen.current === version) return;
     seen.current = version;
     navigate(route);
   }, [route, version, navigate]);
   return null;
+}
+
+/** Keeps the model told what the panel shows, a moment after it settles. */
+function useModelContext(host: Host, controller: PanelController) {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let sent = "";
+    const push = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const state = controller.state();
+        const next = JSON.stringify(state);
+        if (next === sent) return;
+        sent = next;
+        void host.updateModelContext({ "exeora/workspace": state });
+      }, 300);
+    };
+    const stop = controller.subscribe(push);
+    return () => {
+      stop();
+      clearTimeout(timer);
+    };
+  }, [host, controller]);
 }
 
 function Header({ title, open }: { title: string | null; open?: (path: string) => void }) {

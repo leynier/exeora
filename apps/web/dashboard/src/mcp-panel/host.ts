@@ -39,13 +39,30 @@ export interface Host {
   call: CallTool;
   openLink: (url: string) => Promise<boolean>;
   requestDisplayMode: (mode: DisplayMode) => Promise<DisplayMode | null>;
+  /** Tells the model what the app shows; structured, never contents. */
+  updateModelContext: (structured: Record<string, unknown>) => Promise<void>;
 }
 
-export function connectHost(): Host {
+/** Tools the app itself answers, for the host and its model. */
+export interface AppToolHandlers {
+  list: () => { name: string; [key: string]: unknown }[];
+  call: (name: string, args: Record<string, unknown> | undefined) => Promise<ToolAnswer>;
+}
+
+export function connectHost(options: { name?: string; tools?: AppToolHandlers } = {}): Host {
   const app = new App(
-    { name: "Exeora Workspace", version: "1.0.0" },
-    { availableDisplayModes: ["inline", "fullscreen"] },
+    { name: options.name ?? "Exeora Workspace", version: "1.0.0" },
+    {
+      availableDisplayModes: ["inline", "fullscreen"],
+      ...(options.tools ? { tools: { listChanged: false } } : {}),
+    },
   );
+  // Before connecting, like every handler: the host may ask at once.
+  if (options.tools) {
+    const tools = options.tools;
+    app.onlisttools = async () => ({ tools: tools.list() as never });
+    app.oncalltool = async (params) => (await tools.call(params.name, params.arguments)) as never;
+  }
   let state: HostState = {
     connection: "connecting",
     error: null,
@@ -103,6 +120,14 @@ export function connectHost(): Host {
         return result.isError !== true;
       } catch {
         return false;
+      }
+    },
+    updateModelContext: async (structured) => {
+      if (state.connection !== "connected") return;
+      try {
+        await app.updateModelContext({ structuredContent: structured });
+      } catch {
+        // A host that does not take context still has the tools to ask.
       }
     },
     requestDisplayMode: async (mode) => {

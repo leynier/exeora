@@ -28,6 +28,14 @@ export interface HostScenario {
   fileAccess?: boolean;
   /** Answer a request for fullscreen by staying inline. */
   declineFullscreen?: boolean;
+  /** The built page to frame; the Workspace panel unless given. */
+  resource?: string;
+  /**
+   * Frame it on the host's own origin. The Dashboard talks to the gateway
+   * directly, which from a real sandbox origin needs the gateway's CORS; here
+   * the page's own origin stands in for the gateway.
+   */
+  sameOrigin?: boolean;
 }
 
 export interface HostLog {
@@ -36,6 +44,8 @@ export interface HostLog {
   modes: string[];
   /** Panel requests the gateway's allowlist refused, as "METHOD /path". */
   refused: string[];
+  /** What the panel told the model, in order. */
+  contexts: Record<string, unknown>[];
 }
 
 export const HOST_PATH = "/mcp-host";
@@ -70,6 +80,35 @@ export function hostLog(page: Page): Promise<HostLog> {
   return page.evaluate(() => (window as unknown as { hostLog: HostLog }).hostLog);
 }
 
+/** What the host asks of the app itself: `tools/list`, `tools/call`. */
+export function appRequest(page: Page, method: string, params: unknown = {}) {
+  return page.evaluate(
+    ([method, params]) =>
+      (
+        window as unknown as { appRequest: (method: string, params: unknown) => Promise<unknown> }
+      ).appRequest(method, params),
+    [method, params] as const,
+  );
+}
+
+/** Calls one of the app's own tools and returns its structured answer. */
+export async function callAppTool(page: Page, name: string, args: Record<string, unknown> = {}) {
+  const result = (await appRequest(page, "tools/call", { name, arguments: args })) as {
+    isError?: boolean;
+    structuredContent?: Record<string, unknown>;
+  };
+  return result;
+}
+
+/** The host's context changes, as when a ChatGPT deep link is clicked. */
+export function changeHostContext(page: Page, patch: Record<string, unknown>) {
+  return page.evaluate(
+    (patch) =>
+      (window as unknown as { changeContext: (patch: unknown) => void }).changeContext(patch),
+    patch,
+  );
+}
+
 /** A later call in the same thread: its arguments, then its result. */
 export function callAgain(page: Page, input: Record<string, unknown>, result: unknown) {
   return page.evaluate(
@@ -88,7 +127,16 @@ export const HOST_HTML = `<!doctype html>
     <iframe sandbox="allow-scripts" style="display:block;border:0;width:100vw;height:100vh"></iframe>
     <script type="module">
       const scenario = window.scenario;
-      const log = (window.hostLog = { calls: [], links: [], modes: [], refused: [] });
+      const log = (window.hostLog = { calls: [], links: [], modes: [], refused: [], contexts: [] });
+      const waiting = new Map();
+      let nextId = 1000;
+      // Host to app: what ChatGPT does to list and call the app's own tools.
+      window.appRequest = (method, params) =>
+        new Promise((resolve, reject) => {
+          const id = nextId++;
+          waiting.set(id, { resolve, reject });
+          send({ id, method, params });
+        });
       const frame = document.querySelector("iframe");
       const queued = structuredClone(scenario.tools ?? {});
       let context = scenario.context;
@@ -119,6 +167,13 @@ export const HOST_HTML = `<!doctype html>
       window.addEventListener("message", async (event) => {
         if (event.source !== frame.contentWindow) return;
         const message = event.data;
+        if (message?.jsonrpc === "2.0" && !message.method && waiting.has(message.id)) {
+          const { resolve, reject } = waiting.get(message.id);
+          waiting.delete(message.id);
+          if (message.error) reject(new Error(message.error.message));
+          else resolve(message.result);
+          return;
+        }
         if (!message || message.jsonrpc !== "2.0" || !message.method) return;
         const { id, method, params } = message;
         if (method === "ui/initialize") {
@@ -146,17 +201,26 @@ export const HOST_HTML = `<!doctype html>
           context = { ...context, displayMode: mode };
           reply(id, { mode });
           send({ method: "ui/notifications/host-context-changed", params: { displayMode: mode } });
+        } else if (method === "ui/update-model-context") {
+          log.contexts.push(params.structuredContent);
+          reply(id, {});
         } else if (id !== undefined) {
           reply(id, {});
         }
       });
+
+      window.changeContext = (patch) => {
+        context = { ...context, ...patch };
+        send({ method: "ui/notifications/host-context-changed", params: patch });
+      };
 
       window.callAgain = (input, result) => {
         send({ method: "ui/notifications/tool-input", params: { arguments: input } });
         send({ method: "ui/notifications/tool-result", params: result });
       };
 
-      const html = await (await fetch("/dashboard/mcp-panel.html")).text();
+      if (scenario.sameOrigin) frame.sandbox.add("allow-same-origin");
+      const html = await (await fetch(scenario.resource ?? "/dashboard/mcp-panel.html")).text();
       const origin = location.origin;
       frame.srcdoc = html
         .replace("<!--exeora:base-->", '<base href="' + origin + '/dashboard/" target="_blank">')

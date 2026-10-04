@@ -1,6 +1,13 @@
 import { and, eq, gt } from "drizzle-orm";
 import { db, schema } from "../db/client.js";
-import { CLI_SCOPES, cliDeviceRedirectUri, isCliClient } from "./clients.js";
+import {
+  CLI_SCOPES,
+  cliDeviceRedirectUri,
+  DASHBOARD_SCOPES,
+  isCliClient,
+  isSideappClient,
+  sideappDeviceRedirectUri,
+} from "./clients.js";
 
 /**
  * Headless CLI sign-in. The terminal shows a short code; a browser elsewhere
@@ -60,20 +67,23 @@ export async function createDeviceGrant(
   env: Env,
   input: { clientId: string; codeChallenge: string; codeChallengeMethod: string; scope: string[] },
 ): Promise<CreatedDeviceGrant | { error: string }> {
-  if (!(await isCliClient(env, input.clientId))) {
-    return { error: "Only the Exeora CLI can start a code sign-in." };
+  const sideapp = await isSideappClient(env, input.clientId);
+  if (!sideapp && !(await isCliClient(env, input.clientId))) {
+    return { error: "Only the Exeora CLI or Dashboard Sideapp can start a code sign-in." };
   }
   if (input.codeChallengeMethod !== "S256" || !isPkceChallenge(input.codeChallenge)) {
     return { error: "A S256 PKCE challenge is required." };
   }
 
-  const scopes = CLI_SCOPES.filter((scope) => input.scope.includes(scope));
+  const scopes = (sideapp ? DASHBOARD_SCOPES : CLI_SCOPES).filter((scope) =>
+    input.scope.includes(scope),
+  );
   if (scopes.length === 0) {
     return { error: "This application did not request a scope it is allowed to use." };
   }
 
   const deviceCode = randomToken(32);
-  const redirectUri = cliDeviceRedirectUri(env);
+  const redirectUri = sideapp ? sideappDeviceRedirectUri(env) : cliDeviceRedirectUri(env);
   const expiresAt = new Date(Date.now() + DEVICE_TTL_SECONDS * 1000);
   const deviceCodeHash = await tokenHash(deviceCode, env.COOKIE_SECRET);
 

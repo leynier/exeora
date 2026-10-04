@@ -7,6 +7,7 @@ import { registerSave } from "../../hooks/saveRegistry.js";
 import { type Target, useFileContent, workspaceKeys } from "../../queries-workspace.js";
 import { useToast } from "../toast.js";
 import { EmptyState, ErrorBanner, Skeleton } from "../ui.js";
+import { bufferStore } from "../workspace/bufferStore.js";
 import type { WorkspaceContext } from "../workspace/context.js";
 import { fileKind } from "./explorerModel.js";
 
@@ -73,13 +74,34 @@ function TextFile({
 }) {
   const client = useQueryClient();
   const toast = useToast();
-  const [text, setText] = useState(content);
-  const [saving, setSaving] = useState(false);
-  const [conflict, setConflict] = useState(false);
-  const [preview, setPreview] = useState(markdown);
-  const dirty = text !== content;
-  const changed = ctx.status.data?.files.some((item) => item.path === path) ?? false;
   const { setDirty, actions, target } = ctx;
+  // Edits made before this editor last unmounted (another tab, another
+  // place) come back. Against a file that moved on since, they come back
+  // with the conflict banner rather than being saved over the change.
+  const [kept] = useState(() => bufferStore.get(target.projectId, target.targetKey, path));
+  const [text, setText] = useState(kept?.text ?? content);
+  const [saving, setSaving] = useState(false);
+  // The version the edits started from. It stays with them, through every
+  // remount, until a save or a reload moves it on: a save sends it, so a file
+  // that changed on the machine since is never written over unasked.
+  const [base, setBase] = useState(kept?.token ?? token);
+  // Reported by the machine on a save; or seen here, as an edit whose base is
+  // no longer the file's version (it changed while the edit was elsewhere).
+  const [reported, setConflict] = useState(false);
+  const [preview, setPreview] = useState(markdown && kept === undefined);
+  const dirty = text !== content;
+  const conflict = reported || (dirty && base !== token);
+  const changed = ctx.status.data?.files.some((item) => item.path === path) ?? false;
+
+  // Nothing edited: an edit would start from the file as it is now.
+  useEffect(() => {
+    if (!dirty && !conflict) setBase(token);
+  }, [dirty, conflict, token]);
+
+  useEffect(() => {
+    if (dirty) bufferStore.set(target.projectId, target.targetKey, path, { text, token: base });
+    else bufferStore.clear(target.projectId, target.targetKey, path);
+  }, [dirty, text, base, target.projectId, target.targetKey, path]);
 
   useEffect(() => {
     setDirty({ kind: "file", path }, dirty);
@@ -88,12 +110,18 @@ function TextFile({
   const save = useCallback(
     async (overwrite = false) => {
       if (saving || (!dirty && !overwrite)) return;
+      // A plain save (the button, Ctrl/Cmd+S) never settles a conflict; only
+      // Overwrite or Reload does, and both say what they do.
+      if (conflict && !overwrite) {
+        toast("The file changed on the machine. Reload it, or overwrite it.", "error");
+        return;
+      }
       setSaving(true);
       try {
         const result = await actions.run(
           overwrite
             ? { action: "file_write", path, content: text }
-            : { action: "file_write", path, content: text, expectedToken: token },
+            : { action: "file_write", path, content: text, expectedToken: base },
           { quiet: true },
         );
         if (result?.kind !== "file_write") return;
@@ -103,6 +131,7 @@ function TextFile({
           return;
         }
         setConflict(false);
+        setBase(result.token);
         client.setQueryData(workspaceKeys.file(target.projectId, target.targetKey, path), {
           kind: "file",
           path,
@@ -121,15 +150,19 @@ function TextFile({
         setSaving(false);
       }
     },
-    [actions, client, dirty, path, saving, target, text, toast, token],
+    [actions, base, client, conflict, dirty, path, saving, target, text, toast],
   );
 
   useEffect(() => registerSave(() => void save()), [save]);
 
+  // The machine's version replaces what is here, and becomes the new base.
   const reload = async () => {
-    await client.invalidateQueries({
-      queryKey: workspaceKeys.file(target.projectId, target.targetKey, path),
-    });
+    const key = workspaceKeys.file(target.projectId, target.targetKey, path);
+    await client.invalidateQueries({ queryKey: key });
+    const fresh = client.getQueryData<{ content?: string; token?: string }>(key);
+    if (typeof fresh?.content !== "string" || typeof fresh.token !== "string") return;
+    setText(fresh.content);
+    setBase(fresh.token);
     setConflict(false);
   };
 
@@ -165,7 +198,12 @@ function TextFile({
           icon={RotateCcw}
           size="sm"
           disabled={!dirty || saving}
-          onClick={() => setText(content)}
+          onClick={() => {
+            // Back to the file as it is now, conflict and all left behind.
+            setText(content);
+            setBase(token);
+            setConflict(false);
+          }}
         />
         <IconButton
           label="Save"

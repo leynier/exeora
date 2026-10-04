@@ -61,6 +61,22 @@ function cliSpec(env: Pick<Env, "EXEORA_BASE_URL">): ClientSpec {
 
 const DASHBOARD_KV_KEY = "dashboard_client_id";
 
+const SIDEAPP_KV_KEY = "sideapp_client_id";
+
+/** A reserved first-party UI client, separate from ChatGPT's MCP connection. */
+export function sideappDeviceRedirectUri(env: Pick<Env, "EXEORA_BASE_URL">): string {
+  return new URL("/oauth/device/sideapp-callback", env.EXEORA_BASE_URL).toString();
+}
+
+function sideapp(env: Env): ClientSpec {
+  return {
+    kvKey: SIDEAPP_KV_KEY,
+    clientName: "Exeora Dashboard in ChatGPT",
+    redirectUris: [sideappDeviceRedirectUri(env)],
+    exact: true,
+  };
+}
+
 function dashboard(env: Env): ClientSpec {
   return {
     kvKey: DASHBOARD_KV_KEY,
@@ -119,6 +135,15 @@ function extension(env: Env): ClientSpec {
 
 export const getCliClientId = (env: Env) => clientIdFor(env, cliSpec(env));
 export const getDashboardClientId = (env: Env) => clientIdFor(env, dashboard(env));
+export const getSideappClientId = (env: Env) => clientIdFor(env, sideapp(env));
+
+export async function isSideappClient(
+  env: Pick<Env, "OAUTH_KV">,
+  clientId: string,
+): Promise<boolean> {
+  const stored = await env.OAUTH_KV.get(SIDEAPP_KV_KEY);
+  return stored !== null && stored === clientId;
+}
 
 /** Null when this gateway names no extension, which leaves it switched off. */
 export async function getExtensionClientId(env: Env): Promise<string | null> {
@@ -168,7 +193,11 @@ export async function isFirstPartyUiClient(
   env: Pick<Env, "OAUTH_KV">,
   clientId: string,
 ): Promise<boolean> {
-  return (await isDashboardClient(env, clientId)) || (await isExtensionClient(env, clientId));
+  return (
+    (await isDashboardClient(env, clientId)) ||
+    (await isExtensionClient(env, clientId)) ||
+    (await isSideappClient(env, clientId))
+  );
 }
 
 /** Whether this is the public client installed by the native executor. */

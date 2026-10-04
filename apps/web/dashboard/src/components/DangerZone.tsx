@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api.js";
-import { signOut } from "../auth.js";
+import { useAuth } from "../authContext.js";
 import { useMe } from "../queries.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { useToast } from "./toast.js";
@@ -21,6 +21,7 @@ import { useToast } from "./toast.js";
  * appear, so the red border is a reliable signal rather than a one-off style.
  */
 export function DangerZone() {
+  const { signOut } = useAuth();
   const me = useMe();
   const toast = useToast();
 

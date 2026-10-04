@@ -1,114 +1,16 @@
 import { createExecutionContext, env } from "cloudflare:test";
-import {
-  CLIENT_CAPABILITIES_META_KEY,
-  CLIENT_INFO_META_KEY,
-  PROTOCOL_VERSION_META_KEY,
-} from "@modelcontextprotocol/server";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "./db/client.js";
 import worker from "./index.js";
-import { createProjectMcpHandler } from "./mcp.js";
-import { createAccountMcpHandler } from "./mcp-account.js";
-import { payload } from "./mcp-fixtures.js";
 import { nowhereId, nowhereStatement } from "./nowhere.js";
 import { PluginAccess } from "./plugin-access.js";
-import {
-  OTHER,
-  PROJECT,
-  pluginEnv,
-  props,
-  setupPluginFixture,
-  USER,
-} from "./plugin-extensions-fixtures.js";
+import { OTHER, PROJECT, props, setupPluginFixture, USER } from "./plugin-extensions-fixtures.js";
 import { panelRequest } from "./plugin-panel-api.js";
 import { readPluginSettings, updatePluginSettings } from "./plugin-settings.js";
+import { call, post } from "./plugin-wire-fixtures.js";
 
 beforeEach(setupPluginFixture);
-
-async function post(
-  method: string,
-  params: Record<string, unknown> = {},
-  project?: string,
-  modern = false,
-) {
-  const ctx = createExecutionContext();
-  (ctx as unknown as { props: typeof props }).props = props;
-  const url = project ? `/p/${project}/mcp` : "/mcp";
-  const handler = project
-    ? createProjectMcpHandler(
-        project,
-        async () => ({ kind: "value", value: {} }),
-        pluginEnv,
-        undefined,
-        undefined,
-        undefined,
-        pluginEnv,
-      )
-    : createAccountMcpHandler(
-        async () => ({ kind: "value", value: {} }),
-        async () => ({}),
-        pluginEnv,
-        undefined,
-        undefined,
-        pluginEnv,
-      );
-  const body = await payload(
-    await handler(
-      new Request(`https://exeora.dev${url}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-          "MCP-Protocol-Version": modern ? "2026-07-28" : "2025-11-25",
-          ...(modern
-            ? {
-                "Mcp-Method": method,
-                ...(typeof params.name === "string" ? { "Mcp-Name": params.name } : {}),
-              }
-            : {}),
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method,
-          params: modern
-            ? {
-                ...params,
-                _meta: {
-                  [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
-                  [CLIENT_INFO_META_KEY]: { name: "ChatGPT", version: "1" },
-                  [CLIENT_CAPABILITIES_META_KEY]: {},
-                  ...(params._meta as Record<string, unknown> | undefined),
-                },
-              }
-            : params,
-        }),
-      }),
-      env,
-      ctx,
-    ),
-  );
-  if (body.error) throw new Error(JSON.stringify(body.error));
-  return body;
-}
-
-async function call(
-  name: string,
-  args: Record<string, unknown> = {},
-  meta?: Record<string, unknown>,
-) {
-  const body = await post("tools/call", {
-    name,
-    arguments: args,
-    ...(meta ? { _meta: meta } : {}),
-  });
-  return body.result as {
-    isError?: boolean;
-    structuredContent?: Record<string, unknown>;
-    content: { text: string }[];
-  };
-}
 
 describe("OpenAI plugin wire contracts", () => {
   it("advertises settings through modern discovery and preserves host file metadata", async () => {
@@ -141,13 +43,25 @@ describe("OpenAI plugin wire contracts", () => {
       const body = await post("tools/list", {}, project);
       const tools = (
         body.result as {
-          tools: { name: string; _meta?: Record<string, unknown>; outputSchema?: unknown }[];
+          tools: {
+            name: string;
+            title?: string;
+            _meta?: Record<string, unknown>;
+            outputSchema?: unknown;
+          }[];
         }
       ).tools;
       const panel = tools.find((tool) => tool.name === "exeora_open_panel");
+      expect(panel?.title).toBe("Exeora Workspace");
       expect(panel?._meta).toMatchObject({
         ui: { resourceUri: "ui://exeora/workspace" },
         "openai/ui": { entrypoints: [{ type: "thread" }] },
+      });
+      const dashboard = tools.find((tool) => tool.name === "exeora_open_dashboard");
+      expect(dashboard?.title).toBe("Exeora Dashboard");
+      expect(dashboard?._meta).toMatchObject({
+        ui: { resourceUri: "ui://exeora/dashboard" },
+        "openai/ui": { entrypoints: [{ type: "global" }] },
       });
       const file = tools.find((tool) => tool.name === "exeora_open_file");
       expect(file?._meta).toMatchObject({
@@ -188,6 +102,28 @@ describe("OpenAI plugin wire contracts", () => {
       "openai/ui": { preferredDisplayMode: "fullscreen" },
       ui: { csp: { resourceDomains: ["https://exeora.dev"] } },
     });
+  });
+  it("opens the independent full-dashboard resource without MCP credentials or account data", async () => {
+    expect((await call("exeora_open_dashboard")).structuredContent).toEqual({
+      gatewayOrigin: "https://exeora.dev",
+    });
+    const body = await post("resources/read", { uri: "ui://exeora/dashboard" });
+    const content = (body.result as { contents: { text: string; _meta: unknown }[] }).contents[0];
+    expect(content?.text).toContain('<base href="https://exeora.dev/dashboard/"');
+    expect(content?._meta).toMatchObject({
+      ui: { csp: { connectDomains: ["https://exeora.dev", "wss://exeora.dev"] } },
+    });
+  });
+  it("passes navigation targets through the public tool wire contract", async () => {
+    expect(
+      (await call("exeora_open_panel", { diff: { path: "app.ts", area: "staged" } }))
+        .structuredContent,
+    ).toMatchObject({ tab: "source", diff: { path: "app.ts", area: "staged" } });
+    expect(
+      (await call("exeora_open_panel", { search: { query: "TODO", wholeWord: true } }))
+        .structuredContent,
+    ).toMatchObject({ tab: "search", search: { query: "TODO", wholeWord: true } });
+    expect((await call("exeora_open_panel", { path: "app.ts", tab: "logs" })).isError).toBe(true);
   });
   it("opens only granted selections and rejects arbitrary relative traversal", async () => {
     expect(

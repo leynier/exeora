@@ -54,7 +54,9 @@ describe("device-code login", () => {
       codeChallengeMethod: "S256",
       scope: [...CLI_SCOPES],
     });
-    expect(created).toEqual({ error: "Only the Exeora CLI can start a code sign-in." });
+    expect(created).toEqual({
+      error: "Only the Exeora CLI or Dashboard Sideapp can start a code sign-in.",
+    });
   });
 
   it("finds a pending grant by the typed code, ignoring hyphens and case", async () => {

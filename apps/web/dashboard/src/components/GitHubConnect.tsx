@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { errorText } from "../api.js";
-import { externalHttpsUrl } from "../external-url.js";
+import { leaveForExternalUrl } from "../external-url.js";
 import { useGitHub } from "../queries.js";
 import { useToast } from "./toast.js";
 
@@ -32,9 +32,13 @@ export function ConnectGitHubButton({
         setLeaving(true);
         const fresh = await github.refetch();
         const url = fresh.data?.connectUrl;
-        const safeUrl = externalHttpsUrl(url);
-        if (safeUrl) {
-          window.location.assign(safeUrl);
+        const leaving = url ? leaveForExternalUrl(url) : "refused";
+        if (leaving === "left") return;
+        if (leaving === "opened") {
+          // GitHub opened outside this frame; the connection shows up here
+          // once it is done, on the next look at it.
+          setLeaving(false);
+          toast("Finish connecting in the browser, then come back here.");
           return;
         }
         setLeaving(false);

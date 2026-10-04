@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dashboardDeepLink,
   dashboardUrl,
   deepLinkRoute,
   gatewayOrigin,
@@ -23,6 +24,9 @@ describe("readAnswer", () => {
         projectId: "p1",
         workspace: "feat@laptop",
         path: "src/app.ts",
+        tab: null,
+        diff: null,
+        search: null,
         settings: {
           defaultProject: null,
           defaultWorkspace: null,
@@ -214,4 +218,115 @@ describe("gatewayOrigin", () => {
       expect(gatewayOrigin(null, baseURI)).toBeNull();
     },
   );
+});
+
+describe("tabs, diffs and searches", () => {
+  const settings = {
+    defaultProject: null,
+    defaultWorkspace: null,
+    view: "explorer" as const,
+    showIgnored: null,
+    diffStyle: null,
+  };
+
+  it("reads what the gateway names and routes to it", () => {
+    const answer = readAnswer({
+      projectId: "p1",
+      workspace: "feat@laptop",
+      tab: "source",
+      diff: { path: "src/a.ts", area: "staged" },
+    });
+    expect(answer).toMatchObject({
+      selection: { tab: "source", diff: { path: "src/a.ts", area: "staged" }, search: null },
+    });
+    if (answer?.kind !== "selection") throw new Error("no selection");
+    const url = new URL(selectionRoute(answer.selection), "https://x.invalid");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      project: "p1",
+      workspace: "feat@laptop",
+      view: "source",
+      detail: "diff:staged:src/a.ts",
+    });
+  });
+
+  it("carries a search, defaults filled in, to the Search view", () => {
+    const answer = readAnswer({ projectId: "p1", search: { query: "todo", regex: true } });
+    if (answer?.kind !== "selection") throw new Error("no selection");
+    expect(answer.selection.search).toEqual({
+      query: "todo",
+      regex: true,
+      caseSensitive: false,
+      wholeWord: false,
+      include: "",
+      exclude: "",
+      includeIgnored: false,
+    });
+    expect(selectionRoute(answer.selection)).toBe(
+      "/workspace?project=p1&view=search&q=todo&regex=1",
+    );
+  });
+
+  it("shows the named tab, else the default view", () => {
+    const base = { projectId: "p1", workspace: null, path: null, settings, gatewayOrigin: null };
+    expect(selectionRoute({ ...base, tab: "terminal" })).toBe(
+      "/workspace?project=p1&view=terminal",
+    );
+    expect(selectionRoute(base)).toBe("/workspace?project=p1&view=explorer");
+  });
+
+  it.each([
+    [{ tab: "admin" }, { tab: null }],
+    [{ diff: { path: "../x", area: "working" } }, { diff: null }],
+    [{ diff: { path: "a.ts", area: "weird" } }, { diff: { path: "a.ts", area: "working" } }],
+    [{ search: { regex: true } }, { search: null }],
+  ])("reads %j defensively", (extra, expected) => {
+    expect(readAnswer({ projectId: "p1", ...extra })).toMatchObject({ selection: expected });
+  });
+});
+
+describe("dashboardDeepLink", () => {
+  it.each([
+    [{ url: "/settings" }, "/settings"],
+    [{ url: "/dashboard/projects/p1?tab=x" }, "/projects/p1?tab=x"],
+    [{ url: "/dashboard" }, "/"],
+    [{ url: "/" }, "/"],
+  ])("follows %j", (link, route) => {
+    expect(dashboardDeepLink(link)).toBe(route);
+  });
+
+  it.each([
+    null,
+    "/settings",
+    { url: "//evil.example/" },
+    { url: "https://evil.example/" },
+    { url: "/a#b" },
+  ])("ignores %j", (link) => {
+    expect(dashboardDeepLink(link)).toBeNull();
+  });
+});
+
+describe("an opening that waits for a project", () => {
+  it("keeps the file, diff or search it asked for, for when one is picked", () => {
+    const file = readAnswer({
+      projectId: null,
+      workspace: null,
+      path: "src/a.ts",
+      tab: "explorer",
+    });
+    if (file?.kind !== "selection") throw new Error("no selection");
+    expect(file.selection).toMatchObject({ projectId: null, path: "src/a.ts" });
+    expect(selectionRoute(file.selection)).toBe(
+      "/workspace?view=explorer&detail=file%3Asrc%2Fa.ts",
+    );
+
+    const diff = readAnswer({ projectId: null, diff: { path: "b.ts", area: "staged" } });
+    if (diff?.kind !== "selection") throw new Error("no selection");
+    expect(selectionRoute(diff.selection)).toBe(
+      "/workspace?view=source&detail=diff%3Astaged%3Ab.ts",
+    );
+
+    const search = readAnswer({ projectId: null, search: { query: "todo" } });
+    if (search?.kind !== "selection") throw new Error("no selection");
+    expect(selectionRoute(search.selection)).toBe("/workspace?view=search&q=todo");
+  });
 });

@@ -15,12 +15,15 @@ export default defineConfig({
     // The dashboard, the side panel Exeora for Chrome frames from here
     // (`/dashboard/panel`), so a deploy updates the panel with no new version
     // of the extension, and the Workspace the gateway serves to ChatGPT as an
-    // MCP App resource (`mcp-panel.html`). All three share their chunks.
+    // MCP App resource (`mcp-panel.html`), and the whole dashboard ChatGPT shows
+    // behind the plugin's global entrypoint (`mcp-dashboard.html`). All of
+    // them share their chunks.
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         panel: fileURLToPath(new URL("./panel.html", import.meta.url)),
         "mcp-panel": fileURLToPath(new URL("./mcp-panel.html", import.meta.url)),
+        "mcp-dashboard": fileURLToPath(new URL("./mcp-dashboard.html", import.meta.url)),
       },
     },
   },
