@@ -46,6 +46,7 @@ describe("OpenAI plugin wire contracts", () => {
           tools: {
             name: string;
             title?: string;
+            description?: string;
             _meta?: Record<string, unknown>;
             outputSchema?: unknown;
           }[];
@@ -53,6 +54,9 @@ describe("OpenAI plugin wire contracts", () => {
       ).tools;
       const panel = tools.find((tool) => tool.name === "exeora_open_panel");
       expect(panel?.title).toBe("Exeora Workspace");
+      expect(panel?.description).toContain("If that tool is unavailable, call this tool again");
+      expect(panel?.description).toContain("Omitted routing uses the connection defaults");
+      for (const tool of tools) expect(tool.description?.trim().length).toBeGreaterThan(0);
       expect(panel?._meta).toMatchObject({
         ui: { resourceUri: "ui://exeora/workspace" },
         "openai/ui": { entrypoints: [{ type: "thread" }] },
