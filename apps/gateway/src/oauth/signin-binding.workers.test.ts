@@ -210,6 +210,10 @@ describe("the sign-in flow is bound to the browser its state was born in", () =>
     // The screen says where the result will be delivered, before the decision.
     expect(html).toContain("Delivers its result to");
     expect(html).toContain(CALLBACK);
+    // Approving redirects there, and browsers hold that redirect to form-action.
+    expect(callback.headers.get("Content-Security-Policy")).toContain(
+      `form-action 'self' ${new URL(CALLBACK).origin};`,
+    );
     const who = await sessions.request(
       "/who",
       { headers: { cookie: cookieOf(callback) } },

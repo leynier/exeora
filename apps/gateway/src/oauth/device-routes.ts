@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db, schema } from "../db/client.js";
+import { consentResponse } from "../gateway-response.js";
 import { askForConsent } from "./consent.js";
 import {
   beginDeviceAuthorization,
@@ -88,13 +89,16 @@ deviceRoutes.post("/oauth/device", async (c) => {
         .get();
 
       if (user) {
-        return c.html(
-          await askForConsent(c.env, {
-            authRequest: found.authRequest,
-            userId,
-            userEmail: user.email,
-            state,
-          }),
+        return consentResponse(
+          c.html(
+            await askForConsent(c.env, {
+              authRequest: found.authRequest,
+              userId,
+              userEmail: user.email,
+              state,
+            }),
+          ),
+          found.authRequest.redirectUri,
         );
       }
 

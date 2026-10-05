@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { type AccountChoice, accountChoice } from "../account-access.js";
 import { db, schema } from "../db/client.js";
+import { consentResponse } from "../gateway-response.js";
 import { callbackUri, complete, describe } from "./completion.js";
 import { askForConsent } from "./consent.js";
 import { captureDeviceAuthorization, denyDeviceAuthorization } from "./device.js";
@@ -77,13 +78,16 @@ oauthRoutes.get("/oauth/authorize", async (c) => {
 
       const state = await parkAuthorization(c.env, { authRequest });
       await setSigninContinuation(c, state);
-      return c.html(
-        await askForConsent(c.env, {
-          authRequest,
-          userId,
-          userEmail: user.email,
-          state,
-        }),
+      return consentResponse(
+        c.html(
+          await askForConsent(c.env, {
+            authRequest,
+            userId,
+            userEmail: user.email,
+            state,
+          }),
+        ),
+        authRequest.redirectUri,
       );
     }
 
@@ -205,13 +209,16 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
   try {
     const session = await deviceCallbackSession(c, pending.deviceCodeHash);
     if (session) {
-      return c.html(
-        await askForConsent(c.env, {
-          authRequest: pending.authRequest,
-          userId: session.userId,
-          userEmail: session.userEmail,
-          state,
-        }),
+      return consentResponse(
+        c.html(
+          await askForConsent(c.env, {
+            authRequest: pending.authRequest,
+            userId: session.userId,
+            userEmail: session.userEmail,
+            state,
+          }),
+        ),
+        pending.authRequest.redirectUri,
       );
     }
   } catch (error) {
@@ -239,13 +246,16 @@ oauthRoutes.get("/oauth/callback/:provider", async (c) => {
       return c.redirect(redirectTo);
     }
 
-    return c.html(
-      await askForConsent(c.env, {
-        authRequest: pending.authRequest,
-        userId: user.id,
-        userEmail: user.email,
-        state,
-      }),
+    return consentResponse(
+      c.html(
+        await askForConsent(c.env, {
+          authRequest: pending.authRequest,
+          userId: user.id,
+          userEmail: user.email,
+          state,
+        }),
+      ),
+      pending.authRequest.redirectUri,
     );
   } catch (error) {
     if (await abandonParkedDeviceGrant(c.env, state)) {
@@ -327,20 +337,23 @@ oauthRoutes.post("/oauth/approve", async (c) => {
         .get();
       if (!user) return c.html(errorPage("Your account could not be found."), 400);
 
-      return c.html(
-        accountConsentPage({
-          client: await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId),
-          userEmail: user.email,
-          state,
-          scopes: await grantedScopes(c.env, authRequest),
-          redirectUri: authRequest.redirectUri,
-          projects: await resolveAccountTarget(c.env, userId, authRequest.clientId),
-          allProjects: false,
-          problem:
-            "Choose at least one project, or cancel. A connection that reaches nothing would " +
-            "look broken rather than safe.",
-        }),
-        400,
+      return consentResponse(
+        c.html(
+          accountConsentPage({
+            client: await c.env.OAUTH_PROVIDER.lookupClient(authRequest.clientId),
+            userEmail: user.email,
+            state,
+            scopes: await grantedScopes(c.env, authRequest),
+            redirectUri: authRequest.redirectUri,
+            projects: await resolveAccountTarget(c.env, userId, authRequest.clientId),
+            allProjects: false,
+            problem:
+              "Choose at least one project, or cancel. A connection that reaches nothing would " +
+              "look broken rather than safe.",
+          }),
+          400,
+        ),
+        authRequest.redirectUri,
       );
     }
   }

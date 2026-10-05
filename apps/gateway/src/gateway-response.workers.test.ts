@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { gatewayResponse } from "./gateway-response.js";
+import { consentResponse, gatewayResponse } from "./gateway-response.js";
 
 describe("gateway response protections", () => {
   it("prevents caching of authenticated errors and preserves OAuth challenges", async () => {
@@ -27,6 +27,29 @@ describe("gateway response protections", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("Set-Cookie")).toBe("session=test; HttpOnly");
     expect(await response.text()).toBe("<form></form>");
+  });
+
+  it("lets a consent form end in a redirect to the client's own origin", async () => {
+    const policy = async (redirectUri: string) =>
+      gatewayResponse(
+        new Request("https://exeora.dev/oauth/authorize"),
+        await consentResponse(
+          new Response("<form></form>", { headers: { "Content-Type": "text/html" } }),
+          redirectUri,
+        ),
+      ).headers.get("Content-Security-Policy");
+
+    const chatgpt = await policy("https://chatgpt.com/connector/oauth/abc?x=1");
+    expect(chatgpt).toContain("form-action 'self' https://chatgpt.com;");
+    expect(chatgpt).toContain("script-src 'none'");
+    expect(await policy("http://127.0.0.1:33418/callback")).toContain(
+      "form-action 'self' http://127.0.0.1:33418;",
+    );
+    expect(await policy("cursor://anysphere.cursor-mcp/oauth/callback")).toContain(
+      "form-action 'self' cursor:;",
+    );
+    expect(await policy("http://[::1]:8080/cb")).toContain("form-action 'self' http:;");
+    expect(await policy("not a url")).toContain("form-action 'self';");
   });
 
   it("keeps immutable public assets cacheable and local HTTP development usable", () => {
