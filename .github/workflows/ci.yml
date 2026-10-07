@@ -69,32 +69,42 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
-        with:
-          components: rustfmt, clippy
+      # The JavaScript checks only read the tree, and so does the toolchain
+      # install, so they share the wait instead of queueing behind it.
+      - parallel:
+          - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+            with:
+              components: rustfmt, clippy
+
+          - name: Lint and format
+            run: bun run check
+
+          - name: File length
+            run: bun run check:file-length
+
+          - name: Typecheck
+            run: bun run typecheck
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
+      # Before the CLI check starts: the Rust tests embed contract.json, which
+      # this regenerates.
       - name: Verify generated Rust protocol contract
         run: |
           bun run protocol:rust
           git diff --exit-code -- crates/exeora-cli/protocol crates/exeora-cli/src/generated
 
+      # The longest step, so it starts first and the build and tests below run
+      # alongside it. Neither side writes what the other reads: Cargo stays in
+      # target/, the site and the extension build into ignored folders.
       - name: Check CLI
+        id: check-cli
+        background: true
         run: |
           cargo fmt --all -- --check
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
           cargo bench --workspace --no-run
-
-      - name: Lint and format
-        run: bun run check
-
-      - name: File length
-        run: bun run check:file-length
-
-      - name: Typecheck
-        run: bun run typecheck
 
       # The gateway's tests run under workerd, which needs the wrangler config
       # to resolve bindings. It reads .dev.vars for secrets, so a placeholder
@@ -123,6 +133,10 @@ jobs:
 
       - name: Test
         run: bun run test
+
+      # Runs even after a failure above, so one run reports both halves.
+      - name: Wait for the CLI check
+        wait: check-cli
 
   cli-platforms:
     strategy:
