@@ -110,27 +110,30 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # Migrations first: the new code may depend on columns the old schema
-      # does not have. Migrations are additive as a rule, so the old Worker
-      # keeps serving until the deploy below replaces it. A migration that
-      # renames or drops breaks that overlap, because the old Worker then
+      # Migrations before the deploy: the new code may depend on columns the
+      # old schema does not have. Migrations are additive as a rule, so the old
+      # Worker keeps serving until the deploy below replaces it. A migration
+      # that renames or drops breaks that overlap, because the old Worker then
       # queries a schema that no longer matches it until the deploy lands. That
       # costs a window of failed calls, and is only worth taking when a two-step
       # expand/contract release would cost more.
-      - name: Apply D1 migrations
-        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: apps/gateway
-          packageManager: bun
-          command: d1 migrations apply exeora --remote
+      #
+      # The build runs alongside: it is local, and the deploy waits for both.
+      - parallel:
+          - name: Apply D1 migrations
+            uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
+            with:
+              apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+              workingDirectory: apps/gateway
+              packageManager: bun
+              command: d1 migrations apply exeora --remote
 
-      # public/ is generated and git-ignored, and the Worker serves it through
-      # its ASSETS binding, so deploying without building first would ship an
-      # empty site.
-      - name: Build the landing and dashboard
-        run: bun run --cwd apps/web build
+          # public/ is generated and git-ignored, and the Worker serves it
+          # through its ASSETS binding, so deploying without building first
+          # would ship an empty site.
+          - name: Build the landing and dashboard
+            run: bun run --cwd apps/web build
 
       - name: Deploy
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
