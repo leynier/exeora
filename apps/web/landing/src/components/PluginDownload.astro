@@ -1,0 +1,22 @@
+---
+interface Props {
+  label: string;
+  version: string;
+  download: string;
+  metadata: string;
+}
+const { label, version, download, metadata } = Astro.props;
+const filename = download.split("/").at(-1);
+---
+
+<div class="border-border bg-surface my-6 flex flex-col gap-4 rounded-xl border p-5 sm:flex-row sm:items-center sm:justify-between">
+  <div class="flex items-center gap-3">
+    <img src="/brand/exeora-mark-256-on-brand.png" alt="" width="48" height="48" class="size-12 rounded-lg" />
+    <div>
+      <p class="text-title-lg m-0!">{label}</p>
+      <p class="text-body-md text-foreground-muted m-0!">Version {version} · Remote MCP + 3 skills</p>
+    </div>
+  </div>
+  <a href={download} download={filename} class="bg-accent text-on-accent hover:bg-foreground text-title-md inline-flex justify-center rounded-lg px-5 py-3 no-underline! transition-colors duration-fast">Download {label} ZIP</a>
+</div>
+<p><a href={`${download}.sha256`}>SHA-256 checksum</a> · <a href={metadata}>Package details</a> · <a href="/docs/plugins/">All five distributions</a></p>

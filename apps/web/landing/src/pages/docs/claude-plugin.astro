@@ -1,0 +1,57 @@
+---
+import manifest from "../../../../../../plugins/exeora-claude/.claude-plugin/plugin.json";
+import {
+  CLAUDE_PLUGIN_DOWNLOAD,
+  CLAUDE_PLUGIN_METADATA,
+  CLAUDE_PLUGIN_ZIP,
+} from "../../../../../../scripts/claude-plugin-bundle.js";
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="Exeora for Claude web" description="Download Exeora's independent Claude plugin with three skills and a remote MCP connector, then upload it in Claude web." canonicalPath="/docs/claude-plugin/">
+  <p>Work on your projects from a Claude web conversation. This package brings three guided skills and Exeora's remote MCP connector together. It is a separate download from the <a href="/docs/plugin/">ChatGPT and Codex plugin</a>.</p>
+
+  <div class="border-border bg-surface my-6 flex flex-col gap-4 rounded-xl border p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-3">
+      <img src="/brand/exeora-mark-256-on-brand.png" alt="" width="48" height="48" class="size-12 rounded-lg" />
+      <div>
+        <p class="text-title-lg m-0!">Exeora for Claude</p>
+        <p class="text-body-md text-foreground-muted m-0!">Version {manifest.version} · Remote MCP + 3 skills</p>
+      </div>
+    </div>
+    <a href={CLAUDE_PLUGIN_DOWNLOAD} download="exeora-claude.plugin" class="bg-accent text-on-accent hover:bg-foreground text-title-md inline-flex justify-center rounded-lg px-5 py-3 no-underline! transition-colors duration-fast">Download Claude plugin</a>
+  </div>
+
+  <p><a href={CLAUDE_PLUGIN_ZIP} download="exeora-claude-plugin.zip">Download as ZIP</a> · <a href={`${CLAUDE_PLUGIN_DOWNLOAD}.sha256`}>SHA-256 checksum</a> · <a href={CLAUDE_PLUGIN_METADATA}>Package details</a>. The <code>.plugin</code> and <code>.zip</code> downloads contain identical archive bytes and no passwords or tokens.</p>
+
+  <h2 id="install">Install in Claude web</h2>
+  <ol class="[&_li]:list-decimal!">
+    <li>Download either file. You do not need to extract it.</li>
+    <li>In <a href="https://claude.ai">Claude web</a>, open <strong>Customize > Plugins > Add > Upload plugin</strong> and select the file. Plugins are available on Pro, Max, Team and Enterprise; organization policies may restrict uploads.</li>
+    <li>Open the installed <strong>Exeora</strong> plugin's <strong>Connectors</strong> tab. Add the Exeora connector if needed, then select <strong>Connect</strong> and complete Exeora's OAuth sign-in. On Team or Enterprise, an Owner may need to add the connector first; each member then connects their own account.</li>
+    <li>In your conversation, enable Exeora under <strong>+ > Connectors</strong>. Choose <strong>exeora-setup</strong> from the <strong>/</strong> skill menu or ask <strong>“Help me connect Exeora and choose a project.”</strong></li>
+  </ol>
+  <p>Installing the plugin loads its skills but does not add the connector or sign you in. A successful project-listing tool call confirms access. Upload through the Plugins page; attaching the file to an ordinary conversation does not install it. See <a href="https://claude.com/docs/plugins/overview">Claude's installation guide</a>.</p>
+  <p>You can also use <strong>Add > Add marketplace</strong> with <code>https://github.com/leynier/exeora</code> and select <strong>exeora-workspaces</strong>. This repository source may be restricted by your organization. It is separate from a reviewed public directory listing.</p>
+
+  <h2 id="oauth">Connect with your own account</h2>
+  <p>The bundled connector uses <code>https://exeora.dev/mcp</code> over HTTP. Claude discovers the server's OAuth configuration and handles sign-in from the Connectors tab. Choose the projects you intend to authorize on Exeora's consent screen. No fixed client ID, client secret or bearer token is required by this download.</p>
+  <p>If you configure the connector manually, retain OAuth sign-in and the detected settings. Claude web offers its published client identity or automatic registration; Exeora advertises support for both. Do not choose <strong>No sign in</strong> for this endpoint. The package does not set Claude Code callback ports, OAuth scope pins or discovery overrides: those CLI options are not documented as web plugin controls. See <a href="https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp">Claude's custom connector guide</a>.</p>
+  <p>For local projects, install the <a href="/docs/">Exeora CLI</a>, keep <code>exeora connect</code> running and add the project on its machine with <code>exeora project add /path/to/project</code>. Or use <a href="/docs/cloud/">Exeora Cloud</a>. Claude's remote connection comes from Anthropic's infrastructure to Exeora's public gateway; it cannot reach your localhost directly.</p>
+
+  <h2 id="included">What the skills help you do</h2>
+  <table>
+    <thead><tr><th>Skill</th><th>Workflow</th></tr></thead>
+    <tbody>
+      <tr><td>exeora-setup</td><td>Verify access and choose an authorized project and workspace.</td></tr>
+      <tr><td>exeora-project</td><td>Explore, edit and validate code through Exeora's remote tools.</td></tr>
+      <tr><td>exeora-workspace</td><td>Inspect files and changes; optionally open the Workspace view when Claude offers it.</td></tr>
+    </tbody>
+  </table>
+  <p>The skills use the connector's advertised tools and follow your project's <a href="/docs/policy/">policy</a>. They do not change grants or persistent tool approvals. An offline machine must reconnect; a missing project may be outside the existing grant.</p>
+
+  <h2 id="limits">Support and verification limits</h2>
+  <p>Claude web supports skills and fixed-URL remote MCP connectors. This package does not need local MCP processes, hooks or sub-agents. The listing icon and support/policy links are included using documented fields; their appearance for a custom upload depends on Claude's UI. See <a href="https://claude.com/docs/plugins/platform-support">support by platform</a>.</p>
+  <p>An interactive MCP App depends on the tools and UI capabilities Claude exposes. The workspace skill uses read tools and the <a href="/dashboard/">Exeora dashboard</a> when embedded UI is unavailable. ChatGPT's Sideapp, composer and file-routing features are not promised in Claude.</p>
+  <p>Repository checks validate the archive, metadata, skills and downloadable files. CLI parsing does not verify Claude web installation or real OAuth. Confirm those separately by uploading in Claude web, connecting your account and successfully listing projects. The package has not been submitted to Anthropic's public directory or uploaded through the organization Plugins API.</p>
+</Doc>

@@ -1,0 +1,73 @@
+---
+const clients = [
+  {
+    label: "ChatGPT and Codex",
+    steps:
+      "Extract the ZIP, add the folder as a local marketplace in Codex, then install in ChatGPT desktop. This MCP ZIP is Desktop-only when imported; public ChatGPT web needs a published directory listing.",
+    guide: "/docs/plugin/",
+    download: "/downloads/exeora-plugin.zip",
+    action: "Download ChatGPT desktop ZIP",
+  },
+  {
+    label: "Claude web",
+    steps:
+      "In Claude web, choose Add → Upload plugin and select the .plugin or ZIP. Then add or connect Exeora in Connectors and sign in. Plugin upload and account authorization are separate steps; plan and workspace policy apply.",
+    guide: "/docs/claude-plugin/",
+    download: "/downloads/exeora-claude.plugin",
+    action: "Download Claude web plugin",
+  },
+  {
+    label: "GrokBot Cursor",
+    steps:
+      "Cursor: extract the ZIP into the local plugins folder and reload, then connect Exeora. Grok Bot: add an available plugin from its catalog. Custom ZIP import into Grok Bot is not documented; this download does not establish a catalog listing.",
+    guide: "/docs/grokbot-cursor/",
+    download: "/downloads/grokbot-cursor-plugin.zip",
+    action: "Download GrokBot Cursor ZIP",
+  },
+  {
+    label: "GitHub Copilot",
+    steps:
+      "Copilot CLI: extract and install the plugin folder. Copilot app and VS Code: add the repository marketplace and install its Copilot entry. Complete Exeora sign-in in the host you use; installation in one surface does not verify another.",
+    guide: "/docs/copilot-plugin/",
+    download: "/downloads/exeora-copilot-plugin.zip",
+    action: "Download GitHub Copilot ZIP",
+  },
+  {
+    label: "Agent Plugin",
+    steps:
+      "Use a client that supports Agent Plugins 1.0 skills and remote MCP. Follow that client's import and account connection steps. The pure package contains no provider extensions; support for the format does not guarantee every host feature.",
+    guide: "/docs/agent-plugin/",
+    download: "/downloads/exeora-agent-plugin.zip",
+    action: "Download Agent Plugin ZIP",
+  },
+];
+---
+
+<section id="plugin-installation" aria-labelledby="plugin-installation-title" class="border-border-subtle scroll-mt-24 border-t px-6 py-12 sm:py-16">
+  <div class="mx-auto max-w-5xl">
+    <h2 id="plugin-installation-title" class="text-foreground text-2xl font-semibold tracking-tight sm:text-3xl">Plugin compatibility and installation</h2>
+    <p class="text-body-lg text-foreground-muted mt-3 max-w-3xl">Choose the package and installation path for your client before downloading. Each package includes Exeora workflows and a remote connection. You still sign in with your account and choose the projects it can access.</p>
+
+    <div data-chatgpt-import-notice class="border-accent bg-surface mt-7 border-l-4 py-4 pl-5 pr-4">
+      <h3 class="text-title-lg text-foreground">ChatGPT web needs a published plugin</h3>
+      <p class="text-body-md text-foreground-muted mt-2">Importing a ZIP with MCP into ChatGPT makes it <strong class="text-foreground">Desktop-only</strong>, even when the MCP server uses remote HTTPS. A successful ZIP import does not enable that connection on web.</p>
+      <p class="text-body-md text-foreground-muted mt-2">For public ChatGPT web use, Exeora must connect its MCP in the provider portal, verify its domain, pass scans and review, then publish to the directory after approval. Users install the published listing without manually registering a URL. OAuth sign-in may still be required. This download is not an approved public listing; private owner connections are not a public substitute.</p>
+      <p class="text-body-md mt-3"><a href="https://learn.chatgpt.com/docs/enterprise/plugin-management#desktop-only-plugins" class="text-foreground underline underline-offset-2">OpenAI import limits</a>{" · "}<a href="https://developers.openai.com/plugins/deploy/submission" class="text-foreground underline underline-offset-2">Public publication process</a></p>
+    </div>
+
+    <ul class="mt-6">
+      {clients.map((client) => (
+        <li data-plugin-client class="border-border-subtle grid gap-3 border-b py-6 sm:grid-cols-[12rem_1fr] sm:gap-8">
+          <h3 class="text-title-lg text-foreground">{client.label}</h3>
+          <div>
+            <p data-plugin-install-steps class="text-body-md text-foreground-muted max-w-3xl">{client.steps}</p>
+            <div class="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5">
+              <a href={client.download} download class="bg-accent text-on-accent hover:bg-foreground text-title-md inline-flex rounded-lg px-4 py-2.5 transition-colors duration-fast">{client.action}</a>
+              <a href={client.guide} class="text-body-md text-foreground underline underline-offset-2">Installation guide and checksum</a>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>

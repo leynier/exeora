@@ -1,0 +1,29 @@
+---
+import manifest from "../../../../../../plugins/exeora-agent/plugin.json";
+import {
+  AGENT_PLUGIN_DOWNLOAD,
+  AGENT_PLUGIN_METADATA,
+} from "../../../../../../scripts/agent-plugin-bundle.js";
+import PluginDownload from "../../components/PluginDownload.astro";
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="Agent Plugin" description="Download Exeora's pure Agent Plugins 1.0.0 package with portable skills and Streamable HTTP MCP, without provider extensions." canonicalPath="/docs/agent-plugin/">
+  <p><strong>Agent Plugin</strong> is Exeora's pure, portable distribution. Its root <code>plugin.json</code>, <code>skills/</code> and <code>mcp.json</code> follow Agent Plugins 1.0.0. The package identifier is <code>exeora-agent-plugin</code>; the visible channel label stays outside the standard manifest.</p>
+  <PluginDownload label="Agent Plugin" version={manifest.version} download={AGENT_PLUGIN_DOWNLOAD} metadata={AGENT_PLUGIN_METADATA} />
+
+  <h2 id="install">Use in a compatible client</h2>
+  <ol class="[&_li]:list-decimal!">
+    <li>Download and verify the ZIP. Follow your client's documented Agent Plugins 1.0.0 import workflow. If it takes a directory, extract into a dedicated folder with <code>plugin.json</code> directly at the root.</li>
+    <li>Confirm that the client discovers the three skills and supports <strong>Streamable HTTP</strong> MCP. Supporting skills alone is insufficient for this package's remote tools.</li>
+    <li>Use the client's own connection and authorization flow for <code>https://exeora.dev/mcp</code>, then verify access by listing authorized Exeora projects.</li>
+  </ol>
+
+  <h2 id="portable">What is portable</h2>
+  <p>The ZIP includes only standard manifest/MCP data, portable skills, README and license. It contains no provider extensions or directories, client-specific metadata, icon fields or native OAuth configuration. Project/workspace routing, user authorization, existing changes and Exeora policy remain part of every skill.</p>
+  <p>The <a href="https://agent-plugins.org/specification">standard</a> controls package discovery, not installation UI, marketplace, shared identity or embedded apps. Clients can support different components/transports; remote authentication remains client-managed. No universal ZIP importer or portable OAuth fields are defined by version 1.0.0.</p>
+
+  <h2 id="validation">Validation and limits</h2>
+  <p>Both JSON documents are checked against the <a href="https://agent-plugins.org/schemas">official Draft 2020-12 schemas</a> during every build, using pinned local copies. Additional distribution checks reject extensions, extra resources and credentials. Deterministic ZIP/checksum and regression tests preserve the other four distributions.</p>
+  <p>Schema conformance and a downloaded ZIP do not establish host installation, skill execution or real OAuth. Check those separately in each intended client. Exeora's selected workspace is remote; the host's local directory is not a substitute.</p>
+</Doc>

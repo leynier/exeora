@@ -1,0 +1,15 @@
+{
+  "name": "exeora-copilot",
+  "owner": {
+    "name": "Exeora",
+    "email": "hello@exeora.dev"
+  },
+  "plugins": [
+    {
+      "name": "exeora-copilot",
+      "source": "./plugins/exeora-copilot",
+      "description": "Exeora remote MCP and skills for GitHub Copilot.",
+      "version": "1.0.0"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "exeora-copilot",
+  "version": "1.0.0",
+  "description": "Exeora remote projects with guided skills for GitHub Copilot app, Copilot CLI and VS Code.",
+  "author": {
+    "name": "Exeora",
+    "email": "hello@exeora.dev",
+    "url": "https://exeora.dev"
+  },
+  "homepage": "https://exeora.dev/docs/copilot-plugin/",
+  "repository": "https://github.com/leynier/exeora",
+  "license": "AGPL-3.0-only",
+  "keywords": ["exeora", "remote", "mcp", "skills", "github-copilot"]
+}

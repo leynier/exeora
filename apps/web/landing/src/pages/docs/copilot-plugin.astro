@@ -1,0 +1,35 @@
+---
+import manifest from "../../../../../../plugins/exeora-copilot/plugin.json";
+import {
+  COPILOT_PLUGIN_DOWNLOAD,
+  COPILOT_PLUGIN_METADATA,
+} from "../../../../../../scripts/copilot-plugin-bundle.js";
+import PluginDownload from "../../components/PluginDownload.astro";
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="GitHub Copilot" description="Download Exeora's independent plugin for GitHub Copilot app, Copilot CLI and VS Code, with three skills and remote MCP." canonicalPath="/docs/copilot-plugin/">
+  <p>This package brings Exeora remote tools and three adapted skills to <strong>GitHub Copilot</strong>. It uses the officially supported Agent Plugins 1.0 format and is separate from the pure Agent Plugin download. This guide concerns GitHub Copilot, not Microsoft 365 Copilot.</p>
+  <PluginDownload label="GitHub Copilot" version={manifest.version} download={COPILOT_PLUGIN_DOWNLOAD} metadata={COPILOT_PLUGIN_METADATA} />
+
+  <h2 id="cli">Copilot CLI</h2>
+  <p>Extract the verified ZIP into a dedicated <code>exeora-copilot</code> folder, with <code>plugin.json</code> directly at its root. Install that directory:</p>
+  <pre>copilot plugin install ./exeora-copilot</pre>
+  <p>Repository installation is also supported after these files reach main:</p>
+  <pre>copilot plugin install leynier/exeora:plugins/exeora-copilot</pre>
+  <p>Inspect <code>/mcp</code>. If the server needs authorization, use <code>/mcp auth &lt;advertised-server-name&gt;</code> and follow the browser flow, then ask Exeora to list authorized projects. These are directory/repository installs; direct ZIP import is not documented.</p>
+
+  <h2 id="app">GitHub Copilot app</h2>
+  <p>Open <strong>Customize > Plugins</strong>. Use the marketplace control to add <code>https://github.com/leynier/exeora</code>, then find <code>exeora-copilot</code> and select <strong>Install</strong>. The repository's <code>.github/plugin/marketplace.json</code> points to this package. Complete the host's MCP connection prompts separately. See <a href="https://docs.github.com/en/copilot/how-tos/github-copilot-app/customize-github-copilot-app">the app guide</a>; it documents repository marketplaces rather than arbitrary ZIP upload.</p>
+
+  <h2 id="vscode">VS Code</h2>
+  <p>Open Extensions and search <code>@agentPlugins</code>, or use <strong>Chat: Open Customizations > Plugins</strong>. If permitted, add this repository through the documented <code>chat.plugins.marketplaces</code> setting and install the entry. VS Code also documents discovery of Copilot CLI installs from <code>~/.copilot/installed-plugins/</code>. Review existing organization policy and plugin support; this package does not change them.</p>
+  <p>Use the <a href="https://code.visualstudio.com/docs/agent-customization/agent-plugins">VS Code plugin guide</a> for your installation interface. Plugin inventories and authentication can differ between surfaces; seeing a CLI install in VS Code does not prove OAuth there.</p>
+
+  <h2 id="logo">Image/logo support</h2>
+  <p>The Exeora image is included as a README asset and shown on this download card. The reviewed <a href="https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference">GitHub plugin reference</a>, authoring guide and VS Code plugin guide define no plugin logo/icon/interface manifest field. The documented <code>com.github.copilot</code> namespace does not establish image support. This package adds no invented image fields and makes no promise about catalog rendering.</p>
+
+  <h2 id="verification">Remote connection and limits</h2>
+  <p>The standard root <code>mcp.json</code> declares <code>streamable-http</code> at <code>https://exeora.dev/mcp</code>, without credentials, headers or native OAuth fields. The host manages authentication. Exeora paths and commands operate on the selected remote workspace, which can differ from Copilot's local or cloud-agent checkout.</p>
+  <p>Build/schema/download tests verify the package. Installation, skill loading and real OAuth remain unverified in all three surfaces and require separate acceptance with a successful Exeora read. No account credentials, grants, persistent permissions or managed settings were changed. See <a href="https://docs.github.com/en/copilot/concepts/agents/about-plugins">official plugin support</a> and the bundled README.</p>
+</Doc>
