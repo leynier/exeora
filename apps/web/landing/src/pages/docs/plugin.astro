@@ -1,0 +1,54 @@
+---
+import manifest from "../../../../../../plugins/exeora/plugin.json";
+import { PLUGIN_DOWNLOAD } from "../../../../../../scripts/plugin-bundle.js";
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="Exeora plugin" description="Download Exeora's MCP connection, guided skills and icons in one plugin ZIP for ChatGPT and Codex." canonicalPath="/docs/plugin/">
+  <p>Bring Exeora's tools and workflows into your AI client with one download. The package includes the MCP connection, three skills, guided setup and Exeora icons. Sign in with your own account and choose which projects the client can reach.</p>
+
+  <div class="border-border bg-surface my-6 flex flex-col gap-4 rounded-xl border p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-3">
+      <img src="/brand/exeora-mark-256-on-brand.png" alt="" width="48" height="48" class="size-12 rounded-lg" />
+      <div>
+        <p class="text-title-lg m-0!">Exeora plugin</p>
+        <p class="text-body-md text-foreground-muted m-0!">Version {manifest.version} · MCP + 3 skills</p>
+      </div>
+    </div>
+    <a href={PLUGIN_DOWNLOAD} download="exeora-plugin.zip" class="bg-accent text-on-accent hover:bg-foreground text-title-md inline-flex justify-center rounded-lg px-5 py-3 no-underline! transition-colors duration-fast">Download plugin ZIP</a>
+  </div>
+
+  <p><a href={`${PLUGIN_DOWNLOAD}.sha256`}>SHA-256 checksum</a> · <a href="/downloads/exeora-plugin.json">Package details</a>. The same ZIP works for every account; it contains no passwords or tokens.</p>
+
+  <h2 id="install">Install the complete plugin</h2>
+  <ol class="[&_li]:list-decimal!">
+    <li>Download the ZIP and extract it into a folder you will keep, such as <code>exeora-plugin</code>.</li>
+    <li>With Codex installed, register that folder as a local plugin source using the command below. Use its actual path if you extracted it elsewhere.</li>
+    <li>Restart the ChatGPT desktop app. Open the Plugins Directory, select the <strong>Exeora</strong> source and install <strong>Exeora</strong>. Complete the Exeora sign-in and choose the projects it can access.</li>
+    <li>Run the plugin's setup workflow, or ask: <strong>“Help me connect Exeora and choose a project.”</strong></li>
+  </ol>
+
+  <pre>codex plugin marketplace add ./exeora-plugin</pre>
+
+  <p>The extracted folder contains its own local catalog. Keep that folder in place while the plugin is installed. Local sources require a host with marketplace support and may be restricted by workspace policy. See <a href="https://developers.openai.com/plugins/build/plugins#add-a-marketplace-from-the-cli">OpenAI's local installation guide</a>.</p>
+
+  <h2 id="included">What is included</h2>
+  <table>
+    <thead><tr><th>Skill</th><th>What it helps you do</th></tr></thead>
+    <tbody>
+      <tr><td>Set up Exeora</td><td>Check your connection and choose an authorized project and workspace.</td></tr>
+      <tr><td>Work in an Exeora project</td><td>Explore, diagnose, edit and test code where your project runs.</td></tr>
+      <tr><td>Show an Exeora workspace</td><td>Open files, diffs and search results beside your conversation when the host supports the Workspace panel.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Try “Explore my project and explain how it works” or “Show the changes in my workspace.” The skills guide the workflow; the MCP server applies your project's <a href="/docs/policy/">policy</a> and permissions.</p>
+
+  <h2 id="chatgpt-web">Connect from ChatGPT web</h2>
+  <p>At <a href="https://chatgpt.com/plugins">ChatGPT Plugins</a>, select <strong>Add custom MCP server</strong>, enter <code>https://exeora.dev/mcp</code>, choose OAuth and complete <strong>Create as a plugin</strong>. This connects Exeora's tools and supported UI. It does not install the skills bundled in this ZIP. Account and workspace policies may limit custom MCP connections.</p>
+  <p>Uploading the ZIP as a normal conversation attachment does not install a plugin. Public directory distribution uses a separate publisher submission and review process; this download does not imply an approved directory listing.</p>
+
+  <h2 id="machine">Connect your projects</h2>
+  <p>For projects on your own machine, install the <a href="/docs/">Exeora CLI</a>, keep <code>exeora connect</code> running and add your project with <code>exeora project add /path/to/project</code>. You can also use <a href="/docs/cloud/">Exeora Cloud</a>. Installing the plugin does not connect a machine or register projects by itself.</p>
+  <p>You choose the accessible projects during OAuth consent and can change or revoke access under <strong>Clients</strong> in the <a href="/dashboard/">dashboard</a>. A missing project may need an updated grant; an offline machine must reconnect. See <a href="/docs/troubleshooting/">troubleshooting</a> for help.</p>
+</Doc>

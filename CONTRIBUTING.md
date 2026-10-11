@@ -63,6 +63,12 @@ Signing in asks for consent once per account and extension id, so approving one 
 
 Exeora Workspace is a dashboard build entry at `/dashboard/mcp-panel` and reuses the Chrome panel's `Workspace` screen. It uses the MCP Apps bridge and app-only gateway tools rather than the Chrome shell's token bridge. Exeora Dashboard is a separate Sideapp entry at `/dashboard/mcp-dashboard`, sharing the full dashboard shell and routes with its own PKCE code sign-in. The Workspace instance exposes navigation and state tools; the Dashboard session never expands the MCP connection's permissions. See [OpenAI plugin extensions](docs/openai-plugin-extensions.md) for the tool contracts, settings, file routing, host limitations and activation checks. Apply migration `0028_plugin_settings.sql` before deploying this panel; no CLI or Chrome extension release is required.
 
+### Building the downloadable plugin
+
+`plugins/exeora/` holds the portable Agent Plugins manifest, the account MCP connection, three skills and the listing icons. `.agents/plugins/marketplace.json` exposes that folder for repository installation. `bun run plugin:build` creates `exeora-plugin.zip`, its SHA-256 sidecar and package metadata under `apps/web/landing/public/downloads/`. These generated files are ignored and rebuilt before every landing build, including CI and gateway deployment; `/docs/plugin/` links to the download. The ZIP has its manifest at the archive root and includes a local marketplace pointing at the extracted root, so it is both a publisher upload and a local installation source.
+
+Edit the maintained files and bump `plugins/exeora/plugin.json`'s version when releasing package changes. Copy updated square mark PNGs from the generated brand assets into `plugins/exeora/assets/` when the branding changes. Archive timestamps and ordering are fixed, so unchanged source produces the same checksum. The builder reads only the plugin resources, the license and the marketplace entry; credentials and application source are not packaged. Publishing to OpenAI's public directory remains a separate verified-publisher submission, MCP connection, review and publication step. See [Package your plugin](https://developers.openai.com/plugins/build/plugins) and [Submit and publish](https://developers.openai.com/plugins/deploy/submission).
+
 ### Checks
 
 ```bash

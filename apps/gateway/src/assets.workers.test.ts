@@ -24,6 +24,23 @@ async function assetPathFromShell(): Promise<string> {
 }
 
 describe("static files", () => {
+  it("serves the plugin download as a ZIP with matching package details", async () => {
+    const response = await get("/downloads/exeora-plugin.zip");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/zip");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const sha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const metadata = await (await get("/downloads/exeora-plugin.json")).json();
+    expect(metadata).toMatchObject({ name: "exeora", bytes: bytes.length, sha256 });
+    expect(await (await get("/downloads/exeora-plugin.zip.sha256")).text()).toBe(
+      `${sha256}  exeora-plugin.zip\n`,
+    );
+    expect(await (await get("/docs/plugin/")).text()).toContain(
+      'href="/downloads/exeora-plugin.zip"',
+    );
+  });
   it("allows the MCP sandbox to fetch public modules and fonts without opening HTML to framing", async () => {
     const script = await get(await assetPathFromShell());
     expect(script.headers.get("access-control-allow-origin")).toBe("*");

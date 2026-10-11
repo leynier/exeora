@@ -11,6 +11,7 @@ export const DOC_SECTIONS = [
     pages: [
       { href: "/docs/", label: "Getting started" },
       { href: "/docs/clients/", label: "Connecting a client" },
+      { href: "/docs/plugin/", label: "Exeora plugin" },
       { href: "/docs/projects/", label: "Projects, locations and workspaces" },
       { href: "/docs/github/", label: "Connecting GitHub" },
     ],

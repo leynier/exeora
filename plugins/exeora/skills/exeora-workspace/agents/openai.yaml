@@ -1,0 +1,11 @@
+interface:
+  display_name: "Show an Exeora workspace"
+  short_description: "Open files and review changes beside your chat"
+  default_prompt: "Use $exeora-workspace to show the changes in my workspace."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "exeora"
+      description: "Exeora Workspace panel navigation"
+      transport: "streamable_http"
+      url: "https://exeora.dev/mcp"
