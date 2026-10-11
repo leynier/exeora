@@ -18,6 +18,7 @@ __pycache__/
 
 .DS_Store
 apps/web/public/
+apps/web/landing/public/downloads/
 playwright-report/
 test-results/
 .amp/portals/*

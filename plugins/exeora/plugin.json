@@ -1,0 +1,35 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "exeora",
+  "version": "1.0.0",
+  "description": "Work on your projects where they already run, with Exeora's MCP tools and guided workflows.",
+  "author": { "name": "Exeora", "email": "hello@exeora.dev", "url": "https://exeora.dev" },
+  "homepage": "https://exeora.dev/docs/plugin/",
+  "repository": "https://github.com/leynier/exeora",
+  "license": "AGPL-3.0-only",
+  "keywords": ["coding", "remote", "workspaces", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/exeora-setup/SKILL.md",
+      "interface": {
+        "displayName": "Exeora",
+        "shortDescription": "Code where your projects run",
+        "longDescription": "Explore, edit and run projects on your own machines or Exeora Cloud. Guided skills help you connect your account, choose a project and workspace, and review files and changes. Access is limited to the projects you authorize and each project's policy. Your machine must be connected, and embedded Workspace UI depends on host support.",
+        "developerName": "Exeora",
+        "category": "Developer Tools",
+        "capabilities": ["Explore projects", "Edit code", "Run commands", "Review workspaces"],
+        "websiteURL": "https://exeora.dev",
+        "supportURL": "https://exeora.dev/docs/troubleshooting/",
+        "privacyPolicyURL": "https://exeora.dev/privacy/",
+        "termsOfServiceURL": "https://exeora.dev/terms/",
+        "defaultPrompt": [
+          "Help me connect Exeora and choose a project.",
+          "Explore my project and explain how it works.",
+          "Show the changes in my workspace."
+        ],
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

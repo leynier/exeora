@@ -9,6 +9,7 @@ export default defineConfig({
         test: {
           name: "node",
           include: [
+            "scripts/**/*.test.ts",
             "packages/*/src/**/*.test.ts",
             "packages/design/react/**/*.test.ts",
             "apps/gateway/src/**/*.test.ts",

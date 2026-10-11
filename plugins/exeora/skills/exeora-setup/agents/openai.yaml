@@ -1,0 +1,11 @@
+interface:
+  display_name: "Set up Exeora"
+  short_description: "Connect your account and choose a workspace"
+  default_prompt: "Use $exeora-setup to help me connect Exeora and choose a project."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "exeora"
+      description: "Exeora projects and workspaces"
+      transport: "streamable_http"
+      url: "https://exeora.dev/mcp"

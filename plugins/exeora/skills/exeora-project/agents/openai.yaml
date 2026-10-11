@@ -1,0 +1,11 @@
+interface:
+  display_name: "Work in an Exeora project"
+  short_description: "Explore, edit and test a connected project"
+  default_prompt: "Use $exeora-project to explore my project and explain how it works."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "exeora"
+      description: "Exeora remote coding tools"
+      transport: "streamable_http"
+      url: "https://exeora.dev/mcp"
