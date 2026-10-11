@@ -11,10 +11,14 @@
   },
   "overrides": {
     "@esbuild-kit/core-utils>esbuild": "0.25.12",
+    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "http-cache-semantics": "4.3.0",
-    "miniflare>sharp": "0.35.4",
     "miniflare>undici": "7.29.1",
-    "hono": "4.13.7"
+    "hono": "4.13.7",
+    "proxy-addr": "2.0.8",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2"
   },
   "scripts": {
     "check": "biome check .",
