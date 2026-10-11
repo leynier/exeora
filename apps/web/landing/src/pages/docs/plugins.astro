@@ -4,6 +4,8 @@ import Doc from "../../layouts/Doc.astro";
 
 <Doc title="Plugin downloads" description="Choose an independent Exeora plugin distribution for your client, with guided skills, remote MCP and installation instructions." canonicalPath="/docs/plugins/">
   <p>Choose the package for your client. Every distribution includes three skills and the public Exeora MCP endpoint. Each has its own version, ZIP and checksum; Claude web also accepts the identical <code>.plugin</code> archive. Installation and Exeora sign-in are separate steps.</p>
+  <p>ChatGPT marks imported MCP ZIPs <strong>Desktop only</strong>, including remote HTTPS. Public web installation requires publisher review and publication; see the <a href="/docs/plugin/#chatgpt-web">ChatGPT web distribution guide</a>.</p>
+  <p>The Cursor ZIP is extracted for local discovery. Grok Bot custom package ingestion is not documented in its guide. Agent Plugin is the pure standard package with no provider extensions. Copilot's ZIP is extracted for CLI directory installation, with repository marketplaces for the app and VS Code. Follow each guide for supported setup and verification limits.</p>
   <table>
     <thead><tr><th>Distribution</th><th>Download</th><th>Install guide</th></tr></thead>
     <tbody>
@@ -14,6 +16,5 @@ import Doc from "../../layouts/Doc.astro";
       <tr><td>GitHub Copilot</td><td><a href="/downloads/exeora-copilot-plugin.zip" download>ZIP</a></td><td><a href="/docs/copilot-plugin/">App, CLI and VS Code</a></td></tr>
     </tbody>
   </table>
-  <p>ChatGPT marks imported MCP ZIPs <strong>Desktop only</strong>, including remote HTTPS. Public web installation requires publisher review and publication; see the <a href="/docs/plugin/#chatgpt-web">ChatGPT web distribution guide</a>.</p>
-  <p>The Cursor ZIP is extracted for local discovery. Grok Bot custom package ingestion is not documented in its guide. Agent Plugin is the pure standard package with no provider extensions. Copilot's ZIP is extracted for CLI directory installation, with repository marketplaces for the app and VS Code. Follow each guide for supported setup and verification limits.</p>
+
 </Doc>
