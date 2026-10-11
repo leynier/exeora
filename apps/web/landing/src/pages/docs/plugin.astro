@@ -44,9 +44,10 @@ import Doc from "../../layouts/Doc.astro";
 
   <p>Try “Explore my project and explain how it works” or “Show the changes in my workspace.” The skills guide the workflow; the MCP server applies your project's <a href="/docs/policy/">policy</a> and permissions.</p>
 
-  <h2 id="chatgpt-web">Connect from ChatGPT web</h2>
-  <p>At <a href="https://chatgpt.com/plugins">ChatGPT Plugins</a>, select <strong>Add custom MCP server</strong>, enter <code>https://exeora.dev/mcp</code>, choose OAuth and complete <strong>Create as a plugin</strong>. This connects Exeora's tools and supported UI. It does not install the skills bundled in this ZIP. Account and workspace policies may limit custom MCP connections.</p>
-  <p>Uploading the ZIP as a normal conversation attachment does not install a plugin. Public directory distribution uses a separate publisher submission and review process; this download does not imply an approved directory listing.</p>
+  <h2 id="chatgpt-web">ChatGPT web distribution</h2>
+  <p>This ZIP declares remote MCP. ChatGPT marks imported MCP plugins <strong>Desktop only</strong>, even when the server uses HTTPS. See <a href="https://learn.chatgpt.com/docs/enterprise/plugin-management#desktop-only-plugins">OpenAI’s import restriction</a>. Importing it successfully does not enable its MCP connection on web.</p>
+  <p>For public web use without each user registering a server URL, the publisher must upload the MCP-and-skills ZIP in the <a href="https://developers.openai.com/plugins/deploy/submission">OpenAI submission portal</a>, connect and verify the MCP domain, complete scans and review, then publish after approval. Users can then find the published listing and authenticate their own Exeora account. This download does not represent an approved public listing.</p>
+  <p>References to an owner’s privately registered apps do not make those connections available to public users. Public submission currently disallows app-reference packages. Manual custom MCP connections remain an individual testing option, not the public distribution path.</p>
 
   <h2 id="machine">Connect your projects</h2>
   <p>For projects on your own machine, install the <a href="/docs/">Exeora CLI</a>, keep <code>exeora connect</code> running and add your project with <code>exeora project add /path/to/project</code>. You can also use <a href="/docs/cloud/">Exeora Cloud</a>. Installing the plugin does not connect a machine or register projects by itself.</p>

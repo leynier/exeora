@@ -1,0 +1,31 @@
+---
+import manifest from "../../../../../../plugins/exeora-cursor/.cursor-plugin/plugin.json";
+import {
+  CURSOR_PLUGIN_DOWNLOAD,
+  CURSOR_PLUGIN_METADATA,
+} from "../../../../../../scripts/cursor-plugin-bundle.js";
+import PluginDownload from "../../components/PluginDownload.astro";
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="GrokBot Cursor" description="Download Exeora's separate Cursor-format plugin and follow the verified Cursor and Grok Bot installation paths." canonicalPath="/docs/grokbot-cursor/">
+  <p>Connect Exeora remote projects with three guided skills. <strong>GrokBot Cursor</strong> is this distribution's visible name; <code>grokbot-cursor</code> is its package identifier.</p>
+  <PluginDownload label="GrokBot Cursor" version={manifest.version} download={CURSOR_PLUGIN_DOWNLOAD} metadata={CURSOR_PLUGIN_METADATA} />
+
+  <h2 id="cursor">Install in Cursor</h2>
+  <ol class="[&_li]:list-decimal!">
+    <li>Download and verify the ZIP, then extract its contents into a new <code>~/.cursor/plugins/local/grokbot-cursor</code> folder, including the hidden <code>.cursor-plugin</code> directory. Avoid an extra enclosing folder.</li>
+    <li>Restart Cursor or run <strong>Developer: Reload Window</strong>. Open <strong>Customize</strong> and check the three skills and Exeora MCP. Local imports must be allowed by existing organization policy. A marketplace install with the same name takes precedence.</li>
+    <li>Follow Cursor's connection/OAuth prompts. Ask it to list your authorized Exeora projects to verify access.</li>
+  </ol>
+  <p>For repository distribution, Teams/Enterprise can use <strong>Dashboard > Plugins &amp; MCPs > Team Marketplaces > Add Marketplace > Import from Repo</strong> with <code>https://github.com/leynier/exeora</code>, subject to existing policy. The root Cursor marketplace points to this package. Users install approved entries in Customize. Public listing requires <a href="https://cursor.com/marketplace/publish">Cursor's separate review</a>.</p>
+
+  <h2 id="grok-bot">Grok Bot: catalog availability required</h2>
+  <p>The <a href="https://cursor.com/help/grok-bot/connect-plugins">official Grok Bot guide</a> describes <strong>Plugins > browse/search > add > Authorize or Authenticate > Installed</strong>. Use that flow only if Exeora is actually available in your account's catalog; use <strong>Reopen</strong> if authorization is waiting.</p>
+  <p>That guide does not document custom ZIP uploads, local Cursor folders or arbitrary repository imports into Grok Bot. This package is prepared in Cursor's format; Grok Bot ingestion, skill loading and availability remain unverified. Installing in Cursor or sharing an account does not establish Bot access.</p>
+
+  <h2 id="connection">Remote MCP and verification</h2>
+  <p>The root <code>mcp.json</code> contains only <code>https://exeora.dev/mcp</code>. Authentication is handled by the host, without packaged headers, static credentials or variables. Exeora projects must be served by <code>exeora connect</code> or Exeora Cloud; they are separate from Cursor's local checkout.</p>
+  <p>The included Exeora logo uses Cursor's documented relative <code>logo</code> field. The exact visible name uses <code>displayName</code>, as in <a href="https://github.com/cursor/plugin-template">Cursor's official template</a>; the current reference table omits that field. Host rendering is not verified.</p>
+  <p>Package, download and browser tests do not prove installation or real OAuth in either surface. No marketplace submission, account grants or persistent permissions were changed. See the bundled README, <a href="https://cursor.com/docs/reference/plugins">format reference</a>, <a href="https://cursor.com/docs/plugins">installation guide</a> and <a href="https://cursor.com/docs/mcp">MCP reference</a>.</p>
+</Doc>

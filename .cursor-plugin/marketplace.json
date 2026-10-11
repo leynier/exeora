@@ -1,0 +1,18 @@
+{
+  "name": "exeora",
+  "owner": {
+    "name": "Exeora",
+    "email": "hello@exeora.dev"
+  },
+  "metadata": {
+    "description": "GrokBot Cursor \u2014 Exeora remote MCP and guided skills.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "grokbot-cursor",
+      "source": "plugins/exeora-cursor",
+      "description": "GrokBot Cursor \u2014 remote Exeora tools and skills."
+    }
+  ]
+}

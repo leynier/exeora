@@ -191,11 +191,14 @@ function withAssetHeaders(response: Response, pathname: string, requestUrl: URL)
     options.cacheControl = "public, max-age=31536000, immutable";
   }
   const result = withSecurityHeaders(response, options);
-  // Static Assets has no MIME mapping for .plugin; both downloads are ZIP archives.
+  // Static Assets has no MIME mapping for .plugin; all these downloads are ZIP archives.
   if (
     (response.ok || response.status === 304) &&
     (pathname === "/downloads/exeora-claude.plugin" ||
-      pathname === "/downloads/exeora-claude-plugin.zip")
+      pathname === "/downloads/exeora-claude-plugin.zip" ||
+      pathname === "/downloads/grokbot-cursor-plugin.zip" ||
+      pathname === "/downloads/exeora-agent-plugin.zip" ||
+      pathname === "/downloads/exeora-copilot-plugin.zip")
   ) {
     result.headers.set("Content-Type", "application/zip");
     result.headers.set(

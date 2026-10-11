@@ -24,6 +24,69 @@ async function assetPathFromShell(): Promise<string> {
 }
 
 describe("static files", () => {
+  it.each([
+    {
+      file: "grokbot-cursor-plugin",
+      name: "grokbot-cursor",
+      label: "GrokBot Cursor",
+      route: "grokbot-cursor",
+    },
+    {
+      file: "exeora-agent-plugin",
+      name: "exeora-agent-plugin",
+      label: "Agent Plugin",
+      route: "agent-plugin",
+    },
+    {
+      file: "exeora-copilot-plugin",
+      name: "exeora-copilot",
+      label: "GitHub Copilot",
+      route: "copilot-plugin",
+    },
+  ])(
+    "serves $label with matching metadata/checksum and preserves conditional downloads",
+    async ({ file, name, label, route }) => {
+      const path = `/downloads/${file}.zip`;
+      const response = await get(path);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/zip");
+      expect(response.headers.get("content-disposition")).toBe(
+        `attachment; filename="${file}.zip"`,
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const sha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      expect(await (await get(`/downloads/${file}.json`)).json()).toMatchObject({
+        name,
+        displayName: label,
+        bytes: bytes.length,
+        sha256,
+        download: path,
+      });
+      expect(await (await get(`${path}.sha256`)).text()).toBe(`${sha256}  ${file}.zip\n`);
+      const etag = response.headers.get("etag");
+      expect(etag).toBeTruthy();
+      const cached = await get(path, { "If-None-Match": etag as string });
+      expect(cached.status).toBe(304);
+      expect(cached.headers.get("content-type")).toContain("application/zip");
+      expect((await cached.arrayBuffer()).byteLength).toBe(0);
+      expect(await (await get(`/docs/${route}/`)).text()).toContain(`href="${path}"`);
+    },
+  );
+  it("lists five production packages without exposing the private experimental example", async () => {
+    const html = await (await get("/docs/plugins/")).text();
+    for (const name of [
+      "ChatGPT",
+      "Claude web",
+      "GrokBot Cursor",
+      "Agent Plugin",
+      "GitHub Copilot",
+    ])
+      expect(html).toContain(name);
+    expect(html).not.toContain("combined-experimental");
+    expect((await get("/downloads/exeora-combined-experimental.zip")).status).toBe(404);
+  });
   it("serves the plugin download as a ZIP with matching package details", async () => {
     const response = await get("/downloads/exeora-plugin.zip");
     expect(response.status).toBe(200);

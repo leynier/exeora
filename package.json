@@ -41,7 +41,12 @@
     "db:migrate": "bun run --cwd apps/gateway db:migrate",
     "types": "bun run --cwd apps/gateway types",
     "secret": "bun run --cwd apps/gateway secret",
-    "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen"
+    "protocol:rust": "bun run scripts/generate-rust-contract.ts && cargo run -p exeora-protocol-gen",
+    "plugin:build:cursor": "bun run scripts/build-cursor-plugin.ts",
+    "plugin:build:agent": "bun run scripts/build-agent-plugin.ts",
+    "plugin:build:copilot": "bun run scripts/build-copilot-plugin.ts",
+    "plugin:build:experimental": "bun run scripts/build-experimental-plugin.ts",
+    "plugin:check:submission": "bun run scripts/check-openai-submission.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
@@ -49,6 +54,7 @@
     "@playwright/test": "1.62.1",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "latest",
+    "ajv": "8.20.0",
     "fflate": "^0.8.3",
     "material-icon-theme": "5.38.1",
     "typescript": "7.0.2",

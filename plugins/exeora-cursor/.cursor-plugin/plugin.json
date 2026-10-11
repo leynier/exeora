@@ -1,0 +1,15 @@
+{
+  "name": "grokbot-cursor",
+  "displayName": "GrokBot Cursor",
+  "version": "1.0.0",
+  "description": "GrokBot Cursor connects Exeora remote projects with guided setup, coding and workspace skills. Grok Bot catalog availability requires separate verification.",
+  "author": {
+    "name": "Exeora",
+    "email": "hello@exeora.dev"
+  },
+  "homepage": "https://exeora.dev/docs/grokbot-cursor/",
+  "repository": "https://github.com/leynier/exeora",
+  "license": "AGPL-3.0-only",
+  "keywords": ["exeora", "remote", "mcp", "skills", "cursor", "grok-bot"],
+  "logo": "assets/logo.png"
+}

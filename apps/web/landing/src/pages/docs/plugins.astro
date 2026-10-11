@@ -1,0 +1,19 @@
+---
+import Doc from "../../layouts/Doc.astro";
+---
+
+<Doc title="Plugin downloads" description="Choose an independent Exeora plugin distribution for your client, with guided skills, remote MCP and installation instructions." canonicalPath="/docs/plugins/">
+  <p>Choose the package for your client. Every distribution includes three skills and the public Exeora MCP endpoint. Each has its own version, ZIP and checksum; Claude web also accepts the identical <code>.plugin</code> archive. Installation and Exeora sign-in are separate steps.</p>
+  <table>
+    <thead><tr><th>Distribution</th><th>Download</th><th>Install guide</th></tr></thead>
+    <tbody>
+      <tr><td>ChatGPT</td><td><a href="/downloads/exeora-plugin.zip" download>ZIP</a></td><td><a href="/docs/plugin/">Desktop import and web publication</a></td></tr>
+      <tr><td>Claude web</td><td><a href="/downloads/exeora-claude.plugin" download>.plugin</a> · <a href="/downloads/exeora-claude-plugin.zip" download>ZIP</a></td><td><a href="/docs/claude-plugin/">Claude web</a></td></tr>
+      <tr><td>GrokBot Cursor</td><td><a href="/downloads/grokbot-cursor-plugin.zip" download>ZIP</a></td><td><a href="/docs/grokbot-cursor/">Cursor and Grok Bot limits</a></td></tr>
+      <tr><td>Agent Plugin</td><td><a href="/downloads/exeora-agent-plugin.zip" download>ZIP</a></td><td><a href="/docs/agent-plugin/">Compatible clients</a></td></tr>
+      <tr><td>GitHub Copilot</td><td><a href="/downloads/exeora-copilot-plugin.zip" download>ZIP</a></td><td><a href="/docs/copilot-plugin/">App, CLI and VS Code</a></td></tr>
+    </tbody>
+  </table>
+  <p>ChatGPT marks imported MCP ZIPs <strong>Desktop only</strong>, including remote HTTPS. Public web installation requires publisher review and publication; see the <a href="/docs/plugin/#chatgpt-web">ChatGPT web distribution guide</a>.</p>
+  <p>The Cursor ZIP is extracted for local discovery. Grok Bot custom package ingestion is not documented in its guide. Agent Plugin is the pure standard package with no provider extensions. Copilot's ZIP is extracted for CLI directory installation, with repository marketplaces for the app and VS Code. Follow each guide for supported setup and verification limits.</p>
+</Doc>

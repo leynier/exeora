@@ -71,7 +71,7 @@ Edit the maintained files and bump `plugins/exeora/plugin.json`'s version when r
 
 ### Building the Claude web plugin
 
-`plugins/exeora-claude/` is a separate Claude web package with `.claude-plugin/plugin.json`, root `.mcp.json`, three skills and a listing PNG. `bun run plugin:build:claude` generates identical ZIP bytes as `exeora-claude.plugin` and `exeora-claude-plugin.zip`, filename-specific checksums and metadata. Landing builds generate both platform packages independently. `.claude-plugin/marketplace.json` provides repository installation for Claude without changing the ChatGPT catalog. Bump only the Claude manifest version for Claude package changes. See [Claude web packaging and acceptance](docs/claude-web-plugin.md) for verified schema, OAuth setup, limits and separate manual web acceptance. CLI validation proves syntax only; it does not prove Claude web installation or OAuth.
+`plugins/exeora-claude/` is a separate Claude web package with `.claude-plugin/plugin.json`, root `.mcp.json`, three skills and a listing PNG. `bun run plugin:build:claude` generates identical ZIP bytes as `exeora-claude.plugin` and `exeora-claude-plugin.zip`, filename-specific checksums and metadata. Landing builds generate all platform packages independently. `.claude-plugin/marketplace.json` provides repository installation for Claude without changing the ChatGPT catalog. Bump only the Claude manifest version for Claude package changes. See [Claude web packaging and acceptance](docs/claude-web-plugin.md) for verified schema, OAuth setup, limits and separate manual web acceptance. CLI validation proves syntax only; it does not prove Claude web installation or OAuth.
 
 ### Checks
 
@@ -176,3 +176,11 @@ One-time setup for the workflow:
 - Keep changes focused; match the tone and structure of nearby code.
 - Run `bun run check`, `bun run typecheck` and `bun run test` before opening a PR. The dependency audit workflow also checks Bun and Rust advisories on dependency changes and nightly.
 - Security issues: email hello@exeora.dev (see [SECURITY.md](./SECURITY.md)), do not open a public issue.
+
+### Building the other plugin distributions
+
+`bun run plugin:build:cursor`, `bun run plugin:build:agent` and `bun run plugin:build:copilot` independently generate GrokBot Cursor, Agent Plugin and GitHub Copilot ZIPs, checksums and metadata. Their maintained folders are `plugins/exeora-cursor`, `plugins/exeora-agent` and `plugins/exeora-copilot`; bump the relevant manifest version when releasing changes, and keep the Copilot catalog version in sync. The existing ChatGPT and Claude commands remain independent. Every landing build produces all five distributions, and `/docs/plugins/` links to their installation guides.
+
+Agent Plugin and Copilot validate root JSON documents against the vendored official Agent Plugins 1.0.0 schemas with Ajv Draft 2020-12. The pure package forbids all provider extensions/metadata/directories; Copilot adds adapted instructions and an ordinary README logo, without invented host logo fields. Cursor has its own `.cursor-plugin/marketplace.json`; Copilot has `.github/plugin/marketplace.json`. Neither changes the OpenAI or Claude catalog. See [distribution decisions and acceptance limits](docs/plugin-distributions.md). Package checks do not verify installation, account OAuth or public catalog availability.
+
+Run `bun run plugin:check:submission` for local preparation checks on the unchanged OpenAI package. It does not upload, register, authorize or publish a plugin. See [ChatGPT public distribution](docs/chatgpt-plugin-distribution.md) for the portal workflow and external blockers. Experimental versioned artifacts stay private and are not a workaround for the imported-MCP desktop restriction.
