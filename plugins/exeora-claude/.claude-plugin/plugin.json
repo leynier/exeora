@@ -1,0 +1,16 @@
+{
+  "name": "exeora-workspaces",
+  "displayName": "Exeora",
+  "version": "1.0.0",
+  "description": "Explore, edit and test projects on your own machines or Exeora Cloud from Claude, with guided skills and a remote MCP connector.",
+  "author": { "name": "Exeora", "email": "hello@exeora.dev", "url": "https://exeora.dev" },
+  "homepage": "https://exeora.dev/docs/claude-plugin/",
+  "repository": "https://github.com/leynier/exeora",
+  "license": "AGPL-3.0-only",
+  "keywords": ["coding", "remote", "workspaces", "mcp"],
+  "icon": "./assets/logo.png",
+  "documentationUrl": "https://exeora.dev/docs/claude-plugin/",
+  "supportUrl": "https://exeora.dev/docs/troubleshooting/",
+  "privacyPolicyUrl": "https://exeora.dev/privacy/",
+  "termsOfServiceUrl": "https://exeora.dev/terms/"
+}

@@ -69,6 +69,10 @@ Exeora Workspace is a dashboard build entry at `/dashboard/mcp-panel` and reuses
 
 Edit the maintained files and bump `plugins/exeora/plugin.json`'s version when releasing package changes. Copy updated square mark PNGs from the generated brand assets into `plugins/exeora/assets/` when the branding changes. Archive timestamps and ordering are fixed, so unchanged source produces the same checksum. The builder reads only the plugin resources, the license and the marketplace entry; credentials and application source are not packaged. Publishing to OpenAI's public directory remains a separate verified-publisher submission, MCP connection, review and publication step. See [Package your plugin](https://developers.openai.com/plugins/build/plugins) and [Submit and publish](https://developers.openai.com/plugins/deploy/submission).
 
+### Building the Claude web plugin
+
+`plugins/exeora-claude/` is a separate Claude web package with `.claude-plugin/plugin.json`, root `.mcp.json`, three skills and a listing PNG. `bun run plugin:build:claude` generates identical ZIP bytes as `exeora-claude.plugin` and `exeora-claude-plugin.zip`, filename-specific checksums and metadata. Landing builds generate both platform packages independently. `.claude-plugin/marketplace.json` provides repository installation for Claude without changing the ChatGPT catalog. Bump only the Claude manifest version for Claude package changes. See [Claude web packaging and acceptance](docs/claude-web-plugin.md) for verified schema, OAuth setup, limits and separate manual web acceptance. CLI validation proves syntax only; it does not prove Claude web installation or OAuth.
+
 ### Checks
 
 ```bash

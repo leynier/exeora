@@ -12,6 +12,7 @@ export const DOC_SECTIONS = [
       { href: "/docs/", label: "Getting started" },
       { href: "/docs/clients/", label: "Connecting a client" },
       { href: "/docs/plugin/", label: "Exeora plugin" },
+      { href: "/docs/claude-plugin/", label: "Claude web plugin" },
       { href: "/docs/projects/", label: "Projects, locations and workspaces" },
       { href: "/docs/github/", label: "Connecting GitHub" },
     ],

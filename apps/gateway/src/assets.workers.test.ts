@@ -41,6 +41,50 @@ describe("static files", () => {
       'href="/downloads/exeora-plugin.zip"',
     );
   });
+  it("serves identical Claude ZIP and plugin downloads with matching digests and web instructions", async () => {
+    const zip = await get("/downloads/exeora-claude-plugin.zip");
+    const plugin = await get("/downloads/exeora-claude.plugin");
+    expect(zip.status).toBe(200);
+    expect(plugin.status).toBe(200);
+    expect(zip.headers.get("content-type")).toContain("application/zip");
+    expect(plugin.headers.get("content-type")).toContain("application/zip");
+    expect(plugin.headers.get("content-disposition")).toBe(
+      'attachment; filename="exeora-claude.plugin"',
+    );
+    expect(zip.headers.get("content-disposition")).toBe(
+      'attachment; filename="exeora-claude-plugin.zip"',
+    );
+    const bytes = new Uint8Array(await zip.arrayBuffer());
+    expect(new Uint8Array(await plugin.arrayBuffer())).toEqual(bytes);
+    expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const sha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    expect(await (await get("/downloads/exeora-claude-plugin.json")).json()).toMatchObject({
+      name: "exeora-workspaces",
+      bytes: bytes.length,
+      sha256,
+      download: "/downloads/exeora-claude.plugin",
+      zip: "/downloads/exeora-claude-plugin.zip",
+    });
+    for (const filename of ["exeora-claude.plugin", "exeora-claude-plugin.zip"]) {
+      expect(await (await get(`/downloads/${filename}.sha256`)).text()).toBe(
+        `${sha256}  ${filename}\n`,
+      );
+    }
+    const etag = plugin.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const revalidated = await get("/downloads/exeora-claude.plugin", {
+      "If-None-Match": etag as string,
+    });
+    expect(revalidated.status).toBe(304);
+    expect(revalidated.headers.get("content-type")).toContain("application/zip");
+    expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
+    const html = await (await get("/docs/claude-plugin/")).text();
+    expect(html).toContain('href="/downloads/exeora-claude.plugin"');
+    expect(html).toContain('href="/downloads/exeora-claude-plugin.zip"');
+    expect(html).toContain("Upload plugin");
+    expect(html).toContain('href="/docs/plugin/"');
+  });
   it("allows the MCP sandbox to fetch public modules and fonts without opening HTML to framing", async () => {
     const script = await get(await assetPathFromShell());
     expect(script.headers.get("access-control-allow-origin")).toBe("*");

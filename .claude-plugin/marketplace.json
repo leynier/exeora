@@ -1,0 +1,12 @@
+{
+  "name": "exeora",
+  "description": "Remote Exeora tools and guided workflows for Claude.",
+  "owner": { "name": "Exeora", "email": "hello@exeora.dev" },
+  "plugins": [
+    {
+      "name": "exeora-workspaces",
+      "source": "./plugins/exeora-claude",
+      "description": "Exeora's remote MCP connector and guided workflows for Claude."
+    }
+  ]
+}

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run build:landing && bun run build:dashboard",
-    "build:landing": "bun run ../../scripts/build-plugin.ts && astro build --root landing --outDir ../public && pagefind --site public --glob \"docs/**/*.html\"",
+    "build:landing": "bun run ../../scripts/build-plugin.ts && bun run ../../scripts/build-claude-plugin.ts && astro build --root landing --outDir ../public && pagefind --site public --glob \"docs/**/*.html\"",
     "build:dashboard": "vite build --config dashboard/vite.config.ts",
     "dev:dashboard": "vite --config dashboard/vite.config.ts"
   },

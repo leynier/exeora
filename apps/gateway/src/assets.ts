@@ -191,6 +191,18 @@ function withAssetHeaders(response: Response, pathname: string, requestUrl: URL)
     options.cacheControl = "public, max-age=31536000, immutable";
   }
   const result = withSecurityHeaders(response, options);
+  // Static Assets has no MIME mapping for .plugin; both downloads are ZIP archives.
+  if (
+    (response.ok || response.status === 304) &&
+    (pathname === "/downloads/exeora-claude.plugin" ||
+      pathname === "/downloads/exeora-claude-plugin.zip")
+  ) {
+    result.headers.set("Content-Type", "application/zip");
+    result.headers.set(
+      "Content-Disposition",
+      `attachment; filename="${pathname.split("/").at(-1)}"`,
+    );
+  }
   // These are public static modules/fonts, fetched by the isolated MCP Apps iframe.
   if (pathname.startsWith("/dashboard/assets/") || pathname.startsWith("/fonts/")) {
     result.headers.set("Access-Control-Allow-Origin", "*");
