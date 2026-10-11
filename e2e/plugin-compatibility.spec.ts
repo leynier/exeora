@@ -17,6 +17,7 @@ for (const width of [1280, 390]) {
       "href",
       "https://developers.openai.com/plugins/deploy/submission",
     );
+    await page.evaluate(() => document.fonts.ready);
     const rows = section.locator("[data-plugin-client]");
     await expect(rows).toHaveCount(5);
     for (const row of await rows.all()) {
@@ -24,12 +25,22 @@ for (const width of [1280, 390]) {
       const download = row.locator("a[download]");
       await expect(steps).toBeVisible();
       await expect(download).toBeVisible();
-      const before = await notice.boundingBox();
-      const instructions = await steps.boundingBox();
-      const button = await download.boundingBox();
-      if (!before || !instructions || !button) throw new Error("Missing rendered guidance");
-      expect(before.y + before.height).toBeLessThan(button.y);
-      expect(instructions.y + instructions.height).toBeLessThan(button.y);
+      // Anchor navigation scrolls smoothly: compare all rectangles in one frame.
+      const order = await row.evaluate((element) => {
+        const notice = element.closest("section")?.querySelector("[data-chatgpt-import-notice]");
+        const steps = element.querySelector("[data-plugin-install-steps]");
+        const button = element.querySelector("a[download]");
+        if (!notice || !steps || !button) throw new Error("Missing rendered guidance");
+        const action = button.getBoundingClientRect();
+        return {
+          noticeBefore: notice.getBoundingClientRect().bottom < action.top,
+          instructionsBefore: steps.getBoundingClientRect().bottom < action.top,
+          documentOrder: Boolean(
+            notice.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+        };
+      });
+      expect(order).toEqual({ noticeBefore: true, instructionsBefore: true, documentOrder: true });
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
