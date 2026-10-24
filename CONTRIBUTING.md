@@ -18,7 +18,7 @@ Product documentation sources live under `apps/web/landing/src/pages/docs/`, ord
 
 ## Development
 
-Requires Node 22+, [Bun](https://bun.sh), and the pinned Rust toolchain from `rust-toolchain.toml`.
+Requires a patched Node release (`^22.23.4 || ^24.22.1 || ^26.12.1`; CI tracks the latest Node 24 patch through `.node-version`), [Bun 1.4.4 or newer](https://bun.sh), uv 0.13.5 or newer for maintenance scripts, and the pinned Rust toolchain from `rust-toolchain.toml`.
 
 ```bash
 bun install
@@ -98,6 +98,8 @@ executable.
 The TypeScript schemas remain canonical. Run `bun run protocol:rust` after changing anything under `packages/protocol`; CI regenerates the JSON contract and Rust types and fails if the checked-in output drifts.
 
 The gateway's tests run inside workerd through `@cloudflare/vitest-pool-workers`, so the Durable Object, WebSocket hibernation and D1 are the real implementations rather than stand-ins.
+
+Both HTTP MCP endpoints limit request envelopes to 2 MiB and tool arguments to 10,000 combined object keys and array entries before schema validation. Ordinary 1 MB file writes fit; larger proxied inputs or heavily escaped content may require smaller calls. The byte limit also applies to legacy MCP clients at the outer Worker boundary.
 
 ## Trying it end to end
 

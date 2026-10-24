@@ -15,6 +15,7 @@ import { approvalCodec, approvalFor, askToConfirm } from "./approval.js";
 import type { CallerIdentity, McpClientInfo } from "./clients.js";
 import "./env.js";
 import { registerExecutorTools } from "./mcp-executor-tools.js";
+import { MAX_MCP_BODY_BYTES, MAX_MCP_INPUT_ELEMENTS } from "./mcp-limits.js";
 import {
   answerMcpProxyCall,
   type McpProxyDispatcher,
@@ -129,6 +130,7 @@ export function createProjectMcpHandler(
         { name: "exeora", version: "0.2.0" },
         {
           instructions: serverInstructions(),
+          maxToolInputElements: MAX_MCP_INPUT_ELEMENTS,
           // Without this hook the SDK hands the handler whatever string the
           // client echoed, unverified, which for state that decides whether a
           // command runs is the whole vulnerability.
@@ -240,7 +242,7 @@ export function createProjectMcpHandler(
 
       return server;
     },
-    { route: mcpRoute(projectId) },
+    { route: mcpRoute(projectId), maxRequestBodySize: MAX_MCP_BODY_BYTES },
   );
 }
 

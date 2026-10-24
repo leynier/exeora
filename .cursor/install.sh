@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Idempotent Cloud Agent setup for Exeora. Runs after the repository is checked
-# out. Node 22 (nvm) and the pinned Rust toolchain come from the base image;
+# out. The Node version in .node-version and pinned Rust toolchain come from the base image;
 # this script adds Bun, installs JS dependencies, writes local gateway secrets,
 # builds the site the Worker serves, and warms the CLI build.
 set -euo pipefail
 
 # Bun is the repository's package manager (see package.json / CONTRIBUTING.md)
-# but is not in the base image. Install it once, then expose it on a system PATH
+# but is not in the base image. Refresh stable Bun, then expose it on a system PATH
 # entry so non-interactive install/start/terminal shells find it too.
-if ! command -v bun >/dev/null 2>&1 && [ ! -x "$HOME/.bun/bin/bun" ]; then
-  curl -fsSL https://bun.sh/install | bash
+if ! node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); process.exit(major === 24 && (minor > 22 || (minor === 22 && patch >= 1)) ? 0 : 1)'; then
+  echo "The Cloud Agent image must provide Node 24 (>=24.22.1)." >&2
+  exit 1
 fi
+# Refresh to the latest stable Bun; package.json keeps the security minimum.
+curl -fsSL https://bun.sh/install | bash
 export PATH="$HOME/.bun/bin:$PATH"
 if [ -x "$HOME/.bun/bin/bun" ] && [ ! -e /usr/local/bin/bun ] && command -v sudo >/dev/null 2>&1; then
   sudo ln -sf "$HOME/.bun/bin/bun" /usr/local/bin/bun || true

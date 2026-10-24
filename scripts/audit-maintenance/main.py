@@ -1,6 +1,6 @@
 # /// script
 # requires-python = "==3.12.*"
-# dependencies = ["pyiceberg[pyarrow]==0.11.1"]
+# dependencies = ["pyiceberg[pyarrow]==0.11.1", "certifi>=2026.10.19", "urllib3>=2.8.0"]
 # ///
 
 """Removes from the audit archive what the gateway cannot remove itself.

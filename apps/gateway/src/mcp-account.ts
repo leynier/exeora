@@ -14,6 +14,7 @@ import { approvalCodec, approvalFor, askToConfirm } from "./approval.js";
 import type { CallerIdentity } from "./clients.js";
 import "./env.js";
 import { mcpClientInfo, propsOf, registerAgentPrompt, toolResult } from "./mcp.js";
+import { MAX_MCP_BODY_BYTES, MAX_MCP_INPUT_ELEMENTS } from "./mcp-limits.js";
 import { type ProjectMcpCatalog, registerAccountMcpProxyTools } from "./mcp-proxy-account-tools.js";
 import { answerMcpProxyCall, type McpProxyDispatcher } from "./mcp-proxy-tools.js";
 import { registerPluginExtensions } from "./plugin-extensions.js";
@@ -123,6 +124,7 @@ export function createAccountMcpHandler(
           // The account variant, which is the one that has projects to choose
           // between and so the only one where saying so is worth the tokens.
           instructions: serverInstructions({ account: true }),
+          maxToolInputElements: MAX_MCP_INPUT_ELEMENTS,
           requestState: { verify: codec.verify },
         },
       );
@@ -440,7 +442,7 @@ export function createAccountMcpHandler(
 
       return server;
     },
-    { route: ACCOUNT_MCP_ROUTE },
+    { route: ACCOUNT_MCP_ROUTE, maxRequestBodySize: MAX_MCP_BODY_BYTES },
   );
 }
 
