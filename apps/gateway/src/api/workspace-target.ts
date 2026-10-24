@@ -116,7 +116,7 @@ export async function ownedTarget(
   };
 }
 
-export function workspaceError(c: Context<ApiEnv>, error: unknown) {
+export function workspaceError(c: Context<ApiEnv>, error: unknown): Response {
   if (error instanceof ExeoraError) {
     const status =
       error.code === "LOCAL_EXECUTOR_OFFLINE" ||

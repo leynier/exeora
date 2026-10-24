@@ -1,6 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { z } from "zod";
 import { CloudCliConfig } from "../packages/protocol/src/cloud.js";
 import * as limits from "../packages/protocol/src/limits.js";
 import {
@@ -12,6 +11,7 @@ import {
 import { CommandPolicy, LocalCommandPolicy } from "../packages/protocol/src/policy.js";
 import { agentPrompt } from "../packages/protocol/src/prompt.js";
 import { TOOL_DEFINITIONS, TOOL_NAMES } from "../packages/protocol/src/tools.js";
+import { rustJsonSchema } from "./rust-json-schema.js";
 
 const root = join(import.meta.dirname, "..");
 const protocolDir = join(root, "crates/exeora-cli/protocol");
@@ -26,17 +26,17 @@ const contract = {
     account: agentPrompt({ account: true }),
   },
   schemas: {
-    executorMessage: z.toJSONSchema(ExecutorMessage),
-    relayMessage: z.toJSONSchema(RelayMessage),
-    commandPolicy: z.toJSONSchema(CommandPolicy),
-    localCommandPolicy: z.toJSONSchema(LocalCommandPolicy),
-    cloudCliConfig: z.toJSONSchema(CloudCliConfig),
+    executorMessage: rustJsonSchema(ExecutorMessage),
+    relayMessage: rustJsonSchema(RelayMessage),
+    commandPolicy: rustJsonSchema(CommandPolicy),
+    localCommandPolicy: rustJsonSchema(LocalCommandPolicy),
+    cloudCliConfig: rustJsonSchema(CloudCliConfig),
     tools: Object.fromEntries(
       TOOL_NAMES.map((name) => [
         name,
         {
-          input: z.toJSONSchema(TOOL_DEFINITIONS[name].inputSchema),
-          output: z.toJSONSchema(TOOL_DEFINITIONS[name].outputSchema),
+          input: rustJsonSchema(TOOL_DEFINITIONS[name].inputSchema),
+          output: rustJsonSchema(TOOL_DEFINITIONS[name].outputSchema),
           readOnly: TOOL_DEFINITIONS[name].readOnly,
         },
       ]),
@@ -49,11 +49,11 @@ const typeSchema = {
   title: "ExeoraProtocolTypes",
   type: "object",
   properties: {
-    executorMessage: z.toJSONSchema(ExecutorMessage),
-    relayMessage: z.toJSONSchema(RelayMessage),
-    commandPolicy: z.toJSONSchema(CommandPolicy),
-    localCommandPolicy: z.toJSONSchema(LocalCommandPolicy),
-    cloudCliConfig: z.toJSONSchema(CloudCliConfig),
+    executorMessage: rustJsonSchema(ExecutorMessage),
+    relayMessage: rustJsonSchema(RelayMessage),
+    commandPolicy: rustJsonSchema(CommandPolicy),
+    localCommandPolicy: rustJsonSchema(LocalCommandPolicy),
+    cloudCliConfig: rustJsonSchema(CloudCliConfig),
   },
   required: [
     "executorMessage",

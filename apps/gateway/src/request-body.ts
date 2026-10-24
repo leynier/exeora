@@ -1,3 +1,5 @@
+import { MAX_MCP_BODY_BYTES } from "./mcp-limits.js";
+
 /** Bounds bytes actually consumed, including chunked or understated bodies. */
 export const MAX_AUTH_BODY_BYTES = 64 * 1024;
 export const MAX_API_BODY_BYTES = 16 * 1024 * 1024;
@@ -7,7 +9,8 @@ export const MAX_WEBHOOK_BODY_BYTES = 25 * 1024 * 1024;
 export function requestBodyLimit(pathname: string): number | undefined {
   if (pathname === "/api/github/webhook") return MAX_WEBHOOK_BODY_BYTES;
   if (pathname.startsWith("/oauth/")) return MAX_AUTH_BODY_BYTES;
-  if (pathname.startsWith("/api/") || pathname.startsWith("/p/") || pathname === "/mcp") {
+  if (pathname === "/mcp" || /^\/p\/[^/]+\/mcp$/.test(pathname)) return MAX_MCP_BODY_BYTES;
+  if (pathname.startsWith("/api/") || pathname.startsWith("/p/")) {
     return MAX_API_BODY_BYTES;
   }
   return undefined;

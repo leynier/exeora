@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { MAX_MCP_BODY_BYTES } from "./mcp-limits.js";
 import {
   limitRequestBody,
   MAX_API_BODY_BYTES,
@@ -26,8 +27,8 @@ describe("request body memory boundaries", () => {
   it("keeps file and MCP payload capacity separate from small OAuth forms", () => {
     expect(requestBodyLimit("/oauth/register")).toBe(MAX_AUTH_BODY_BYTES);
     expect(requestBodyLimit("/api/projects/p/workspace")).toBe(MAX_API_BODY_BYTES);
-    expect(requestBodyLimit("/p/p/mcp")).toBe(MAX_API_BODY_BYTES);
-    expect(requestBodyLimit("/mcp")).toBe(MAX_API_BODY_BYTES);
+    expect(requestBodyLimit("/p/p/mcp")).toBe(MAX_MCP_BODY_BYTES);
+    expect(requestBodyLimit("/mcp")).toBe(MAX_MCP_BODY_BYTES);
     expect(requestBodyLimit("/api/github/webhook")).toBe(MAX_WEBHOOK_BODY_BYTES);
     expect(requestBodyLimit("/docs/security/")).toBeUndefined();
   });
@@ -88,4 +89,17 @@ describe("request body memory boundaries", () => {
     // A valid small DCR request reaches the existing provider validation.
     expect(response.status).toBe(400);
   });
+
+  it.each(["/mcp", "/p/prj_test/mcp"])(
+    "rejects oversized MCP envelopes before authentication on %s",
+    async (path) => {
+      const response = await SELF.fetch(`https://exeora.dev${path}`, {
+        method: "POST",
+        headers: { "Content-Length": String(MAX_MCP_BODY_BYTES + 1) },
+        body: "{}",
+      });
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({ error: "request_too_large" });
+    },
+  );
 });
