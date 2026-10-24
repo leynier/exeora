@@ -18,7 +18,7 @@ Product documentation sources live under `apps/web/landing/src/pages/docs/`, ord
 
 ## Development
 
-Requires a patched Node release (`^22.23.4 || ^24.22.1 || >=26.12.1`; CI uses `.node-version`), [Bun 1.4.4](https://bun.sh), and the pinned Rust toolchain from `rust-toolchain.toml`.
+Requires a patched Node release (`^22.23.4 || ^24.22.1 || ^26.12.1`; CI tracks the latest Node 24 patch through `.node-version`), [Bun 1.4.4 or newer](https://bun.sh), uv 0.13.5 or newer for maintenance scripts, and the pinned Rust toolchain from `rust-toolchain.toml`.
 
 ```bash
 bun install
