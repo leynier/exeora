@@ -8,9 +8,22 @@ describe("gateway response protections", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toContain("Bearer");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
   });
+
+  it.each(["/oauth/device/code", "/oauth/device/token", "/oauth/token"])(
+    "keeps referrers suppressed for %s responses",
+    (path) => {
+      const response = gatewayResponse(
+        new Request(`https://exeora.dev${path}`),
+        Response.json({ error: "invalid_request" }, { status: 400 }),
+      );
+
+      expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    },
+  );
 
   it("protects consent pages from scripts, framing and referrer disclosure", async () => {
     const request = new Request("https://exeora.dev/oauth/authorize");

@@ -21,6 +21,8 @@ const bindings = {
   ...env,
   COOKIE_SECRET: "test-secret-value",
   EXEORA_BASE_URL: "https://exeora.dev",
+  GITHUB_CLIENT_ID: "device-login-test-github",
+  GITHUB_CLIENT_SECRET: "device-login-test-secret",
 } as unknown as Env;
 
 const CHALLENGE = "a".repeat(43);
@@ -206,18 +208,22 @@ describe("the device-code screens", () => {
     );
     const body = await response.text();
     expect(response.status).toBe(200);
+    expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
     expect(body).toContain("Sign in from another device");
   });
 
-  it("refuses a cross-origin POST, so a form on another site cannot skip the warning", async () => {
+  it.each([
+    ["cross-origin", "https://evil.example"],
+    ["missing Origin", undefined],
+    ["opaque Origin", "null"],
+  ])("refuses a %s POST without consuming the code", async (_name, origin) => {
     const created = await mint();
+    const headers = new Headers({ "Content-Type": "application/x-www-form-urlencoded" });
+    if (origin !== undefined) headers.set("Origin", origin);
     const response = await worker.fetch(
       new Request("https://exeora.dev/oauth/device", {
         method: "POST",
-        headers: {
-          Origin: "https://evil.example",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers,
         body: `user_code=${created.userCode}`,
       }),
       bindings,
@@ -228,20 +234,20 @@ describe("the device-code screens", () => {
     expect(await lookupDeviceGrantByUserCode(bindings, created.userCode)).not.toBeNull();
   });
 
-  it("refuses a POST with no Origin, which a non-browser client would send", async () => {
-    const created = await mint();
+  it("keeps the form's origin policy when an invalid code must be corrected", async () => {
     const response = await worker.fetch(
       new Request("https://exeora.dev/oauth/device", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `user_code=${created.userCode}`,
+        headers: { Origin: "https://exeora.dev" },
+        body: new URLSearchParams({ user_code: "ABCD-EFGH" }),
       }),
       bindings,
       createExecutionContext(),
     );
 
-    expect(response.status).toBe(403);
-    expect(await lookupDeviceGrantByUserCode(bindings, created.userCode)).not.toBeNull();
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Referrer-Policy")).toBe("same-origin");
+    expect(await response.text()).toContain("That code is not valid");
   });
 
   it("refuses a login continuation that only has the parked state in the URL", async () => {
@@ -279,12 +285,7 @@ describe("the device-code screens", () => {
       createExecutionContext(),
     );
 
-    expect(response.status).not.toBe(403);
-    if (response.status === 200) {
-      expect(await lookupDeviceGrantByUserCode(bindings, created.userCode)).toBeNull();
-    } else {
-      // No identity provider in this environment: the grant must still be pending.
-      expect(await lookupDeviceGrantByUserCode(bindings, created.userCode)).not.toBeNull();
-    }
+    expect(response.status).toBe(200);
+    expect(await lookupDeviceGrantByUserCode(bindings, created.userCode)).toBeNull();
   });
 });

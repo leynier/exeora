@@ -72,7 +72,13 @@ export function gatewayResponse(request: Request, response: Response): Response 
   if (url.protocol === "https:") {
     result.headers.set("Strict-Transport-Security", "max-age=31536000");
   }
-  if (sensitive) result.headers.set("Referrer-Policy", "no-referrer");
+  if (sensitive) {
+    // A native POST form under no-referrer sends Origin: null, which the
+    // device-code form correctly refuses. Preserve its same-origin Origin
+    // without disclosing the page URL when navigating to another site.
+    const deviceForm = oauthPage && url.pathname === "/oauth/device";
+    result.headers.set("Referrer-Policy", deviceForm ? "same-origin" : "no-referrer");
+  }
   if (oauthPage) result.headers.set("X-Frame-Options", "DENY");
   return result;
 }
