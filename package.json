@@ -58,16 +58,16 @@
     "plugin:check:submission": "bun run scripts/check-openai-submission.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
+    "@biomejs/biome": "2.6.3",
     "@exeora/design": "workspace:*",
-    "@playwright/test": "1.62.1",
+    "@playwright/test": "1.64.1",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "latest",
     "ajv": "8.20.0",
     "fflate": "^0.8.3",
-    "material-icon-theme": "5.38.1",
+    "material-icon-theme": "5.39.0",
     "typescript": "7.0.2",
     "vitest": "^4.1.12",
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
   }
 }
