@@ -9,7 +9,7 @@ use process_wrap::tokio::ProcessGroup;
 use process_wrap::tokio::{CommandWrap, KillOnDrop};
 use rmcp::{
     ClientLifecycleMode, ClientServiceExt,
-    model::{ClientCapabilities, ClientInfo, Implementation, ProtocolVersion},
+    model::{ClientCapabilities, ClientConfig, Implementation, ProtocolVersion},
     service::{RoleClient, RunningService},
     transport::{
         StreamableHttpClientTransport, TokioChildProcess,
@@ -23,13 +23,13 @@ use std::{
 };
 use tokio::process::Command;
 
-pub type McpClient = RunningService<RoleClient, ClientInfo>;
+pub type McpClient = RunningService<RoleClient, ClientConfig>;
 
 /// Opens one upstream server: a child process in `root` for a `command`, or a
 /// Streamable HTTP session for a `url`.
 pub async fn connect_server(server: &ResolvedServer, root: &Path) -> Result<McpClient> {
     let config = &server.config;
-    let info = ClientInfo::new(
+    let info = ClientConfig::new(
         ClientCapabilities::default(),
         Implementation::new("exeora", CLI_VERSION),
     );
