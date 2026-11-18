@@ -79,7 +79,7 @@ export function DiffView({
     );
     if (selected) compose?.(selected);
   };
-  const options: FileDiffOptions<undefined> = {
+  const options: FileDiffOptions<undefined, undefined> = {
     // Pierre still follows the OS unless themeType is dark.
     // Naming both slots pierre-dark is not enough on a light laptop.
     theme: { dark: "pierre-dark", light: "pierre-dark" },

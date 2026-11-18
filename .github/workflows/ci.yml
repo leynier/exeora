@@ -44,7 +44,7 @@ jobs:
       - name: Parse the PowerShell installer
         if: runner.os == 'Windows'
         shell: pwsh
-        run: '[scriptblock]::Create((Get-Content -Raw install.ps1)) | Out-Null'
+        run: "[scriptblock]::Create((Get-Content -Raw install.ps1)) | Out-Null"
 
       - name: Test Windows installer architecture detection
         if: runner.os == 'Windows'
